@@ -170,7 +170,7 @@ enum class ErrorCode : i32 {
 };
 
 
-class BEE_API Document {
+class BEE_CORE_API Document {
 public:
     explicit Document(const ParseOptions& parse_options);
     Document(Document&& other) noexcept;
@@ -264,7 +264,7 @@ private:
 };
 
 
-void BEE_API write_to_string(String* dst, const Document& src_doc, i32 indent);
+void BEE_CORE_API write_to_string(String* dst, const Document& src_doc, i32 indent);
 
 
 } // namespace json

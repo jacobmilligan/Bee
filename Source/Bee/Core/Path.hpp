@@ -20,7 +20,7 @@ class Path;
 
 /// @brief The path class is a lightweight path utility class for navigating the platforms
 /// filesystem
-class BEE_API Path
+class BEE_CORE_API Path
 {
 public:
 #if BEE_OS_WINDOWS == 1
@@ -170,13 +170,13 @@ private:
 
 
 /// Compares two paths lexicographically and returns -1 if lhs < rhs, 0 if lhs == rhs, or 1 if lhs > rhs
-BEE_API i32 path_compare(const Path& lhs, const Path& rhs);
+BEE_CORE_API i32 path_compare(const Path& lhs, const Path& rhs);
 
-BEE_API i32 path_compare(const Path& lhs, const StringView& rhs);
+BEE_CORE_API i32 path_compare(const Path& lhs, const StringView& rhs);
 
-BEE_API i32 path_compare(const StringView& lhs, const Path& rhs);
+BEE_CORE_API i32 path_compare(const StringView& lhs, const Path& rhs);
 
-BEE_API StringView path_get_extension(const char* c_string);
+BEE_CORE_API StringView path_get_extension(const char* c_string);
 
 
 inline bool operator==(const Path& lhs, const Path& rhs)
@@ -218,7 +218,7 @@ inline bool operator!=(const StringView& lhs, const Path& rhs)
  *
  ***************************************
  */
-class BEE_API PathIterator
+class BEE_CORE_API PathIterator
 {
 public:
     PathIterator() = default;

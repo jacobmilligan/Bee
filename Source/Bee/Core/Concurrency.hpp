@@ -16,15 +16,15 @@ namespace bee {
 namespace concurrency {
 
 
-BEE_API u32 physical_core_count();
+BEE_CORE_API u32 physical_core_count();
 
-BEE_API u32 logical_core_count();
+BEE_CORE_API u32 logical_core_count();
 
 
 } // namespace concurrency
 
 
-class BEE_API SpinLock
+class BEE_CORE_API SpinLock
 {
 public:
     void lock();
@@ -34,7 +34,7 @@ private:
     std::atomic_flag lock_ { false };
 };
 
-class BEE_API RecursiveSpinLock
+class BEE_CORE_API RecursiveSpinLock
 {
 public:
     RecursiveSpinLock();

@@ -14,7 +14,7 @@
 namespace bee {
 
 
-class BEE_API MemorySerializer : public Serializer
+class BEE_CORE_API MemorySerializer : public Serializer
 {
 public:
     using buffer_t = DynamicArray<u8>;

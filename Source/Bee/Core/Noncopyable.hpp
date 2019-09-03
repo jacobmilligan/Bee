@@ -12,7 +12,7 @@
 namespace bee {
 
 
-struct BEE_API Noncopyable {
+struct BEE_CORE_API Noncopyable {
     constexpr Noncopyable() = default;
     ~Noncopyable() = default;
     Noncopyable(const Noncopyable& other) = delete;

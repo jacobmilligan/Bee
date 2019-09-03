@@ -30,7 +30,7 @@ namespace detail {
 /// @param type The type of error that occurred
 /// @param msgformat The format string for the message
 /// @param ... Format parameters
-BEE_API void __bee_print_error(
+BEE_CORE_API void __bee_print_error(
     bool with_trace,
     const char* func,
     const char* file,
@@ -47,7 +47,7 @@ BEE_API void __bee_print_error(
 /// @param expr String representing the assertion that failed
 /// @param msgformat The message format string
 /// @param ... Format arguments
-BEE_API void __bee_assert_handler(
+BEE_CORE_API void __bee_assert_handler(
     const char* function,
     const char* file,
     int line,
@@ -56,9 +56,9 @@ BEE_API void __bee_assert_handler(
     ...
 ) BEE_PRINTFLIKE(5, 6);
 
-BEE_API void __bee_assert_handler(const char* function, const char* file, int line, const char* expr);
+BEE_CORE_API void __bee_assert_handler(const char* function, const char* file, int line, const char* expr);
 
-BEE_API void __bee_unreachable_handler(
+BEE_CORE_API void __bee_unreachable_handler(
     const char* function,
     const char* file,
     int line,
@@ -66,7 +66,7 @@ BEE_API void __bee_unreachable_handler(
     ...
 ) BEE_PRINTFLIKE(4, 5);
 
-BEE_API void __bee_check_handler(
+BEE_CORE_API void __bee_check_handler(
     const char* function,
     const char* file,
     int line,
@@ -76,9 +76,9 @@ BEE_API void __bee_check_handler(
 ) BEE_PRINTFLIKE(5, 6);
 
 
-[[noreturn]] BEE_API void __bee_abort();
+[[noreturn]] BEE_CORE_API void __bee_abort();
 
-BEE_API void __bee_abort_handler();
+BEE_CORE_API void __bee_abort_handler();
 
 
 }  // namespace detail
@@ -242,11 +242,11 @@ BEE_API void __bee_abort_handler();
  * Enables the Skyrocket exception handler instead of the default system one if the platform supports it to allow
  * asserting on exceptions rather than throwing
  */
-BEE_API void enable_exception_handling();
+BEE_CORE_API void enable_exception_handling();
 
 /**
  * Disables the Skyrocket exception handler if it's enabled
  */
-BEE_API void disable_exception_handling();
+BEE_CORE_API void disable_exception_handling();
 
 } // namespace bee

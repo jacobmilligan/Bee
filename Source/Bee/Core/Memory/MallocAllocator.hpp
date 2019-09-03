@@ -14,7 +14,7 @@
 namespace bee {
 
 
-class BEE_API MallocAllocator : public Allocator {
+class BEE_CORE_API MallocAllocator : public Allocator {
 public:
     MallocAllocator() = default;
 

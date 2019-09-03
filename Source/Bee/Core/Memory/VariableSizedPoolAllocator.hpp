@@ -13,7 +13,7 @@
 namespace bee {
 
 
-class BEE_API VariableSizedPoolAllocator : public Allocator
+class BEE_CORE_API VariableSizedPoolAllocator : public Allocator
 {
 public:
     using Allocator::allocate;

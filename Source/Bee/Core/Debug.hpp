@@ -53,29 +53,29 @@ struct DebugSymbol
     char    function_name[name_size];
 };
 
-BEE_API bool is_debugger_attached();
+BEE_CORE_API bool is_debugger_attached();
 
-BEE_API void refresh_debug_symbols();
+BEE_CORE_API void refresh_debug_symbols();
 
 /**
  * Captures a trace of all the stack frame addresses from the calling site back. To turn these addresses into
  * human-readable symbols use `symbolize_stack_trace`
  */
-BEE_API void capture_stack_trace(StackTrace* trace, i32 captured_frame_count, i32 skipped_frame_count);
+BEE_CORE_API void capture_stack_trace(StackTrace* trace, i32 captured_frame_count, i32 skipped_frame_count);
 
 /**
  * Takes a previously captured `StackTrace` and converts their addresses into human-readable `DebugSymbol` objects.
  * **Note:** the `dst_symbols` buffer must have a size of at least `trace.frame_count`
  */
-BEE_API void symbolize_stack_trace(DebugSymbol* dst_symbols, const StackTrace& trace, i32 frame_count = 0);
+BEE_CORE_API void symbolize_stack_trace(DebugSymbol* dst_symbols, const StackTrace& trace, i32 frame_count = 0);
 
 /**
  * Logs a stack trace to the loggers matching `verbosity` level output (i.e. if verbosity == info, it will
  * output to log::info), skipping `skipped_frame_count` frames before starting
  */
-BEE_API void log_stack_trace(LogVerbosity verbosity, i32 skipped_frame_count = 0);
+BEE_CORE_API void log_stack_trace(LogVerbosity verbosity, i32 skipped_frame_count = 0);
 
-BEE_API void write_stack_trace(const StackTrace& trace, io::StringStream* stream);
+BEE_CORE_API void write_stack_trace(const StackTrace& trace, io::StringStream* stream);
 
 
 } // namespace bee

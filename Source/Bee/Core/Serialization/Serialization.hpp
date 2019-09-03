@@ -166,7 +166,7 @@ enum class SerializerMode
  *  The three serializer classes provided under `Bee/Core/Serialization/` all provide these specializations
  *  so it's usually enough for a custom serializer to use one of these as a backing serializer or base class
  */
-struct BEE_API Serializer
+struct BEE_CORE_API Serializer
 {
     i32             version { 0 };
     i32             check_integrity_counter { 0 };

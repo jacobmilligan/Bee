@@ -168,21 +168,21 @@ enum class GUIDFormat
 /**
  * Generates a random GUID using the platforms UUID implementation
  */
-BEE_API GUID generate_guid();
+BEE_CORE_API GUID generate_guid();
 
 /**
  * Converts a GUID to a string representation in the specified format. Strings containing the hexadecimal
  * characters 'a'-'f' are always lowercase (see: https://tools.ietf.org/html/rfc4122 - section 3)
  */
-BEE_API String guid_to_string(const GUID& guid, GUIDFormat format, Allocator* allocator = system_allocator());
+BEE_CORE_API String guid_to_string(const GUID& guid, GUIDFormat format, Allocator* allocator = system_allocator());
 
-BEE_API i32 guid_to_string(const GUID& guid, GUIDFormat format, const Span<char>& dst);
+BEE_CORE_API i32 guid_to_string(const GUID& guid, GUIDFormat format, const Span<char>& dst);
 
 /**
  * Parses an input string and returns it as a GUID structure. The input string is parsed as case-insensitive, i.e.
  * accepting either 'a' or 'A' as a valid hexadecimal character (see: https://tools.ietf.org/html/rfc4122 - section 3)
  */
-BEE_API GUID guid_from_string(const StringView& string);
+BEE_CORE_API GUID guid_from_string(const StringView& string);
 
 
 } // namespace bee

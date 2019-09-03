@@ -154,7 +154,7 @@ public:
 
     explicit HashMap(const i32 initial_bucket_count, Allocator* allocator = system_allocator()) noexcept;
 
-    explicit HashMap(std::initializer_list<key_value_pair_t> init, Allocator* allocator = system_allocator()) noexcept;
+    HashMap(std::initializer_list<key_value_pair_t> init, Allocator* allocator = system_allocator()) noexcept;
 
     HashMap(map_t&& other) noexcept;
 

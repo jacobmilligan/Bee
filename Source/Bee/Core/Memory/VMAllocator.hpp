@@ -13,7 +13,7 @@
 namespace bee {
 
 
-class BEE_API VMAllocator : public Allocator {
+class BEE_CORE_API VMAllocator : public Allocator {
 public:
     using Allocator::Allocator;
     using Allocator::allocate;

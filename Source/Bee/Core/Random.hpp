@@ -15,7 +15,7 @@ namespace bee {
 /// Equal to (2^32) - 1
 constexpr i32 random_max = 2147483647;
 
-struct BEE_API Xorshift {
+struct BEE_CORE_API Xorshift {
     u32     state;
 
     explicit Xorshift(u32 seed);

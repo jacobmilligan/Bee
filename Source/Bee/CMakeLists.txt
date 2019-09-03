@@ -1,14 +1,11 @@
-bee_new_source_root()
-
+# Create a DLL that contains just Core for external tools to use
 add_subdirectory(Core)
 
-set(bee_link_libraries xxHash)
+# Make the Bee library target and link with Bee.Core
+bee_new_source_root()
+add_subdirectory(Application)
 
-if (WIN32)
-    set(bee_link_libraries ${bee_link_libraries} winmm.lib ws2_32)
-endif ()
-
-bee_library(Bee LINK_LIBRARIES ${bee_link_libraries})
+bee_library(Bee LINK_LIBRARIES Bee.Core)
 target_compile_definitions(Bee PUBLIC BEE_BUILD_EXPORT_LIBRARY)
 
 

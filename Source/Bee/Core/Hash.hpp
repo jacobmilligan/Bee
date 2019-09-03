@@ -25,7 +25,7 @@ namespace bee {
  *
  ******************************************************************************
  */
-BEE_API u32 get_hash(const void* input, size_t length, u32 seed);
+BEE_CORE_API u32 get_hash(const void* input, size_t length, u32 seed);
 
 
 /*
@@ -221,17 +221,17 @@ BEE_FORCE_INLINE u32 get_hash(const T& object)
 }
 
 
-class BEE_API HashState : public Noncopyable {
+class BEE_CORE_API HashState : public Noncopyable {
 public:
     HashState();
 
-    HashState(const u32 seed);
+    explicit HashState(const u32 seed);
 
-    HashState(HashState&& other);
+    HashState(HashState&& other) noexcept ;
 
     ~HashState() = default;
 
-    HashState& operator=(HashState&& other);
+    HashState& operator=(HashState&& other) noexcept;
 
     void add(const void* input, const u32 size);
 

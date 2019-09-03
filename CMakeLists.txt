@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.7)
 project(Bee)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -9,5 +9,6 @@ include(${CMAKE_MODULE_PATH}/project.cmake)
 bee_begin()
     add_subdirectory(ThirdParty)
     add_subdirectory(Source/Bee)
+    add_subdirectory(Tools)
     add_subdirectory(Sandbox)
 bee_end()

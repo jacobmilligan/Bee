@@ -52,7 +52,7 @@ BEE_FLAGS(CreateProcessFlags, u32)
 };
 
 
-struct BEE_API ProcessHandle : public Noncopyable
+struct BEE_CORE_API ProcessHandle : public Noncopyable
 {
     ProcessHandle() = default;
 
@@ -85,27 +85,27 @@ struct BEE_API ProcessHandle : public Noncopyable
 };
 
 
-struct BEE_API CreateProcessInfo
+struct BEE_CORE_API CreateProcessInfo
 {
     CreateProcessFlags  flags { CreateProcessFlags::none };
     ProcessHandle*      handle { nullptr };
-    i32                 argc { 0 };
-    const char* const*  argv { nullptr };
+    const char*         program { nullptr };
+    const char*         command_line { nullptr };
 };
 
-BEE_API bool create_process(const CreateProcessInfo& info, const Path& working_directory = Path::current_working_directory());
+BEE_CORE_API bool create_process(const CreateProcessInfo& info, const Path& working_directory = Path::current_working_directory());
 
-BEE_API void destroy_process(const ProcessHandle& process);
+BEE_CORE_API void destroy_process(const ProcessHandle& process);
 
-BEE_API i32 get_process_exit_code(const ProcessHandle& process);
+BEE_CORE_API i32 get_process_exit_code(const ProcessHandle& process);
 
-BEE_API bool is_process_active(const ProcessHandle& process);
+BEE_CORE_API bool is_process_active(const ProcessHandle& process);
 
-BEE_API void wait_for_process(const ProcessHandle& process);
+BEE_CORE_API void wait_for_process(const ProcessHandle& process);
 
-BEE_API String read_process(const ProcessHandle& process);
+BEE_CORE_API String read_process(const ProcessHandle& process);
 
-BEE_API i32 write_process(const ProcessHandle& process, const StringView& data);
+BEE_CORE_API i32 write_process(const ProcessHandle& process, const StringView& data);
 
 
 } // namespace bee

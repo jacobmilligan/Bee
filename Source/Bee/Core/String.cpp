@@ -341,12 +341,12 @@ namespace str {
 
 #ifdef BEE_MSVC_REQUIRE_REPLACEMENT_SNPRINTF
 
-i32 system_sprintf (char *buffer, const size_t length, const char *format, va_list args)
+i32 system_sprintf (char *buffer, const size_t length, const char *format, va_list command_line)
 {
-    auto length_result = _vsnprintf_s(buffer, length, _TRUNCATE, format, args);
+    auto length_result = _vsnprintf_s(buffer, length, _TRUNCATE, format, command_line);
     if (length_result == -1)
     {
-        length_result = _vscprintf(format, args);
+        length_result = _vscprintf(format, command_line);
     }
 
     return length_result;

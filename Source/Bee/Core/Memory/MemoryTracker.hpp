@@ -40,25 +40,25 @@ enum class TrackingMode
 /**
  * Allows for enabling/disabling allocation tracking
  */
-BEE_API void set_tracking_mode(const TrackingMode mode);
+BEE_CORE_API void set_tracking_mode(const TrackingMode mode);
 
 /**
  * Records a manual allocation event made from outside the Skyrocket memory environment (i.e. from a call to `malloc`)
  */
-BEE_API void record_manual_allocation(void* address, const size_t size, const size_t alignment, const i32 skipped_stack_frames);
+BEE_CORE_API void record_manual_allocation(void* address, const size_t size, const size_t alignment, const i32 skipped_stack_frames);
 
 /**
  * Erases a previously recorded manual allocation event. IMPORTANT - memory recorded by `Allocator` interfaces should
  * **never** go through this function otherwise the pointer will be recorded as a double-free when the allocator
  * deallocates it
  */
-BEE_API void erase_manual_allocation(void* address);
+BEE_CORE_API void erase_manual_allocation(void* address);
 
-BEE_API void* allocate_tracked(Allocator* allocator, const size_t size, const size_t alignment);
+BEE_CORE_API void* allocate_tracked(Allocator* allocator, const size_t size, const size_t alignment);
 
-BEE_API void* reallocate_tracked(Allocator* allocator, void* ptr, const size_t old_size, const size_t new_size, const size_t alignment);
+BEE_CORE_API void* reallocate_tracked(Allocator* allocator, void* ptr, const size_t old_size, const size_t new_size, const size_t alignment);
 
-BEE_API void deallocate_tracked(Allocator* allocator, void* ptr);
+BEE_CORE_API void deallocate_tracked(Allocator* allocator, void* ptr);
 
 inline void* allocate_tracked(Allocator& allocator, const size_t size, const size_t alignment)
 {
@@ -83,9 +83,9 @@ struct AllocationEvent
     StackTrace  stack_trace;
 };
 
-BEE_API i32 get_tracked_allocations(AllocationEvent* dst_buffer, const i32 dst_buffer_count);
+BEE_CORE_API i32 get_tracked_allocations(AllocationEvent* dst_buffer, const i32 dst_buffer_count);
 
-BEE_API void log_tracked_allocations(const LogVerbosity verbosity);
+BEE_CORE_API void log_tracked_allocations(const LogVerbosity verbosity);
 
 
 } // namespace memory_tracker

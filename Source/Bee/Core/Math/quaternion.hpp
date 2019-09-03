@@ -95,7 +95,7 @@ struct quaternion
         *this = normalize(*this);
     }
 
-    BEE_API static const quaternion& identity();
+    BEE_CORE_API static const quaternion& identity();
 };
 
 ///////////////////////////

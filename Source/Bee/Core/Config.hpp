@@ -208,15 +208,6 @@ namespace bee {
 #endif // BEE_IMPORT_SYMBOL
 
 /*
- * DLL API macro for import/export of the Bee library
- */
-#ifdef BEE_BUILD_EXPORT_LIBRARY
-    #define BEE_API BEE_EXPORT_SYMBOL
-#else
-    #define BEE_API BEE_IMPORT_SYMBOL
-#endif
-
-/*
 * Graphics API definitions
 */
 

@@ -13,7 +13,7 @@ namespace bee {
 
 static constexpr u16 half_max = 0xFFE0;
 
-class BEE_API half {
+class BEE_CORE_API half {
 public:
     half()
         : val_(0)

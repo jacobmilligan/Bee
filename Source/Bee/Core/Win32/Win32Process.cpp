@@ -29,13 +29,6 @@ bool create_process(const CreateProcessInfo& info, const Path& working_directory
 {
     BEE_ASSERT(info.handle != nullptr);
 
-    String cmdline;
-    for (int arg_idx = 0; arg_idx < info.argc; ++arg_idx)
-    {
-        cmdline += info.argv[arg_idx];
-        cmdline += " ";
-    }
-
     SECURITY_ATTRIBUTES attributes{}; // reused for thread attributes (same settings)
     attributes.nLength = sizeof(SECURITY_ATTRIBUTES);
     attributes.lpSecurityDescriptor = nullptr;
@@ -106,10 +99,12 @@ bool create_process(const CreateProcessInfo& info, const Path& working_directory
     startup_info.hStdOutput = !create_pipes ? nullptr : info.handle->write_pipe;
     startup_info.hStdError = !create_pipes ? nullptr : info.handle->write_pipe;
 
+    String temp_args(info.command_line, temp_allocator());
+
     PROCESS_INFORMATION proc_info{};
     const auto result = CreateProcess(
-        nullptr,
-        cmdline.data(),
+        info.program,
+        temp_args.data(),
         &attributes,
         &attributes,
         TRUE,
@@ -123,7 +118,7 @@ bool create_process(const CreateProcessInfo& info, const Path& working_directory
     info.handle->process = nullptr;
     info.handle->pid = -1;
 
-    if (BEE_FAIL_F(result != 0, "Unable to create process from application \"%s\": %s", info.argv[0], win32_get_last_error_string()))
+    if (BEE_FAIL_F(result != 0, "Unable to create process from application \"%s\": %s", info.program, win32_get_last_error_string()))
     {
         return false;
     }

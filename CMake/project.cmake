@@ -1,14 +1,47 @@
-include(${CMAKE_CURRENT_LIST_DIR}/compile_flags.cmake)
+################################################################################
+#
+# Setup global properties and variables for the build system to use
+#
+################################################################################
 include(${CMAKE_CURRENT_LIST_DIR}/version.cmake)
-
-set(BEE_PROJECT_ROOT ${PROJECT_SOURCE_DIR})
-set(BEE_SOURCE_ROOT ${BEE_PROJECT_ROOT}/Source)
-set(BEE_THIRD_PARTY ${BEE_PROJECT_ROOT}/ThirdParty)
+include(${CMAKE_CURRENT_LIST_DIR}/options.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/compile_flags.cmake)
 
 if (BUILD_TESTS)
     include(GoogleTest)
 endif ()
 
+set(BEE_CMAKE_ROOT ${CMAKE_CURRENT_LIST_DIR})
+set(BEE_PROJECT_ROOT ${PROJECT_SOURCE_DIR})
+set(BEE_SOURCE_ROOT ${BEE_PROJECT_ROOT}/Source)
+set(BEE_THIRD_PARTY ${BEE_PROJECT_ROOT}/ThirdParty)
+set(BEE_BUILD_ROOT ${BEE_PROJECT_ROOT}/Build)
+set(BEE_DEBUG_BINARY_DIR ${BEE_BUILD_ROOT}/Debug)
+set(BEE_RELEASE_BINARY_DIR ${BEE_BUILD_ROOT}/Release)
+
+# Setup compiler variables
+set(BEE_COMPILER_IS_MSVC FALSE)
+set(BEE_COMPILER_IS_CLANG FALSE)
+set(BEE_COMPILER_IS_GCC FALSE)
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    set(BEE_COMPILER_IS_MSVC TRUE)
+endif ()
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(BEE_COMPILER_IS_CLANG TRUE)
+endif ()
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    set(BEE_COMPILER_IS_GCC TRUE)
+endif ()
+
+# remove assertions in all release builds no matter what
+set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS
+    $<$<CONFIG:RelWithDebInfo>:BEE_ENABLE_ASSERTIONS=0>
+    $<$<CONFIG:Release>:BEE_ENABLE_ASSERTIONS=0>
+    $<$<CONFIG:MinSizeRel>:BEE_ENABLE_ASSERTIONS=0>
+)
 
 ################################################################################
 #
@@ -29,10 +62,14 @@ endfunction()
 ################################################################################
 function(bee_begin)
     set(__bee_include_dirs ${BEE_SOURCE_ROOT} CACHE INTERNAL "")
+    set(__bee_libraries "" CACHE INTERNAL "")
     bee_new_source_root()
 endfunction()
 
 function(bee_end)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+        add_custom_target(NatVis SOURCES ${BEE_CMAKE_ROOT}/Bee.natvis)
+    endif ()
     bee_begin()
 endfunction()
 
@@ -75,6 +112,48 @@ function(bee_add_include_dirs)
 endfunction()
 
 
+function(__bee_finalize_target name)
+    target_include_directories(${name} PUBLIC ${__bee_include_dirs})
+    __bee_set_compile_options(${name})
+    set_target_properties(${name}
+        PROPERTIES
+        ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${BEE_DEBUG_BINARY_DIR}
+        LIBRARY_OUTPUT_DIRECTORY_DEBUG ${BEE_DEBUG_BINARY_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG ${BEE_DEBUG_BINARY_DIR}
+        ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${BEE_RELEASE_BINARY_DIR}
+        LIBRARY_OUTPUT_DIRECTORY_RELEASE ${BEE_RELEASE_BINARY_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE ${BEE_RELEASE_BINARY_DIR}
+    )
+
+    if (${BEE_COMPILER_IS_MSVC})
+        target_compile_options(${name} PUBLIC "/wd4251")
+    endif ()
+
+    foreach (dep ${__bee_libraries})
+        if (NOT "${dep}" STREQUAL "${name}")
+            __bee_get_api_macro(${dep} api_macro)
+            target_compile_definitions(${name} PRIVATE ${api_macro}=BEE_IMPORT_SYMBOL)
+        endif ()
+    endforeach ()
+
+    bee_new_source_root()
+endfunction()
+
+
+function(__bee_get_api_macro target dst)
+    # Setup a <module_name>_API macro as a compile define
+    string(REPLACE "Bee" "BEE" api_macro "${target}")
+    string(REPLACE "." "_" api_macro "${api_macro}")
+    string(TOUPPER "${api_macro}_API" api_macro)
+
+    string(FIND "${target}" "Bee" bee_name_idx)
+    if (NOT ${bee_name_idx} EQUAL 0)
+        set(api_macro "BEE_THIRD_PARTY_${api_macro}")
+    endif ()
+
+    set(${dst} ${api_macro} PARENT_SCOPE)
+endfunction()
+
 ################################################################################
 #
 # Adds a new executable target with the given name, linking against the libraries
@@ -106,9 +185,7 @@ function(bee_exe name)
         target_link_libraries(${name} PUBLIC ${ARGS_LINK_LIBRARIES})
     endif ()
 
-    target_include_directories(${name} PUBLIC ${__bee_include_dirs})
-    __bee_set_compile_options(${name})
-    bee_new_source_root()
+    __bee_finalize_target(${name})
 endfunction()
 
 
@@ -126,19 +203,25 @@ endfunction()
 ################################################################################
 function(bee_library name)
     cmake_parse_arguments(ARGS "SHARED" "" "LINK_LIBRARIES" ${ARGN})
-    if (ARGS_DYNAMIC)
+
+    __bee_get_api_macro(${name} api_macro)
+
+    if (ARGS_SHARED)
         add_library(${name} SHARED ${__bee_sources})
+        target_compile_definitions(${name} PRIVATE BEE_DLL)
     else()
         add_library(${name} STATIC ${__bee_sources})
     endif ()
+
+    target_compile_definitions(${name} PRIVATE ${api_macro}=BEE_EXPORT_SYMBOL)
 
     if (ARGS_LINK_LIBRARIES)
         target_link_libraries(${name} PUBLIC ${ARGS_LINK_LIBRARIES})
     endif ()
 
-    target_include_directories(${name} PUBLIC ${__bee_include_dirs})
-    __bee_set_compile_options(${name})
-    bee_new_source_root()
+    set(__bee_libraries ${__bee_libraries} ${name} CACHE INTERNAL "")
+
+    __bee_finalize_target(${name})
 endfunction()
 
 
@@ -157,7 +240,6 @@ function(bee_test name)
         set(cached_sources ${__bee_sources})
 
         bee_new_source_root()
-        message("${ARGS_SOURCES}")
         bee_add_sources(${ARGS_SOURCES})
         bee_exe(${name} LINK_LIBRARIES Bee.TestMain ${ARGS_LINK_LIBRARIES})
 

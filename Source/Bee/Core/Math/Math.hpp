@@ -37,62 +37,62 @@ constexpr float float_epsilon = 1.19209290E-07f;
  * Forward declared cmath wrappers
  */
 
-BEE_API double sqrt(double value);
+BEE_CORE_API double sqrt(double value);
 
-BEE_API float sqrtf(float value);
+BEE_CORE_API float sqrtf(float value);
 
-BEE_API double pow(double base, double exponent);
+BEE_CORE_API double pow(double base, double exponent);
 
-BEE_API double powf(float base, float exponent);
+BEE_CORE_API double powf(float base, float exponent);
 
-BEE_API double floor(double value);
-BEE_API float floorf(float value);
+BEE_CORE_API double floor(double value);
+BEE_CORE_API float floorf(float value);
 
-BEE_API double ceil(double value);
-BEE_API float ceilf(float value);
+BEE_CORE_API double ceil(double value);
+BEE_CORE_API float ceilf(float value);
 
-BEE_API float acosf(float value);
-BEE_API double acos(double value);
+BEE_CORE_API float acosf(float value);
+BEE_CORE_API double acos(double value);
 
-BEE_API float asinf(float value);
-BEE_API double asin(double value);
+BEE_CORE_API float asinf(float value);
+BEE_CORE_API double asin(double value);
 
-BEE_API float atanf(float value);
-BEE_API double atan(double value);
+BEE_CORE_API float atanf(float value);
+BEE_CORE_API double atan(double value);
 
-BEE_API float atan2f(float y, float x);
-BEE_API double atan2(double y, double x);
+BEE_CORE_API float atan2f(float y, float x);
+BEE_CORE_API double atan2(double y, double x);
 
-BEE_API float cosf(float value);
-BEE_API double cos(double value);
+BEE_CORE_API float cosf(float value);
+BEE_CORE_API double cos(double value);
 
-BEE_API float sinf(float value);
-BEE_API double sin(double value);
+BEE_CORE_API float sinf(float value);
+BEE_CORE_API double sin(double value);
 
-BEE_API float tanf(float value);
-BEE_API double tan(double value);
+BEE_CORE_API float tanf(float value);
+BEE_CORE_API double tan(double value);
 
-BEE_API float acoshf(float value);
-BEE_API double acosh(double value);
+BEE_CORE_API float acoshf(float value);
+BEE_CORE_API double acosh(double value);
 
-BEE_API float asinhf(float value);
-BEE_API double asinh(double value);
+BEE_CORE_API float asinhf(float value);
+BEE_CORE_API double asinh(double value);
 
-BEE_API float atanhf(float value);
-BEE_API double atanh(double value);
+BEE_CORE_API float atanhf(float value);
+BEE_CORE_API double atanh(double value);
 
-BEE_API float coshf(float value);
-BEE_API double cosh(double value);
+BEE_CORE_API float coshf(float value);
+BEE_CORE_API double cosh(double value);
 
-BEE_API float sinhf(float value);
-BEE_API double sinh(double value);
+BEE_CORE_API float sinhf(float value);
+BEE_CORE_API double sinh(double value);
 
-BEE_API float tanhf(float value);
-BEE_API double tanh(double value);
+BEE_CORE_API float tanhf(float value);
+BEE_CORE_API double tanh(double value);
 
-BEE_API double abs(double value);
-BEE_API float fabs(float value);
-BEE_API i32 iabs(i32 value);
+BEE_CORE_API double abs(double value);
+BEE_CORE_API float fabs(float value);
+BEE_CORE_API i32 iabs(i32 value);
 
 /*
  * inline math operations

@@ -41,15 +41,15 @@ namespace current_thread {
  */
 
 
-BEE_API void sleep(u64 ticks_to_sleep);
+BEE_CORE_API void sleep(u64 ticks_to_sleep);
 
-BEE_API u64 id();
+BEE_CORE_API u64 id();
 
-BEE_API void set_affinity(i32 cpu);
+BEE_CORE_API void set_affinity(i32 cpu);
 
-BEE_API void set_name(const char* name);
+BEE_CORE_API void set_name(const char* name);
 
-BEE_API void set_priority(ThreadPriority priority);
+BEE_CORE_API void set_priority(ThreadPriority priority);
 
 } // namespace current_thread
 
@@ -67,7 +67,7 @@ struct ThreadCreateInfo
 };
 
 
-class BEE_API Thread : public Noncopyable
+class BEE_CORE_API Thread : public Noncopyable
 {
 public:
     static constexpr i32 max_name_length = ThreadCreateInfo::max_name_length;

@@ -64,15 +64,15 @@ BEE_POP_WARNING
     return reinterpret_cast<void*>(aligned);
 }
 
-BEE_API size_t get_page_size() noexcept;
+BEE_CORE_API size_t get_page_size() noexcept;
 
-BEE_API size_t get_min_stack_size() noexcept;
+BEE_CORE_API size_t get_min_stack_size() noexcept;
 
-BEE_API size_t get_max_stack_size() noexcept;
+BEE_CORE_API size_t get_max_stack_size() noexcept;
 
-BEE_API size_t get_canonical_stack_size() noexcept;
+BEE_CORE_API size_t get_canonical_stack_size() noexcept;
 
-BEE_API bool guard_memory(void* memory, size_t num_bytes, MemoryProtectionMode protection) noexcept;
+BEE_CORE_API bool guard_memory(void* memory, size_t num_bytes, MemoryProtectionMode protection) noexcept;
 
 
 } // namespace bee

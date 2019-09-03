@@ -96,7 +96,7 @@ struct float4x4 {
         m33 = c3.w;
     }
 
-    BEE_API explicit float4x4(const quaternion& quat);
+    BEE_CORE_API explicit float4x4(const quaternion& quat);
 
     BEE_FORCE_INLINE float& operator[](const uint32_t i)
     {

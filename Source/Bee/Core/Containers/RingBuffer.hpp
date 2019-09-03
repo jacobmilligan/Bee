@@ -14,7 +14,7 @@
 namespace bee {
 
 // TODO(Jacob): make this biznatch thread safe and lock-free
-class BEE_API RingBuffer : public Noncopyable
+class BEE_CORE_API RingBuffer : public Noncopyable
 {
 public:
     RingBuffer() = default;

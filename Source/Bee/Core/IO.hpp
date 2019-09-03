@@ -138,7 +138,7 @@ enum class SeekOrigin
 /**
  * Manages the reading/writing of data into files, buffers, strings etc.
  */
-class BEE_API Stream
+class BEE_CORE_API Stream
 {
 public:
     enum class Mode
@@ -200,7 +200,7 @@ protected:
  *
  * Reads data from a source buffer of bytes into other destination buffers
  */
-class BEE_API MemoryStream : public Stream
+class BEE_CORE_API MemoryStream : public Stream
 {
 public:
     MemoryStream(const void* read_only_buffer, const i32 buffer_capacity)
@@ -267,7 +267,7 @@ private:
  * Reads data from a file into output buffers - can close the file automatically upon destruction if constructed with
  * this option
  */
-class BEE_API FileStream final : public Stream
+class BEE_CORE_API FileStream final : public Stream
 {
 public:
     FileStream(FILE* src_file, const char* src_file_mode, bool close_on_destruct = false);
@@ -318,7 +318,7 @@ private:
  *
  * Writes data from source strings into either a destination string or a buffer of `char`
  */
-class BEE_API StringStream final : public Stream
+class BEE_CORE_API StringStream final : public Stream
 {
 public:
     StringStream(const char* read_only_string, const i32 string_size);

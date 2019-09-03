@@ -20,7 +20,7 @@
 namespace bee {
 
 
-class BEE_API JSONWriter : public Serializer, public Noncopyable
+class BEE_CORE_API JSONWriter : public Serializer, public Noncopyable
 {
 public:
     explicit JSONWriter(Allocator* allocator = system_allocator())
@@ -134,7 +134,7 @@ private:
     void array_end();
 };
 
-class BEE_API JSONReader : public Serializer
+class BEE_CORE_API JSONReader : public Serializer
 {
 public:
     JSONReader(bee::String* source, Allocator* allocator = system_allocator())

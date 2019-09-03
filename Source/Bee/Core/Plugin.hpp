@@ -37,21 +37,21 @@ using load_function_t = void*();
 using unload_function_t = void(void*);
 
 
-BEE_API void init_registry();
+BEE_CORE_API void init_registry();
 
-BEE_API void destroy_registry();
+BEE_CORE_API void destroy_registry();
 
-BEE_API bool is_registry_initialized();
+BEE_CORE_API bool is_registry_initialized();
 
-BEE_API PluginAPI load_dynamic_plugin(const char* name);
+BEE_CORE_API PluginAPI load_dynamic_plugin(const char* name);
 
-BEE_API PluginAPI load_static_plugin(const char* name, load_function_t* load, unload_function_t* unload);
+BEE_CORE_API PluginAPI load_static_plugin(const char* name, load_function_t* load, unload_function_t* unload);
 
-BEE_API void unload_plugin(const char* name);
+BEE_CORE_API void unload_plugin(const char* name);
 
-BEE_API PluginAPI get_plugin_api(const char* name);
+BEE_CORE_API PluginAPI get_plugin_api(const char* name);
 
-BEE_API bool is_plugin_loaded(const char* name);
+BEE_CORE_API bool is_plugin_loaded(const char* name);
 
 template <typename APIType>
 APIType* get_plugin(const char* name)

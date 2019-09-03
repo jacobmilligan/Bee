@@ -24,13 +24,13 @@ HashState::HashState(const u32 seed)
     XXH32_reset(&state_, seed);
 }
 
-HashState::HashState(bee::HashState&& other)
+HashState::HashState(bee::HashState&& other) noexcept
     : state_(other.state_)
 {
     XXH32_reset(&other.state_, 0xF00D);
 }
 
-HashState& HashState::operator=(bee::HashState&& other)
+HashState& HashState::operator=(bee::HashState&& other) noexcept
 {
     state_ = other.state_;
     XXH32_reset(&other.state_, 0);

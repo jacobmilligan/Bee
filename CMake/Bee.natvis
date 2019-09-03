@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+    <Type Name="bee::VersionedHandle&lt;*&gt;">
+        <DisplayString>{{Id = {id}}</DisplayString>
+    </Type>
+
+    <Type Name="bee::Array&lt;*,*&gt;>">
+        <DisplayString>{{Size = {size_}}</DisplayString>
+        <Expand>
+            <Item Name="[size]">size_</Item>
+            <Item Name="[capacity]">capacity_</Item>
+            <Item Name="[allocator]">allocator_</Item>
+            <ArrayItems>
+                <Size>size_</Size>
+                <ValuePointer>data_</ValuePointer>
+            </ArrayItems>
+        </Expand>
+    </Type>
+
+    <Type Name="bee::String">
+        <DisplayString>{data_,[size_]s8}</DisplayString>
+        <StringView>data_,[size_]s8</StringView>
+        <Expand>
+            <Item Name="[size]">size_</Item>
+            <Item Name="[capacity]">capacity_</Item>
+            <Item Name="[allocator]">allocator_</Item>
+        </Expand>
+    </Type>
+
+    <Type Name="bee::StringView">
+        <DisplayString>{data_,[size_]s8}</DisplayString>
+        <StringView>data_,[size_]s8</StringView>
+    </Type>
+
+    <Type Name="bee::Path">
+        <DisplayString>{data_}</DisplayString>
+        <StringView>data_</StringView>
+    </Type>
+
+    <Type Name="bee::Span&lt;*&gt;">
+        <DisplayString>{{Size = {size_}}</DisplayString>
+        <Expand>
+            <Item Name="[size]">size_</Item>
+            <ArrayItems>
+                <Size>size_</Size>
+                <ValuePointer>data_</ValuePointer>
+            </ArrayItems>
+        </Expand>
+    </Type>
+
+    <Type Name="bee::GUID">
+        <DisplayString>{debug_string}</DisplayString>
+    </Type>
+</AutoVisualizer>

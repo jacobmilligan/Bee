@@ -13,10 +13,10 @@ namespace bee {
 namespace time {
 
 /// Queries the systems high-resolution timer for the current time since startup
-BEE_API u64 now() noexcept;
+BEE_CORE_API u64 now() noexcept;
 
 /// Returns the number of ticks per second of the current system 
-BEE_API u64 ticks_per_second() noexcept;
+BEE_CORE_API u64 ticks_per_second() noexcept;
 
 
 } // namespace time
@@ -32,7 +32,7 @@ enum class TimeInterval
     hours
 };
 
-class BEE_API TimePoint {
+class BEE_CORE_API TimePoint {
 public:
     /// Represents the amount of ticks that occur for every microsecond
     static const u64 ticks_per_microsecond;

@@ -19,7 +19,7 @@
 namespace bee {
 
 
-class BEE_API StreamSerializer : public Serializer
+class BEE_CORE_API StreamSerializer : public Serializer
 {
 public:
     explicit StreamSerializer(io::Stream* stream);

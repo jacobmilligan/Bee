@@ -25,11 +25,11 @@ struct DynamicLibrary
     void* handle { nullptr };
 };
 
-BEE_API DynamicLibrary load_library(const char* path);
+BEE_CORE_API DynamicLibrary load_library(const char* path);
 
-BEE_API bool unload_library(const DynamicLibrary& library);
+BEE_CORE_API bool unload_library(const DynamicLibrary& library);
 
-BEE_API void* get_library_symbol(const DynamicLibrary& library, const char* symbol_name);
+BEE_CORE_API void* get_library_symbol(const DynamicLibrary& library, const char* symbol_name);
 
 
 } // namespace bee

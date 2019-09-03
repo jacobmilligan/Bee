@@ -32,7 +32,7 @@ namespace bee {
  *
  ****************************************************************************************
  */
-class BEE_API Allocator : public Noncopyable
+class BEE_CORE_API Allocator : public Noncopyable
 {
 public:
     static constexpr size_t uninitialized_alloc_pattern = 0xF00DD00D;
@@ -198,7 +198,7 @@ BEE_FORCE_INLINE void destruct(ValueType* ptr)
  *
  ****************************************************************************************
  */
-BEE_API Allocator* system_allocator() noexcept;
+BEE_CORE_API Allocator* system_allocator() noexcept;
 
 
 /*
@@ -215,9 +215,9 @@ BEE_API Allocator* system_allocator() noexcept;
  *
  ****************************************************************************************
  */
-BEE_API Allocator* temp_allocator() noexcept;
+BEE_CORE_API Allocator* temp_allocator() noexcept;
 
-BEE_API void reset_temp_allocator() noexcept;
+BEE_CORE_API void reset_temp_allocator() noexcept;
 
 /*
  **********************************************************
@@ -227,7 +227,7 @@ BEE_API void reset_temp_allocator() noexcept;
  *
  **********************************************************
  */
-BEE_API void log_allocations();
+BEE_CORE_API void log_allocations();
 
 
 } // namespace bee

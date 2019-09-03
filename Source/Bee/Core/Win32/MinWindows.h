@@ -81,7 +81,11 @@
 #define NOSOUND           // - Sound driver routines
 #define NOTEXTMETRIC      // - typedef TEXTMETRIC and associated routines
 #define NOWH              // - SetWindowsHook and WH_*
-#define NOWINOFFSETS      // - GWL_*, GCL_*, associated routines
+
+#if !defined(BEE_MINWINDOWS_ENABLE_WINOFFSETS)
+    #define NOWINOFFSETS      // - GWL_*, GCL_*, associated routines
+#endif // !defined(BEE_MINWINDOWS_ENABLE_WINOFFSETS)
+
 #define NOCOMM            // - COMM driver routines
 #define NOKANJI           // - Kanji support stuff.
 #define NOHELP            // - Help engine interface.
@@ -143,11 +147,11 @@
 namespace bee {
 
 
-BEE_API const char* win32_format_error(const int error_code,  char* dst_buffer, const int buffer_size);
+BEE_CORE_API const char* win32_format_error(const int error_code,  char* dst_buffer, const int buffer_size);
 
-BEE_API const char* win32_get_last_error_string(char* dst_buffer, int buffer_size);
+BEE_CORE_API const char* win32_get_last_error_string(char* dst_buffer, int buffer_size);
 
-BEE_API const char* win32_get_last_error_string();
+BEE_CORE_API const char* win32_get_last_error_string();
 
 
 } // namespace bee

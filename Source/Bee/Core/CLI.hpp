@@ -56,8 +56,8 @@ struct Option
     String                 help;                   // help string to print for the option
 
     /*
-     * number of arguments the option takes, a value of -1 indicates zero or more args and a value
-     * of 0 indicates the option is just a flag with zero args
+     * number of arguments the option takes, a value of -1 indicates zero or more command_line and a value
+     * of 0 indicates the option is just a flag with zero command_line
      */
     i32                    nargs { 0 };
     // an array of the names of options this option is mutually exclusive with
@@ -70,7 +70,7 @@ struct Token
     i32 count { 0 };
 };
 
-struct BEE_API Results : public Noncopyable
+struct BEE_CORE_API Results : public Noncopyable
 {
     Results() = default;
 
@@ -94,7 +94,7 @@ private:
 };
 
 
-BEE_API Results parse(
+BEE_CORE_API Results parse(
     i32 argc,
     char** argv,
     const Positional* positionals,
@@ -103,9 +103,9 @@ BEE_API Results parse(
     i32 option_count
 );
 
-BEE_API bool has_option(const Results& results, const char* option_long_name);
+BEE_CORE_API bool has_option(const Results& results, const char* option_long_name);
 
-BEE_API const char* get_option(const Results& results, const char* option_long_name, i32 arg_index = 0);
+BEE_CORE_API const char* get_option(const Results& results, const char* option_long_name, i32 arg_index = 0);
 
 
 } // namespace cli
