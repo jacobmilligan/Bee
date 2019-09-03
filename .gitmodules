@@ -10,3 +10,6 @@
 [submodule ".\\ThirdParty\\rapidjson"]
 	path = .\\ThirdParty\\rapidjson
 	url = https://github.com/Tencent/rapidjson.git
+[submodule ".\\ThirdParty\\rapidjson\\"]
+	path = .\\ThirdParty\\rapidjson\\
+	url = https://github.com/Tencent/rapidjson.git

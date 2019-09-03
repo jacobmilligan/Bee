@@ -1,0 +1,53 @@
+.DS_Store
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Jetbrains files
+.idea/
+
+# Visual Studio files
+*.opendb
+*.VC.db
+*.vcxproj.user
+.vs/
+.vscode/
+enc_temp_folder/
+
+# Engine files
+__pycache__/
+/Build/
+cmake-build-debug
+cmake-build-release
+CMakeFiles/
+./CMakeCache.txt
+!/ThirdParty/Binaries/**/*
+
+
+!/tstfile
