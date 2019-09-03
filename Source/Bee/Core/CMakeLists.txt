@@ -1,0 +1,43 @@
+bee_add_sources(
+        AtomicCounter.hpp
+        Bitset.hpp
+        CLI.hpp         CLI.cpp
+        Concurrency.hpp Concurrency.cpp
+        Config.hpp
+        declval.hpp
+        DynamicLibrary.hpp
+        Debug.hpp       Debug.cpp
+        Error.hpp       Error.cpp
+        Filesystem.hpp  Filesystem.cpp
+        Functional.hpp
+        GUID.hpp        GUID.cpp
+        Handle.hpp
+        Hash.hpp        Hash.cpp
+        IO.hpp          IO.cpp      IO.inl
+        Logger.hpp      Logger.cpp
+        Meta.hpp
+        Plugin.hpp      Plugin.cpp
+        Noncopyable.hpp
+        NumericTypes.hpp
+        Path.hpp        Path.cpp
+        Process.hpp
+        Random.hpp      Random.cpp
+        Reflection.hpp
+        Span.hpp
+        Socket.hpp
+        String.hpp      String.cpp
+        Thread.hpp      Thread.cpp
+        Time.hpp        Time.cpp
+)
+
+add_subdirectory(Containers)
+add_subdirectory(Memory)
+add_subdirectory(Math)
+add_subdirectory(JSON)
+add_subdirectory(Serialization)
+
+if (WIN32)
+    add_subdirectory(Win32)
+endif ()
+
+add_subdirectory(Tests)

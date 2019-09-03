@@ -1,0 +1,53 @@
+//
+//  Log.hpp
+//  Skyrocket
+//
+//  --------------------------------------------------------------
+//
+//  Created by
+//  Jacob Milligan on 20/07/2018
+//  Copyright (c) 2018 Jacob Milligan. All rights reserved.
+//
+
+#pragma once
+
+#include "Bee/Core/NumericTypes.hpp"
+
+#include <stdarg.h>
+#include <stdio.h>
+
+namespace bee {
+
+
+enum class LogVerbosity : u8
+{
+    quiet   = 0,
+    info    = 1,
+    warn    = 2,
+    error   = 3,
+    debug   = 4
+};
+
+using logger_callback_t = void(const LogVerbosity verbosity, const char* fmt, va_list va_args);
+
+
+BEE_API void log_set_verbosity(LogVerbosity verbosity);
+
+BEE_API LogVerbosity log_get_verbosity();
+
+BEE_API void log_register_callback(logger_callback_t* logger);
+
+BEE_API void log_info(const char* fmt, ...) BEE_PRINTFLIKE(1, 2);
+
+BEE_API void log_warning(const char* fmt, ...) BEE_PRINTFLIKE(1, 2);
+
+BEE_API void log_error(const char* fmt, ...) BEE_PRINTFLIKE(1, 2);
+
+BEE_API void log_debug(const char* fmt, ...) BEE_PRINTFLIKE(1, 2);
+
+BEE_API void log_write(LogVerbosity verbosity, const char* fmt, ...) BEE_PRINTFLIKE(2, 3);
+
+BEE_API void log_write_v(LogVerbosity verbosity, const char* fmt, va_list va_args);
+
+
+} // namespace bee

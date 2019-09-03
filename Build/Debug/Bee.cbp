@@ -1,0 +1,598 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6"/>
+	<Project>
+		<Option title="Bee"/>
+		<Option makefile_is_custom="1"/>
+		<Option compiler="msvc8"/>
+		<Option virtualFolders="CMake Files\;CMake Files\CMake\;CMake Files\ThirdParty\;CMake Files\Source\;CMake Files\Source\Bee\;CMake Files\Source\Bee\Core\;CMake Files\Source\Bee\Core\Containers\;CMake Files\Source\Bee\Core\Memory\;CMake Files\Source\Bee\Core\Memory\Win32\;CMake Files\Source\Bee\Core\Math\;CMake Files\Source\Bee\Core\JSON\;CMake Files\Source\Bee\Core\Serialization\;CMake Files\Source\Bee\Core\Win32\;CMake Files\Source\Bee\Core\Tests\;CMake Files\Sandbox\;"/>
+		<Build>
+			<Target title="all">
+				<Option working_dir="C:/Dev/Bee/Build/Debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 all"/>
+					<CompileFile command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 clean"/>
+					<DistClean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="edit_cache">
+				<Option working_dir="C:/Dev/Bee/Build/Debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 edit_cache"/>
+					<CompileFile command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 clean"/>
+					<DistClean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="rebuild_cache">
+				<Option working_dir="C:/Dev/Bee/Build/Debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 rebuild_cache"/>
+					<CompileFile command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 clean"/>
+					<DistClean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Makefile VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="xxHash">
+				<Option output="C:/Dev/Bee/Build/Debug/ThirdParty/xxHash.lib" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="C:/Dev/Bee/Build/Debug/ThirdParty"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="msvc8"/>
+				<Compiler>
+					<Add option="-D_CRT_SECURE_NO_WARNINGS"/>
+					<Add option="-DBEE_DEBUG=1"/>
+					<Add option="-DBEE_VERSION=&quot;0.0.0&quot;"/>
+					<Add directory="C:/Dev/Bee/Source"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/xxHash"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\ATLMFC\include"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\include"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\ucrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\shared"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\um"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\winrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\cppwinrt"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\ThirdParty\Makefile VERBOSE=1 xxHash"/>
+					<CompileFile command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\ThirdParty\Makefile VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\ThirdParty\Makefile VERBOSE=1 clean"/>
+					<DistClean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\ThirdParty\Makefile VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="xxHash/fast">
+				<Option output="C:/Dev/Bee/Build/Debug/ThirdParty/xxHash.lib" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="C:/Dev/Bee/Build/Debug/ThirdParty"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="msvc8"/>
+				<Compiler>
+					<Add option="-D_CRT_SECURE_NO_WARNINGS"/>
+					<Add option="-DBEE_DEBUG=1"/>
+					<Add option="-DBEE_VERSION=&quot;0.0.0&quot;"/>
+					<Add directory="C:/Dev/Bee/Source"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/xxHash"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\ATLMFC\include"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\include"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\ucrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\shared"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\um"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\winrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\cppwinrt"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\ThirdParty\Makefile VERBOSE=1 xxHash/fast"/>
+					<CompileFile command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\ThirdParty\Makefile VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\ThirdParty\Makefile VERBOSE=1 clean"/>
+					<DistClean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\ThirdParty\Makefile VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="Bee">
+				<Option output="C:/Dev/Bee/Build/Debug/Source/Bee/Bee.lib" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="C:/Dev/Bee/Build/Debug/Source/Bee"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="msvc8"/>
+				<Compiler>
+					<Add option="-DBEE_BUILD_EXPORT_LIBRARY"/>
+					<Add option="-D_CRT_SECURE_NO_WARNINGS"/>
+					<Add option="-DBEE_DEBUG=1"/>
+					<Add option="-DBEE_VERSION=&quot;0.0.0&quot;"/>
+					<Add directory="C:/Dev/Bee/Source"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/xxHash"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/cpu_info/include"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/rapidjson/include"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\ATLMFC\include"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\include"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\ucrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\shared"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\um"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\winrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\cppwinrt"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 Bee"/>
+					<CompileFile command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 clean"/>
+					<DistClean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="Bee/fast">
+				<Option output="C:/Dev/Bee/Build/Debug/Source/Bee/Bee.lib" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="C:/Dev/Bee/Build/Debug/Source/Bee"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="msvc8"/>
+				<Compiler>
+					<Add option="-DBEE_BUILD_EXPORT_LIBRARY"/>
+					<Add option="-D_CRT_SECURE_NO_WARNINGS"/>
+					<Add option="-DBEE_DEBUG=1"/>
+					<Add option="-DBEE_VERSION=&quot;0.0.0&quot;"/>
+					<Add directory="C:/Dev/Bee/Source"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/xxHash"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/cpu_info/include"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/rapidjson/include"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\ATLMFC\include"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\include"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\ucrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\shared"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\um"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\winrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\cppwinrt"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 Bee/fast"/>
+					<CompileFile command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 clean"/>
+					<DistClean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="Bee.TestMain">
+				<Option output="C:/Dev/Bee/Build/Debug/Source/Bee/Bee.TestMain.lib" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="C:/Dev/Bee/Build/Debug/Source/Bee"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="msvc8"/>
+				<Compiler>
+					<Add option="-D_CRT_SECURE_NO_WARNINGS"/>
+					<Add option="-DBEE_DEBUG=1"/>
+					<Add option="-DBEE_VERSION=&quot;0.0.0&quot;"/>
+					<Add directory="C:/Dev/Bee/Source"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/xxHash"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/cpu_info/include"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/rapidjson/include"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\ATLMFC\include"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\include"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\ucrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\shared"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\um"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\winrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\cppwinrt"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 Bee.TestMain"/>
+					<CompileFile command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 clean"/>
+					<DistClean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="Bee.TestMain/fast">
+				<Option output="C:/Dev/Bee/Build/Debug/Source/Bee/Bee.TestMain.lib" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="C:/Dev/Bee/Build/Debug/Source/Bee"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="msvc8"/>
+				<Compiler>
+					<Add option="-D_CRT_SECURE_NO_WARNINGS"/>
+					<Add option="-DBEE_DEBUG=1"/>
+					<Add option="-DBEE_VERSION=&quot;0.0.0&quot;"/>
+					<Add directory="C:/Dev/Bee/Source"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/xxHash"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/cpu_info/include"/>
+					<Add directory="C:/Dev/Bee/ThirdParty/rapidjson/include"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\ATLMFC\include"/>
+					<Add directory="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\include"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\ucrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\shared"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\um"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\winrt"/>
+					<Add directory="C:\Program Files (x86)\Windows Kits\10\include\10.0.17763.0\cppwinrt"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 Bee.TestMain/fast"/>
+					<CompileFile command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 clean"/>
+					<DistClean command="nmake /NOLOGO /f C:\Dev\Bee\Build\Debug\Source\Bee\Makefile VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+		</Build>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/AtomicCounter.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Bitset.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/CLI.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/CLI.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Concurrency.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Concurrency.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Config.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Containers/Array.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Containers/Container.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Containers/HandleTable.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Containers/HandleTable.inl">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Containers/HashMap.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Containers/ResourcePool.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Containers/RingBuffer.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Containers/RingBuffer.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Containers/SoA.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Containers/SoA.inl">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Debug.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Debug.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/DynamicLibrary.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Error.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Error.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Filesystem.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Filesystem.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Functional.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/GUID.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/GUID.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Handle.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Hash.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Hash.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/IO.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/IO.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/IO.inl">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/JSON/JSON.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/JSON/JSON.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/JSON/RapidJSON.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/JSON/Value.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/JSON/Value.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Logger.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Logger.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/AABB.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/Math.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/Math.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/float2.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/float3.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/float4.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/float4x4.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/half.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/half.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/matrix.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/quaternion.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/vec.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/Allocator.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/GlobalMemory.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/MallocAllocator.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/MallocAllocator.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/Memory.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/MemoryTracker.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/MemoryTracker.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/PoolAllocator.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/PoolAllocator.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/StackAllocator.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/VMAllocator.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/VariableSizedPoolAllocator.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/VariableSizedPoolAllocator.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/Win32/VMAllocator.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/Win32/Win32Memory.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Meta.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Noncopyable.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/NumericTypes.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Path.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Path.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Plugin.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Plugin.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Process.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Random.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Random.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Reflection.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Serialization/JSONSerializer.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Serialization/JSONSerializer.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Serialization/MemorySerializer.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Serialization/MemorySerializer.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Serialization/Serialization.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Serialization/Serialization.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Serialization/StreamSerializer.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Serialization/StreamSerializer.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Socket.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Span.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/String.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/String.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Thread.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Thread.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Time.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Time.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/MinWindows.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/MinWindows.h">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/Win32Debug.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/Win32DynamicLibrary.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/Win32Error.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/Win32Filesystem.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/Win32GUID.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/Win32Path.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/Win32Process.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/Win32Socket.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/Win32String.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/Win32Thread.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/Win32Time.cpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/declval.hpp">
+			<Option target="Bee"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/TestMain.cpp">
+			<Option target="Bee.TestMain"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/ThirdParty/xxHash/xxh3.h">
+			<Option target="xxHash"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/ThirdParty/xxHash/xxhash.c">
+			<Option target="xxHash"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/ThirdParty/xxHash/xxhash.h">
+			<Option target="xxHash"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/CMake/compile_flags.cmake">
+			<Option virtualFolder="CMake Files\CMake\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/CMake/project.cmake">
+			<Option virtualFolder="CMake Files\CMake\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/CMake/version.cmake">
+			<Option virtualFolder="CMake Files\CMake\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/ThirdParty/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\ThirdParty\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\Source\Bee\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\Source\Bee\Core\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Containers/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\Source\Bee\Core\Containers\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\Source\Bee\Core\Memory\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Memory/Win32/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\Source\Bee\Core\Memory\Win32\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Math/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\Source\Bee\Core\Math\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/JSON/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\Source\Bee\Core\JSON\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Serialization/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\Source\Bee\Core\Serialization\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Win32/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\Source\Bee\Core\Win32\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Source/Bee/Core/Tests/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\Source\Bee\Core\Tests\"/>
+		</Unit>
+		<Unit filename="C:/Dev/Bee/Sandbox/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\Sandbox\"/>
+		</Unit>
+	</Project>
+</CodeBlocks_project_file>

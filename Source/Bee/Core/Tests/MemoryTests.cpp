@@ -1,0 +1,71 @@
+//
+//  MemoryTests.cpp
+//  Skyrocket
+//
+//  --------------------------------------------------------------
+//
+//  Created by
+//  Jacob Milligan on 28/06/2018
+//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
+//
+
+#include <Bee/Core/Memory/StackAllocator.hpp>
+#include <Bee/Core/Memory/MallocAllocator.hpp>
+#include <Bee/Core/Memory/SmartPointers.hpp>
+
+#include <gtest/gtest.h>
+
+struct TestObjectBase {
+    static bool constructed;
+};
+
+template <typename T>
+struct TestObject : public TestObjectBase {
+    T val;
+
+    explicit TestObject(const T& new_val)
+        : val(new_val)
+    {
+        constructed = true;
+    }
+
+    ~TestObject()
+    {
+        constructed = false;
+    }
+};
+
+bool TestObjectBase::constructed = false;
+
+TEST(MemoryTests, FixedTempAllocator_make_unique_constructs_and_destructs)
+{
+    bee::StackAllocator allocator(bee::kibibytes(1));
+    // create scope to test deallocation
+    TestObject<int>* other = nullptr;
+    {
+        auto num = bee::make_unique<TestObject<int>>(allocator, 250);
+        other = num.get();
+        ASSERT_TRUE(num->val == 250);
+        ASSERT_TRUE(TestObjectBase::constructed);
+    }
+    ASSERT_FALSE(TestObjectBase::constructed);
+}
+
+TEST(MemoryTests, MallocAllocator_make_unique_constructs_and_destructs)
+{
+    bee::MallocAllocator allocator;
+    // create scope to test deallocation
+    TestObject<int>* other = nullptr;
+    {
+        auto num = bee::make_unique<TestObject<int>>(allocator, 250);
+        other = num.get();
+        ASSERT_TRUE(num->val == 250);
+        ASSERT_TRUE(TestObjectBase::constructed);
+    }
+    ASSERT_FALSE(TestObjectBase::constructed);
+}
+
+TEST(MemoryTests, ChunkAllocator)
+{
+
+}
