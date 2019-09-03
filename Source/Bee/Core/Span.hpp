@@ -1,13 +1,9 @@
-//
-//  Span.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 17/02/2019
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Span.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 
@@ -30,7 +26,7 @@ public:
     constexpr Span(T* first, T* last) noexcept;
 
     template <i32 Size>
-    constexpr Span(T(&static_array)[Size]) noexcept;
+    constexpr Span(T(&static_array)[Size]) noexcept; // NOLINT(google-explicit-constructor)
 
     constexpr Span(const Span<T>& other) noexcept = default;
 

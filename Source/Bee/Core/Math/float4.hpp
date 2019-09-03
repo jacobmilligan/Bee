@@ -1,13 +1,9 @@
-//
-//  float4.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 15/09/2018
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  float4.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 
@@ -29,31 +25,31 @@ struct float4 : public vec<float, 4> {
         value_t components[num_components];
     };
 
-    BEE_FORCE_INLINE float4() // NOLINT(cppcoreguidelines-pro-type-member-init)
+    BEE_FORCE_INLINE float4() // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
     : x(0.0f), y(0.0f), z(0.0f), w(0.0f)
     {}
 
-    BEE_FORCE_INLINE explicit float4(const value_t value) // NOLINT(cppcoreguidelines-pro-type-member-init)
+    BEE_FORCE_INLINE explicit float4(const value_t value) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
     : x(value), y(value), z(value), w(value)
     {}
 
-    BEE_FORCE_INLINE float4(const value_t cx, const value_t cy, const value_t cz, const value_t cw) // NOLINT(cppcoreguidelines-pro-type-member-init)
+    BEE_FORCE_INLINE float4(const value_t cx, const value_t cy, const value_t cz, const value_t cw) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
     : x(cx), y(cy), z(cz), w(cw)
     {}
 
-    BEE_FORCE_INLINE explicit float4(const float2& cvec) // NOLINT(cppcoreguidelines-pro-type-member-init)
+    BEE_FORCE_INLINE explicit float4(const float2& cvec) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
         : x(cvec.x), y(cvec.y), z(0.0f), w(0.0f)
     {}
 
-    BEE_FORCE_INLINE float4(const float2& cvec, const value_t cz, const value_t cw) // NOLINT(cppcoreguidelines-pro-type-member-init)
+    BEE_FORCE_INLINE float4(const float2& cvec, const value_t cz, const value_t cw) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
     : x(cvec.x), y(cvec.y), z(cz), w(cw)
     {}
 
-    BEE_FORCE_INLINE explicit float4(const float3& cvec) // NOLINT(cppcoreguidelines-pro-type-member-init)
+    BEE_FORCE_INLINE explicit float4(const float3& cvec) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
         : x(cvec.x), y(cvec.y), z(cvec.z), w(0.0f)
     {}
 
-    BEE_FORCE_INLINE float4(const float3& cvec, const value_t cw) // NOLINT(cppcoreguidelines-pro-type-member-init)
+    BEE_FORCE_INLINE float4(const float3& cvec, const value_t cw) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
     : x(cvec.x), y(cvec.y), z(cvec.z), w(cw)
     {}
 

@@ -1,13 +1,9 @@
-//
-//  Win32Process.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 9/06/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Win32Process.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/Process.hpp"

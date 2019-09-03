@@ -1,13 +1,9 @@
-//
-//  float2.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 15/09/2018
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  float2.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 
@@ -27,15 +23,15 @@ struct float2 : public vec<float, 2> {
         component_array_t components;
     };
 
-    float2() // NOLINT(cppcoreguidelines-pro-type-member-init)
+    float2() // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
     : x(0.0f), y(0.0f)
     {}
 
-    BEE_FORCE_INLINE explicit float2(const value_t value) // NOLINT(cppcoreguidelines-pro-type-member-init)
+    BEE_FORCE_INLINE explicit float2(const value_t value) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
     : x(value), y(value)
     {}
 
-    BEE_FORCE_INLINE float2(const value_t cx, const value_t cy) // NOLINT(cppcoreguidelines-pro-type-member-init)
+    BEE_FORCE_INLINE float2(const value_t cx, const value_t cy) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
     : x(cx), y(cy)
     {}
 

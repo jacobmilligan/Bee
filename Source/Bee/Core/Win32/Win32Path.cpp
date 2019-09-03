@@ -1,13 +1,9 @@
-//
-//  Win32Path.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 2/06/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Win32Path.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/Path.hpp"
 #include "Bee/Core/Win32/MinWindows.h"

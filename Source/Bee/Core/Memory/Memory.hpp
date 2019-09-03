@@ -1,14 +1,9 @@
-//
-//  Memory.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 10/06/2018
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
-
+/*
+ *  Memory.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 #pragma once
 
 #include "Bee/Core/Config.hpp"

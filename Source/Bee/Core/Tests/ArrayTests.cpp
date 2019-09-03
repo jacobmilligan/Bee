@@ -1,13 +1,9 @@
-//
-//  ArrayTests.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 18/07/2018
-//  Copyright (c) 2018 Jacob Milligan. All rights reserved.
-//
+/*
+ *  ArrayTests.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include <Bee/Core/Containers/Array.hpp>
 #include <Bee/Core/Memory/MallocAllocator.hpp>

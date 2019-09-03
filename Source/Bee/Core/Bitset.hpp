@@ -1,13 +1,9 @@
-//
-//  Bitset.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 16/06/2018
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Bitset.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/NumericTypes.hpp"
 

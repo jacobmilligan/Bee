@@ -1,13 +1,9 @@
-//
-//  Filesystem.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 23/07/2017
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Filesystem.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/Error.hpp"

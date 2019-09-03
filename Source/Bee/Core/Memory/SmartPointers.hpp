@@ -1,13 +1,9 @@
-//
-//  SmartPointers.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 2/07/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  SmartPointers.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

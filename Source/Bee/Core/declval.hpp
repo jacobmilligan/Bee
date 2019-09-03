@@ -1,13 +1,9 @@
-//
-//  declval.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 17/08/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  declval.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

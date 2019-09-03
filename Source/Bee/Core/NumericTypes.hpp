@@ -1,13 +1,9 @@
-//
-//  IntTypes.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 11/01/2019
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  IntTypes.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

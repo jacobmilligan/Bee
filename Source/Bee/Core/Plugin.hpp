@@ -1,13 +1,9 @@
-//
-//  Plugin.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 15/07/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Plugin.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

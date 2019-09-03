@@ -1,13 +1,9 @@
-//
-//  HashMapTests.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 15/09/2018
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  HashMapTests.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include <Bee/Core/Containers/HashMap.hpp>
 #include <Bee/Core/Containers/Array.hpp>

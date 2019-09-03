@@ -1,13 +1,9 @@
-//
-//  Hash.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 5/02/2019
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Hash.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/Hash.hpp"
 

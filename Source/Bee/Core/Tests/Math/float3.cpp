@@ -1,13 +1,9 @@
-//
-//  float3.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 5/10/18
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  float3.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include <Bee/Core/Math/float3.hpp>
 

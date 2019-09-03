@@ -1,13 +1,9 @@
-//
-//  JSONSerializer.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 11/05/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  JSONSerializer.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 
@@ -27,7 +23,7 @@ namespace bee {
 class BEE_API JSONWriter : public Serializer, public Noncopyable
 {
 public:
-    JSONWriter(Allocator* allocator = system_allocator())
+    explicit JSONWriter(Allocator* allocator = system_allocator())
         : allocator_(allocator),
           stack_(allocator)
     {}

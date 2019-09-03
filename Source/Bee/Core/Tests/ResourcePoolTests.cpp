@@ -1,13 +1,9 @@
-//
-//  GenericResourcePool.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 13/10/18
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  GenericResourcePool.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include <Bee/Core/Containers/ResourcePool.hpp>
 

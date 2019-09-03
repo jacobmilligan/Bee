@@ -1,13 +1,9 @@
-//
-//  MemorySerializer.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 1/06/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  MemorySerializer.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 
@@ -23,7 +19,7 @@ class BEE_API MemorySerializer : public Serializer
 public:
     using buffer_t = DynamicArray<u8>;
 
-    MemorySerializer(buffer_t* buffer);
+    explicit MemorySerializer(buffer_t* buffer);
 
     // called by the API when beginning serialization of an object
     bool begin();

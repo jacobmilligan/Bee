@@ -1,13 +1,9 @@
-//
-//  Random.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 6/01/2019
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Random.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

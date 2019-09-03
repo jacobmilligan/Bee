@@ -1,13 +1,9 @@
-//
-//  Log.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 20/07/2018
-//  Copyright (c) 2018 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Log.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

@@ -1,13 +1,9 @@
-//
-//  StringTests.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 29/03/2019
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  StringTests.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include <Bee/Core/String.hpp>
 #include <Bee/Core/Memory/MallocAllocator.hpp>

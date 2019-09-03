@@ -1,13 +1,9 @@
-//
-//  Thread.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 18/10/18
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Thread.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

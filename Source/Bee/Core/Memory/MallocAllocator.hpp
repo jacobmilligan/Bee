@@ -1,13 +1,9 @@
-//
-//  MallocAllocator.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 11/06/2018
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  MallocAllocator.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

@@ -1,13 +1,9 @@
-//
-//  quaternion.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 30/9/18
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  quaternion.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

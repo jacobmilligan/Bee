@@ -1,13 +1,9 @@
-//
-//  MacThread.mm
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 19/10/18
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  MacThread.mm
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Skyrocket/Platform/Thread.hpp"
 #include "Skyrocket/Platform/Time.hpp"

@@ -1,13 +1,9 @@
-//
-//  UnorderedMap.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 14/09/2018
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  HashMap.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 /*
  * Generalized hash map - approx. 2.9x faster than std::unordered_map, tested on 10,000,000

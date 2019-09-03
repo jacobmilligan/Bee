@@ -1,13 +1,9 @@
-//
-//  VariableSizedPoolAllocator.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 23/06/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  VariableSizedPoolAllocator.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include <Bee/Core/Random.hpp>
 #include <Bee/Core/Hash.hpp>

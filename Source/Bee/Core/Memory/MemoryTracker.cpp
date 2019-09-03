@@ -1,13 +1,9 @@
-//
-//  AllocatorProxy.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 20/08/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  MemoryTracker.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"

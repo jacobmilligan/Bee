@@ -1,13 +1,9 @@
-//
-//  GPUResourceTests.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 08/09/2018
-//  Copyright (c) 2018 Jacob Milligan. All rights reserved.
-//
+/*
+ *  GlobalMemory.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include <Bee/Core/Containers/Array.hpp>
 #include "Bee/Core/Memory/MallocAllocator.hpp"
@@ -24,16 +20,16 @@ Allocator* system_allocator() noexcept
 }
 
 
-struct TempAllocator : public Allocator
+struct TempAllocator final : public Allocator
 {
     BEE_ALLOCATOR_DO_NOT_TRACK
 
-    TempAllocator(const size_t capacity)
+    explicit TempAllocator(const size_t capacity) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
         : allocators(system_allocator()),
           capacity_(capacity)
     {}
 
-    ~TempAllocator()
+    ~TempAllocator() override
     {
         scoped_spinlock_t lock(global_lock);
 

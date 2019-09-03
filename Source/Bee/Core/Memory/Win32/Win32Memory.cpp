@@ -1,13 +1,9 @@
-//
-//  Win32Memory.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 20/03/2019
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Win32Memory.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/Memory/Memory.hpp"
 #include "Bee/Core/Win32/MinWindows.h"

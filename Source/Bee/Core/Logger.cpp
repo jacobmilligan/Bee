@@ -1,13 +1,9 @@
-//
-//  Log.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 20/07/2018
-//  Copyright (c) 2018 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Log.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/Logger.hpp"
 #include "Bee/Core/Concurrency.hpp"

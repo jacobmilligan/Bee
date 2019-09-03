@@ -1,13 +1,9 @@
-//
-//  JSON.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 2018-12-24
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  JSON.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/Meta.hpp"

@@ -1,13 +1,9 @@
-//
-//  StreamSerializer.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 1/06/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  StreamSerializer.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 
@@ -26,7 +22,7 @@ namespace bee {
 class BEE_API StreamSerializer : public Serializer
 {
 public:
-    StreamSerializer(io::Stream* stream);
+    explicit StreamSerializer(io::Stream* stream);
 
     // called by the API when beginning serialization of an object
     bool begin();

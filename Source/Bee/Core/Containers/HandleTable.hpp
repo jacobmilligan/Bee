@@ -1,13 +1,9 @@
-//
-//  HTable.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 21/07/2017
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  HandleTable.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

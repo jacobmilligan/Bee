@@ -1,13 +1,9 @@
-//
-//  Win32DynamicLibrary.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 14/07/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Win32DynamicLibrary.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/DynamicLibrary.hpp"
 #include "Bee/Core/Error.hpp"

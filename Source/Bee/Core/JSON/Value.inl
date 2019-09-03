@@ -1,14 +1,9 @@
-//
-//  Value.inl
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 23/04/2019
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
-
+/*
+ *  Value.inl
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 #pragma once
 
 namespace bee {

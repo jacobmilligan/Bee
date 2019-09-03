@@ -1,13 +1,9 @@
-//
-//  ValueAllocator.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 2018-12-29
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Value.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/JSON/Value.hpp"
 #include "Bee/Core/Math/Math.hpp"

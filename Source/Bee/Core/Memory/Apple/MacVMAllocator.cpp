@@ -1,13 +1,9 @@
-//
-//  MacVirtualMemoryAllocator.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 13/10/18
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  MacVMAllocator.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/Memory/VMAllocator.hpp"
 #include "Bee/Core/Memory/Memory.hpp"

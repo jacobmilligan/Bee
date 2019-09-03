@@ -1,13 +1,9 @@
-//
-//  UnixProcess.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 2018-12-21
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  UnixProcess.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Skyrocket/Platform/Process.hpp"
 

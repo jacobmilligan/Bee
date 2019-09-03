@@ -1,13 +1,9 @@
-//
-//  IO.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 7/04/2019
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  IO.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 
@@ -154,11 +150,11 @@ public:
         container
     };
 
-    Stream(const Mode initial_mode)
+    explicit Stream(const Mode initial_mode)
         : stream_mode(initial_mode)
     {}
 
-    virtual ~Stream() {}
+    virtual ~Stream() = default;
 
     virtual i32 write(const void* dst_buffer, i32 dst_buffer_size)
     {
@@ -329,9 +325,9 @@ public:
 
     StringStream(char* read_write_string, const i32 string_capacity, const i32 initial_stream_size);
 
-    StringStream(const StringView& read_only_string);
+    explicit StringStream(const StringView& read_only_string);
 
-    StringStream(String* read_write_string_container);
+    explicit StringStream(String* read_write_string_container);
 
     i32 read(void* dst_buffer, i32 dst_buffer_size) override;
 

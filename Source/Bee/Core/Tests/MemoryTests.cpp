@@ -1,13 +1,9 @@
-//
-//  MemoryTests.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 28/06/2018
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  MemoryTests.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include <Bee/Core/Memory/StackAllocator.hpp>
 #include <Bee/Core/Memory/MallocAllocator.hpp>

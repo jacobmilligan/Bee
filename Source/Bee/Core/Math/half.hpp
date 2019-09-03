@@ -1,13 +1,9 @@
-//
-//  half.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 9/09/2018
-//  Copyright (c) 2018 Jacob Milligan. All rights reserved.
-//
+/*
+ *  half.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

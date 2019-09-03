@@ -1,13 +1,9 @@
-//
-//  Path.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 2/06/2019
-//  Copyright (c) 2019 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Path.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 
@@ -36,9 +32,9 @@ public:
     static constexpr char   generic_slash_ = '/';
     static constexpr char   colon = ':';
 
-    Path(Allocator* allocator = system_allocator());
+    Path(Allocator* allocator = system_allocator()); // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
 
-    Path(const StringView& src, Allocator* allocator = system_allocator());
+    Path(const StringView& src, Allocator* allocator = system_allocator()); // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
 
     Path(const Path& other);
 

@@ -1,13 +1,9 @@
-//
-//  CommandLine.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 2018-12-13
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  CommandLine.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 

@@ -1,13 +1,9 @@
-//
-//  Win32Filesystem.cpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 16/07/2018
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  Win32Filesystem.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/Containers/HandleTable.hpp"

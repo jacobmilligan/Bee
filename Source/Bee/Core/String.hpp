@@ -1,13 +1,9 @@
-//
-//  String.hpp
-//  Skyrocket
-//
-//  --------------------------------------------------------------
-//
-//  Created by
-//  Jacob Milligan on 28/03/2019
-//  Copyright (c) 2016 Jacob Milligan. All rights reserved.
-//
+/*
+ *  String.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ */
 
 #pragma once
 
@@ -68,7 +64,7 @@ public:
 
     StringView(const char* src, i32 size);
 
-    StringView(const char* src);
+    StringView(const char* src); // NOLINT(google-explicit-constructor)
 
     StringView(const StringView& other) noexcept = default;
 
