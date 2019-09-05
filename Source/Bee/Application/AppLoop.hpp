@@ -7,77 +7,41 @@
 
 #pragma once
 
-#include "Bee/Core/Error.hpp"
 
-#include <type_traits>
+#include "Bee/Core/Error.hpp"
+#include "Bee/Application/Platform.hpp"
+
 
 namespace bee {
 
 
-#define BEE_ASSERT_LOOP_CALLBACK(info, callback)                                            \
-    BEE_BEGIN_MACRO_BLOCK                                                                   \
-        if (BEE_FAIL_F(info.callback != nullptr, "Missing app loop callback: " #callback))  \
-        {                                                                                   \
-            return EXIT_FAILURE;                                                            \
-        }                                                                                   \
-    BEE_END_MACRO_BLOCK
+struct AppLaunchConfig
+{
+    const char*     app_name { nullptr };
+    WindowConfig    main_window_config;
+};
 
 
 struct AppContext
 {
-    bool quit { false };
-};
-
-template <typename T>
-struct AppCreateInfo
-{
-    const char* app_name { nullptr };
-
-    int (*init)(T* ctx);
-    void (*destroy)(T* ctx);
-    void (*tick)(T* ctx);
+    bool            quit { false };
+    WindowHandle    main_window;
+    InputBuffer     default_input;
 };
 
 
-int __internal_app_launch(const char* app_name);
-
-void __internal_app_tick();
-
-void __internal_app_shutdown();
-
-
-template <typename ContextType>
-int create_and_run_app(const AppCreateInfo<ContextType>& info)
+struct BEE_API Application
 {
-    static_assert(std::is_base_of<AppContext, ContextType>::value, "Your game app context must derive from bee::AppContext");
+    virtual int launch(AppContext* ctx) = 0;
 
-    BEE_ASSERT_LOOP_CALLBACK(info, init);
-    BEE_ASSERT_LOOP_CALLBACK(info, destroy);
-    BEE_ASSERT_LOOP_CALLBACK(info, tick);
+    virtual void shutdown(AppContext* ctx) = 0;
 
-    auto init_result = __internal_app_launch(info.app_name);
-    if (init_result != EXIT_SUCCESS)
-    {
-        return init_result;
-    }
-
-    ContextType ctx; // alive for the lifetime of the app
-
-    init_result = info.init(&ctx);
-    if (init_result != EXIT_SUCCESS)
-    {
-        return init_result;
-    }
-
-    while (!ctx.quit)
-    {
-        __internal_app_tick();
-        info.tick(&ctx);
-    }
+    virtual void tick(AppContext* ctx) = 0;
+};
 
 
-    return EXIT_SUCCESS;
-}
+BEE_API int app_loop(const AppLaunchConfig& config, Application* app);
+
 
 
 } // namespace bee

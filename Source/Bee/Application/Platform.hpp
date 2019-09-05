@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "Bee/Application/Input.hpp"
 #include "Bee/Core/Handle.hpp"
 #include "Bee/Core/Serialization/Serialization.hpp"
 
@@ -56,19 +57,23 @@ BEE_SERIALIZE(WindowConfig, 1)
 
 BEE_API bool platform_launch(const char* app_name);
 
-BEE_API void platform_quit();
+BEE_API void platform_shutdown();
 
-BEE_API bool platform_is_launched();
+BEE_API bool platform_is_running();
 
-BEE_API void platform_discover_monitors();
+BEE_API bool platform_quit_requested();
 
-BEE_API WindowHandle platform_create_window(const WindowConfig& config);
+BEE_API void discover_monitors();
 
-BEE_API void platform_destroy_window(const WindowHandle& handle);
+BEE_API WindowHandle create_window(const WindowConfig& config);
 
-BEE_API void* platform_get_os_window(const WindowHandle& handle);
+BEE_API void destroy_window(const WindowHandle& handle);
 
-BEE_API void platform_poll_input();
+BEE_API void* get_os_window(const WindowHandle& handle);
+
+BEE_API void destroy_all_open_windows();
+
+BEE_API void poll_input(InputBuffer* input_buffer);
 
 
 } // namespace bee

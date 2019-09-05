@@ -11,10 +11,15 @@
 #include "Bee/Core/Debug.hpp"
 #include "Bee/Core/IO.hpp"
 
-#include <mutex>
 
 namespace bee {
 namespace detail {
+
+
+static bool assert_guard = false;
+
+
+#define BEE_ASSERT_GUARD if (assert_guard) { return; } assert_guard = true
 
 
 void log_assert_message(
@@ -57,6 +62,7 @@ void log_assert_message(
 
 void __bee_assert_handler(const char* function, const char* file, const int line, const char* expr)
 {
+    BEE_ASSERT_GUARD;
     log_error("Skyrocket: Assertion failed (%s)", expr);
     log_error("at %s:%d in function %s\n", file, line, function);
     log_stack_trace(LogVerbosity::error, 1);
@@ -72,6 +78,8 @@ void __bee_assert_handler(
     ...
 )
 {
+    BEE_ASSERT_GUARD;
+
     va_list args;
     va_start(args, msgformat);
     log_assert_message("Assertion failed", function, file, line, expr, msgformat, args);
@@ -110,6 +118,8 @@ void __bee_print_error(
 
 void __bee_unreachable_handler(const char* function, const char* file, int line, const char* msgformat, ...)
 {
+    BEE_ASSERT_GUARD;
+
     // Unreachable code always exits even in a release build
     va_list args;
     va_start(args, msgformat);
@@ -126,6 +136,8 @@ void __bee_check_handler(
     ...
 )
 {
+    BEE_ASSERT_GUARD;
+
     va_list args;
     va_start(args, msgformat);
     log_assert_message("Check failed", function, file, line, expr, msgformat, args);

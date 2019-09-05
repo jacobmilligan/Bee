@@ -740,7 +740,7 @@ u32 HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::find_key_index(const Eq
         }
 
         ++cur_idx;
-        // unsigned cast: capacity is never negative
+        // unsigned call: capacity is never negative
         if (cur_idx >= sign_cast<u32>(node_storage_.size()))
         {
             cur_idx = 0;

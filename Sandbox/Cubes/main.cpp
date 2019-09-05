@@ -8,26 +8,33 @@
 #include <Bee/Application/Main.hpp>
 
 
-struct Ctx : public bee::AppContext
+class CubesApp final : public bee::Application
 {
+public:
+    int launch(bee::AppContext* ctx) override
+    {
+        return 0;
+    }
 
+    void shutdown(bee::AppContext* ctx) override
+    {
+
+    }
+
+    void tick(bee::AppContext* ctx) override
+    {
+        if (bee::is_key_down(ctx->default_input, bee::Key::escape))
+        {
+            ctx->quit = true;
+        }
+    }
+
+private:
 };
-
-int init(Ctx* ctx)
-{
-    return 0;
-}
-
-void tick(Ctx* ctx)
-{
-
-}
 
 int bee_main(int argc, char** argv)
 {
-    bee::AppCreateInfo<Ctx> info{};
-    info.init = &init;
-    info.tick = &tick;
-
-    return bee::create_and_run_app(info);
+    CubesApp app;
+    bee::AppLaunchConfig config{};
+    return bee::app_loop(config, &app);
 }

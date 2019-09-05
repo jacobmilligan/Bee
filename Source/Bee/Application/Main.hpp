@@ -10,6 +10,7 @@
 
 #include <stdlib.h>
 
+
 /**
  * This is the main entry point for all Skyrocket GUI-based applications. Skyrocket will implement a platform-specific
  * GUI main (i.e. WinMain) and then call into `bee_main`. To use, statically link the exe target with

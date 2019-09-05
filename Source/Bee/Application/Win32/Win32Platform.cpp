@@ -42,6 +42,14 @@ struct Win32Window
     HWND            hwnd { nullptr };
     Thread::id_t    owning_thread { 0 };
     bool            is_close_requested { false };
+
+    ~Win32Window()
+    {
+        if (hwnd != nullptr)
+        {
+            DestroyWindow(hwnd);
+        }
+    }
 };
 
 using window_table_t = HandleTable<BEE_MAX_WINDOWS, WindowHandle, Win32Window>;
@@ -62,7 +70,7 @@ LRESULT CALLBACK g_window_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 
 bool os_launch(const char* app_name)
 {
-    platform_discover_monitors();
+    discover_monitors();
 
     WNDCLASSEXW wndclass{};
     wndclass.cbSize = sizeof(wndclass);
@@ -75,24 +83,29 @@ bool os_launch(const char* app_name)
     auto err = RegisterClassExW(&wndclass);
     BEE_ASSERT_F(err != 0, "Failed to register a Win32 window class: %s", win32_get_last_error_string());
 
+    g_platform.is_launched = true;
+
     return true;
 }
 
 void os_quit()
 {
     g_platform.is_quit_requested = true;
+
     const auto result = UnregisterClassW(BEE_WNDCLASSNAME, GetModuleHandleW(nullptr));
     BEE_ASSERT_F(result != 0, "Failed to unregister a Win32 window class: %s", win32_get_last_error_string());
+
+    g_platform.is_launched = false;
 }
 
 
-bool platform_is_launched()
+bool platform_is_running()
 {
     return g_platform.is_launched;
 }
 
 
-void platform_discover_monitors()
+void discover_monitors()
 {
     g_platform.monitor_count = 0;
     memset(g_platform.monitors, 0, sizeof(Win32Monitor) * static_array_length(g_platform.monitors));
@@ -147,6 +160,11 @@ void platform_discover_monitors()
 }
 
 
+bool platform_quit_requested()
+{
+    return g_platform.is_quit_requested;
+}
+
 /*
  **********************************************************
  *
@@ -154,9 +172,9 @@ void platform_discover_monitors()
  *
  **********************************************************
  */
-WindowHandle platform_create_window(const WindowConfig& config)
+WindowHandle create_window(const WindowConfig& config)
 {
-    BEE_ASSERT_F(platform_is_launched(), "Tried to create a window_handle before initializing the current platform");
+    BEE_ASSERT_F(platform_is_running(), "Tried to create a window_handle before initializing the current platform");
 
     if (BEE_FAIL_F(g_platform.windows.size() < BEE_MAX_WINDOWS, "Created window limit has been reached"))
     {
@@ -186,9 +204,11 @@ WindowHandle platform_create_window(const WindowConfig& config)
     // Convert utf8 to win32 unicode
     mbstowcs(title_buffer, config.title, wsize);
 
-    Win32Window new_window{};
-    new_window.owning_thread = current_thread::id();
-    new_window.hwnd = CreateWindowExW(
+    Win32Window* new_window = nullptr;
+    const auto handle = g_platform.windows.create_uninitialized(&new_window);
+
+    new_window->owning_thread = current_thread::id();
+    new_window->hwnd = CreateWindowExW(
         exstyle,
         BEE_WNDCLASSNAME,
         title_buffer,
@@ -200,26 +220,26 @@ WindowHandle platform_create_window(const WindowConfig& config)
         nullptr
     );
 
-    BEE_ASSERT_F(new_window.hwnd != nullptr, "Win32 Window creation failed with error code: %s", win32_get_last_error_string());
+    BEE_ASSERT_F(new_window->hwnd != nullptr, "Win32 Window creation failed with error code: %s", win32_get_last_error_string());
 
-    const auto handle = g_platform.windows.create(new_window);
-
-    SetWindowLong(new_window.hwnd, GWLP_USERDATA, handle.id);
+    SetWindowLong(new_window->hwnd, GWLP_USERDATA, handle.id);
 
     return handle;
 }
 
-void platform_destroy_window(const WindowHandle& handle)
+void destroy_window(const WindowHandle& handle)
 {
-    auto window = g_platform.windows[handle];
-    BEE_ASSERT(window->hwnd != nullptr);
-    DestroyWindow(window->hwnd);
     g_platform.windows.destroy(handle);
 }
 
-void* platform_get_os_window(const WindowHandle& handle)
+void* get_os_window(const WindowHandle& handle)
 {
     return g_platform.windows[handle]->hwnd;
+}
+
+void destroy_all_open_windows()
+{
+   g_platform.windows.clear();
 }
 
 
@@ -232,13 +252,38 @@ void* platform_get_os_window(const WindowHandle& handle)
  *
  **********************************************************
  */
-void platform_poll_input()
+void set_input_state(InputBuffer* input_buffer, const WPARAM msg_param, const KeyState state)
+{
+    const auto keycode = static_cast<u32>(msg_param);
+    input_buffer->current_keyboard[keycode] = state;
+}
+
+void poll_input(InputBuffer* input_buffer)
 {
     MSG msg;
-    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
+    while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
     {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+        switch (msg.message)
+        {
+            case WM_KEYDOWN:
+            case WM_SYSKEYDOWN:
+            {
+                set_input_state(input_buffer, msg.wParam, KeyState::down);
+                break;
+            }
+            case WM_KEYUP:
+            case WM_SYSKEYUP:
+            {
+                set_input_state(input_buffer, msg.wParam, KeyState::up);
+            }
+
+            default:
+            {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+                break;
+            }
+        }
     }
 }
 
@@ -267,17 +312,11 @@ LRESULT CALLBACK g_window_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
     {
         case WM_KEYDOWN:
         case WM_SYSKEYDOWN:
-        {
-            // window->input->key_down(static_cast<u32>(wParam));
-        }
-            break;
-
         case WM_KEYUP:
         case WM_SYSKEYUP:
         {
-            // window->input->key_up(static_cast<u32>(wParam));
+            BEE_UNREACHABLE("Input should not be processed by the global window proc");
         }
-            break;
 
         case WM_CLOSE:
         {

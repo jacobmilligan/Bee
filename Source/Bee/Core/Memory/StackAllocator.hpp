@@ -26,7 +26,7 @@ public:
     StackAllocator() = default;
 
     explicit StackAllocator(const size_t capacity)
-        : cursor_(0),
+        : offset_(0),
           capacity_(capacity),
           memory_(nullptr)
     {
@@ -34,11 +34,11 @@ public:
     }
 
     StackAllocator(StackAllocator&& other) noexcept
-        : cursor_(other.cursor_),
+        : offset_(other.offset_),
           capacity_(other.capacity_),
           memory_(other.memory_)
     {
-        other.cursor_ = 0;
+        other.offset_ = 0;
         other.capacity_ = 0;
         other.memory_ = nullptr;
     }
@@ -51,10 +51,10 @@ public:
     StackAllocator& operator=(StackAllocator&& other) noexcept
     {
         destroy();
-        cursor_ = other.cursor_;
+        offset_ = other.offset_;
         capacity_ = other.capacity_;
         memory_ = other.memory_;
-        other.cursor_ = 0;
+        other.offset_ = 0;
         other.capacity_ = 0;
         other.memory_ = nullptr;
         return *this;
@@ -62,7 +62,7 @@ public:
 
     inline void reset()
     {
-        cursor_ = 0;
+        offset_ = 0;
     }
 
     inline bool is_valid(const void* ptr) const override
@@ -77,7 +77,7 @@ public:
 
     inline size_t cursor() const
     {
-        return cursor_;
+        return offset_;
     }
 
     inline size_t capacity() const
@@ -99,38 +99,39 @@ public:
     {
         BEE_ASSERT(memory_ != nullptr);
 
-        const auto total_size = size + sizeof(size_t);
-        const auto new_cursor = round_up(cursor_, alignment);
-        if (BEE_FAIL_F(new_cursor + total_size <= capacity_, "StackAllocator: reached capacity"))
+        constexpr auto header_size = sizeof(size_t);
+        const auto new_offset = round_up(offset_ + header_size, alignment);
+
+        if (BEE_FAIL_F(new_offset + size <= capacity_, "StackAllocator: reached capacity"))
         {
             return nullptr;
         }
 
-        auto size_header = memory_ + new_cursor;
-        auto memory = size_header + sizeof(size_t);
-        cursor_ = new_cursor + total_size;
-        allocated_size_ += total_size;
-        return memory;
+        auto new_memory = memory_ + new_offset;
+        auto header = reinterpret_cast<size_t*>(new_memory - header_size);
+        *header = size;
+
+        allocated_size_ += size;
+        offset_ = new_offset + size;
+
+        return new_memory;
     }
 
     void deallocate(void* ptr) override
     {
         BEE_ASSERT(ptr != nullptr);
 
-        auto header = static_cast<u8*>(ptr) - sizeof(size_t);
+        const auto header = get_header(ptr);
 
-        BEE_ASSERT(header != nullptr);
+        BEE_ASSERT(allocated_size_ >= header);
 
-        const auto size = reinterpret_cast<size_t>(header);
-
-        BEE_ASSERT(size >= allocated_size_);
-
-        allocated_size_ -= size;
+        allocated_size_ -= get_header(ptr);
     }
 
     void* reallocate(void* ptr, const size_t old_size, const size_t new_size, const size_t alignment) override
     {
         BEE_ASSERT(is_valid(ptr));
+        BEE_ASSERT(get_header(ptr) == old_size);
 
         auto realloc_memory = allocate(new_size, alignment);
         if (BEE_CHECK_F(realloc_memory != nullptr, "StackAllocator: failed to reallocate memory"))
@@ -145,10 +146,15 @@ public:
         return allocated_size_;
     }
 private:
-    size_t              cursor_ { 0 };
+    size_t              offset_ { 0 };
     size_t              capacity_ { 0 };
     size_t              allocated_size_ { 0 }; // for i.e. job system where its only safe to reset if none of the memory is active
     u8*                 memory_{ nullptr };
+
+    size_t get_header(void* ptr)
+    {
+        return *reinterpret_cast<size_t*>(static_cast<u8*>(ptr) - sizeof(size_t));
+    }
 };
 
 

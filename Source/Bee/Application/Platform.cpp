@@ -34,7 +34,7 @@ void os_quit();
  */
 bool platform_launch(const char* app_name)
 {
-    BEE_ASSERT_F(!platform_is_launched(), "Platform is already launched and running");
+    BEE_ASSERT_F(!platform_is_running(), "Platform is already launched and running");
     if (!os_launch(app_name))
     {
         return false;
@@ -43,8 +43,9 @@ bool platform_launch(const char* app_name)
     return true;
 }
 
-void platform_quit()
+void platform_shutdown()
 {
+    destroy_all_open_windows();
     os_quit();
 }
 
