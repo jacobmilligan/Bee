@@ -21,9 +21,23 @@ struct BuildInfo
     Path build_dir;
     Path install_dir;
     Path cmake_path;
+
+#if BEE_OS_WINDOWS == 1
+    Path vcvarsall_path;
+#endif // BEE_OS_WINDOWS == 1
 };
 
-const BuildInfo& build_info()
+
+struct ConfigureInfo
+{
+    const char*         bb_generator { nullptr };
+    const char*         cmake_generator { nullptr };
+    const char*         build_type { nullptr };
+    i32                 cmake_options_count { 0 };
+    const char* const*  cmake_options { nullptr };
+};
+
+const BuildInfo& get_build_info()
 {
     static BuildInfo info;
 
@@ -32,7 +46,50 @@ const BuildInfo& build_info()
         info.project_root = Path::executable_path().parent().parent().parent();
         info.build_dir = info.project_root.join("Build");
 #if BEE_OS_WINDOWS == 1
-        info.cmake_path = info.project_root.join("ThirdParty/Binaries/Win32/cmake/bin/cmake.exe").normalize();
+        const auto win32_bin_root = info.project_root.join("ThirdParty/Binaries/Win32");
+
+        info.cmake_path = win32_bin_root.join("cmake/bin/cmake.exe").normalize();
+
+        // Get the path to vcvarsall - this is a complicated process so buckle up...
+
+        // Run cmake in a shell with vcvarsall if the CLion generator is used otherwise NMake won't know where to find VS
+        const auto vswhere_location = win32_bin_root.join("vswhere.exe");
+        auto vswhere_cmd = str::format(
+            "%s -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath",
+            vswhere_location.c_str()
+        );
+
+        // Run vswhere to get VS2017 install directory
+        bee::ProcessHandle vswhere{};
+
+        bee::CreateProcessInfo proc_info{};
+        proc_info.handle = &vswhere;
+        proc_info.flags = bee::CreateProcessFlags::priority_high
+                        | bee::CreateProcessFlags::create_hidden
+                        | bee::CreateProcessFlags::create_read_write_pipes;
+        proc_info.command_line = vswhere_cmd.c_str();
+        if (!bee::create_process(proc_info))
+        {
+            bee::log_error("Couldn't find vswhere.exe - unable to use CLion generator");
+        }
+        else
+        {
+            bee::wait_for_process(vswhere);
+            auto vs_location = bee::read_process(vswhere);
+            bee::destroy_process(vswhere);
+
+            bee::str::replace(&vs_location, "\r\n", "");
+            if (vs_location.empty())
+            {
+                bee::log_error("Couldn't find a visual studio installation on this machine");
+            }
+            else
+            {
+                // Setup path to vcvarsall.bat so we can run the shell with all the VS vars
+                info.vcvarsall_path = str::format("%s\\VC\\Auxiliary\\Build\\vcvarsall.bat", vs_location.c_str()).view();
+                info.vcvarsall_path.normalize();
+            }
+        }
 #else
         #error Platform not supported
 #endif // BEE_OS_WINDOWS == 1
@@ -41,32 +98,53 @@ const BuildInfo& build_info()
     return info;
 }
 
-
-int configure(const char* bb_generator, const char* cmake_generator, const char* build_type = nullptr)
+bool configure(const ConfigureInfo& config_info)
 {
-    auto& info = build_info();
-    auto build_dir = info.build_dir.join(bb_generator);
-    if (build_type != nullptr)
+    auto& build_info = get_build_info();
+    auto build_dir = build_info.build_dir.join(config_info.bb_generator);
+    if (config_info.build_type != nullptr)
     {
-        build_dir.join(build_type);
+        build_dir.join(config_info.build_type);
     }
 
     const auto install_dir = build_dir.join("Install");
 
     String cmd;
     io::StringStream stream(&cmd);
+
+    if (str::compare(config_info.bb_generator, "CLion") == 0)
+    {
+        // Call vcvarsall before running cmake for clion builds
+        stream.write_fmt(R"("%s" x64 && )", build_info.vcvarsall_path.c_str());
+    }
+
+
     stream.write_fmt(
-        "%s %s -G %s -B %s -DCMAKE_INSTALL_PREFIX=\"%s\"",
-        info.cmake_path.c_str(),
-        info.project_root.c_str(),
-        cmake_generator,
-        build_dir.c_str(),
-        install_dir.c_str()
+        R"("%s" "%s" -G "%s" -B )",
+        build_info.cmake_path.c_str(),
+        build_info.project_root.c_str(),
+        config_info.cmake_generator
     );
 
-    if (build_type != nullptr)
+    const auto is_single_config = config_info.build_type != nullptr && str::compare(config_info.build_type, "MultiConfig") != 0;
+
+    if (is_single_config)
     {
-        stream.write_fmt(" -DCMAKE_BUILD_TYPE=%s", build_type);
+        stream.write_fmt(R"("%s" )", build_dir.join(config_info.build_type).c_str());
+        stream.write_fmt(" -DCMAKE_BUILD_TYPE=%s", config_info.build_type);
+        stream.write_fmt(R"(-DCMAKE_INSTALL_PREFIX="%s")", install_dir.join(config_info.build_type).c_str());
+    }
+    else
+    {
+        stream.write_fmt(R"("%s" )", build_dir.c_str());
+        stream.write_fmt(R"(-DCMAKE_INSTALL_PREFIX="%s")", install_dir.c_str());
+    }
+
+
+    // Add the extra cmake options to pass to the build system
+    for (int opt = 0; opt < config_info.cmake_options_count; ++opt)
+    {
+        stream.write_fmt("%s ", config_info.cmake_options[opt]);
     }
 
     log_info("Running CMake with command: %s", cmd.c_str());
@@ -79,14 +157,14 @@ int configure(const char* bb_generator, const char* cmake_generator, const char*
 
     if (!bee::create_process(proc_info))
     {
-        bee::log_error("Launchpad: Unable to find cmake");
-        return EXIT_FAILURE;
+        bee::log_error("bb: Unable to find cmake");
+        return false;
     }
 
     bee::wait_for_process(cmake_handle);
     bee::destroy_process(cmake_handle);
 
-    return EXIT_SUCCESS;
+    return true;
 }
 
 int build(const String& cmake_cmd)
@@ -98,8 +176,8 @@ int bb_entry(int argc, char** argv)
 {
     FixedHashMap<String, String> generator_mappings =
     {
-        { "VS2017", "\"Visual Studio 15 2017 Win64\"" },
-        { "CLion", "\"CodeBlocks - NMake Makefiles\"" }
+        { "VS2017", "Visual Studio 15 2017 Win64" },
+        { "CLion", "CodeBlocks - NMake Makefiles" }
     };
 
     String generator_help = "Generator to use when configuring build system.\nAvailable generators (bb => cmake):\n";
@@ -137,20 +215,40 @@ int bb_entry(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-//    cmd.write_fmt("cmake ");
-
-    if (cli::has_option(command_line, "configure"))
+    const auto build_only = !cli::has_option(command_line, "configure");
+    if (build_only)
     {
-        if (str::compare(generator, "CLion") == 0)
-        {
-            return configure(generator, cmake_generator->value.c_str(), "Debug")
-                && configure(generator, cmake_generator->value.c_str(), "Release");
-        }
-
-        return configure(generator, cmake_generator->value.c_str());
+        return build(String());
     }
 
-    return build(String());
+    ConfigureInfo config_info{};
+    config_info.bb_generator = generator;
+    config_info.cmake_generator = cmake_generator->value.c_str();
+    config_info.cmake_options_count = cli::get_remainder_count(command_line);
+    config_info.cmake_options = cli::get_remainder(command_line);
+
+    DynamicArray<String> build_types;
+
+    if (str::compare(generator, "CLion") == 0)
+    {
+        build_types.push_back("Debug");
+        build_types.push_back("Release");
+    }
+    else
+    {
+        build_types.push_back("MultiConfig");
+    }
+
+    for (const auto& build_type : build_types)
+    {
+        config_info.build_type = build_type.c_str();
+        if (!configure(config_info))
+        {
+            return EXIT_FAILURE;
+        }
+    }
+
+    return EXIT_SUCCESS;
 }
 
 

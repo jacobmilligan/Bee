@@ -260,6 +260,8 @@ void set_input_state(InputBuffer* input_buffer, const WPARAM msg_param, const Ke
 
 void poll_input(InputBuffer* input_buffer)
 {
+    input_buffer_frame(input_buffer);
+
     MSG msg;
     while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
     {

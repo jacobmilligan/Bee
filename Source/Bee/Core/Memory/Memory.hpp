@@ -9,7 +9,7 @@
 #include "Bee/Core/Config.hpp"
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Noncopyable.hpp"
-#include "Bee/Core/Meta.hpp"
+#include "Bee/Core/Enum.hpp"
 
 namespace bee {
 

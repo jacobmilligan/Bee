@@ -9,7 +9,7 @@
 #include "Bee/Core/Thread.hpp"
 #include "Bee/Core/Time.hpp"
 #include "Bee/Core/String.hpp"
-#include "Bee/Core/Meta.hpp"
+#include "Bee/Core/Enum.hpp"
 
 namespace bee {
 

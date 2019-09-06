@@ -43,6 +43,15 @@ set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS
     $<$<CONFIG:MinSizeRel>:BEE_ENABLE_ASSERTIONS=0>
 )
 
+############################
+#
+# Various logging helpers
+#
+############################
+function(bee_log msg)
+    MESSAGE(STATUS "Bee: ${msg}")
+endfunction()
+
 ################################################################################
 #
 # Begins a new source root - this resets all previously added source files and
@@ -206,7 +215,7 @@ function(bee_library name)
 
     __bee_get_api_macro(${name} api_macro)
 
-    if (ARGS_SHARED)
+    if (ARGS_SHARED AND NOT MONOLITHIC_BUILD)
         add_library(${name} SHARED ${__bee_sources})
         target_compile_definitions(${name} PRIVATE BEE_DLL)
     else()

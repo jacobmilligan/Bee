@@ -473,6 +473,24 @@ const char* get_option(const Results& results, const char* option_long_name, con
     return results.argv[token->value.index + arg_index];
 }
 
+i32 get_remainder_count(const Results& results)
+{
+    return results.argc - results.argv_parsed_count;
+}
+
+const char* const* get_remainder(const Results& results)
+{
+    static constexpr const char* empty_remainder = "";
+
+    BEE_ASSERT(results.argv_parsed_count <= results.argc);
+    if (results.argv_parsed_count == results.argc)
+    {
+        return &empty_remainder;
+    }
+
+    return results.argv + results.argv_parsed_count;
+}
+
 
 } // namespace cli
 } // namespace bee

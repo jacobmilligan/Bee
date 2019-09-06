@@ -107,6 +107,10 @@ BEE_CORE_API bool has_option(const Results& results, const char* option_long_nam
 
 BEE_CORE_API const char* get_option(const Results& results, const char* option_long_name, i32 arg_index = 0);
 
+BEE_CORE_API i32 get_remainder_count(const Results& results);
+
+BEE_CORE_API const char* const* get_remainder(const Results& results);
+
 
 } // namespace cli
 } // namespace bee

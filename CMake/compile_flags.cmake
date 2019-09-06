@@ -28,27 +28,27 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 
     # Global flags used by debug builds
     set(msvc_debug_flags
-            /MDd            # link the multithreaded and DLL specific msvcrt
-            /Zi             # generate PDB's
-            /Zo             # generate enhanced debugging info - needed due to disabling inline expansion
-            /Od             # turn off optimizations
-            /Ob0            # disable inlining expansion
-            /RTC1           # enable stack frame run-time error checks and unintialized variable usage
-            /GS             # enable buffer security checks
-            /DDEBUG
-            /D_DEBUG
-            )
+        /MDd            # link the multithreaded and DLL specific msvcrt
+        /Zi             # generate PDB's
+        /Zo             # generate enhanced debugging info - needed due to disabling inline expansion
+        /Od             # turn off optimizations
+        /Ob0            # disable inlining expansion
+        /RTC1           # enable stack frame run-time error checks and unintialized variable usage
+        /GS             # enable buffer security checks
+        /DDEBUG
+        /D_DEBUG
+    )
 
     # Global flags used by release builds
     set(msvc_release_flags
-            /MD             # link the multithreaded and DLL specific msvcrt
-            /Zi             # generate PDB's
-            /Zo             # generate enhanced debugging info - needed due to disabling inline expansion
-            /Ox             # maximum speed without /Gy & /Gf
-            /GS-            # turn off buffer security checks
-            /DNDEBUG
-            /D_RELEASE
-            )
+        /MD             # link the multithreaded and DLL specific msvcrt
+        /Zi             # generate PDB's
+        /Zo             # generate enhanced debugging info - needed due to disabling inline expansion
+        /Ox             # maximum speed without /Gy & /Gf
+        /GS-            # turn off buffer security checks
+        /DNDEBUG
+        /D_RELEASE
+    )
 
     string(REPLACE ";" " " cxx_flags_debug "${msvc_debug_flags}")
     string(REPLACE ";" " " cxx_flags_release "${msvc_release_flags}")
@@ -67,7 +67,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
             /wd4201         # enable anonymous struct
             /wd4100         # disable 'identifier' : unreferenced formal parameter
             /wd4267         # disable 'var' : conversion from 'size_t' to 'type', possible loss of data
-            )
+        )
 
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 else()

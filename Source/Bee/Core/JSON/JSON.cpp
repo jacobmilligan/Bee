@@ -6,7 +6,7 @@
  */
 
 #include "Bee/Core/Math/Math.hpp"
-#include "Bee/Core/Meta.hpp"
+#include "Bee/Core/Enum.hpp"
 #include "Bee/Core/JSON/JSON.hpp"
 #include "Bee/Core/IO.hpp"
 

@@ -23,7 +23,7 @@ public:
 
     void tick(bee::AppContext* ctx) override
     {
-        if (bee::is_key_down(ctx->default_input, bee::Key::escape))
+        if (bee::key_typed(ctx->default_input, bee::Key::escape))
         {
             ctx->quit = true;
         }

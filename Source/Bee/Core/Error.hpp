@@ -157,11 +157,10 @@ BEE_CORE_API void __bee_abort_handler();
 
 #else
 
-#define BEE_ASSERT(expr) ((void)sizeof((void)(expr),0))
-#define BEE_ASSERT_NO_DEBUG_BREAK(expr) ((void)sizeof((void)(expr),0))
-#define BEE_ASSERT_F(expr, msgformat, ...) ((void)sizeof((void)(expr),0))
-#define BEE_ASSERT_F_NO_DEBUG_BREAK(expr, msgformat, ...) ((void)sizeof((void)(expr),0))
-#define BEE_ASSERT_GUARD(name, action, data)
+#define BEE_ASSERT(expr) ((void)sizeof(expr))
+#define BEE_ASSERT_NO_DEBUG_BREAK(expr) ((void)sizeof(expr))
+#define BEE_ASSERT_F(expr, msgformat, ...) ((void)sizeof(expr))
+#define BEE_ASSERT_F_NO_DEBUG_BREAK(expr, msgformat, ...) ((void)sizeof(expr))
 
 #endif // BEE_CONFIG_ENABLE_ASSERTIONS == 1
 

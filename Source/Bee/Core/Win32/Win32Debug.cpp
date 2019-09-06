@@ -250,22 +250,24 @@ void symbolize_stack_trace(DebugSymbol* dst_symbols, const StackTrace& trace, co
 
     for (int f = 0; f < frames_to_symbolize; ++f)
     {
-        auto addr = (DWORD64)trace.frames[f];
-        auto success = g_dbghelp.fp_SymFromAddr(process_handle, addr, &sym_displacement, syminfo);
-
-        if (success == FALSE)
-        {
-            BEE_ERROR("StackTrace", "Failed to retrieve symbol info at address %p: %s", trace.frames[f], win32_get_last_error_string());
-            BEE_DEBUG_BREAK();
-            continue;
-        }
-
         auto& symbol = dst_symbols[f];
         symbol.module_name[0] = '\0';
         symbol.filename[0] = '\0';
         symbol.function_name[0] = '\0';
         symbol.address = trace.frames[f];
         symbol.line = -1;
+
+
+        auto addr = (DWORD64)trace.frames[f];
+        auto success = g_dbghelp.fp_SymFromAddr(process_handle, addr, &sym_displacement, syminfo);
+
+        if (success == FALSE)
+        {
+            str::copy(symbol.module_name, DebugSymbol::name_size, "Unknown");
+            str::copy(symbol.function_name, DebugSymbol::name_size, "unknown");
+            BEE_DEBUG_BREAK();
+            continue;
+        }
 
         success = g_dbghelp.fp_SymGetLineFromAddr64(process_handle, addr, &line_displacement, &line);
         if (success != FALSE)

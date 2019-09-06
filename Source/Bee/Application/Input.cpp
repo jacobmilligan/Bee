@@ -30,17 +30,23 @@ void input_buffer_init(InputBuffer* buffer)
     memset(buffer->current_keyboard, 0, InputBuffer::key_max * sizeof(KeyState));
 }
 
-bool is_key_down(const InputBuffer& buffer, Key key)
+void input_buffer_frame(InputBuffer* buffer)
+{
+    memcpy(buffer->previous_keyboard, buffer->current_keyboard, InputBuffer::key_max * sizeof(KeyState));
+    memset(buffer->current_keyboard, 0, InputBuffer::key_max * sizeof(KeyState));
+}
+
+bool key_down(const InputBuffer& buffer, Key key)
 {
     return buffer.current_keyboard[static_cast<u32>(key)] == KeyState::down;
 }
 
-bool is_key_up(const InputBuffer& buffer, Key key)
+bool key_up(const InputBuffer& buffer, Key key)
 {
     return buffer.current_keyboard[static_cast<u32>(key)] == KeyState::up;
 }
 
-bool is_key_typed(const InputBuffer& buffer, Key key)
+bool key_typed(const InputBuffer& buffer, Key key)
 {
     const auto key_index = static_cast<u32>(key);
     return buffer.current_keyboard[key_index] == KeyState::down && buffer.previous_keyboard[key_index] == KeyState::up;

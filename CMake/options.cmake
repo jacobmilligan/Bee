@@ -17,6 +17,7 @@ endfunction()
 option(BUILD_TESTS "Builds unit and performance tests" ON)
 option(USE_ASAN "Compiles with Google Address Sanitizer active" OFF)
 option(USE_TSAN "Compiles with Google Thread Sanitizer active" OFF)
+option(VULKAN_BACKEND "Uses the Vulkan API as the GPU Backend" ON) # on by default until other platforms are supported
 
 bee_option_with_definition(ENABLE_MEMORY_TRACKING "Allows dynamically switching memory tracking on or off" ON)
 bee_option_with_definition(FORCE_MEMORY_TRACKING "Forces memory tracking on even in release builds" OFF)
