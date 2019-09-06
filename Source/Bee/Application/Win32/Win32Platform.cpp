@@ -254,7 +254,7 @@ void destroy_all_open_windows()
  */
 void set_input_state(InputBuffer* input_buffer, const WPARAM msg_param, const KeyState state)
 {
-    const auto keycode = static_cast<u32>(msg_param);
+    const auto keycode = InputBuffer::vk_translation_table[static_cast<u32>(msg_param)];
     input_buffer->current_keyboard[keycode] = state;
 }
 
@@ -275,6 +275,7 @@ void poll_input(InputBuffer* input_buffer)
             case WM_SYSKEYUP:
             {
                 set_input_state(input_buffer, msg.wParam, KeyState::up);
+                break;
             }
 
             default:
