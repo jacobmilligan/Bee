@@ -168,7 +168,7 @@ struct EnumerateAdapter
 
     IterableType&  iterable;
 
-    EnumerateAdapter(IterableType& new_iterable)
+    explicit EnumerateAdapter(IterableType& new_iterable)
         : iterable(new_iterable)
     {}
 
@@ -193,6 +193,27 @@ template <typename IterableType>
 inline constexpr EnumerateAdapter<IterableType> enumerate(IterableType& iterable)
 {
     return EnumerateAdapter<IterableType>(iterable);
+}
+
+
+/*
+ * # `index_of`
+ *
+ * Gets the index of a value in a c-array or container
+ */
+template <typename ContainerType, typename PredicateType>
+inline constexpr i32 index_in_container(const ContainerType& container, PredicateType&& pred)
+{
+    int index = 0;
+    for (const auto& value : container)
+    {
+        if (pred(value))
+        {
+            return index;
+        }
+        ++index;
+    }
+    return -1;
 }
 
 

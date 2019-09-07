@@ -56,18 +56,23 @@ inline native_type func_name(const enum_type value)                             
         return (lhs);                                                                               \
     }
 
-#define BEE_FLAGS(E, T) enum class  E : T;                        \
-    inline constexpr T underlying_flag_type(E cls) noexcept       \
-    {                                                             \
-        return static_cast<T>(cls);                               \
-    }                                                             \
-    inline constexpr E operator~(E cls) noexcept                  \
-    {                                                             \
-        return static_cast<E>(~underlying_flag_type(cls));        \
-    }                                                             \
-    __BEE_ENUM_FLAG_OPERATOR(E, T, |)                             \
-    __BEE_ENUM_FLAG_OPERATOR(E, T, ^)                             \
-    __BEE_ENUM_FLAG_OPERATOR(E, T, &)                             \
+#define BEE_FLAGS(E, T) enum class  E : T;                          \
+    inline constexpr T underlying_flag_t(E cls) noexcept            \
+    {                                                               \
+        return static_cast<T>(cls);                                 \
+    }                                                               \
+    template <E Value>                                              \
+    inline constexpr T flag_index() noexcept                        \
+    {                                                               \
+        return static_cast<T>(1u << static_cast<T>(Value));         \
+    }                                                               \
+    inline constexpr E operator~(E cls) noexcept                    \
+    {                                                               \
+        return static_cast<E>(~underlying_flag_t(cls));             \
+    }                                                               \
+    __BEE_ENUM_FLAG_OPERATOR(E, T, |)                               \
+    __BEE_ENUM_FLAG_OPERATOR(E, T, ^)                               \
+    __BEE_ENUM_FLAG_OPERATOR(E, T, &)                               \
     enum class E : T
 
 /**
@@ -132,10 +137,10 @@ constexpr void for_each_flag(const FlagType& flags, const FuncType& callback)
     {
         const auto cur_bit = count_trailing_zeroes(bitmask);
         callback(static_cast<FlagType>(1u << cur_bit));
-        BEE_PUSH_WARNING
-        BEE_DISABLE_WARNING_MSVC(4146) // warning C4146: unary minus operator applied to unsigned type, result still unsigned
+BEE_PUSH_WARNING
+BEE_DISABLE_WARNING_MSVC(4146) // warning C4146: unary minus operator applied to unsigned type, result still unsigned
         bitmask ^= bitmask & -bitmask;
-        BEE_POP_WARNING
+BEE_POP_WARNING
     }
 }
 

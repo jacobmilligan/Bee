@@ -16,6 +16,11 @@ namespace bee {
 
 
 
+inline constexpr bool vkbool_cast(const VkBool32 value)
+{
+    return static_cast<bool>(value);
+}
+
 PhysicalDeviceType convert_device_type(VkPhysicalDeviceType type);
 
 PhysicalDeviceVendor convert_vendor(const u32 id);

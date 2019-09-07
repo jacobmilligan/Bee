@@ -9,6 +9,7 @@
 
 #include "Bee/Core/Enum.hpp"
 #include "Bee/Core/Handle.hpp"
+#include "Bee/Graphics/GPULimits.hpp"
 
 namespace bee {
 
@@ -607,7 +608,7 @@ enum class BarrierType
  *
  ********************************************************
  */
-BEE_DEFINE_VERSIONED_HANDLE(Device);
+BEE_DEFINE_RAW_HANDLE_U32(Device);
 
 /*
  ********************************************************
@@ -638,8 +639,9 @@ struct PhysicalDeviceInfo
 struct DeviceCreateInfo
 {
     i32     physical_device_id { -1 };
-    bool    allow_depth_clamp { false };
-    bool    allow_sampler_anisotropy { true };
+    bool    enable_depth_clamp { false };
+    bool    enable_sampler_anisotropy { true };
+    bool    enable_sample_rate_shading { false };
 };
 
 
@@ -661,9 +663,9 @@ BEE_API i32 gpu_enumerate_physical_devices(PhysicalDeviceInfo* dst_buffer, const
 
 BEE_API DeviceHandle gpu_create_device(const DeviceCreateInfo& create_info);
 
-BEE_API void gpu_destroy_device(const DeviceHandle& device);
+BEE_API void gpu_destroy_device(const DeviceHandle& handle);
 
-BEE_API void gpu_device_wait(const DeviceHandle& device);
+BEE_API void gpu_device_wait(const DeviceHandle& handle);
 
 
 

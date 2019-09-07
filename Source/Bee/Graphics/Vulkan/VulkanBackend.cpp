@@ -9,7 +9,6 @@
 #include "Bee/Core/Debug.hpp"
 #include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/String.hpp"
-#include "Bee/Graphics/GPULimits.hpp"
 #include "Bee/Graphics/Vulkan/VulkanBackend.hpp"
 #include "Bee/Graphics/Vulkan/VulkanConvert.hpp"
 
@@ -166,11 +165,14 @@ VkBool32 VKAPI_CALL vk_debug_callback(
 
 
 /*
- ****************************************
+ **************************************************
  *
- * # GPU backend API - implementation
+ * # GPU backend
  *
- ****************************************
+ * Contains the vulkan instance, physical device
+ * data, and extensions/debug layers required
+ *
+ **************************************************
  */
 static struct VulkanBackend
 {
@@ -199,6 +201,11 @@ static struct VulkanBackend
 #endif // #if BEE_OS_WINDOWS == 1
     };
 
+    static constexpr const char* device_extensions[] =
+    {
+        VK_EXT_DEBUG_MARKER_EXTENSION_NAME
+    };
+
 #if BEE_CONFIG_ENABLE_ASSERTIONS == 1
     VkDebugReportCallbackEXT debug_report_cb { VK_NULL_HANDLE };
 
@@ -210,7 +217,28 @@ static struct VulkanBackend
 #endif // BEE_CONFIG_ENABLE_ASSERTIONS
 } g_backend;
 
+#define BEE_GPU_VALIDATE_BACKEND() BEE_ASSERT_F(g_backend.instance != nullptr, "GPU backend has not been initialized")
 
+
+BEE_FORCE_INLINE VulkanDevice& validate_device(const DeviceHandle& device)
+{
+    BEE_GPU_VALIDATE_BACKEND();
+    BEE_ASSERT_F(
+        device.id < BEE_GPU_MAX_DEVICES && g_backend.devices[device.id].handle != VK_NULL_HANDLE,
+        "GPU device has an invalid ID or is destroyed/uninitialized"
+    );
+    return g_backend.devices[device.id];
+}
+
+
+
+/*
+ ****************************************
+ *
+ * # GPU backend API - implementation
+ *
+ ****************************************
+ */
 bool gpu_init()
 {
     if (BEE_FAIL_F(g_backend.instance == nullptr, "GPU backend is already initialized"))
@@ -264,7 +292,7 @@ bool gpu_init()
     BEE_VK_CHECK(vkEnumeratePhysicalDevices(g_backend.instance, &device_count, g_backend.physical_devices));
 
     // Get info for devices to allow user to select a device later
-    for (int pd = 0; pd < device_count; ++pd)
+    for (u32 pd = 0; pd < device_count; ++pd)
     {
         auto& vk_pd = g_backend.physical_devices[pd];
         vkGetPhysicalDeviceMemoryProperties(vk_pd, &g_backend.physical_device_memory_properties[pd]);
@@ -317,6 +345,198 @@ i32 gpu_enumerate_physical_devices(PhysicalDeviceInfo* dst_buffer, const i32 buf
     }
 
     return device_count;
+}
+
+
+/*
+ ****************************************
+ *
+ * # GPU Device - implementation
+ *
+ ****************************************
+ */
+DeviceHandle gpu_create_device(const DeviceCreateInfo& create_info)
+{
+    BEE_GPU_VALIDATE_BACKEND();
+
+    if (g_backend.instance == VK_NULL_HANDLE)
+    {
+        log_error("Failed to create GPU device: Vulkan instance was VK_NULL_HANDLE");
+        return DeviceHandle{};
+    }
+
+    const auto is_valid_physical_device_id = create_info.physical_device_id >= 0
+                                          && create_info.physical_device_id < g_backend.physical_device_count;
+    if (BEE_FAIL_F(is_valid_physical_device_id, "Invalid physical device ID specified in `DeviceCreateInfo`"))
+    {
+        return DeviceHandle{};
+    }
+
+    int device_idx = index_in_container(g_backend.devices, [](const VulkanDevice& d) { return d.handle == VK_NULL_HANDLE; });
+    if (BEE_FAIL_F(device_idx >= 0, "Cannot create a new GPU device: Allocated devices has reached BEE_GPU_MAX_DEVICES"))
+    {
+        return DeviceHandle{};
+    }
+
+    auto physical_device = g_backend.physical_devices[create_info.physical_device_id];
+
+    // Query the amount of extensions supported by the GPU
+#ifdef BEE_VULKAN_DEVICE_EXTENSIONS_ENABLED
+    u32 ext_count = 0;
+    BEE_VK_CHECK(vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &ext_count, nullptr));
+
+    // Get the actual extension properties for the GPU
+    auto supported_extensions = FixedArray<VkExtensionProperties>::with_size(sign_cast<int>(ext_count), temp_allocator());
+    BEE_VK_CHECK(vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &ext_count, supported_extensions.data()));
+    // TODO(Jacob): iterate desired extensions here when possible
+#else
+    DynamicArray<const char*> device_extensions(temp_allocator());
+    for (const auto& ext : g_backend.device_extensions)
+    {
+        device_extensions.push_back(ext);
+    }
+#endif // BEE_VULKAN_DEVICE_EXTENSIONS_ENABLED
+
+    auto& device = g_backend.devices[device_idx];
+
+    // Find all available queue families and store in device data for later use
+    u32 available_queue_families = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &available_queue_families, nullptr);
+    available_queue_families = math::min(available_queue_families, VulkanDevice::max_queues);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &available_queue_families, device.queue_family_properties);
+
+    memset(device.queues, 0, sizeof(VulkanQueue) * available_queue_families);
+
+     /*
+     * This function looks for a matching queue that has the lowest functionality available to allow using
+     * it in the most specialized way possible
+     */
+    auto find_queue_index = [](const VulkanDevice& device, const VkQueueFlags type) -> u32
+    {
+        int lowest_count = limits::max<int>();
+        int best_so_far = limits::max<u32>();
+
+        for (u32 q = 0; q < device.max_queues; ++q)
+        {
+            if ((device.queue_family_properties[q].queueFlags & type) == 0)
+            {
+                continue;
+            }
+
+            int supported_count = 1;
+            for_each_flag(device.queue_family_properties[q].queueFlags, [&](const VkQueueFlags flag)
+            {
+                ++supported_count;
+            });
+
+            if (supported_count < lowest_count)
+            {
+                lowest_count = supported_count;
+                best_so_far = q;
+            }
+        }
+
+        return best_so_far;
+    };
+
+    /*
+     * We want the graphics queue to also double as a combined queue for gfx, compute, & transfer so here
+     * we search for a queue matching GRAPHICS_BIT | COMPUTE_BIT because according to the spec
+     * (Section 4.1 in the discussion of VkQueueFlagBits):
+     *
+     * 'If an implementation exposes any queue family that supports graphics operations, at least
+     *  one queue family of at least one physical device exposed by the implementation must support
+     *  **both** graphics and compute operations'
+     *
+     * Therefore, we can safely assume that if graphics is supported so is a generic graphics/compute
+     * queue. Also any queue that defines graphics or compute operations also implicitly guarantees
+     * transfer operations - so all of these calls should return valid queue indexes
+     */
+    device.graphics_queue.index = find_queue_index(device, VK_QUEUE_GRAPHICS_BIT);
+    device.transfer_queue.index = find_queue_index(device, VK_QUEUE_TRANSFER_BIT);
+    device.compute_queue.index = find_queue_index(device, VK_QUEUE_COMPUTE_BIT);
+
+    BEE_ASSERT(device.graphics_queue.index < VulkanQueue::invalid_queue_index);
+
+    int queue_info_indices[VulkanDevice::max_queues];
+    VkDeviceQueueCreateInfo queue_infos[VulkanDevice::max_queues];
+
+    memset(queue_infos, 0, sizeof(VkDeviceQueueCreateInfo) * VulkanDevice::max_queues);
+    memset(queue_info_indices, -1, sizeof(int) * VulkanDevice::max_queues);
+
+    u32 queue_family_count = 0;
+    float queue_priorities[] = { 1.0f, 1.0f, 1.0f }; // in case all three queues are in the one family
+
+    for (const auto& queue : device.queues)
+    {
+        if (queue_info_indices[queue.index] < 0)
+        {
+            queue_info_indices[queue.index] = queue_family_count++;
+
+            auto& info = queue_infos[queue_info_indices[queue.index]];
+            info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            info.pNext = nullptr;
+            info.flags = 0;
+            info.queueFamilyIndex = queue.index;
+            info.pQueuePriorities = queue_priorities;
+            info.queueCount = 0;
+        }
+
+        ++queue_infos[queue_info_indices[queue.index]].queueCount;
+    }
+
+    VkPhysicalDeviceFeatures supported_features{};
+    vkGetPhysicalDeviceFeatures(physical_device, &supported_features);
+
+    VkPhysicalDeviceFeatures enabled_features{};
+    memset(&enabled_features, 0, sizeof(VkPhysicalDeviceFeatures));
+
+#define BEE_ENABLE_FEATURE(vk_feature, bee_feature)                                                                 \
+    BEE_BEGIN_MACRO_BLOCK                                                                                           \
+        enabled_features.vk_feature = vkbool_cast(create_info.bee_feature && supported_features.vk_feature);        \
+        if (create_info.bee_feature && vkbool_cast(enabled_features.vk_feature))                                    \
+        {                                                                                                           \
+            log_error(#bee_feature " is not a feature supported by the specified physical GPU device");             \
+        }                                                                                                           \
+    BEE_END_MACRO_BLOCK
+
+
+    // Enable requested features if available
+    BEE_ENABLE_FEATURE(depthClamp, enable_depth_clamp);
+    BEE_ENABLE_FEATURE(sampleRateShading, enable_sample_rate_shading);
+    BEE_ENABLE_FEATURE(samplerAnisotropy, enable_sampler_anisotropy);
+
+#undef BEE_ENABLE_FEATURE
+
+    VkDeviceCreateInfo device_info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
+    device_info.queueCreateInfoCount = queue_family_count;
+    device_info.pQueueCreateInfos = queue_infos;
+    device_info.enabledExtensionCount = sign_cast<u32>(device_extensions.size());
+    device_info.ppEnabledExtensionNames = device_extensions.data();
+    device_info.pEnabledFeatures = &enabled_features;
+    BEE_VK_CHECK(vkCreateDevice(physical_device, &device_info, nullptr, &device.handle));
+
+    volkLoadDevice(device.handle); // register device with volk and load extensions
+
+    VmaAllocatorCreateInfo vma_info{};
+    vma_info.device = device.handle;
+    vma_info.physicalDevice = physical_device;
+    BEE_VK_CHECK(vmaCreateAllocator(&vma_info, &device.vma_allocator));
+
+    return DeviceHandle(sign_cast<u32>(device_idx));
+}
+
+void gpu_destroy_device(const DeviceHandle& handle)
+{
+    auto& device = validate_device(handle);
+    vmaDestroyAllocator(device.vma_allocator);
+    vkDestroyDevice(device.handle, nullptr);
+    device.handle = nullptr;
+}
+
+void gpu_device_wait(const DeviceHandle& handle)
+{
+    vkDeviceWaitIdle(validate_device(handle).handle);
 }
 
 
