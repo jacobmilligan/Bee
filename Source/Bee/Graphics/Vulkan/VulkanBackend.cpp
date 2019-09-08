@@ -13,8 +13,8 @@
 #include "Bee/Graphics/Vulkan/VulkanConvert.hpp"
 
 
-namespace bee {
 
+namespace bee {
 
 /*
  ************************************************
@@ -23,17 +23,6 @@ namespace bee {
  *
  ************************************************
  */
-#define BEE_VK_CHECK(fn) BEE_BEGIN_MACRO_BLOCK                                                  \
-            const auto result = fn;                                                             \
-            BEE_ASSERT_F(result == VK_SUCCESS, "Vulkan: %s", bee::vk_result_string(result));    \
-        BEE_END_MACRO_BLOCK
-
-#define BEE_VMA_CHECK(fn) BEE_BEGIN_MACRO_BLOCK                                                                                     \
-            const auto result = fn;                                                                                                 \
-            BEE_ASSERT_F(result != VK_ERROR_VALIDATION_FAILED_EXT, "Vulkan Memory Allocator tried to allocate zero-sized memory");  \
-            BEE_ASSERT_F(result == VK_SUCCESS, "Vulkan: %s", bee::vk_result_string(result));                                        \
-        BEE_END_MACRO_BLOCK
-
 const char* vk_result_string(VkResult result)
 {
 #define BEE_VKRESULT_NAME(r, str) case r : return str;
@@ -165,6 +154,52 @@ VkBool32 VKAPI_CALL vk_debug_callback(
 
 
 /*
+ ******************************************
+ *
+ * # Vulkan debug markers
+ *
+ * Not set in release builds - debug only
+ *
+ ******************************************
+ */
+#ifdef BEE_DEBUG
+
+void gpu_set_object_tag(VkDevice device, VkDebugReportObjectTypeEXT object_type, void* object, size_t tag_size, const void* tag)
+{
+    VkDebugMarkerObjectTagInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_TAG_INFO_EXT };
+    info.objectType = object_type;
+    info.object = (u64)object;
+    info.tagName = 0;
+    info.tagSize = tag_size;
+    info.pTag = tag;
+    BEE_VK_CHECK(vkDebugMarkerSetObjectTagEXT(device, &info));
+}
+
+void gpu_set_object_name(VkDevice device, VkDebugReportObjectTypeEXT object_type, void* object, const char* name)
+{
+    VkDebugMarkerObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT };
+    info.objectType = object_type;
+    info.object = (u64)object;
+    info.pObjectName = name;
+    BEE_VK_CHECK(vkDebugMarkerSetObjectNameEXT(device, &info));
+}
+
+#else
+
+void gpu_set_object_tag(VkDevice /* device */, VkDebugReportObjectTypeEXT /* object_type */, void* /* object */, size_t /* tag_size */, const void* /* tag */)
+{
+    // no-op
+}
+
+void gpu_set_object_name(VkDevice /* device */, VkDebugReportObjectTypeEXT /* object_type */, void* /* object */, const char* /* name */)
+{
+    // no-op
+}
+
+#endif // BEE_DEBUG
+
+
+/*
  **************************************************
  *
  * # GPU backend
@@ -196,9 +231,9 @@ static struct VulkanBackend
         , VK_EXT_DEBUG_REPORT_EXTENSION_NAME
 #endif // BEE_CONFIG_ENABLE_ASSERTIONS == 1
 
-#if BEE_OS_WINDOWS == 1
+#ifdef VK_USE_PLATFORM_WIN32_KHR
         , VK_KHR_WIN32_SURFACE_EXTENSION_NAME
-#endif // #if BEE_OS_WINDOWS == 1
+#endif // #if VK_USE_PLATFORM_WIN32_KHR
     };
 
     static constexpr const char* device_extensions[] =
@@ -537,6 +572,262 @@ void gpu_destroy_device(const DeviceHandle& handle)
 void gpu_device_wait(const DeviceHandle& handle)
 {
     vkDeviceWaitIdle(validate_device(handle).handle);
+}
+
+SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const SwapchainCreateInfo& create_info)
+{
+    auto& device = validate_device(device_handle);
+
+    // Create a surface and query its capabilities
+    auto surface = gpu_create_wsi_surface(g_backend.instance, create_info.window);
+    BEE_ASSERT(surface != VK_NULL_HANDLE);
+
+    /*
+     * If we've never found the present queue for the device we have to do it here rather than in create_device
+     * as it requires a valid surface to query.
+     */
+    if (device.present_queue == VulkanQueue::invalid_queue_index)
+    {
+        // Prefers graphics/present combined queue over other combinations - first queue is always the graphics queue
+        VkBool32 supports_present = VK_FALSE;
+        for (const auto& queue : device.queues)
+        {
+            BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceSupportKHR(
+                device.physical_device,
+                device.graphics_queue.index,
+                surface,
+                &supports_present
+            ));
+
+            if (supports_present == VK_TRUE)
+            {
+                device.present_queue = queue.index;
+                break;
+            }
+        }
+    }
+
+    // Get the surface capabilities and ensure it supports all the things we need
+    VkSurfaceCapabilitiesKHR surface_caps{};
+    BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device, surface, &surface_caps));
+
+    // Get supported formats
+    u32 format_count = 0;
+    BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device.physical_device, surface, &format_count, nullptr));
+    auto formats = FixedArray<VkSurfaceFormatKHR>(sign_cast<i32>(format_count), temp_allocator());
+    BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device.physical_device, surface, &format_count, formats.data()));
+
+    // Get supported present modes
+    u32 present_mode_count = VK_PRESENT_MODE_RANGE_SIZE_KHR;
+    VkPresentModeKHR present_modes[VK_PRESENT_MODE_RANGE_SIZE_KHR];
+    BEE_VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device.physical_device, surface, &present_mode_count, present_modes));
+
+    // Choose an appropriate image count - try and get MAX_FRAMES_IN_FLIGHT first, otherwise fit in range of minImageCount -> maxImageCount
+    auto image_count = math::min(math::max(BEE_GPU_MAX_FRAMES_IN_FLIGHT, surface_caps.minImageCount), surface_caps.maxImageCount);
+
+    // Select a vk_handle image format - first try and get the format requested in create_info otherwise just choose first available format
+    const auto desired_format = convert_pixel_format(create_info.texture_format);
+    const auto desired_format_idx = index_in_container(formats, [&](const VkSurfaceFormatKHR& fmt) { return fmt.format == desired_format; });
+    auto selected_format = formats[0];
+    if (desired_format_idx >= 0)
+    {
+        selected_format = formats[desired_format_idx];
+    }
+
+    /*
+     * Find a valid present mode for the VSync mode chosen.
+     * Prefer mailbox for when VSync is off as it waits for the blank interval but
+     * replaces the image at the back of the queue instead of causing tearing like IMMEDIATE_KHR does
+     */
+    auto present_mode = VK_PRESENT_MODE_FIFO_KHR; // vsync on
+    if (!create_info.vsync)
+    {
+        const auto supports_mailbox = index_in_container(present_modes, [](const VkPresentModeKHR& mode) { return mode == VK_PRESENT_MODE_MAILBOX_KHR; }) >= 0;
+        present_mode = supports_mailbox ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
+    }
+
+    // Create the vk_handle
+    VkSwapchainCreateInfoKHR swapchain_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
+    swapchain_info.flags = 0;
+    swapchain_info.surface = surface;
+    swapchain_info.minImageCount = image_count;
+    swapchain_info.imageFormat = selected_format.format;
+    swapchain_info.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    swapchain_info.imageExtent.width = create_info.texture_extent.width;
+    swapchain_info.imageExtent.height = create_info.texture_extent.height;
+    swapchain_info.imageArrayLayers = create_info.texture_array_layers;
+    swapchain_info.imageUsage = decode_image_usage(create_info.texture_usage);
+    swapchain_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    swapchain_info.queueFamilyIndexCount = 0;
+    swapchain_info.pQueueFamilyIndices = nullptr;
+    swapchain_info.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR; // no pre-transform
+    swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // ignore surface alpha channel
+    swapchain_info.presentMode = present_mode;
+    swapchain_info.clipped = VK_TRUE; // allows optimal presentation of pixels clipped in the surface by other OS windows etc.
+    swapchain_info.oldSwapchain = VK_NULL_HANDLE;
+
+    VkSwapchainKHR vk_handle;
+    BEE_VK_CHECK(vkCreateSwapchainKHR(device.handle, &swapchain_info, nullptr, &vk_handle));
+
+    VulkanSwapchain* swapchain = nullptr;
+    const auto created_handle = device.swapchains.create_uninitialized(&swapchain);
+
+    // Setup the swapchain images
+    u32 swapchain_image_count = 0;
+    BEE_VK_CHECK(vkGetSwapchainImagesKHR(device.handle, vk_handle, &swapchain_image_count, nullptr));
+    auto swapchain_images = FixedArray<VkImage>::with_size(sign_cast<i32>(swapchain_image_count), temp_allocator());
+    BEE_VK_CHECK(vkGetSwapchainImagesKHR(device.handle, vk_handle, &swapchain_image_count, swapchain_images.data()));
+
+    swapchain->images = FixedArray<TextureHandle>::with_size(swapchain_images.size());
+    swapchain->image_views = FixedArray<TextureViewHandle>::with_size(swapchain_images.size());
+
+    /*
+     * Insert a texture handle for each of the swapchain images to use with external code and create a texture view
+     * for each one
+     */
+    TextureViewCreateInfo view_info;
+    view_info.type = TextureType::tex2d;
+    view_info.format = create_info.texture_format;
+    view_info.mip_level_count = 1;
+    view_info.mip_level_offset = 0;
+    view_info.array_element_offset = 0;
+    view_info.array_element_count = 1;
+
+    for (int si = 0; si < swapchain_images.size(); ++si)
+    {
+        VulkanTexture* texture = nullptr;
+        swapchain->images[si] = device.textures.create_uninitialized(&texture);
+        texture->width = swapchain_info.imageExtent.width;
+        texture->height = swapchain_info.imageExtent.height;
+        texture->layers = swapchain_info.imageArrayLayers;
+        texture->levels = 1;
+        texture->samples = VK_SAMPLE_COUNT_1_BIT;
+        texture->current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        texture->format = create_info.texture_format;
+        texture->handle = swapchain_images[si];
+        gpu_set_object_name(device.handle, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, texture->handle, "Swapchain image");
+
+        // Create a texture view as well
+        view_info.texture = swapchain->images[si];
+        swapchain->image_views[si] = gpu_create_texture_view(device_handle, view_info);
+        auto texture_view = device.texture_views[swapchain->image_views[si]];
+        texture_view->is_swapchain_view = true;
+
+        gpu_set_object_name(device.handle, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT, texture_view->handle, "Swapchain image view");
+    }
+
+    // Create image available and render finished semaphores
+    VkSemaphoreCreateInfo sem_info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+    sem_info.flags = 0;
+    for (int frame_idx = 0; frame_idx < BEE_GPU_MAX_FRAMES_IN_FLIGHT; ++frame_idx)
+    {
+        BEE_VK_CHECK(vkCreateSemaphore(device.handle, &sem_info, nullptr, &swapchain->image_available_sem[frame_idx]));
+        BEE_VK_CHECK(vkCreateSemaphore(device.handle, &sem_info, nullptr, &swapchain->render_done_sem[frame_idx]));
+    }
+
+    return created_handle;
+}
+
+void gpu_destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle)
+{
+    auto& device = validate_device(device_handle);
+    auto swapchain = device.swapchains[swapchain_handle];
+
+    for (int i = 0; i < swapchain->images.size(); ++i)
+    {
+        if (swapchain->image_views[i].is_valid())
+        {
+            gpu_destroy_texture_view(device_handle, swapchain->image_views[i]);
+        }
+
+        if (swapchain->images[i].is_valid())
+        {
+            gpu_destroy_texture(device_handle, swapchain->images[i]);
+        }
+
+        if (swapchain->image_available_sem[i] != VK_NULL_HANDLE)
+        {
+            vkDestroySemaphore(device.handle, swapchain->image_available_sem[i], nullptr);
+        }
+
+        if (swapchain->render_done_sem[i] != VK_NULL_HANDLE)
+        {
+            vkDestroySemaphore(device.handle, swapchain->render_done_sem[i], nullptr);
+        }
+    }
+
+    vkDestroySurfaceKHR(g_backend.instance, swapchain->surface, nullptr);
+    vkDestroySwapchainKHR(device.handle, swapchain->handle, nullptr);
+    device.swapchains.destroy(swapchain_handle);
+}
+
+TextureHandle gpu_create_texture(const DeviceHandle& device_handle, const TextureCreateInfo& create_info)
+{
+    // TODO(Jacob): this
+    return TextureHandle{};
+}
+
+void gpu_destroy_texture(const DeviceHandle& device_handle, const TextureHandle& texture_handle)
+{
+    auto& device = validate_device(device_handle);
+    auto texture = device.textures[texture_handle];
+    BEE_ASSERT(texture->handle != VK_NULL_HANDLE);
+    if (!texture->is_swapchain_image)
+    {
+        // treat as normal allocated texture
+        vmaDestroyImage(device.vma_allocator, texture->handle, texture->allocation);
+    }
+    else
+    {
+        // swapchain image - destroy without going through VMA
+        vkDestroyImage(device.handle, texture->handle, nullptr);
+    }
+    device.textures.destroy(texture_handle);
+}
+
+TextureViewHandle gpu_create_texture_view(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info)
+{
+    if (BEE_FAIL_F(create_info.texture.is_valid(), "Invalid texture handle given as source texture to TextureViewCreateInfo"))
+    {
+        return TextureViewHandle{};
+    }
+
+    auto& device = validate_device(device_handle);
+    auto texture = device.textures[create_info.texture];
+
+    VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    view_info.flags = 0;
+    view_info.image = texture->handle;
+    view_info.viewType = convert_image_view_type(create_info.type);
+    view_info.format = convert_pixel_format(create_info.format);
+    view_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    view_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    view_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    view_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+    view_info.subresourceRange.aspectMask = select_aspect_mask(create_info.format);
+    view_info.subresourceRange.baseMipLevel = create_info.mip_level_offset;
+    view_info.subresourceRange.levelCount = create_info.mip_level_count;
+    view_info.subresourceRange.baseArrayLayer = create_info.array_element_offset;
+    view_info.subresourceRange.layerCount = create_info.array_element_count;
+
+    VkImageView img_view = VK_NULL_HANDLE;
+    BEE_VK_CHECK(vkCreateImageView(device.handle, &view_info, nullptr, &img_view));
+
+    VulkanTextureView* texture_view = nullptr;
+    const auto handle = device.texture_views.create_uninitialized(&texture_view);
+    texture_view->is_swapchain_view = false;
+    texture_view->handle = img_view;
+    texture_view->viewed_texture = create_info.texture;
+    return handle;
+}
+
+void gpu_destroy_texture_view(const DeviceHandle& device_handle, const TextureViewHandle& texture_view_handle)
+{
+    auto& device = validate_device(device_handle);
+    auto texture_view = device.texture_views[texture_view_handle];
+    BEE_ASSERT(texture_view->handle != VK_NULL_HANDLE);
+    vkDestroyImageView(device.handle, texture_view->handle, nullptr);
+    device.texture_views.destroy(texture_view_handle);
 }
 
 

@@ -27,6 +27,13 @@ BEE_DEFINE_RAW_HANDLE_I32(Monitor);
 BEE_DEFINE_VERSIONED_HANDLE(Window);
 
 
+struct PlatformSize
+{
+    i32 width { 0 };
+    i32 height { 0 };
+};
+
+
 struct WindowConfig
 {
     const char*     title { "Skyrocket Application" }; // nonserialized
@@ -72,6 +79,10 @@ BEE_API void destroy_window(const WindowHandle& handle);
 BEE_API void* get_os_window(const WindowHandle& handle);
 
 BEE_API void destroy_all_open_windows();
+
+BEE_API PlatformSize get_window_size(const WindowHandle& handle);
+
+BEE_API PlatformSize get_window_framebuffer_size(const WindowHandle& handle);
 
 BEE_API void poll_input(InputBuffer* input_buffer);
 

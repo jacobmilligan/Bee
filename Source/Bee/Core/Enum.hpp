@@ -26,7 +26,7 @@ namespace bee {
  * macro needs updating
  */
 #define BEE_TRANSLATION_TABLE(func_name, enum_type, native_type, max_enum_value, ...)                                                   \
-inline native_type func_name(const enum_type value)                                                                                     \
+native_type func_name(const enum_type value)                                                                                     \
 {                                                                                                                                       \
     static constexpr native_type translation_table[] = { __VA_ARGS__ };                                                                 \
     static constexpr size_t table_size = static_array_length(translation_table);                                                        \

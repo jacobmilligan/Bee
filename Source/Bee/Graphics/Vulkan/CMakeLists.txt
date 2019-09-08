@@ -20,7 +20,8 @@ if (Vulkan_FOUND)
     )
 
     if (WIN32)
-        # add win32 specific stuff here...
+        bee_add_sources(Win32Vulkan.cpp)
+        bee_add_compile_definitions(VK_USE_PLATFORM_WIN32_KHR)
     endif ()
 endif ()
 

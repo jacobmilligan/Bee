@@ -242,6 +242,22 @@ void destroy_all_open_windows()
    g_platform.windows.clear();
 }
 
+PlatformSize get_window_size(const WindowHandle& handle)
+{
+    RECT rect{};
+    const auto success = GetClientRect(g_platform.windows[handle]->hwnd, &rect);
+    BEE_ASSERT_F(success == TRUE, "Failed to get window size: %s", win32_get_last_error_string());
+    PlatformSize size{};
+    size.width = rect.right;
+    size.height = rect.bottom;
+    return size;
+}
+
+PlatformSize get_window_framebuffer_size(const WindowHandle& handle)
+{
+    return get_window_size(handle);
+}
+
 
 /*
  **********************************************************

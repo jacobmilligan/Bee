@@ -116,6 +116,8 @@ namespace bee {
 
 #define BEE_STRINGIFY(x) #x
 
+#define BEE_UNUSED(x) (void)(x)
+
 
 /*
  * Clang and GCC shared definitions
@@ -133,8 +135,6 @@ namespace bee {
     #define BEE_EXPORT_SYMBOL                   __attribute__ ((visibility("default")))
 
     #define BEE_DISABLE_WARNING_MSVC(w)
-
-    #define BEE_UNUSED                          __attribute__((unused))
 
     #define BEE_LIKELY(statement)               __builtin_expect((statement), 1)
 
@@ -173,8 +173,6 @@ namespace bee {
     #define BEE_POP_WARNING                     __pragma(warning( pop ))
 
     #define BEE_DISABLE_WARNING_CLANG(w)
-
-    #define BEE_UNUSED
 
     #define BEE_LIKELY(statement)               (statement)
 

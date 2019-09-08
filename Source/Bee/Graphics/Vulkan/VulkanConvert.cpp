@@ -8,6 +8,7 @@
 #include "Bee/Graphics/Vulkan/VulkanConvert.hpp"
 #include "Bee/Core/Meta.hpp"
 
+
 namespace bee {
 
 
@@ -50,6 +51,36 @@ PhysicalDeviceVendor convert_vendor(const u32 id)
             break;
     }
     return PhysicalDeviceVendor::unknown;
+}
+
+VkImageAspectFlags select_aspect_mask(const PixelFormat format)
+{
+    switch(format)
+    {
+        case PixelFormat::d16:
+        case PixelFormat::d32f:
+        {
+            return VK_IMAGE_ASPECT_DEPTH_BIT;
+        }
+        case PixelFormat::d24s8:
+        case PixelFormat::d32s8:
+        {
+            return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+        case PixelFormat::s8:
+        {
+            return VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+        case PixelFormat::invalid:
+        case PixelFormat::unknown:
+        {
+            return 0;
+        }
+        default:
+        {
+            return VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+    }
 }
 
 VkColorComponentFlags decode_color_write_mask(const ColorWriteMask mask)
@@ -113,6 +144,252 @@ VkImageUsageFlags decode_image_usage(const TextureUsage& usage)
         | decode_flag(usage, TextureUsage::storage, VK_IMAGE_USAGE_STORAGE_BIT)
         | decode_flag(usage, TextureUsage::input_attachment, VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
 }
+
+
+BEE_TRANSLATION_TABLE(convert_pixel_format, PixelFormat, VkFormat, PixelFormat::unknown,
+    // Ordinary 8 bit formats
+    VK_FORMAT_R8_UNORM,             // a8
+    VK_FORMAT_R8_UNORM,             // r8
+    VK_FORMAT_R8_SINT,              // r8i
+    VK_FORMAT_R8_UINT,              // r8u
+    VK_FORMAT_R8_SNORM,             // r8s
+
+    // Ordinary 16 bit formats
+    VK_FORMAT_R16_UNORM,            // r16
+    VK_FORMAT_R16_SINT,             // r16i
+    VK_FORMAT_R16_UINT,             // r16u
+    VK_FORMAT_R16_SNORM,            // r16s
+    VK_FORMAT_R16_SFLOAT,           // r16f
+    VK_FORMAT_R8G8_UNORM,           // rg8
+    VK_FORMAT_R8G8_SINT,            // rg8i
+    VK_FORMAT_R8G8_UINT,            // rg8u
+    VK_FORMAT_R8G8_SNORM,           // rg8s
+
+    // Ordinary 32 bit formats
+    VK_FORMAT_R32_UINT,             // r32u
+    VK_FORMAT_R32_SINT,             // r32i
+    VK_FORMAT_R32_SFLOAT,           // r32f
+    VK_FORMAT_R16G16_UNORM,         // rg16
+    VK_FORMAT_R16G16_SINT,          // rg16i
+    VK_FORMAT_R16G16_UINT,          // rg16u
+    VK_FORMAT_R16G16_SNORM,         // rg16s
+    VK_FORMAT_R16G16_SFLOAT,        // rg16f
+    VK_FORMAT_R8G8B8A8_UNORM,       // rgba8
+    VK_FORMAT_R8G8B8A8_SINT,        // rgba8i
+    VK_FORMAT_R8G8B8A8_UINT,        // rgba8u
+    VK_FORMAT_R8G8B8A8_SNORM,       // rgba8s
+    VK_FORMAT_B8G8R8A8_UNORM,       // bgra8
+
+    // Ordinary 64 bit formats
+    VK_FORMAT_R32G32_UINT,          // rg32u
+    VK_FORMAT_R32G32_SINT,          // rg32s
+    VK_FORMAT_R32G32_SFLOAT,        // rg32f
+    VK_FORMAT_R16G16B16A16_UNORM,   // rgba16
+    VK_FORMAT_R16G16B16A16_SINT,    // rgbai
+    VK_FORMAT_R16G16B16A16_UINT,    // rgba16u
+    VK_FORMAT_R16G16B16A16_SNORM,   // rgba16s
+    VK_FORMAT_R16G16B16A16_SFLOAT,  // rgba16f
+
+    // Ordinary 128 bit formats
+    VK_FORMAT_R32G32B32A32_UINT,    // rgba32u
+    VK_FORMAT_R32G32B32A32_SINT,    // rgba32s
+    VK_FORMAT_R32G32B32A32_SFLOAT,  // rgba32f
+
+    // Depth and stencil formats
+    VK_FORMAT_D16_UNORM,            // d16
+    VK_FORMAT_D32_SFLOAT,           // d32f
+    VK_FORMAT_S8_UINT,              // s8
+    VK_FORMAT_D24_UNORM_S8_UINT,    // d24s8
+    VK_FORMAT_D32_SFLOAT_S8_UINT,   // d32s8
+    VK_FORMAT_UNDEFINED             // invalid
+)
+
+BEE_TRANSLATION_TABLE(convert_load_op, LoadOp, VkAttachmentLoadOp, LoadOp::unknown,
+    VK_ATTACHMENT_LOAD_OP_LOAD,         // load
+    VK_ATTACHMENT_LOAD_OP_CLEAR,        // clear
+    VK_ATTACHMENT_LOAD_OP_DONT_CARE,    // dont_care
+)
+
+BEE_TRANSLATION_TABLE(convert_store_op, StoreOp, VkAttachmentStoreOp, StoreOp::unknown,
+    VK_ATTACHMENT_STORE_OP_STORE,       // store
+    VK_ATTACHMENT_STORE_OP_DONT_CARE    // dont_care
+)
+
+BEE_TRANSLATION_TABLE(convert_step_function, StepFunction, VkVertexInputRate, StepFunction::unknown,
+    VK_VERTEX_INPUT_RATE_VERTEX,    // per_vertex
+    VK_VERTEX_INPUT_RATE_INSTANCE   // per_instance
+)
+
+BEE_TRANSLATION_TABLE(convert_vertex_format, VertexFormat, VkFormat, VertexFormat::unknown,
+    VK_FORMAT_R32_SFLOAT,             // float1
+    VK_FORMAT_R32G32_SFLOAT,          // float2
+    VK_FORMAT_R32G32B32_SFLOAT,       // float3
+    VK_FORMAT_R32G32B32A32_SFLOAT,    // float4
+    VK_FORMAT_R8_SINT,                // byte1
+    VK_FORMAT_R8G8_SINT,              // byte2
+    VK_FORMAT_R8G8B8_SINT,            // byte3
+    VK_FORMAT_R8G8B8A8_SINT,          // byte4
+    VK_FORMAT_R8_UINT,                // ubyte1
+    VK_FORMAT_R8G8_UINT,              // ubyte2
+    VK_FORMAT_R8G8B8_UINT,            // ubyte3
+    VK_FORMAT_R8G8B8A8_UINT,          // ubyte4
+    VK_FORMAT_R16_SINT,               // short1
+    VK_FORMAT_R16G16_SINT,            // short2
+    VK_FORMAT_R16G16B16_SINT,         // short3
+    VK_FORMAT_R16G16B16A16_SINT,      // short4
+    VK_FORMAT_R16_UINT,               // ushort1
+    VK_FORMAT_R16G16_UINT,            // ushort2
+    VK_FORMAT_R16G16B16_UINT,         // ushort3
+    VK_FORMAT_R16G16B16A16_UINT,      // ushort4
+    VK_FORMAT_R16_SFLOAT,             // half1
+    VK_FORMAT_R16G16_SFLOAT,          // half2
+    VK_FORMAT_R16G16B16_SFLOAT,       // half3
+    VK_FORMAT_R16G16B16A16_SFLOAT,    // half4
+    VK_FORMAT_R32_SINT,               // int1
+    VK_FORMAT_R32G32_SINT,            // int2
+    VK_FORMAT_R32G32B32_SINT,         // int3
+    VK_FORMAT_R32G32B32A32_SINT,      // int4
+    VK_FORMAT_R32_UINT,               // uint1
+    VK_FORMAT_R32G32_UINT,            // uint2
+    VK_FORMAT_R32G32B32_UINT,         // uint3
+    VK_FORMAT_R32G32B32A32_UINT,      // uint4
+    VK_FORMAT_UNDEFINED               // invalid
+)
+
+BEE_TRANSLATION_TABLE(convert_primitive_type, PrimitiveType, VkPrimitiveTopology, PrimitiveType::unknown,
+    VK_PRIMITIVE_TOPOLOGY_POINT_LIST,       // point
+    VK_PRIMITIVE_TOPOLOGY_LINE_LIST,        // line
+    VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,       // line_strip
+    VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,    // triangle
+    VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP    // triangle_strip
+)
+
+BEE_TRANSLATION_TABLE(convert_polygon_mode, FillMode, VkPolygonMode, FillMode::unknown,
+    VK_POLYGON_MODE_LINE,   // wireframe
+    VK_POLYGON_MODE_FILL    // solid
+)
+
+BEE_TRANSLATION_TABLE(convert_cull_mode, CullMode, VkCullModeFlagBits, CullMode::unknown,
+    VK_CULL_MODE_NONE,      // none
+    VK_CULL_MODE_FRONT_BIT, // back
+    VK_CULL_MODE_BACK_BIT   // back
+)
+
+BEE_TRANSLATION_TABLE(convert_blend_factor, BlendFactor, VkBlendFactor, BlendFactor::unknown,
+    VK_BLEND_FACTOR_ZERO,                     // zero
+    VK_BLEND_FACTOR_ONE,                      // one
+    VK_BLEND_FACTOR_SRC_COLOR,                // src_color
+    VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR,      // one_minus_src_color
+    VK_BLEND_FACTOR_SRC_ALPHA,                // src_alpha
+    VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,      // one_minus_src_alpha
+    VK_BLEND_FACTOR_DST_COLOR,                // dst_color
+    VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR,      // one_minus_dst_color
+    VK_BLEND_FACTOR_DST_ALPHA,                // dst_alpha
+    VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA,      // one_minus_dst_alpha
+    VK_BLEND_FACTOR_SRC_ALPHA_SATURATE,       // src_alpha_saturated
+    VK_BLEND_FACTOR_CONSTANT_COLOR,           // blend_color
+    VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR, // one_minus_blend_color
+    VK_BLEND_FACTOR_CONSTANT_ALPHA,           // blend_alpha
+    VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA  // one_minus_blend_alpha
+)
+
+BEE_TRANSLATION_TABLE(convert_blend_op, BlendOperation, VkBlendOp, BlendOperation::unknown,
+    VK_BLEND_OP_ADD,                // add
+    VK_BLEND_OP_SUBTRACT,           // subtract
+    VK_BLEND_OP_REVERSE_SUBTRACT,   // reverse_subtract
+    VK_BLEND_OP_MIN,                // min
+    VK_BLEND_OP_MAX,                // max
+)
+
+BEE_TRANSLATION_TABLE(convert_descriptor_type, ResourceType, VkDescriptorType, ResourceType::unknown,
+    VK_DESCRIPTOR_TYPE_SAMPLER,                   // sampler
+    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,    // combined_texture_sampler
+    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,             // sampled_texture
+    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,             // storage_texture
+    VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,      // uniform_texel_buffer
+    VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,      // storage_texel_buffer
+    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,            // uniform_buffer
+    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,            // storage_buffer
+    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,    // dynamic_uniform_buffer
+    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,    // dynamic_storage_buffer
+    VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT           // input_attachment
+)
+
+BEE_TRANSLATION_TABLE(convert_memory_usage, DeviceMemoryUsage, VmaMemoryUsage, DeviceMemoryUsage::unknown,
+    VMA_MEMORY_USAGE_GPU_ONLY,        // gpu_only
+    VMA_MEMORY_USAGE_CPU_ONLY,        // cpu_only
+    VMA_MEMORY_USAGE_CPU_TO_GPU,      // cpu_to_gpu
+    VMA_MEMORY_USAGE_GPU_TO_CPU       // gpu_to_cpu
+)
+
+BEE_TRANSLATION_TABLE(convert_compare_op, CompareFunc, VkCompareOp, CompareFunc::unknown,
+    VK_COMPARE_OP_NEVER,              // never
+    VK_COMPARE_OP_LESS,               // less
+    VK_COMPARE_OP_EQUAL,              // equal
+    VK_COMPARE_OP_LESS_OR_EQUAL,      // less_equal
+    VK_COMPARE_OP_GREATER,            // greater
+    VK_COMPARE_OP_NOT_EQUAL,          // not_equal
+    VK_COMPARE_OP_GREATER_OR_EQUAL,   // greater_equal
+    VK_COMPARE_OP_ALWAYS,             // always
+)
+
+BEE_TRANSLATION_TABLE(convert_stencil_op, StencilOp, VkStencilOp, StencilOp::unknown,
+    VK_STENCIL_OP_KEEP,                   // keep
+    VK_STENCIL_OP_ZERO,                   // zero
+    VK_STENCIL_OP_REPLACE,                // replace
+    VK_STENCIL_OP_INCREMENT_AND_CLAMP,    // increment_and_clamp
+    VK_STENCIL_OP_DECREMENT_AND_CLAMP,    // decrement_and_clamp
+    VK_STENCIL_OP_INVERT,                 // invert
+    VK_STENCIL_OP_INCREMENT_AND_WRAP,     // increment_and_wrap
+    VK_STENCIL_OP_DECREMENT_AND_CLAMP     // decrement_and_wrap
+)
+
+BEE_TRANSLATION_TABLE(convert_image_type, TextureType, VkImageType, TextureType::unknown,
+    VK_IMAGE_TYPE_1D,     // tex1d
+    VK_IMAGE_TYPE_1D,     // tex1d_array
+    VK_IMAGE_TYPE_2D,     // tex2d
+    VK_IMAGE_TYPE_2D,     // tex2d_array
+    VK_IMAGE_TYPE_2D,     // tex2d_multisample
+    VK_IMAGE_TYPE_2D,     // cube
+    VK_IMAGE_TYPE_2D,     // cube_array
+    VK_IMAGE_TYPE_3D      // tex3d
+)
+
+BEE_TRANSLATION_TABLE(convert_image_view_type, TextureType, VkImageViewType, TextureType::unknown,
+    VK_IMAGE_VIEW_TYPE_1D,            // tex1d
+    VK_IMAGE_VIEW_TYPE_1D_ARRAY,      // tex1d_array
+    VK_IMAGE_VIEW_TYPE_2D,            // tex2d
+    VK_IMAGE_VIEW_TYPE_2D_ARRAY,      // tex2d_array
+    VK_IMAGE_VIEW_TYPE_2D,            // tex2d_multisample
+    VK_IMAGE_VIEW_TYPE_CUBE,          // cube
+    VK_IMAGE_VIEW_TYPE_CUBE_ARRAY,    // cube_array
+    VK_IMAGE_VIEW_TYPE_3D             // tex3d
+)
+
+BEE_TRANSLATION_TABLE(convert_filter, MinMagFilter, VkFilter, MinMagFilter::unknown,
+    VK_FILTER_NEAREST,  // nearest
+    VK_FILTER_LINEAR    // linear
+)
+
+BEE_TRANSLATION_TABLE(convert_mip_map_mode, MipMapMode, VkSamplerMipmapMode, MipMapMode::unknown,
+    VK_SAMPLER_MIPMAP_MODE_LINEAR,  // none
+    VK_SAMPLER_MIPMAP_MODE_NEAREST, // nearest
+    VK_SAMPLER_MIPMAP_MODE_LINEAR   // linear
+)
+
+BEE_TRANSLATION_TABLE(convert_address_mode, AddressMode, VkSamplerAddressMode, AddressMode::unknown,
+    VK_SAMPLER_ADDRESS_MODE_REPEAT,                 // repeat
+    VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,        // mirrored_repeat
+    VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,          // clamp_to_edge
+    VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,        // clamp_to_border
+    VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE    // mirror_clamp_to_edge,
+)
+
+BEE_TRANSLATION_TABLE(convert_border_color, BorderColor, VkBorderColor, BorderColor::unknown,
+    VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,    // transparent_black
+    VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK,         // opaque_black
+    VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE          // opaque_white
+)
 
 
 } // namespace bee

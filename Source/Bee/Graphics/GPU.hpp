@@ -10,6 +10,8 @@
 #include "Bee/Core/Enum.hpp"
 #include "Bee/Core/Handle.hpp"
 #include "Bee/Graphics/GPULimits.hpp"
+#include "Bee/Application/Platform.hpp"
+
 
 namespace bee {
 
@@ -255,7 +257,7 @@ enum class VertexFormat : u32
     unknown
 };
 
-BEE_TRANSLATION_TABLE(vertex_format_component_count, VertexFormat, u32, VertexFormat::unknown,
+inline BEE_TRANSLATION_TABLE(vertex_format_component_count, VertexFormat, u32, VertexFormat::unknown,
     1,  // float1
     2,  // float2
     3,  // float3
@@ -291,7 +293,7 @@ BEE_TRANSLATION_TABLE(vertex_format_component_count, VertexFormat, u32, VertexFo
     0   // invalid
 )
 
-BEE_TRANSLATION_TABLE(vertex_format_size, VertexFormat, u32, VertexFormat::unknown,
+inline BEE_TRANSLATION_TABLE(vertex_format_size, VertexFormat, u32, VertexFormat::unknown,
     sizeof(float) * 1,  // float1
     sizeof(float) * 2,  // float2
     sizeof(float) * 3,  // float3
@@ -327,7 +329,7 @@ BEE_TRANSLATION_TABLE(vertex_format_size, VertexFormat, u32, VertexFormat::unkno
     0                   // invalid
 )
 
-BEE_TRANSLATION_TABLE(vertex_format_string, VertexFormat, const char*, VertexFormat::unknown,
+inline BEE_TRANSLATION_TABLE(vertex_format_string, VertexFormat, const char*, VertexFormat::unknown,
     "float1",   // float1
     "float2",   // float2
     "float3",   // float3
@@ -459,7 +461,7 @@ enum class PhysicalDeviceVendor
     unknown
 };
 
-BEE_TRANSLATION_TABLE(vendor_string, PhysicalDeviceVendor, const char*, PhysicalDeviceVendor::unknown,
+inline BEE_TRANSLATION_TABLE(gpu_vendor_string, PhysicalDeviceVendor, const char*, PhysicalDeviceVendor::unknown,
     "AMD", // AMD
     "ImgTec", // ImgTec
     "NVIDIA", // NVIDIA
@@ -478,7 +480,7 @@ enum class PhysicalDeviceType
 };
 
 
-BEE_TRANSLATION_TABLE(device_type, PhysicalDeviceType, const char*, PhysicalDeviceType::unknown,
+inline BEE_TRANSLATION_TABLE(gpu_type_string, PhysicalDeviceType, const char*, PhysicalDeviceType::unknown,
     "Other", // other
     "Integrated", // integrated
     "Discrete", // discrete
@@ -609,6 +611,9 @@ enum class BarrierType
  ********************************************************
  */
 BEE_DEFINE_RAW_HANDLE_U32(Device);
+BEE_DEFINE_VERSIONED_HANDLE(Swapchain);
+BEE_DEFINE_VERSIONED_HANDLE(Texture);
+BEE_DEFINE_VERSIONED_HANDLE(TextureView);
 
 /*
  ********************************************************
@@ -620,6 +625,17 @@ BEE_DEFINE_RAW_HANDLE_U32(Device);
  *
  ********************************************************
  */
+struct Extent
+{
+    u32 width { 0 };
+    u32 height { 0 };
+    u32 depth { 0 };
+
+    static inline Extent from_platform_size(const PlatformSize& size)
+    {
+        return Extent { sign_cast<u32>(size.width), sign_cast<u32>(size.height), 0 };
+    }
+};
 
 /**
  * Contains information about a given physical GPU
@@ -645,6 +661,44 @@ struct DeviceCreateInfo
 };
 
 
+struct SwapchainCreateInfo
+{
+    PixelFormat     texture_format { PixelFormat::unknown };
+    Extent          texture_extent;
+    TextureUsage    texture_usage { TextureUsage::color_attachment };
+    u32             texture_array_layers { 1 };
+    bool            vsync { false };
+    WindowHandle    window;
+};
+
+
+struct TextureCreateInfo
+{
+    TextureType         type { TextureType::unknown };
+    TextureUsage        usage { TextureUsage::unknown };
+    ResourceState       initial_state { ResourceState::unknown };
+    PixelFormat         format { PixelFormat::bgra8 };
+    DeviceMemoryUsage   memory_usage { DeviceMemoryUsage::unknown };
+    u32                 width { 0 };
+    u32                 height { 0 };
+    u32                 depth { 1 };
+    u32                 mip_count { 1 };
+    u32                 array_element_count { 1 };
+    u32                 sample_count { 1 };
+};
+
+
+struct TextureViewCreateInfo
+{
+    TextureHandle   texture;
+    TextureType     type { TextureType::unknown };
+    PixelFormat     format { PixelFormat::unknown };
+    u32             mip_level_offset { 0 };
+    u32             mip_level_count { 1 };
+    u32             array_element_offset { 0 };
+    u32             array_element_count { 1 };
+};
+
 /*
  ********************************************************
  *
@@ -667,6 +721,16 @@ BEE_API void gpu_destroy_device(const DeviceHandle& handle);
 
 BEE_API void gpu_device_wait(const DeviceHandle& handle);
 
+BEE_API SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const SwapchainCreateInfo& create_info);
 
+BEE_API void gpu_destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle);
+
+BEE_API TextureHandle gpu_create_texture(const DeviceHandle& device_handle, const TextureCreateInfo& create_info);
+
+BEE_API void gpu_destroy_texture(const DeviceHandle& device_handle, const TextureHandle& texture_handle);
+
+BEE_API TextureViewHandle gpu_create_texture_view(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info);
+
+BEE_API void gpu_destroy_texture_view(const DeviceHandle& device_handle, const TextureViewHandle& texture_view_handle);
 
 } // namespace bee

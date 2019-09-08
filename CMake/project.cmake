@@ -61,6 +61,7 @@ endfunction()
 ################################################################################
 function(bee_new_source_root)
     set(__bee_sources "" CACHE INTERNAL "")
+    set(__bee_defines "" CACHE INTERNAL "")
 endfunction()
 
 
@@ -99,6 +100,18 @@ function(bee_add_sources)
     endforeach()
     list(REMOVE_DUPLICATES src_list)
     set(__bee_sources ${__bee_sources} "${src_list}" CACHE INTERNAL "")
+endfunction()
+
+
+################################################################################
+#
+# Adds PUBLIC compile definitions to the current target
+#
+################################################################################
+function(bee_add_compile_definitions)
+    foreach (def ${ARGN})
+        set(__bee_defines ${__bee_defines} ${def} CACHE INTERNAL "")
+    endforeach ()
 endfunction()
 
 ################################################################################
@@ -144,6 +157,8 @@ function(__bee_finalize_target name)
             target_compile_definitions(${name} PRIVATE ${api_macro}=BEE_IMPORT_SYMBOL)
         endif ()
     endforeach ()
+
+    target_compile_definitions(${name} PUBLIC ${__bee_defines})
 
     bee_new_source_root()
 endfunction()
