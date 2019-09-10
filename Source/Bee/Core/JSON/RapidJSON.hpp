@@ -9,10 +9,10 @@
  *
  * # RapidJSON.hpp
  *
- * Skyrocket uses the RapidJSON library for most JSON operations. Always use the libraries features by #including
+ * Bee uses the RapidJSON library for most JSON operations. Always use the libraries features by #including
  * this file and #defining the various include macros in your .cpp file rather than including them directly
  * from `<ThirdParty/rapidjson/include>` - this is because the library is header-only and the various configuration
- * options used by Skyrocket overriden using macros here (custom assertion macros, allocation functions etc.)
+ * options used by Bee overriden using macros here (custom assertion macros, allocation functions etc.)
  *
  * If you're implementing some read-only functionality and would like to use a more relaxed syntax - unquoted
  * keys, no root objects required etc. - for tools in the same vein as Shadecc, use the API defined in

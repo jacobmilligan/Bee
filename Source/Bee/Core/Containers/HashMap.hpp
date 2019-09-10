@@ -37,7 +37,8 @@ struct EqualTo {
 };
 
 template <typename KeyType, typename ValueType>
-struct KeyValuePair {
+struct KeyValuePair
+{
     using key_t     = KeyType;
     using value_t   = ValueType;
 
@@ -167,6 +168,8 @@ public:
     key_value_pair_t* insert(const key_value_pair_t& kv_pair);
 
     key_value_pair_t* insert(const key_t& key, const value_t& value);
+
+    key_value_pair_t* insert(const key_t& key, value_t&& value);
 
     inline key_value_pair_t* find(const key_t& key);
 
@@ -452,6 +455,15 @@ HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::insert(const KeyType& key, 
     return keyval;
 }
 
+template <typename KeyType, typename ValueType, ContainerMode Mode, typename Hasher, typename KeyEqual>
+KeyValuePair<KeyType, ValueType>*
+HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::insert(const KeyType& key, ValueType&& value)
+{
+    auto keyval = insert_no_construct(key);
+    new (&keyval->value) ValueType(std::forward<ValueType>(value));
+    return keyval;
+}
+
 /*
  ****************************
  *
@@ -614,7 +626,6 @@ void HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::clear()
  */
 template <typename KeyType, typename ValueType, ContainerMode Mode, typename Hasher, typename KeyEqual>
 void HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::rehash(const i32 new_count)
-
 {
     BEE_ASSERT_F(new_count >= 0, "HashMap: bucket count cannot be negative");
 
@@ -637,7 +648,8 @@ void HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::rehash(const i32 new_c
      */
     const auto new_hash_shift = 32u - math::log2i(u32_new_count);
 
-    auto new_buckets = storage_t::with_size(new_count, Node{false, {}});
+    storage_t new_buckets(new_count, node_storage_.allocator());
+    new_buckets.resize(new_count);
     u32 new_active_node_count = 0;
 
     for (int cur_node_idx = 0; cur_node_idx < node_storage_.size(); ++cur_node_idx)
@@ -663,7 +675,7 @@ void HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::rehash(const i32 new_c
         }
 
         // Copy by value rather than memcpy in case T has virtuals
-        *new_node = *old_node;
+        *new_node = std::move(*old_node);
 
         if (new_node->active)
         {
@@ -679,7 +691,9 @@ void HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::rehash(const i32 new_c
     BEE_ASSERT_F(u32_new_count == (1u << (32u - new_hash_shift)), "Invalid hash shift");
     load_factor_ = (u32_new_count + 1u) >> 1u;
     active_node_count_ = new_active_node_count;
-    node_storage_.move_replace_no_destruct(std::move(new_buckets));
+
+    node_storage_.resize_no_raii(0); // we don't want to destruct the moved-from data
+    node_storage_ = std::move(new_buckets);
 }
 
 

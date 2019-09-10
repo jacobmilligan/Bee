@@ -99,9 +99,9 @@ TEST(PathTests, path_returns_correct_parent_directory)
     auto parent = path.parent();
     ASSERT_STREQ(parent.c_str(), "/This/Is/A/Test");
 
-    bee::Path path2("/Users/Jacob/Dev/Repos/Skyrocket/Build/Debug/Tests/Static/Platform/PlatformTests");
+    bee::Path path2("/Users/Jacob/Dev/Repos/Bee/Build/Debug/Tests/Static/Platform/PlatformTests");
     auto parent2 = path2.parent();
-    ASSERT_STREQ(parent2.c_str(), "/Users/Jacob/Dev/Repos/Skyrocket/Build/Debug/Tests/Static/Platform");
+    ASSERT_STREQ(parent2.c_str(), "/Users/Jacob/Dev/Repos/Bee/Build/Debug/Tests/Static/Platform");
 }
 
 TEST(PathTests, stem_returns_just_the_filename_component_without_extension)

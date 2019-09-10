@@ -82,9 +82,11 @@ struct BEE_CORE_API Results : public Noncopyable
     const char* const*                  argv { nullptr };
     bool                                success { true };
     bool                                help_requested { false };
+    const char*                         requested_help_string { nullptr };
     i32                                 argv_parsed_count { 0 };
     DynamicArray<Token>                 positionals;
     DynamicHashMap<String, Token>       options;
+    DynamicHashMap<String, Results>     subparsers;
     String                              program_name;
     String                              help_string;
     String                              error_message;
@@ -94,18 +96,25 @@ private:
 };
 
 
-BEE_CORE_API Results parse(
-    i32 argc,
-    char** argv,
-    const Positional* positionals,
-    i32 positional_count,
-    const Option* options,
-    i32 option_count
-);
+struct BEE_CORE_API ParserDescriptor
+{
+    const char*         command_name { nullptr }; // string used to invoke the command. Only used for subparsers
+    i32                 positional_count { 0 };
+    const Positional*   positionals { nullptr };
+    i32                 option_count { 0 };
+    const Option*       options { nullptr };
+    i32                 subparser_count { 0 };
+    ParserDescriptor*   subparsers { nullptr };
+};
+
+
+BEE_CORE_API Results parse(i32 argc, char** argv, const ParserDescriptor& desc);
 
 BEE_CORE_API bool has_option(const Results& results, const char* option_long_name);
 
 BEE_CORE_API const char* get_option(const Results& results, const char* option_long_name, i32 arg_index = 0);
+
+BEE_CORE_API const char* get_positional(const Results& results, const i32 positional_index);
 
 BEE_CORE_API i32 get_remainder_count(const Results& results);
 

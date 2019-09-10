@@ -5,7 +5,7 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include <Bee/Core/Memory/StackAllocator.hpp>
+#include <Bee/Core/Memory/LinearAllocator.hpp>
 #include <Bee/Core/Memory/MallocAllocator.hpp>
 #include <Bee/Core/Memory/SmartPointers.hpp>
 
@@ -35,7 +35,7 @@ bool TestObjectBase::constructed = false;
 
 TEST(MemoryTests, FixedTempAllocator_make_unique_constructs_and_destructs)
 {
-    bee::StackAllocator allocator(bee::kibibytes(1));
+    bee::LinearAllocator allocator(bee::kibibytes(1));
     // create scope to test deallocation
     TestObject<int>* other = nullptr;
     {

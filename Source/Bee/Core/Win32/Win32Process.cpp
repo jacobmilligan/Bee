@@ -99,7 +99,7 @@ bool create_process(const CreateProcessInfo& info, const Path& working_directory
     startup_info.hStdOutput = !create_pipes ? nullptr : info.handle->write_pipe;
     startup_info.hStdError = !create_pipes ? nullptr : info.handle->write_pipe;
 
-    String temp_args(info.command_line, temp_allocator());
+    String temp_args(info.command_line == nullptr ? "" : info.command_line, temp_allocator());
 
     PROCESS_INFORMATION proc_info{};
     const auto result = CreateProcess(

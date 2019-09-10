@@ -66,13 +66,15 @@ ModulePass *createDxilPromoteStaticResources();
 ModulePass *createDxilLegalizeResources();
 ModulePass *createDxilLegalizeEvalOperationsPass();
 FunctionPass *createDxilLegalizeSampleOffsetPass();
-ModulePass *createFailUndefResourcePass();
+FunctionPass *createDxilSimpleGVNHoistPass();
+ModulePass *createInvalidateUndefResourcesPass();
 FunctionPass *createSimplifyInstPass();
 ModulePass *createDxilTranslateRawBuffer();
 ModulePass *createNoPausePassesPass();
 ModulePass *createPausePassesPass();
 ModulePass *createResumePassesPass();
 FunctionPass *createMatrixBitcastLowerPass();
+ModulePass *createDxilCleanupAddrSpaceCastPass();
 
 void initializeDxilCondenseResourcesPass(llvm::PassRegistry&);
 void initializeDxilLowerCreateHandleForLibPass(llvm::PassRegistry&);
@@ -96,13 +98,15 @@ void initializeDxilPromoteStaticResourcesPass(llvm::PassRegistry&);
 void initializeDxilLegalizeResourcesPass(llvm::PassRegistry&);
 void initializeDxilLegalizeEvalOperationsPass(llvm::PassRegistry&);
 void initializeDxilLegalizeSampleOffsetPassPass(llvm::PassRegistry&);
-void initializeFailUndefResourcePass(llvm::PassRegistry&);
+void initializeDxilSimpleGVNHoistPass(llvm::PassRegistry&);
+void initializeInvalidateUndefResourcesPass(llvm::PassRegistry&);
 void initializeSimplifyInstPass(llvm::PassRegistry&);
 void initializeDxilTranslateRawBufferPass(llvm::PassRegistry&);
 void initializeNoPausePassesPass(llvm::PassRegistry&);
 void initializePausePassesPass(llvm::PassRegistry&);
 void initializeResumePassesPass(llvm::PassRegistry&);
 void initializeMatrixBitcastLowerPassPass(llvm::PassRegistry&);
+void initializeDxilCleanupAddrSpaceCastPass(llvm::PassRegistry&);
 
 bool AreDxilResourcesDense(llvm::Module *M, hlsl::DxilResourceBase **ppNonDense);
 

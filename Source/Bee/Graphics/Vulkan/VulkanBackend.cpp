@@ -166,6 +166,11 @@ VkBool32 VKAPI_CALL vk_debug_callback(
 
 void gpu_set_object_tag(VkDevice device, VkDebugReportObjectTypeEXT object_type, void* object, size_t tag_size, const void* tag)
 {
+    if (tag == nullptr || tag_size == 0 || object == nullptr)
+    {
+        return;
+    }
+
     VkDebugMarkerObjectTagInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_TAG_INFO_EXT };
     info.objectType = object_type;
     info.object = (u64)object;
@@ -177,6 +182,11 @@ void gpu_set_object_tag(VkDevice device, VkDebugReportObjectTypeEXT object_type,
 
 void gpu_set_object_name(VkDevice device, VkDebugReportObjectTypeEXT object_type, void* object, const char* name)
 {
+    if (name == nullptr || object == nullptr)
+    {
+        return;
+    }
+
     VkDebugMarkerObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT };
     info.objectType = object_type;
     info.object = (u64)object;
@@ -238,7 +248,11 @@ static struct VulkanBackend
 
     static constexpr const char* device_extensions[] =
     {
-        VK_EXT_DEBUG_MARKER_EXTENSION_NAME
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME        // Require swapchain support for all devices
+        , VK_KHR_MAINTENANCE1_EXTENSION_NAME      // Enables negative viewport height & VK_ERROR_OUT_OF_POOL_MEMORY_KHR for clearer error reporting when doing vkAllocateDescriptorSets
+#ifdef BEE_DEBUG
+        , VK_EXT_DEBUG_MARKER_EXTENSION_NAME
+#endif // BEE_DEBUG
     };
 
 #if BEE_CONFIG_ENABLE_ASSERTIONS == 1
@@ -433,6 +447,7 @@ DeviceHandle gpu_create_device(const DeviceCreateInfo& create_info)
 #endif // BEE_VULKAN_DEVICE_EXTENSIONS_ENABLED
 
     auto& device = g_backend.devices[device_idx];
+    device.physical_device = physical_device;
 
     // Find all available queue families and store in device data for later use
     u32 available_queue_families = 0;
@@ -614,7 +629,7 @@ SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const Sw
     // Get supported formats
     u32 format_count = 0;
     BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device.physical_device, surface, &format_count, nullptr));
-    auto formats = FixedArray<VkSurfaceFormatKHR>(sign_cast<i32>(format_count), temp_allocator());
+    auto formats = FixedArray<VkSurfaceFormatKHR>::with_size(sign_cast<i32>(format_count), temp_allocator());
     BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device.physical_device, surface, &format_count, formats.data()));
 
     // Get supported present modes
@@ -669,18 +684,26 @@ SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const Sw
     VkSwapchainKHR vk_handle;
     BEE_VK_CHECK(vkCreateSwapchainKHR(device.handle, &swapchain_info, nullptr, &vk_handle));
 
-    VulkanSwapchain* swapchain = nullptr;
-    const auto created_handle = device.swapchains.create_uninitialized(&swapchain);
-
     // Setup the swapchain images
     u32 swapchain_image_count = 0;
     BEE_VK_CHECK(vkGetSwapchainImagesKHR(device.handle, vk_handle, &swapchain_image_count, nullptr));
     auto swapchain_images = FixedArray<VkImage>::with_size(sign_cast<i32>(swapchain_image_count), temp_allocator());
     BEE_VK_CHECK(vkGetSwapchainImagesKHR(device.handle, vk_handle, &swapchain_image_count, swapchain_images.data()));
 
-    swapchain->images = FixedArray<TextureHandle>::with_size(swapchain_images.size());
-    swapchain->image_views = FixedArray<TextureViewHandle>::with_size(swapchain_images.size());
+    VulkanSwapchain* swapchain = nullptr;
+    const auto created_handle = device.swapchains.emplace(&swapchain);
+    swapchain->handle = vk_handle;
+    swapchain->surface = surface;
+    swapchain->images = FixedArray<TextureHandle>::with_size(image_count);
+    swapchain->image_views = FixedArray<TextureViewHandle>::with_size(image_count);
 
+    str::format(swapchain->id_string, static_array_length(swapchain->id_string), "handle:%u", created_handle.id);
+    gpu_set_object_name(
+        device.handle,
+        VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT,
+        vk_handle,
+        create_info.debug_name == nullptr ? swapchain->id_string : create_info.debug_name
+    );
     /*
      * Insert a texture handle for each of the swapchain images to use with external code and create a texture view
      * for each one
@@ -696,7 +719,8 @@ SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const Sw
     for (int si = 0; si < swapchain_images.size(); ++si)
     {
         VulkanTexture* texture = nullptr;
-        swapchain->images[si] = device.textures.create_uninitialized(&texture);
+        swapchain->images[si] = device.textures.emplace(&texture);
+        texture->is_swapchain_image = true;
         texture->width = swapchain_info.imageExtent.width;
         texture->height = swapchain_info.imageExtent.height;
         texture->layers = swapchain_info.imageArrayLayers;
@@ -709,11 +733,10 @@ SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const Sw
 
         // Create a texture view as well
         view_info.texture = swapchain->images[si];
+        view_info.debug_name = "Swapchain texture view";
         swapchain->image_views[si] = gpu_create_texture_view(device_handle, view_info);
         auto texture_view = device.texture_views[swapchain->image_views[si]];
         texture_view->is_swapchain_view = true;
-
-        gpu_set_object_name(device.handle, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT, texture_view->handle, "Swapchain image view");
     }
 
     // Create image available and render finished semaphores
@@ -732,6 +755,8 @@ void gpu_destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHan
 {
     auto& device = validate_device(device_handle);
     auto swapchain = device.swapchains[swapchain_handle];
+
+    BEE_VK_CHECK(vkDeviceWaitIdle(device.handle));
 
     for (int i = 0; i < swapchain->images.size(); ++i)
     {
@@ -756,8 +781,8 @@ void gpu_destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHan
         }
     }
 
-    vkDestroySurfaceKHR(g_backend.instance, swapchain->surface, nullptr);
     vkDestroySwapchainKHR(device.handle, swapchain->handle, nullptr);
+    vkDestroySurfaceKHR(g_backend.instance, swapchain->surface, nullptr);
     device.swapchains.destroy(swapchain_handle);
 }
 
@@ -772,15 +797,10 @@ void gpu_destroy_texture(const DeviceHandle& device_handle, const TextureHandle&
     auto& device = validate_device(device_handle);
     auto texture = device.textures[texture_handle];
     BEE_ASSERT(texture->handle != VK_NULL_HANDLE);
+    // swapchain images are destroyed with their owning swapchain
     if (!texture->is_swapchain_image)
     {
-        // treat as normal allocated texture
         vmaDestroyImage(device.vma_allocator, texture->handle, texture->allocation);
-    }
-    else
-    {
-        // swapchain image - destroy without going through VMA
-        vkDestroyImage(device.handle, texture->handle, nullptr);
     }
     device.textures.destroy(texture_handle);
 }
@@ -813,8 +833,10 @@ TextureViewHandle gpu_create_texture_view(const DeviceHandle& device_handle, con
     VkImageView img_view = VK_NULL_HANDLE;
     BEE_VK_CHECK(vkCreateImageView(device.handle, &view_info, nullptr, &img_view));
 
+    gpu_set_object_name(device.handle, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT, img_view, create_info.debug_name);
+
     VulkanTextureView* texture_view = nullptr;
-    const auto handle = device.texture_views.create_uninitialized(&texture_view);
+    const auto handle = device.texture_views.emplace(&texture_view);
     texture_view->is_swapchain_view = false;
     texture_view->handle = img_view;
     texture_view->viewed_texture = create_info.texture;

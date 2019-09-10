@@ -1,6 +1,6 @@
 /*
  *  Win32Socket.cpp
- *  Skyrocket
+ *  Bee
  *
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
@@ -9,9 +9,6 @@
 #include "Bee/Core/String.hpp"
 
 namespace bee {
-
-
-
 
 
 SocketAddress::~SocketAddress()
@@ -30,7 +27,7 @@ const char* wsa_get_last_error_string()
     return win32_format_error(WSAGetLastError(), msg_buffer, 1024);
 }
 
-bool socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const u16 port)
+bool socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const port_t port)
 {
     if (address->info != nullptr)
     {
@@ -47,7 +44,7 @@ bool socket_reset_address(SocketAddress* address, const SocketType type, const S
     str::format(port_string, 8, "%u", htons(port));
 
     const auto iresult = getaddrinfo(hostname, port_string, &hints, &address->info);
-    if (BEE_FAIL_F(iresult == 0, "Failed to get address info: %d", iresult))
+    if (BEE_FAIL_F(iresult == 0, "Failed to get address info: %s", wsa_get_last_error_string()))
     {
         return false;
     }
@@ -74,12 +71,42 @@ void socket_cleanup()
 bool socket_open(socket_t* dst, const SocketAddress& address)
 {
     *dst = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
-    return BEE_CHECK_F(*dst != INVALID_SOCKET, "Failed to open socket connection");
+    if (*dst == INVALID_SOCKET)
+    {
+        log_error("Failed to open socket: %s", wsa_get_last_error_string());
+        return false;
+    }
+    return true;
 }
 
 void socket_close(const socket_t& socket)
 {
     closesocket(socket);
+}
+
+bool socket_connect(socket_t* dst, const SocketAddress& address)
+{
+    const auto result = connect(*dst, address->ai_addr, (int)address->ai_addrlen);
+    if (result == SOCKET_ERROR)
+    {
+        log_error("Failed to connect socket: %s", wsa_get_last_error_string());
+        socket_close(*dst);
+        *dst = INVALID_SOCKET;
+        return false;
+    }
+    return true;
+}
+
+bool socket_shutdown(const socket_t client)
+{
+    const auto result = shutdown(client, SD_SEND);
+    if (BEE_FAIL_F(result != SOCKET_ERROR, "Failed to shutdown socket: %s", wsa_get_last_error_string()))
+    {
+        log_error("Failed to connect socket");
+        socket_close(client);
+        return false;
+    }
+    return true;
 }
 
 void socket_bind(const socket_t& socket, const SocketAddress& address)
@@ -91,9 +118,9 @@ void socket_bind(const socket_t& socket, const SocketAddress& address)
     }
 }
 
-void socket_listen(const socket_t& socket)
+void socket_listen(const socket_t& socket, const i32 max_waiting_clients)
 {
-    const auto result = listen(socket, 3);
+    const auto result = listen(socket, max_waiting_clients);
     if (BEE_FAIL_F(result != SOCKET_ERROR, "Failed to listen to socket: %s", wsa_get_last_error_string()))
     {
         socket_close(socket);
@@ -119,9 +146,9 @@ i32 socket_recv(const socket_t& client, char* buffer, const i32 buffer_length)
     return result;
 }
 
-i32 socket_send(const socket_t& server, const char* buffer, const i32 buffer_length)
+i32 socket_send(const socket_t& client, const char* buffer, const i32 buffer_length)
 {
-    const auto result = send(server, buffer, buffer_length, 0);
+    const auto result = send(client, buffer, buffer_length, 0);
     BEE_ASSERT_F(result >= 0, "Failed to send socket data: %s", wsa_get_last_error_string());
     return result;
 }

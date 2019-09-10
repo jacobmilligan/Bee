@@ -36,6 +36,16 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     set(BEE_COMPILER_IS_GCC TRUE)
 endif ()
 
+if (NOT BEE_PLATFORM)
+    if (WIN32)
+        set(BEE_PLATFORM Win32)
+    elseif(APPLE)
+        set(BEE_PLATFORM macOS)
+    else()
+        set(BEE_PLATFORM Linux)
+    endif ()
+endif ()
+
 # remove assertions in all release builds no matter what
 set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS
     $<$<CONFIG:RelWithDebInfo>:BEE_ENABLE_ASSERTIONS=0>
@@ -264,12 +274,11 @@ function(bee_test name)
         set(cached_sources ${__bee_sources})
 
         bee_new_source_root()
-        bee_add_sources(${ARGS_SOURCES})
-        bee_exe(${name} LINK_LIBRARIES Bee.TestMain ${ARGS_LINK_LIBRARIES})
+        bee_add_sources(${BEE_SOURCE_ROOT}/Bee/TestMain.cpp ${ARGS_SOURCES})
+        bee_exe(${name} LINK_LIBRARIES ${ARGS_LINK_LIBRARIES} gtest)
 
         __bee_set_compile_options(${name})
-
-        gtest_add_tests(TARGET ${name})
+        gtest_add_tests(TARGET ${name} ${ARGS_SOURCES})
 
         bee_new_source_root()
         bee_add_sources(${cached_sources})

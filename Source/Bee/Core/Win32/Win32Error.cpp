@@ -65,7 +65,7 @@ LONG top_level_exception_filter(PEXCEPTION_POINTERS ex_info)
     recursive_exception_check = true;
 
     log_error(
-        "Skyrocket: Unhandled exception: %s [at: %p]",
+        "Bee: Unhandled exception: %s [at: %p]",
         exception_code_to_string(ex_info->ExceptionRecord->ExceptionCode),
         ex_info->ExceptionRecord->ExceptionAddress
     );
@@ -91,6 +91,60 @@ void enable_exception_handling()
 void disable_exception_handling()
 {
     SetUnhandledExceptionFilter(nullptr);
+}
+
+
+/*
+ *************************
+ *
+ * Signal handling
+ *
+ *************************
+ */
+BOOL WINAPI win32_ctrl_handler(DWORD ctrl_type)
+{
+    switch (ctrl_type)
+    {
+        case CTRL_CLOSE_EVENT:
+        {
+            log_warning("Close console requested");
+            return TRUE;
+        }
+
+        case CTRL_C_EVENT:
+        {
+            detail::__bee_abort_handler();
+            return TRUE;
+        }
+
+        case CTRL_BREAK_EVENT:
+        {
+            return FALSE;
+        }
+
+        case CTRL_LOGOFF_EVENT:
+        {
+            return FALSE;
+        }
+
+        case CTRL_SHUTDOWN_EVENT:
+        {
+            return FALSE;
+        }
+
+        default: break;
+    }
+
+    return FALSE;
+}
+
+
+void init_signal_handler()
+{
+    if (!SetConsoleCtrlHandler(win32_ctrl_handler, TRUE))
+    {
+        log_error("Failed to initialize signal handler: %s", win32_get_last_error_string());
+    }
 }
 
 

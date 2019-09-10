@@ -1,7 +1,7 @@
 bee_test(Bee.Tests.Core
         LINK_LIBRARIES
 
-        Skyrocket.Core
+        Bee.Core
 
         SOURCES
 
@@ -35,6 +35,6 @@ bee_test(Bee.Tests.Core
 
 
 bee_test(Bee.Tests.Core.ResourcePoolStressTests
-        LINK_LIBRARIES Skyrocket.Core
+        LINK_LIBRARIES Bee.Core
         SOURCES ResourcePoolStressTests.cpp
 )

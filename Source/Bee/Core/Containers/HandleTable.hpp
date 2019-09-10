@@ -51,7 +51,7 @@ public:
     handle_t create(const DataType& value);
 
     template <typename... Args>
-    handle_t emplace(Args&&... args) noexcept;
+    handle_t emplace(DataType** new_data, Args&&... args) noexcept;
 
     void destroy(const handle_t& handle);
 

@@ -29,7 +29,7 @@ public:
 
   // Major/Minor version of highest shader model
   static const unsigned kHighestMajor = 6;
-  static const unsigned kHighestMinor = 4;
+  static const unsigned kHighestMinor = 5;
   static const unsigned kOfflineMinor = 0xF;
 
   bool IsPS() const     { return m_Kind == Kind::Pixel; }
@@ -40,6 +40,8 @@ public:
   bool IsCS() const     { return m_Kind == Kind::Compute; }
   bool IsLib() const    { return m_Kind == Kind::Library; }
   bool IsRay() const    { return m_Kind >= Kind::RayGeneration && m_Kind <= Kind::Callable; }
+  bool IsMS() const     { return m_Kind == Kind::Mesh; }
+  bool IsAS() const     { return m_Kind == Kind::Amplification; }
   bool IsValid() const;
   bool IsValidForDxil() const;
   bool IsValidForModule() const;
@@ -58,6 +60,8 @@ public:
   bool IsSM61Plus() const   { return IsSMAtLeast(6, 1); }
   bool IsSM62Plus() const   { return IsSMAtLeast(6, 2); }
   bool IsSM63Plus() const   { return IsSMAtLeast(6, 3); }
+  bool IsSM64Plus() const   { return IsSMAtLeast(6, 4); }
+  bool IsSM65Plus() const   { return IsSMAtLeast(6, 5); }
   const char *GetName() const { return m_pszName; }
   const char *GetKindName() const;
   unsigned GetNumTempRegs() const { return DXIL::kMaxTempRegCount; }
@@ -94,7 +98,7 @@ private:
               unsigned m_NumInputRegs, unsigned m_NumOutputRegs,
               bool m_bUAVs, bool m_bTypedUavs, unsigned m_UAVRegsLim);
 
-  static const unsigned kNumShaderModels = 56;
+  static const unsigned kNumShaderModels = 65;
   static const ShaderModel ms_ShaderModels[kNumShaderModels];
 
   static const ShaderModel *GetInvalid();

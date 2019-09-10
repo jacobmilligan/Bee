@@ -26,6 +26,7 @@ enum class LogVerbosity : u8
 
 using logger_callback_t = void(const LogVerbosity verbosity, const char* fmt, va_list va_args);
 
+BEE_CORE_API void logger_init();
 
 BEE_CORE_API void log_set_verbosity(LogVerbosity verbosity);
 

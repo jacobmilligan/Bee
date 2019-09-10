@@ -43,7 +43,7 @@ enum class TrackingMode
 BEE_CORE_API void set_tracking_mode(const TrackingMode mode);
 
 /**
- * Records a manual allocation event made from outside the Skyrocket memory environment (i.e. from a call to `malloc`)
+ * Records a manual allocation event made from outside the Bee memory environment (i.e. from a call to `malloc`)
  */
 BEE_CORE_API void record_manual_allocation(void* address, const size_t size, const size_t alignment, const i32 skipped_stack_frames);
 

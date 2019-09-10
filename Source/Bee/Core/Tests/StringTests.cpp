@@ -7,7 +7,7 @@
 
 #include <Bee/Core/String.hpp>
 #include <Bee/Core/Memory/MallocAllocator.hpp>
-#include <Bee/Core/Memory/StackAllocator.hpp>
+#include <Bee/Core/Memory/LinearAllocator.hpp>
 #include <Bee/Core/IO.hpp>
 
 #include <gtest/gtest.h>
@@ -15,7 +15,7 @@
 TEST(StringTests, construct_copy_move)
 {
     bee::MallocAllocator malloc_allocator;
-    bee::StackAllocator stack_allocator(bee::kibibytes(4));
+    bee::LinearAllocator linear_allocator(bee::kibibytes(4));
 
     const char* raw_test_string = "Test string 1";
 
@@ -87,9 +87,9 @@ TEST(StringTests, construct_copy_move)
 
     // Test copy and move with different allocators
     const char* raw_allocator_string = "Allocator test 1";
-    bee::String allocator_test_a(&stack_allocator);
-    bee::String allocator_test_b(10, 'y', &stack_allocator);
-    bee::String allocator_test_c(raw_allocator_string, &stack_allocator);
+    bee::String allocator_test_a(&linear_allocator);
+    bee::String allocator_test_b(10, 'y', &linear_allocator);
+    bee::String allocator_test_c(raw_allocator_string, &linear_allocator);
 
     test_string_a(allocator_test_a);
     test_string_b(allocator_test_b, "yyyyyyyyyy");
@@ -101,22 +101,31 @@ TEST(StringTests, construct_copy_move)
     copy_c = allocator_test_c;
 
     test_string_a(copy_a);
-    ASSERT_EQ(copy_a.allocator(), &stack_allocator);
+    ASSERT_EQ(copy_a.allocator(), &linear_allocator);
 
     test_string_b(copy_b, "yyyyyyyyyy");
-    ASSERT_EQ(copy_b.allocator(), &stack_allocator);
+    ASSERT_EQ(copy_b.allocator(), &linear_allocator);
 
     test_string_c(copy_c, raw_allocator_string);
-    ASSERT_EQ(copy_c.allocator(), &stack_allocator);
+    ASSERT_EQ(copy_c.allocator(), &linear_allocator);
 
     /*
-     * Test memory allocated is as expected with the new allocator. Shouls be on expected
-     * alignment * 6 strings + 9 bytes (1 byte per null terminator for each source and copied string)
+     * Test memory allocated is as expected with the new allocator. Need to check each allocation was aligned correctly
+     * by the allocator
      */
-    const auto total_size = allocator_test_a.size() + allocator_test_b.size() + allocator_test_c.size() +
-                            copy_a.size() + copy_b.size() + copy_c.size();
-    const auto aligned_total_size = bee::round_up(static_cast<size_t>(total_size), sizeof(void*) * 6) + 9;
-    ASSERT_EQ(stack_allocator.cursor(), aligned_total_size);
+    bee::String* strings[] = { &allocator_test_a, &allocator_test_b, &allocator_test_c, &copy_a, &copy_b, &copy_c };
+    int total_size = 0;
+    int expected_size = 0;
+    for (const auto& s : strings)
+    {
+        total_size += s->size();
+        if (!s->empty())
+        {
+            expected_size = bee::round_up(expected_size + sizeof(size_t), sizeof(void*)) + s->size() + 1;
+        }
+    }
+
+    ASSERT_EQ(linear_allocator.offset(), expected_size);
 
     allocator_test_a.~String();
     allocator_test_b.~String();
@@ -125,7 +134,7 @@ TEST(StringTests, construct_copy_move)
     copy_b.~String();
     copy_c.~String();
 
-    ASSERT_EQ(stack_allocator.cursor(), aligned_total_size);
+    ASSERT_EQ(linear_allocator.offset(), expected_size);
 }
 
 TEST(StringTests, append)
@@ -210,11 +219,11 @@ TEST(StringTests, format)
 This is to test if %s can format a large string with formatted size %d - %f, %llu
 
 )";
-    formatted = bee::str::format(large_raw_str, "Skyrocket", strlen(large_raw_str), 1.0f, bee::u64(23));
+    formatted = bee::str::format(large_raw_str, "Bee", strlen(large_raw_str), 1.0f, bee::u64(23));
 
     ASSERT_STREQ(formatted.c_str(), R"(
 
-This is to test if Skyrocket can format a large string with formatted size 85 - 1.000000, 23
+This is to test if Bee can format a large string with formatted size 85 - 1.000000, 23
 
 )");
 
@@ -226,11 +235,11 @@ TEST(StringTests, last_and_first_index_of)
     bee::String substring("substring");
 
     ASSERT_EQ(bee::str::last_index_of(string, 'g'), string.size() - 1);
-    ASSERT_EQ(bee::str::last_index_of(string, "sky"), string.size() - 11);
+    ASSERT_EQ(bee::str::last_index_of(string, "bee"), string.size() - 11);
     ASSERT_EQ(bee::str::last_index_of(string, substring), string.size() - 26);
 
     ASSERT_EQ(bee::str::first_index_of(string, 'g'), 12);
-    ASSERT_EQ(bee::str::first_index_of(string, "sky"), string.size() - 11);
+    ASSERT_EQ(bee::str::first_index_of(string, "bee"), string.size() - 11);
     ASSERT_EQ(bee::str::first_index_of(string, substring), 18);
 }
 

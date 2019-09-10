@@ -35,7 +35,7 @@ void log_assert_message(
     String msg_string(temp_allocator());
     io::StringStream msg_stream(&msg_string);
 
-    msg_stream.write_fmt("Skyrocket: %s", assert_msg);
+    msg_stream.write_fmt("Bee: %s", assert_msg);
 
     if (expr != nullptr)
     {
@@ -63,7 +63,7 @@ void log_assert_message(
 void __bee_assert_handler(const char* function, const char* file, const int line, const char* expr)
 {
     BEE_ASSERT_GUARD;
-    log_error("Skyrocket: Assertion failed (%s)", expr);
+    log_error("Bee: Assertion failed (%s)", expr);
     log_error("at %s:%d in function %s\n", file, line, function);
     log_stack_trace(LogVerbosity::error, 1);
 }
@@ -99,7 +99,7 @@ void __bee_print_error(
     String msg_string(temp_allocator());
     io::StringStream stream(&msg_string);
 
-    stream.write_fmt("Skyrocket %s error: ", type);
+    stream.write_fmt("Bee %s error: ", type);
 
     va_list args;
     va_start(args, msgformat);

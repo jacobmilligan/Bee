@@ -28,6 +28,7 @@
 #include <unordered_set>
 
 namespace llvm {
+template<typename T> class ArrayRef;
 class LLVMContext;
 class Module;
 class Function;
@@ -196,8 +197,9 @@ public:
                                           llvm::ArrayRef<llvm::Value *> paramList,
                                           llvm::Module &M);
 
-  static unsigned FindCastOp(bool fromUnsigned, bool toUnsigned,
-                             llvm::Type *SrcTy, llvm::Type *DstTy);
+  // Caller must handle conversions to bool and no-ops
+  static unsigned GetNumericCastOp(
+    llvm::Type *SrcTy, bool SrcIsUnsigned, llvm::Type *DstTy, bool DstIsUnsigned);
 
   // Precise attribute.
   // Note: Precise will be marked on alloca inst with metadata in code gen.
@@ -319,3 +321,4 @@ public:
 };
 
 } // namespace hlsl
+

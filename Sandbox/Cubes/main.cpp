@@ -41,6 +41,7 @@ public:
         swapchain_info.texture_array_layers = 1;
         swapchain_info.vsync = true;
         swapchain_info.window = ctx->main_window;
+        swapchain_info.debug_name = "Main swapchain";
         swapchain_ = bee::gpu_create_swapchain(device_, swapchain_info);
 
         return 0;
@@ -48,6 +49,7 @@ public:
 
     void shutdown(bee::AppContext* ctx) override
     {
+        bee::gpu_destroy_swapchain(device_, swapchain_);
         bee::gpu_destroy_device(device_);
     }
 

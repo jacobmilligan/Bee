@@ -1,6 +1,6 @@
 /*
  *  Socket.hpp
- *  Skyrocket
+ *  Bee
  *
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
@@ -21,6 +21,9 @@
 
 
 namespace bee {
+
+
+#define BEE_IPV4_LOCALHOST "127.0.0.1"
 
 
 enum class SocketType
@@ -47,6 +50,9 @@ enum class SocketAddressFamily
     #error Platform not supported
 #endif // BEE_OS_WINDOWS == 1
 
+using port_t = u16;
+
+
 struct BEE_CORE_API SocketAddress
 {
     addrinfo_t* info { nullptr };
@@ -64,7 +70,8 @@ struct BEE_CORE_API SocketAddress
     }
 };
 
-BEE_CORE_API bool socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const u16 port);
+
+BEE_CORE_API bool socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const port_t port);
 
 BEE_CORE_API bool socket_startup();
 
@@ -74,9 +81,13 @@ BEE_CORE_API bool socket_open(socket_t* dst, const SocketAddress& address);
 
 BEE_CORE_API void socket_close(const socket_t& socket);
 
+BEE_CORE_API bool socket_connect(socket_t* dst, const SocketAddress& address);
+
+BEE_CORE_API bool socket_shutdown(const socket_t client);
+
 BEE_CORE_API void socket_bind(const socket_t& socket, const SocketAddress& address);
 
-BEE_CORE_API void socket_listen(const socket_t& socket);
+BEE_CORE_API void socket_listen(const socket_t& socket, i32 max_waiting_clients);
 
 BEE_CORE_API bool socket_accept(const socket_t& socket, socket_t* client);
 
@@ -84,7 +95,7 @@ BEE_CORE_API bool socket_accept(const socket_t& socket, socket_t* client);
 // close connection if result == 0, otherwise success with bytes recieved if > 0, otherwise error
 BEE_CORE_API i32 socket_recv(const socket_t& client, char* buffer, const i32 buffer_length);
 
-BEE_CORE_API i32 socket_send(const socket_t& server, const char* buffer, const i32 buffer_length);
+BEE_CORE_API i32 socket_send(const socket_t& client, const char* buffer, const i32 buffer_length);
 
 BEE_CORE_API i32 socket_select(const socket_t& socket, fd_set_t* read_fd_set, fd_set_t* write_fd_set, fd_set_t* except_fd_set, const timeval& timeout);
 

@@ -11,7 +11,7 @@
  * # JSON
  *
  * This API is intended for use as an efficient reader_ for tools and plugins that output JSON with
- * relaxed syntax options (i.e. multiline strings, unquoted keys, no commas) such as ShaderCompiler that can't be
+ * relaxed syntax options (i.e. multiline strings, unquoted keys, no commas) such as BeeShaderCompiler that can't be
  * parsed using other libraries or API's such as RapidJSON. This should NOT be used to serialize/deserialize
  * standard JSON on disk - other libraries should be used for that purpose.
  *

@@ -36,7 +36,7 @@ struct PlatformSize
 
 struct WindowConfig
 {
-    const char*     title { "Skyrocket Application" }; // nonserialized
+    const char*     title { "Bee Application" }; // nonserialized
     MonitorHandle   monitor; // nonserialized
     bool            fullscreen { false };
     bool            borderless { false };

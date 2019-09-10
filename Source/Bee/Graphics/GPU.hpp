@@ -614,6 +614,11 @@ BEE_DEFINE_RAW_HANDLE_U32(Device);
 BEE_DEFINE_VERSIONED_HANDLE(Swapchain);
 BEE_DEFINE_VERSIONED_HANDLE(Texture);
 BEE_DEFINE_VERSIONED_HANDLE(TextureView);
+BEE_DEFINE_VERSIONED_HANDLE(Buffer);
+BEE_DEFINE_VERSIONED_HANDLE(BufferView);
+BEE_DEFINE_VERSIONED_HANDLE(RenderPass);
+BEE_DEFINE_VERSIONED_HANDLE(Shader);
+BEE_DEFINE_VERSIONED_HANDLE(PipelineState);
 
 /*
  ********************************************************
@@ -669,6 +674,7 @@ struct SwapchainCreateInfo
     u32             texture_array_layers { 1 };
     bool            vsync { false };
     WindowHandle    window;
+    const char*     debug_name { nullptr };
 };
 
 
@@ -685,6 +691,7 @@ struct TextureCreateInfo
     u32                 mip_count { 1 };
     u32                 array_element_count { 1 };
     u32                 sample_count { 1 };
+    const char*         debug_name { nullptr };
 };
 
 
@@ -697,6 +704,135 @@ struct TextureViewCreateInfo
     u32             mip_level_count { 1 };
     u32             array_element_offset { 0 };
     u32             array_element_count { 1 };
+    const char*     debug_name { nullptr };
+};
+
+// TODO(Jacob): buffers
+// TODO(Jacob): render passes
+
+struct StencilOpDescriptor
+{
+    StencilOp       fail_op { StencilOp::keep };
+    StencilOp       pass_op { StencilOp::keep };
+    StencilOp       depth_fail_op { StencilOp::keep };
+    CompareFunc     compare_func { CompareFunc::always };
+    u32             read_mask { ~0u };
+    u32             write_mask { ~0u };
+};
+
+
+struct BlendStateDescriptor
+{
+    bool            blend_enabled { false };
+    PixelFormat     format { PixelFormat::invalid };
+    ColorWriteMask  write_mask { ColorWriteMask::all };
+    BlendOperation  alpha_blend_op { BlendOperation::add };
+    BlendOperation  rgb_blend_op { BlendOperation::add };
+    BlendFactor     src_blend_alpha { BlendFactor::one };
+    BlendFactor     src_blend_rgb { BlendFactor::one };
+    BlendFactor     dst_blend_alpha { BlendFactor::zero };
+    BlendFactor     dst_blend_rgb { BlendFactor::zero };
+};
+
+
+struct VertexAttributeDescriptor
+{
+    // If the order of these gets changed, ShaderCompiler needs to be updated accordingly
+    // at the line with the comment 'Reflect vertex descriptor' otherwise all shaders will be busted
+    VertexFormat    format { VertexFormat::invalid };
+    u32             offset { 0 };
+    u32             location { 0 };
+    u32             layout { 0 };
+};
+
+
+// Describes the layout of a single vertex buffer
+struct VertexLayoutDescriptor
+{
+    // If the order of these gets changed, ShaderCompiler needs to be updated accordingly
+    // at the line with the comment 'Reflect vertex descriptor' otherwise all shaders will be busted
+    u32             buffer_index { 0 };
+    u32             stride { 0 };
+    StepFunction    step_function { StepFunction::per_vertex };
+};
+
+
+/// Describes the layout of vertices for all vertex buffers bound for a given pipeline state.
+///
+/// Example:
+/// A pipeline state may require 2 vertex buffers bound at a time - 1 with per-vertex data
+/// (pos, color, uv etc.) and one with per-instance data (matrix data, group color etc.). These
+/// would be bound at slot 0 & 1 respectively and therefore require `layout_count = 2` and the
+/// driver would expect 2 elements in the `layouts` array to be filled in. Each of these layouts
+/// would specify attributes for each layout
+struct VertexDescriptor
+{
+    static constexpr u8 max_attributes = 32; // 8 unique attributes per layout
+    static constexpr u8 max_layouts = 4;
+
+    // If the order of these gets changed, ShaderCompiler needs to be updated accordingly
+    // at the line with the comment 'Reflect vertex descriptor' otherwise all shaders will be busted
+    u32                         layout_count { 0 };
+    u32                         attribute_count { 0 };
+    VertexLayoutDescriptor      layouts[max_layouts];
+    VertexAttributeDescriptor   attributes[max_attributes];
+};
+
+
+struct RasterStateDescriptor
+{
+    FillMode                fill_mode { FillMode::solid };
+    CullMode                cull_mode { CullMode::back };
+    float                   line_width { 1.0f }; // this is more of a hint and isn't supported by all backends
+    bool                    front_face_ccw { false };
+    // ignored if depth-clipping/clamping isn't supported by the backend or !defined(SKY_CONFIG_ALLOW_DEPTH_CLAMP)
+    bool                    depth_clamp_enabled { false };
+    bool                    depth_bias_enabled { false };
+    float                   depth_bias { 0.0f };
+    float                   depth_slope_factor { 0.0f };
+    float                   depth_bias_clamp { 0.0f };
+};
+
+
+struct DepthStencilStateDescriptor
+{
+    CompareFunc             depth_compare_func { CompareFunc::less };
+    bool                    depth_test_enabled{ false };
+    bool                    depth_write_enabled{ false };
+    bool                    stencil_test_enabled{ false };
+    StencilOpDescriptor     front_face_stencil;
+    StencilOpDescriptor     back_face_stencil;
+};
+
+
+struct PipelineStateDescriptor
+{
+    // Primitive type to use when rendering while this pipeline state is used
+    PrimitiveType               primitive_type { PrimitiveType::triangle };
+    // A render pass that describes a compatible set of color & depth attachments
+    RenderPassHandle            compatible_render_pass;
+    // Index into the render passes subpass array that this pipeline uses (see: RenderPassCreateInfo::subpasses)
+    u32                         subpass_index { 0 };
+    // Describes the vertex layouts and input attributes used by vertex buffers
+    VertexDescriptor            vertex_description;
+    // Shaders used at the various pipeline stages
+    ShaderHandle                vertex_stage;
+
+    ShaderHandle                fragment_stage;
+
+    // Render state
+    RasterStateDescriptor       raster_state;
+    DepthStencilStateDescriptor depth_stencil_state;
+
+    // Multisampling
+    u32                         sample_count { 1 };
+
+    // Blend state
+    u32                         color_blend_state_count { 1 };
+    BlendStateDescriptor        color_blend_states[BEE_GPU_MAX_ATTACHMENTS];
+
+    // Resource binding layout the pipeline is expecting
+//    ResourceLayoutDescriptor    resource_layout;
 };
 
 /*

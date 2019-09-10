@@ -81,6 +81,8 @@ struct VulkanSwapchain
     i32                             current_image { 0 };
     FixedArray<TextureHandle>       images;
     FixedArray<TextureViewHandle>   image_views;
+
+    char                            id_string[16];
 };
 
 

@@ -42,8 +42,6 @@ if (WIN32)
     add_subdirectory(Win32)
 endif ()
 
-add_subdirectory(Tests)
-
 set(core_link_libraries xxHash)
 
 if (WIN32)
@@ -53,3 +51,6 @@ endif ()
 bee_library(Bee.Core SHARED LINK_LIBRARIES ${core_link_libraries})
 
 target_compile_definitions(Bee.Core PRIVATE BEE_BUILD_CORE_EXPORT_LIBRARY)
+
+# Tests
+add_subdirectory(Tests)

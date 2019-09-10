@@ -1,1 +1,2 @@
 add_subdirectory(BeeBuild)
+add_subdirectory(BeeShaderCompiler)

@@ -12,9 +12,9 @@
 
 
 /**
- * This is the main entry point for all Skyrocket GUI-based applications. Skyrocket will implement a platform-specific
+ * This is the main entry point for all Bee GUI-based applications. Bee will implement a platform-specific
  * GUI main (i.e. WinMain) and then call into `bee_main`. To use, statically link the exe target with
- * `Skyrocket.Application` and then add `int bee_main(int argc, char** argv)` to any .cpp file
+ * `Bee.Application` and then add `int bee_main(int argc, char** argv)` to any .cpp file
  */
 extern int bee_main(int argc, char** argv);
 
@@ -26,6 +26,8 @@ extern int bee_main(int argc, char** argv);
 
 int WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 {
+    bee::logger_init();
+
     int argc = 0;
     auto command_line = CommandLineToArgvW(GetCommandLineW(), &argc);
 
@@ -43,6 +45,7 @@ int WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
         argv[arg_idx] = utf8_args[arg_idx].data();
     }
 
+    bee::init_signal_handler();
     bee::enable_exception_handling();
 
     auto return_code = bee_main(argc, argv.data());
@@ -58,6 +61,7 @@ int WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 // TODO(Jacob): get game/app name from project settings
 int main(int argc, char** argv)
 {
+    bee::init_signal_handler();
     bee::enable_exception_handling();
 
     return bee_main(argc, argv);

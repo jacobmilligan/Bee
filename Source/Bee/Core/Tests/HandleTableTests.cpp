@@ -169,7 +169,7 @@ TEST_F(HandleTableTest, test_multiple_allocations)
 
 TEST_F(HandleTableTest, stress_test)
 {
-    MockResourceHandle handles[resources_.capacity];
+    MockResourceHandle handles[resource_pool_t::capacity];
     MockResource result{};
     for (int i = 0; i < resources_.capacity; ++i)
     {

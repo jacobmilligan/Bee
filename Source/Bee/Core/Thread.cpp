@@ -24,7 +24,7 @@ void Thread::init(const ThreadCreateInfo& create_info, ExecuteParams* params)
     str::copy(name_, max_name_length, create_info.name, name_len);
     if (name_len == 0)
     {
-        str::copy(name_, max_name_length, "Skyrocket.Thread");
+        str::copy(name_, max_name_length, "Bee.Thread");
     }
     create_native_thread(params);
 }

@@ -39,11 +39,6 @@ struct LogSystem
 
 #endif // BEE_OS_WINDOWS == 1
 
-    LogSystem()
-    {
-        log_register_callback(default_logger_callback);
-    }
-
     ~LogSystem()
     {
 #if BEE_OS_WINDOWS == 1
@@ -174,20 +169,45 @@ void default_logger_callback(const LogVerbosity verbosity, const char* fmt, va_l
 #endif // BEE_OS_WINDOWS == 1
 }
 
+void ensure_logger()
+{
+    if (g_log.registered_loggers.empty())
+    {
+        logger_init();
+    }
+}
+
+void logger_init()
+{
+    static bool recursion_check = false;
+    if (!recursion_check)
+    {
+        recursion_check = true;
+        log_register_callback(default_logger_callback);
+        recursion_check = false;
+    }
+}
+
 void log_set_verbosity(const LogVerbosity verbosity)
 {
+    ensure_logger();
+
     scoped_recursive_spinlock_t lock(g_log.system_mutex);
     g_log.verbosity = verbosity;
 }
 
 LogVerbosity log_get_verbosity()
 {
+    ensure_logger();
+
     scoped_recursive_spinlock_t lock(g_log.system_mutex);
     return g_log.verbosity;
 }
 
 void log_register_callback(logger_callback_t* logger)
 {
+    ensure_logger();
+
     scoped_recursive_spinlock_t lock(g_log.system_mutex);
 
     // Ensure loggers aren't registered twice
@@ -204,6 +224,8 @@ void log_register_callback(logger_callback_t* logger)
 
 void write_v(const LogVerbosity verbosity, const char* fmt, va_list va_args)
 {
+    ensure_logger();
+
     scoped_recursive_spinlock_t lock(g_log.system_mutex);
 
     for (auto& log_callback : g_log.registered_loggers)

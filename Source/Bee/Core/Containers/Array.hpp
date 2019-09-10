@@ -88,6 +88,11 @@ public:
         return make_span(data(), size());
     }
 
+    inline Allocator* allocator() const
+    {
+        return allocator_;
+    }
+
     T* begin();
 
     const T* begin() const;
@@ -462,7 +467,11 @@ void Array<T, Mode>::resize(const i32 new_size)
     if (new_size > old_size)
     {
         // will always be either destructed or uninitialized so this is safe
-        fill_uninitialized_range(old_size, new_size - old_size, T());
+        assert_valid_range();
+        for (int i = old_size; i < new_size; ++i)
+        {
+            new (data_ + i) T();
+        }
     }
 }
 

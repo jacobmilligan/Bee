@@ -95,11 +95,11 @@ HandleType HandleTable<Capacity, HandleType, DataType>::create(const DataType& v
 
 template <i32 Capacity, typename HandleType, typename DataType>
 template <typename... Args>
-HandleType HandleTable<Capacity, HandleType, DataType>::emplace(Args&&... args) noexcept
+HandleType HandleTable<Capacity, HandleType, DataType>::emplace(DataType** new_data, Args&&... args) noexcept
 {
-    DataType* new_data = nullptr;
-    const auto handle = create_uninitialized(&new_data);
-    new (new_data) DataType(std::forward<Args>(args)...);
+    BEE_ASSERT(new_data != nullptr);
+    const auto handle = create_uninitialized(new_data);
+    new (*new_data) DataType(std::forward<Args>(args)...);
     return handle;
 }
 

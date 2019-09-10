@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Containers/Array.hpp>
 #include "Bee/Core/Memory/MallocAllocator.hpp"
-#include "Bee/Core/Memory/StackAllocator.hpp"
+#include "Bee/Core/Memory/LinearAllocator.hpp"
 #include "Bee/Core/Concurrency.hpp"
 
 namespace bee {
@@ -76,11 +76,11 @@ struct TempAllocator final : public Allocator
 private:
     size_t                              capacity_ { 0 };
     SpinLock                            global_lock;
-    DynamicArray<StackAllocator*>       allocators;
+    DynamicArray<LinearAllocator*>       allocators;
 
     char pad[64];
 
-    static thread_local StackAllocator  thread_local_allocator;
+    static thread_local LinearAllocator  thread_local_allocator;
 
     void ensure_allocator()
     {
@@ -89,14 +89,14 @@ private:
             return;
         }
 
-        thread_local_allocator = StackAllocator(capacity_);
+        thread_local_allocator = LinearAllocator(capacity_);
 
         scoped_spinlock_t lock(global_lock);
         allocators.push_back(&thread_local_allocator);
     }
 };
 
-thread_local StackAllocator TempAllocator::thread_local_allocator;
+thread_local LinearAllocator TempAllocator::thread_local_allocator;
 
 static TempAllocator temp_allocator_instance(BEE_CONFIG_DEFAULT_TEMP_ALLOCATOR_SIZE);
 

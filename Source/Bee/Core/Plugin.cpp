@@ -158,7 +158,7 @@ PluginAPI load_dynamic_plugin(const char* name)
         return global_registry->plugins[registered_plugin_idx].api;
     }
 
-    log_info("Skyrocket: Loading plugin \"%s\"...", name);
+    log_info("Bee: Loading plugin \"%s\"...", name);
 
     auto plugin = allocate_plugin(name);
     if (plugin == nullptr)
@@ -191,7 +191,7 @@ PluginAPI load_dynamic_plugin(const char* name)
 
     plugin->api.ptr = plugin->load();
 
-    log_info("Skyrocket: Plugin \"%s\" loaded successfully", name);
+    log_info("Bee: Plugin \"%s\" loaded successfully", name);
 
     // Make sure any dynamically loaded symbols are added to the debug trace system
     refresh_debug_symbols();
@@ -210,21 +210,21 @@ PluginAPI load_static_plugin(const char* name, load_function_t* load, unload_fun
         return global_registry->plugins[registered_plugin_idx].api;
     }
 
-    log_info("Skyrocket: Loading plugin \"%s\"...", name);
+    log_info("Bee: Loading plugin \"%s\"...", name);
 
     auto plugin = allocate_plugin(name);
     plugin->load = load;
     plugin->unload = unload;
     plugin->api.ptr = plugin->load();
 
-    log_info("Skyrocket: Plugin \"%s\" loaded successfully", name);
+    log_info("Bee: Plugin \"%s\" loaded successfully", name);
 
     return plugin->api;
 }
 
 void unload_plugin(const char* name)
 {
-    log_info("=> Skyrocket: Unloading plugin \"%s\"...", name);
+    log_info("=> Bee: Unloading plugin \"%s\"...", name);
 
     BEE_ASSERT_PLUGIN_SYSTEM();
     scoped_spinlock_t lock(global_registry->mutex);

@@ -232,9 +232,9 @@ const AppData& get_appdata()
 
     /*
      * In a dev build, the assets root is located in <binaries_root>/../../Assets - i.e. at
-     * C:/Skyrocket/Build/Debug/../../Assets => C:/Skyrocket/Assets.
-     * Otherwise its at <binaries_root>/../Assets - i.e. at C:/Program Files (x86)/Skyrocket/1.0.0/Binaries/../Assets =>
-     * C:/Program Files (x86)/Skyrocket/1.0.0/Assets
+     * C:/Bee/Build/Debug/../../Assets => C:/Bee/Assets.
+     * Otherwise its at <binaries_root>/../Assets - i.e. at C:/Program Files (x86)/Bee/1.0.0/Binaries/../Assets =>
+     * C:/Program Files (x86)/Bee/1.0.0/Assets
      */
     appdata.assets_root = is_installed_build
                         ? appdata.binaries_root.parent().join("Assets")

@@ -31,7 +31,7 @@ native_type func_name(const enum_type value)                                    
     static constexpr native_type translation_table[] = { __VA_ARGS__ };                                                                 \
     static constexpr size_t table_size = static_array_length(translation_table);                                                        \
     static_assert(table_size == static_cast<size_t>(max_enum_value),                                                                    \
-                "Skyrocket: error: the translation table for "#native_type                                                              \
+                "Bee: error: the translation table for "#native_type                                                              \
                 " is missing entries. Please update to sync with the "#enum_type" enum.");                                              \
     BEE_ASSERT_F_NO_DEBUG_BREAK(static_cast<size_t>(value) < static_cast<size_t>(max_enum_value),                                       \
                               "Invalid value for `"#enum_type"` to `"#native_type"` translation table given: `"#max_enum_value"`");     \

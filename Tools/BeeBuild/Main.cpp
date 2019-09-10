@@ -118,7 +118,6 @@ bool configure(const ConfigureInfo& config_info)
         stream.write_fmt(R"("%s" x64 && )", build_info.vcvarsall_path.c_str());
     }
 
-
     stream.write_fmt(
         R"("%s" "%s" -G "%s" -B )",
         build_info.cmake_path.c_str(),
@@ -186,13 +185,30 @@ int bb_entry(int argc, char** argv)
         generator_help += "  - " + mapping.key + " => " + mapping.value + "\n";
     }
 
-    cli::Option options[] =
+    cli::Positional generator_pos("generator", "The project generator to use. Available options: ");
+    int cur_generator = 0;
+    for (const auto& g : generator_mappings)
     {
-        cli::Option('c', "configure", false, "Configures and generates project files instead of building", 0),
-        cli::Option('g', "generator", true, generator_help.c_str(), 1)
-    };
+        generator_pos.help.append(g.key);
+        if (cur_generator < generator_mappings.size() - 1)
+        {
+            generator_pos.help.append(", ");
+        }
+        ++cur_generator;
+    }
 
-    const auto command_line = cli::parse(argc, argv, nullptr, 0, options, static_array_length(options));
+    cli::ParserDescriptor subparsers[2]{};
+    subparsers[0].command_name = "configure";
+    subparsers[0].positional_count = 1;
+    subparsers[0].positionals = &generator_pos;
+
+    subparsers[1].command_name = "build";
+
+    cli::ParserDescriptor parser{};
+    parser.subparser_count = bee::static_array_length(subparsers);
+    parser.subparsers = subparsers;
+
+    const auto command_line = cli::parse(argc, argv, parser);
 
     if (!command_line.success)
     {
@@ -202,52 +218,63 @@ int bb_entry(int argc, char** argv)
 
     if (command_line.help_requested)
     {
-        log_info("%s", command_line.help_string.c_str());
+        log_info("%s", command_line.requested_help_string);
         return EXIT_SUCCESS;
     }
 
-    const auto generator = cli::get_option(command_line, "generator");
-    // Project root is always at: <Root>/<BuildConfig>/bb.exe/../../../
-    const auto cmake_generator = generator_mappings.find(generator);
-    if (cmake_generator == nullptr)
-    {
-        log_error("Invalid generator specified: %s", generator);
-        return EXIT_FAILURE;
-    }
+    const auto configure_cmd = command_line.subparsers.find("configure");
+    const auto build_cmd = command_line.subparsers.find("build");
 
-    const auto build_only = !cli::has_option(command_line, "configure");
-    if (build_only)
+    // Handle the `build` subparser
+    if (build_cmd != nullptr)
     {
         return build(String());
     }
 
-    ConfigureInfo config_info{};
-    config_info.bb_generator = generator;
-    config_info.cmake_generator = cmake_generator->value.c_str();
-    config_info.cmake_options_count = cli::get_remainder_count(command_line);
-    config_info.cmake_options = cli::get_remainder(command_line);
-
-    DynamicArray<String> build_types;
-
-    if (str::compare(generator, "CLion") == 0)
+    // Handle the `configure` subparser
+    if (configure_cmd != nullptr)
     {
-        build_types.push_back("Debug");
-        build_types.push_back("Release");
-    }
-    else
-    {
-        build_types.push_back("MultiConfig");
-    }
-
-    for (const auto& build_type : build_types)
-    {
-        config_info.build_type = build_type.c_str();
-        if (!configure(config_info))
+        const auto generator = cli::get_positional(configure_cmd->value, 0);
+        // Project root is always at: <Root>/<BuildConfig>/bb.exe/../../../
+        const auto cmake_generator = generator_mappings.find(generator);
+        if (cmake_generator == nullptr)
         {
+            log_error("Invalid generator specified: %s", generator);
             return EXIT_FAILURE;
         }
+
+        ConfigureInfo config_info{};
+        config_info.bb_generator = generator;
+        config_info.cmake_generator = cmake_generator->value.c_str();
+        config_info.cmake_options_count = cli::get_remainder_count(command_line);
+        config_info.cmake_options = cli::get_remainder(command_line);
+
+        DynamicArray<String> build_types;
+
+        if (str::compare(config_info.bb_generator, "CLion") == 0)
+        {
+            build_types.push_back("Debug");
+            build_types.push_back("Release");
+        }
+        else
+        {
+            build_types.push_back("MultiConfig");
+        }
+
+        for (const auto& build_type : build_types)
+        {
+            config_info.build_type = build_type.c_str();
+            if (!configure(config_info))
+            {
+                return EXIT_FAILURE;
+            }
+        }
+
+        return EXIT_SUCCESS;
     }
 
+    log_error("Missing required subparsers");
+    log_info("%s", command_line.help_string.c_str());
     return EXIT_SUCCESS;
 }
 

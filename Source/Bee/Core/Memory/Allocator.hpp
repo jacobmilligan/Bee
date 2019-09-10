@@ -27,7 +27,7 @@ namespace bee {
  *
  * # Allocator
  *
- * Interface for defining a memory allocator that can be used with all Skyrocket
+ * Interface for defining a memory allocator that can be used with all Bee
  * containers and memory tracking systems
  *
  ****************************************************************************************
@@ -177,13 +177,13 @@ BEE_FORCE_INLINE void destruct(ValueType* ptr)
 
 /**
  * A replacement for the standard `new` operator. This should always be used in place `new` as it enables memory
- * tracking on the allocated object and allows usage of the Skyrocket allocator model
+ * tracking on the allocated object and allows usage of the Bee allocator model
  */
 #define BEE_NEW(allocator, object_type) new (BEE_MALLOC_ALIGNED(allocator, sizeof(object_type), alignof(object_type))) object_type
 
 /**
  * Deletes an object previously allocated with `BEE_NEW` - should always be used in place of the standard c++ `delete`
- * as this enables memory tracking and usage of the Skyrocket allocator model
+ * as this enables memory tracking and usage of the Bee allocator model
  */
 #define BEE_DELETE(allocator, ptr) bee::destruct(ptr); BEE_FREE(allocator, ptr)
 
@@ -206,7 +206,7 @@ BEE_CORE_API Allocator* system_allocator() noexcept;
  *
  * # Global temporary allocator
  *
- * A simple stack allocator whose cursor is reset at the most convenient point for the
+ * A simple stack allocator whose offset is reset at the most convenient point for the
  * application (usually at the beginning of a new frame). Allocations made with this
  * allocator are not guaranteed to last for more than a single frame but **may** remain
  * for 1-3 frames depending on the implementation. In general this should only be used

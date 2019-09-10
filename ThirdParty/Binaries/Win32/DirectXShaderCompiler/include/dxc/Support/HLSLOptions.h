@@ -150,9 +150,12 @@ public:
   bool DisplayIncludeProcess = false; // OPT__vi
   bool RecompileFromBinary = false; // OPT _Recompile (Recompiling the DXBC binary file not .hlsl file)
   bool StripDebug = false; // OPT Qstrip_debug
+  bool EmbedDebug = false; // OPT Qembed_debug
   bool StripRootSignature = false; // OPT_Qstrip_rootsignature
   bool StripPrivate = false; // OPT_Qstrip_priv
   bool StripReflection = false; // OPT_Qstrip_reflect
+  bool KeepReflectionInDxil = false; // OPT_Qkeep_reflect_in_dxil
+  bool StripReflectionFromDxil = false; // OPT_Qstrip_reflect_from_dxil
   bool ExtractRootSignature = false; // OPT_extractrootsignature
   bool DisassembleColorCoded = false; // OPT_Cc
   bool DisassembleInstNumbers = false; //OPT_Ni
@@ -162,9 +165,18 @@ public:
   bool LegacyResourceReservation = false; // OPT_flegacy_resource_reservation
   unsigned long AutoBindingSpace = UINT_MAX; // OPT_auto_binding_space
   bool ExportShadersOnly = false; // OPT_export_shaders_only
+  bool ResMayAlias = false; // OPT_res_may_alias
+  unsigned long ValVerMajor = UINT_MAX, ValVerMinor = UINT_MAX; // OPT_validator_version
 
   bool IsRootSignatureProfile();
   bool IsLibraryProfile();
+
+  // Helpers to clarify interpretation of flags for behavior in implementation
+  bool IsDebugInfoEnabled();    // Zi
+  bool EmbedDebugInfo();        // Qembed_debug
+  bool EmbedPDBName();          // Zi or Fd
+  bool DebugFileIsDirectory();  // Fd ends in '\\'
+  llvm::StringRef GetPDBName(); // Fd name
 
   // SPIRV Change Starts
 #ifdef ENABLE_SPIRV_CODEGEN

@@ -8,9 +8,3 @@ add_subdirectory(Graphics)
 
 bee_library(Bee LINK_LIBRARIES Bee.Core)
 target_compile_definitions(Bee PUBLIC BEE_BUILD_EXPORT_LIBRARY)
-
-
-# Tests library
-bee_new_source_root()
-bee_add_sources(TestMain.cpp)
-bee_library(Bee.TestMain LINK_LIBRARIES gtest)

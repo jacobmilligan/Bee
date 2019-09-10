@@ -28,7 +28,8 @@ struct Proxy
 
     Proxy()
         : total_allocations(0),
-          peak_allocations(0)
+          peak_allocations(0),
+          allocations(system_allocator())
     {}
 
     ~Proxy()

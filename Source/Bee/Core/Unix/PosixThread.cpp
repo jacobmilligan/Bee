@@ -6,7 +6,7 @@
  */
 
 #include "Bee/Core/Error.hpp"
-#include "Skyrocket/Platform/Thread.hpp"
+#include "Bee/Platform/Thread.hpp"
 
 
 namespace bee {

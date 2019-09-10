@@ -27,7 +27,7 @@ bee::String log_assert_message(
     bee::String msg_string;
     bee::io::StringStream msg_stream(&msg_string);
 
-    msg_stream.write_fmt("Skyrocket => %s", assert_msg);
+    msg_stream.write_fmt("Bee => %s", assert_msg);
 
     if (expr != nullptr)
     {
@@ -142,7 +142,7 @@ TEST(IOTests, stringstream)
 
     int line = 0;
     auto msg = BEE_TEST_PASSING_VA_LIST(&line, 25 == 50, "This works! %s %d", "Another test", 1);
-    bee::String expected = R"(Skyrocket => Check failed (25 == 50)
+    bee::String expected = R"(Bee => Check failed (25 == 50)
    => at )" __FILE__ ":"
    + bee::str::to_string(line)
    + R"(

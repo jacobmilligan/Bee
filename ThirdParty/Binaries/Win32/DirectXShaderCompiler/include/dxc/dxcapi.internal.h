@@ -32,6 +32,7 @@ typedef struct ID3D10Blob ID3D10Blob;
 
 static const BYTE INTRIN_TEMPLATE_FROM_TYPE = 0xff;
 static const BYTE INTRIN_TEMPLATE_VARARGS = 0xfe;
+static const BYTE INTRIN_TEMPLATE_FROM_FUNCTION = 0xfd;
 
 // Use this enumeration to describe allowed templates (layouts) in intrinsics.
 enum LEGAL_INTRINSIC_TEMPLATES {
@@ -86,7 +87,10 @@ enum LEGAL_INTRINSIC_COMPTYPES {
   LICOMPTYPE_ACCELERATION_STRUCT = 31,
   LICOMPTYPE_USER_DEFINED_TYPE = 32,
 
-  LICOMPTYPE_COUNT = 33
+  LICOMPTYPE_TEXTURE2D = 33,
+  LICOMPTYPE_TEXTURE2DARRAY = 34,
+
+  LICOMPTYPE_COUNT = 35
 };
 
 static const BYTE IA_SPECIAL_BASE = 0xf0;

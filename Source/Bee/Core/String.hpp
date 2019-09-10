@@ -127,7 +127,7 @@ private:
  *
  * ## No Copy-On-Write
  *
- * `String` doesn't use Copy-On-Write semantics - The reasoning behind this is that Skyrocket's allocator model is
+ * `String` doesn't use Copy-On-Write semantics - The reasoning behind this is that Bee's allocator model is
  * extremely flexible and the overhead of reference counting and tracking resources is an undesirable and unnecessary
  * optimization if the user already knows up-front how the memory is to be allocated and used. An example of this is
  * temporary strings allocated from a `StackAllocator` - these strings are created from a pre-allocated memory chunk

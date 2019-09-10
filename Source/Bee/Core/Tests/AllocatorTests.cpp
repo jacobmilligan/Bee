@@ -5,18 +5,18 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include <Bee/Core/Memory/StackAllocator.hpp>
-#include <Bee/Core/Memory/TLSFAllocator.hpp>
+#include <Bee/Core/Memory/LinearAllocator.hpp>
 
 #include <gtest/gtest.h>
 #include <Bee/Core/Memory/VariableSizedPoolAllocator.hpp>
 #include <Bee/Core/Memory/PoolAllocator.hpp>
 #include <Bee/Core/Containers/Array.hpp>
 
-TEST(AllocatorTests, stack_allocator)
+TEST(AllocatorTests, linear_allocator)
 {
-    bee::StackAllocator allocator(128);
-    for (size_t alloc_idx = 0; alloc_idx < allocator.capacity(); ++alloc_idx)
+    bee::LinearAllocator allocator(128);
+    // check capacity minus headers
+    for (size_t alloc_idx = 0; alloc_idx < allocator.capacity() / (sizeof(size_t) + 1); ++alloc_idx)
     {
         ASSERT_NO_FATAL_FAILURE(allocator.allocate(1));
     }
@@ -25,7 +25,7 @@ TEST(AllocatorTests, stack_allocator)
 
     allocator.reset();
 
-    ASSERT_NO_FATAL_FAILURE(allocator.allocate(128));
+    ASSERT_NO_FATAL_FAILURE(allocator.allocate(allocator.max_allocation()));
 
     allocator.reset();
 
@@ -37,59 +37,6 @@ TEST(AllocatorTests, stack_allocator)
     ASSERT_FALSE(allocator.is_valid(invalid_ptr));
     invalid_ptr = nullptr;
     ASSERT_FALSE(allocator.is_valid(invalid_ptr));
-}
-
-TEST(AllocatorTests, tlsf_allocator)
-{
-    const auto pool_size = bee::kibibytes(1);
-    bee::TLSFAllocator allocator;
-    // 1k pools with 4 pools max
-    ASSERT_NO_FATAL_FAILURE(allocator = bee::TLSFAllocator(pool_size, 0));
-
-    const auto int_array_size = pool_size / sizeof(int);
-    int* int_array = nullptr;
-    ASSERT_NO_FATAL_FAILURE(int_array = static_cast<int*>(allocator.allocate(pool_size)));
-
-    // Pool count checking
-    ASSERT_NE(int_array, nullptr);
-    ASSERT_EQ(allocator.pool_count(), 1);
-
-    const auto int_array_64_size = (pool_size * 2) / sizeof(bee::u64);
-    bee::u64* int_array_64 = nullptr;
-    ASSERT_NO_FATAL_FAILURE(int_array_64 = static_cast<bee::u64*>(allocator.allocate(pool_size * 2)));
-
-    ASSERT_NE(int_array_64, nullptr);
-    ASSERT_EQ(allocator.pool_count(), 2);
-
-    // Bounds checking
-    ASSERT_NO_FATAL_FAILURE(int_array[int_array_size - 1] = 23);
-    // Bounds checking
-    ASSERT_NO_FATAL_FAILURE(int_array_64[int_array_64_size - 1] = 42);
-
-    // Realloc
-    const auto new_int_array_size = (pool_size * 2) / sizeof(int);
-    ASSERT_NO_FATAL_FAILURE(
-        int_array = static_cast<int*>(allocator.reallocate(int_array, pool_size, pool_size * 2, 1))
-    );
-
-    ASSERT_NE(int_array, nullptr);
-
-    // Check overlapping memory
-    const auto are_arrays_overlapping = (ptrdiff_t)int_array >= (ptrdiff_t)int_array_64
-                                     && (ptrdiff_t)int_array < (ptrdiff_t)(int_array_64 + int_array_64_size);
-
-    ASSERT_FALSE(are_arrays_overlapping);
-    ASSERT_EQ(allocator.pool_count(), 3);
-    ASSERT_EQ(int_array[int_array_size - 1], 23);
-    ASSERT_NO_FATAL_FAILURE(int_array[new_int_array_size - 1] = 23);
-
-    // Free to ensure no assert thrown when destructing allocator (un-freed memory)
-    ASSERT_NO_FATAL_FAILURE(allocator.deallocate(int_array_64));
-    ASSERT_NO_FATAL_FAILURE(allocator.deallocate(int_array));
-
-    // Check initial size in constructor
-    bee::TLSFAllocator allocator_with_initial(pool_size, pool_size * 2);
-    ASSERT_EQ(allocator_with_initial.pool_count(), 1);
 }
 
 TEST(AllocatorTests, variable_sized_pool_allocator)

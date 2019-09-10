@@ -59,18 +59,18 @@ public:
 
     static_assert(
         math::is_power_of_two(capacity),
-        "Skyrocket: ResourcePool<Capacity, HandleType, ResourceType>: Capacity must be a power of two"
+        "Bee: ResourcePool<Capacity, HandleType, ResourceType>: Capacity must be a power of two"
     );
 
     static_assert(
         std::is_base_of_v<VersionedHandle<typename handle_t::tag_t>, handle_t>,
-        "Skyrocket: ResourcePool<Capacity, HandleType, ResourceType>: HandleType must derive from "
+        "Bee: ResourcePool<Capacity, HandleType, ResourceType>: HandleType must derive from "
         "VersionedHandle, i.e:\nstruct MyHandle : public VersionedHandle<MyHandle>{}"
     );
 
     static_assert(
         Capacity < handle_t::index_mask - 1,
-        "Skyrocket: ResourcePool: Capacity must be less than 2^24 - 1"
+        "Bee: ResourcePool: Capacity must be less than 2^24 - 1"
     );
 
     class iterator

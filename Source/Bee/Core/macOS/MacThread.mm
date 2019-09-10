@@ -5,8 +5,8 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include "Skyrocket/Platform/Thread.hpp"
-#include "Skyrocket/Platform/Time.hpp"
+#include "Bee/Platform/Thread.hpp"
+#include "Bee/Platform/Time.hpp"
 
 #include <mach/thread_policy.h>
 #include <mach/thread_act.h>

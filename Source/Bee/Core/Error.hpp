@@ -26,7 +26,7 @@ namespace bee {
 namespace detail {
 
 
-/// @brief Prints a Skyrocket-formatted error message to the console
+/// @brief Prints a Bee-formatted error message to the console
 /// @param type The type of error that occurred
 /// @param msgformat The format string for the message
 /// @param ... Format parameters
@@ -238,14 +238,20 @@ BEE_CORE_API void __bee_abort_handler();
 
 
 /**
- * Enables the Skyrocket exception handler instead of the default system one if the platform supports it to allow
+ * Enables the Bee exception handler instead of the default system one if the platform supports it to allow
  * asserting on exceptions rather than throwing
  */
 BEE_CORE_API void enable_exception_handling();
 
 /**
- * Disables the Skyrocket exception handler if it's enabled
+ * Disables the Bee exception handler if it's enabled
  */
 BEE_CORE_API void disable_exception_handling();
+
+/**
+ * Initializes the console signal handler for graceful terminations in console apps
+ */
+BEE_CORE_API void init_signal_handler();
+
 
 } // namespace bee

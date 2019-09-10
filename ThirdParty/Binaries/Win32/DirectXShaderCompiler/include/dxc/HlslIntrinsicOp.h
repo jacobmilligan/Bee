@@ -30,11 +30,13 @@ import hctdb_instrhelp
   IOP_D3DCOLORtoUBYTE4,
   IOP_DeviceMemoryBarrier,
   IOP_DeviceMemoryBarrierWithGroupSync,
+  IOP_DispatchMesh,
   IOP_DispatchRaysDimensions,
   IOP_DispatchRaysIndex,
   IOP_EvaluateAttributeAtSample,
   IOP_EvaluateAttributeCentroid,
   IOP_EvaluateAttributeSnapped,
+  IOP_GeometryIndex,
   IOP_GetAttributeAtVertex,
   IOP_GetRenderTargetSampleCount,
   IOP_GetRenderTargetSamplePosition,
@@ -78,6 +80,7 @@ import hctdb_instrhelp
   IOP_RayTCurrent,
   IOP_RayTMin,
   IOP_ReportHit,
+  IOP_SetMeshOutputCounts,
   IOP_TraceRay,
   IOP_WaveActiveAllEqual,
   IOP_WaveActiveAllTrue,
@@ -94,6 +97,13 @@ import hctdb_instrhelp
   IOP_WaveGetLaneCount,
   IOP_WaveGetLaneIndex,
   IOP_WaveIsFirstLane,
+  IOP_WaveMatch,
+  IOP_WaveMultiPrefixBitAnd,
+  IOP_WaveMultiPrefixBitOr,
+  IOP_WaveMultiPrefixBitXor,
+  IOP_WaveMultiPrefixCountBits,
+  IOP_WaveMultiPrefixProduct,
+  IOP_WaveMultiPrefixSum,
   IOP_WavePrefixCountBits,
   IOP_WavePrefixProduct,
   IOP_WavePrefixSum,
@@ -253,6 +263,48 @@ import hctdb_instrhelp
   MOP_DecrementCounter,
   MOP_IncrementCounter,
   MOP_Consume,
+  MOP_WriteSamplerFeedback,
+  MOP_WriteSamplerFeedbackBias,
+  MOP_WriteSamplerFeedbackGrad,
+  MOP_WriteSamplerFeedbackLevel,
+  MOP_Abort,
+  MOP_CandidateGeometryIndex,
+  MOP_CandidateInstanceID,
+  MOP_CandidateInstanceIndex,
+  MOP_CandidateObjectRayDirection,
+  MOP_CandidateObjectRayOrigin,
+  MOP_CandidateObjectToWorld3x4,
+  MOP_CandidateObjectToWorld4x3,
+  MOP_CandidatePrimitiveIndex,
+  MOP_CandidateProceduralPrimitiveNonOpaque,
+  MOP_CandidateTriangleBarycentrics,
+  MOP_CandidateTriangleFrontFace,
+  MOP_CandidateTriangleRayT,
+  MOP_CandidateType,
+  MOP_CandidateWorldToObject3x4,
+  MOP_CandidateWorldToObject4x3,
+  MOP_CommitNonOpaqueTriangleHit,
+  MOP_CommitProceduralPrimitiveHit,
+  MOP_CommittedGeometryIndex,
+  MOP_CommittedInstanceID,
+  MOP_CommittedInstanceIndex,
+  MOP_CommittedObjectRayDirection,
+  MOP_CommittedObjectRayOrigin,
+  MOP_CommittedObjectToWorld3x4,
+  MOP_CommittedObjectToWorld4x3,
+  MOP_CommittedPrimitiveIndex,
+  MOP_CommittedRayT,
+  MOP_CommittedStatus,
+  MOP_CommittedTriangleBarycentrics,
+  MOP_CommittedTriangleFrontFace,
+  MOP_CommittedWorldToObject3x4,
+  MOP_CommittedWorldToObject4x3,
+  MOP_Proceed,
+  MOP_RayFlags,
+  MOP_RayTMin,
+  MOP_TraceRayInline,
+  MOP_WorldRayDirection,
+  MOP_WorldRayOrigin,
 #ifdef ENABLE_SPIRV_CODEGEN
   MOP_SubpassLoad,
 #endif // ENABLE_SPIRV_CODEGEN
@@ -263,6 +315,8 @@ import hctdb_instrhelp
   IOP_WaveActiveUMin,
   IOP_WaveActiveUProduct,
   IOP_WaveActiveUSum,
+  IOP_WaveMultiPrefixUProduct,
+  IOP_WaveMultiPrefixUSum,
   IOP_WavePrefixUProduct,
   IOP_WavePrefixUSum,
   IOP_uabs,
@@ -293,6 +347,8 @@ import hctdb_instrhelp
   case IntrinsicOp::IOP_WaveActiveMin:
   case IntrinsicOp::IOP_WaveActiveProduct:
   case IntrinsicOp::IOP_WaveActiveSum:
+  case IntrinsicOp::IOP_WaveMultiPrefixProduct:
+  case IntrinsicOp::IOP_WaveMultiPrefixSum:
   case IntrinsicOp::IOP_WavePrefixProduct:
   case IntrinsicOp::IOP_WavePrefixSum:
   case IntrinsicOp::IOP_abs:
@@ -332,6 +388,10 @@ import hctdb_instrhelp
     return static_cast<unsigned>(IntrinsicOp::IOP_WaveActiveUProduct);
   case IntrinsicOp::IOP_WaveActiveSum:
     return static_cast<unsigned>(IntrinsicOp::IOP_WaveActiveUSum);
+  case IntrinsicOp::IOP_WaveMultiPrefixProduct:
+    return static_cast<unsigned>(IntrinsicOp::IOP_WaveMultiPrefixUProduct);
+  case IntrinsicOp::IOP_WaveMultiPrefixSum:
+    return static_cast<unsigned>(IntrinsicOp::IOP_WaveMultiPrefixUSum);
   case IntrinsicOp::IOP_WavePrefixProduct:
     return static_cast<unsigned>(IntrinsicOp::IOP_WavePrefixUProduct);
   case IntrinsicOp::IOP_WavePrefixSum:

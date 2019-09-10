@@ -45,3 +45,20 @@ if (BUILD_TESTS)
             EXCLUDE_FROM_ALL
     )
 endif ()
+
+############################
+#
+# DirectX Shader Compiler
+#
+############################
+set(dxc_dir ${CMAKE_CURRENT_SOURCE_DIR}/Binaries/${BEE_PLATFORM}/DirectXShaderCompiler)
+bee_add_include_dirs(${dxc_dir}/include)
+function(copy_dxc_binaries target_name)
+    file(GLOB dxc_binaries ${dxc_dir}/*.dll ${dxc_dir}/*.pdb ${dxc_dir}/*.exe ${dxc_dir}/*.lib)
+    add_custom_command(
+        TARGET ${target_name}
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${dxc_binaries} ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "${target_name}: Copying DXC binaries to ${CMAKE_CURRENT_BINARY_DIR}"
+    )
+endfunction()

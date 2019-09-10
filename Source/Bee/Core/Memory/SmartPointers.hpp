@@ -17,7 +17,7 @@ namespace bee {
 
 
 /*
- * Pointer types - These are not designed to be STL compatible but instead for Skyrockets memory/allocator
+ * Pointer types - These are not designed to be STL compatible but instead for Bees memory/allocator
  * model.
  * TODO(Jacob): STL compatibility header
  */
