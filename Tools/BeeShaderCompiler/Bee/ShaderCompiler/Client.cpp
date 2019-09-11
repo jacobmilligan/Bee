@@ -15,11 +15,23 @@ namespace bee {
 template <typename CmdType>
 bool bsc_send_command(const socket_t client, const CmdType& cmd)
 {
-    auto send_buffer = DynamicArray<u8>::with_size(sizeof(BSCCommandType));
+    /*
+     * Commands are sent to the bee shader compiler server like this:
+     * | header | cmd size | cmd data |
+     */
+
+    // Allocate enough memory for the size and header info
+    auto send_buffer = DynamicArray<u8>::with_size(sizeof(i32) + sizeof(BSCCommandType));
+    // Copy header first
     memcpy(send_buffer.data(), &cmd.header, sizeof(BSCCommandType));
 
+    // Serialize the command data
     MemorySerializer serializer(&send_buffer);
     serialize(SerializerMode::writing, &serializer, &cmd);
+
+    // Copy the total command size minus sizeof the header and size info
+    const auto cmd_size = send_buffer.size() - sizeof(i32) - sizeof(BSCCommandType);
+    memcpy(send_buffer.data() + sizeof(BSCCommandType), &cmd_size, sizeof(i32));
 
     auto result = socket_send(client, reinterpret_cast<char*>(send_buffer.data()), send_buffer.size());
 

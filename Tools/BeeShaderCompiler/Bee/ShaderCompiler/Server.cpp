@@ -81,14 +81,23 @@ bool bsc_server_read(BSCClient* client, const i32 read_size)
 }
 
 
-#define BSC_PROCESS_CMD(command_struct_name)                                                                            \
-    case command_struct_name::type:                                                                                     \
-    {                                                                                                                   \
-        const auto read_success = bsc_server_read(&client, sizeof(command_struct_name));                                \
-        if (!read_success || !g_server.compiler.process_command(*reinterpret_cast<const command_struct_name*>(client.recv_buffer)))   \
-        {                                                                                                               \
-            return BSCRecvResult::error;                                                                                \
-        }                                                                                                               \
+#define BSC_PROCESS_CMD(command_struct_name)                                \
+    case command_struct_name::type:                                         \
+    {                                                                       \
+        const auto read_success = bsc_server_read(&client, read_size);      \
+                                                                            \
+        if (!read_success)                                                  \
+        {                                                                   \
+            return BSCRecvResult::error;                                    \
+        }                                                                   \
+                                                                            \
+        command_struct_name cmd{};                                          \
+        serialize(SerializerMode::reading, &serializer, &cmd);              \
+                                                                            \
+        if (!g_server.compiler.process_command(cmd))                        \
+        {                                                                   \
+            return BSCRecvResult::error;                                    \
+        }                                                                   \
     } break
 
 
@@ -106,22 +115,22 @@ BSCRecvResult bsc_server_recv()
             continue; // client did nothing in the last select call
         }
 
-        if (!bsc_server_read(&client, sizeof(BSCCommandType)))
+        if (!bsc_server_read(&client, sizeof(BSCCommandType) + sizeof(i32)))
         {
             return BSCRecvResult::error;
         }
 
-        header = *reinterpret_cast<BSCCommandType*>(client.recv_buffer.data());
+        memcpy(&header, client.recv_buffer.data(), sizeof(BSCCommandType));
+        memcpy(&read_size, client.recv_buffer.data() + sizeof(BSCCommandType), sizeof(i32));
+
+        client.recv_buffer.clear();
+
         MemorySerializer serializer(&client.recv_buffer);
+
         switch (header)
         {
-            case BSCShutdownCmd::type:
-            {
-                BSCShutdownCmd cmd{};
-                serialize(SerializerMode::reading, &serializer, &cmd);
-                break;
-            }
             BSC_PROCESS_CMD(BSCShutdownCmd);
+            BSC_PROCESS_CMD(BSCCompileCmd);
             default: break;
         }
 
@@ -153,8 +162,6 @@ int bsc_server_listen(const SocketAddress& address)
     socket_listen(g_server.socket, BSC_MAX_CLIENTS);
 
     log_info("BSC: listening on %s", address->ai_canonname);
-
-    memset(g_server.clients, 0, sizeof(BSCClient) * BSC_MAX_CLIENTS);
 
     timeval timeout{};
     timeout.tv_sec = 180; // timeout on the select to make sure we don't get indefinitely stuck waiting for a connection

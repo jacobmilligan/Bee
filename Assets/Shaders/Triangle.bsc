@@ -1,0 +1,44 @@
+name: "Triangle"
+
+pipeline: {
+    vertex_stage: "vert"
+    fragment_stage: "frag"
+}
+
+shader: '''
+    cbuffer Params : register(b0) 
+    {
+        float4x4 view_proj;
+    };
+
+    Texture2D<float4> main_tex: register(t0);
+    sampler main_sampler: register(s0);
+
+    struct AppData 
+    {
+        float4 position: POSITION;
+        float4 color: COLOR;
+        float2 texcoord: TEXCOORD0;
+    };
+
+    struct FragIn 
+    {
+        float4 position: SV_POSITION;
+        float4 color: COLOR;
+        float2 texcoord: TEXCOORD0;
+    };
+
+    FragIn vert(AppData IN)
+    {
+        FragIn OUT;
+        OUT.position = mul(view_proj, IN.position);
+        OUT.color = IN.color;
+        OUT.texcoord = IN.texcoord;
+        return OUT;
+    }
+
+    float4 frag(FragIn IN): SV_TARGET
+    {
+        return main_tex.Sample(main_sampler, IN.texcoord) * IN.color;
+    }
+'''

@@ -63,5 +63,10 @@ bool BSCCompiler::process_command(const BSCShutdownCmd& cmd)
     return true;
 }
 
+bool BSCCompiler::process_command(const bee::BSCCompileCmd& cmd)
+{
+    return false;
+}
+
 
 } // namespace bee

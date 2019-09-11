@@ -1,5 +1,5 @@
 bee_add_sources(
-    BSC.hpp
+    BSC.hpp     BSC.cpp
     Server.cpp
     Client.cpp
     Commands.hpp

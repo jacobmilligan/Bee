@@ -14,7 +14,7 @@
 
 static const bee::cli::Positional compile_positionals[] =
 {
-    bee::cli::Positional("target", "Target shader language to compile to"),
+    bee::cli::Positional("target", "Target shader language to compile to. One of: MSL, HLSL, or SPIRV"),
     bee::cli::Positional("destination", "Output directory to place all compiled sources")
 };
 
@@ -38,9 +38,16 @@ int bee_main(int argc, char** argv)
     parser.subparser_count = 1;
 
     const auto cli = bee::cli::parse(argc, argv, parser);
-    if (cli.subparsers.find("compile") == nullptr)
+
+    if (cli.help_requested)
     {
-        bee::log_error("missing compile option");
+        bee::log_info("%s", cli.requested_help_string);
+        return EXIT_SUCCESS;
+    }
+
+    if (!cli.success)
+    {
+        bee::log_error("%s", cli.error_message.c_str());
         return EXIT_FAILURE;
     }
 
@@ -67,6 +74,31 @@ int bee_main(int argc, char** argv)
 
         bee::log_info("BSC: Starting new server instance");
         client = bee::bsc_connect_client(bsc_addr); // reconnect now that the server is running
+    }
+
+    // Do a compile
+    const auto compile_results = cli.subparsers.find("compile");
+
+    if (compile_results != nullptr)
+    {
+        const auto target = bee::bsc_target_from_string(bee::cli::get_positional(compile_results->value, 0));
+        const auto destination = bee::Path(bee::cli::get_positional(compile_results->value, 1));
+        const auto& sources_option = compile_results->value.options.find("sources")->value;
+        auto sources = bee::FixedArray<bee::Path>::with_size(sources_option.count);
+        auto modules = bee::FixedArray<bee::BSCModule>::with_size(sources_option.count);
+
+        for (int s = 0; s < sources.size(); ++s)
+        {
+            sources[s] = argv[sources_option.index + s];
+        }
+
+        if (!bee::bsc_compile(client, target, sources.size(), sources.data(), modules.data()))
+        {
+            bee::log_error("Failed to compile .bsc sources");
+            return EXIT_FAILURE;
+        }
+
+        return EXIT_SUCCESS;
     }
 
     if (!bee::bsc_shutdown_server(client))

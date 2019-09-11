@@ -32,6 +32,8 @@ BEE_SHADERCOMPILER_API int bsc_server_listen(const SocketAddress& address);
 
 BEE_SHADERCOMPILER_API socket_t bsc_connect_client(const SocketAddress& address);
 
+BEE_SHADERCOMPILER_API BSCTarget bsc_target_from_string(const char* string);
+
 BEE_SHADERCOMPILER_API bool bsc_shutdown_server(const socket_t client, const bool immediate = true);
 
 BEE_SHADERCOMPILER_API bool bsc_compile(const socket_t client, const BSCTarget target, i32 source_count, const Path* source_paths, BSCModule* dst_modules);
