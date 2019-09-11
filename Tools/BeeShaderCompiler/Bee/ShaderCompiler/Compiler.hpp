@@ -50,6 +50,8 @@ public:
      */
     bool process_command(const BSCShutdownCmd& cmd);
 
+    bool process_command(const BSCCompileCmd& cmd);
+
 private:
     DynamicLibrary  dxc_dll_;
 

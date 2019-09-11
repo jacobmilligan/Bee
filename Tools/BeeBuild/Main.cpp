@@ -10,7 +10,7 @@
 #include "Bee/Core/Containers/HashMap.hpp"
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/IO.hpp"
-#include "Bee/Core/Logger.hpp"
+#include "Bee/Application/Main.hpp"
 
 namespace bee {
 
@@ -282,7 +282,7 @@ int bb_entry(int argc, char** argv)
 } // namespace bee
 
 
-int main(int argc, char** argv)
+int bee_main(int argc, char** argv)
 {
     return bee::bb_entry(argc, argv);
 }

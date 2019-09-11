@@ -5,7 +5,6 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Application/AppLoop.hpp"
 #include "Bee/Core/String.hpp"
 
 #include <stdlib.h>

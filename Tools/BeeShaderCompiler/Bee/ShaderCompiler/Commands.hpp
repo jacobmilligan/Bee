@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "Bee/ShaderCompiler/Module.hpp"
+
 namespace bee {
 
 
@@ -21,7 +23,8 @@ enum class BSCCommandType
 {
     unknown,
     complete,
-    shutdown
+    shutdown,
+    compile
 };
 
 struct BSCCommand
@@ -50,6 +53,14 @@ struct BSCCommandData : public BSCCommand
 struct BSCShutdownCmd : BSCCommandData<BSCCommandType::shutdown>
 {
     bool immediate { true };
+};
+
+
+struct BSCCompileCmd : BSCCommandData<BSCCommandType::compile>
+{
+    BSCTarget           target;
+    i32                 source_count { 0 };
+    const char* const*  source_paths { nullptr };
 };
 
 
