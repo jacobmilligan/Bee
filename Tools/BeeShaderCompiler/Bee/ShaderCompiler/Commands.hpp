@@ -8,6 +8,7 @@
 #pragma once
 
 #include "Bee/ShaderCompiler/Module.hpp"
+#include "Bee/Core/Serialization/MemorySerializer.hpp"
 
 namespace bee {
 
@@ -55,13 +56,22 @@ struct BSCShutdownCmd : BSCCommandData<BSCCommandType::shutdown>
     bool immediate { true };
 };
 
+BEE_SERIALIZE(BSCShutdownCmd, 1)
+{
+    BEE_ADD_FIELD(1, immediate);
+}
 
 struct BSCCompileCmd : BSCCommandData<BSCCommandType::compile>
 {
     BSCTarget           target;
-    i32                 source_count { 0 };
-    const char* const*  source_paths { nullptr };
+    FixedArray<Path>    source_paths;
 };
+
+BEE_SERIALIZE(BSCCompileCmd, 1)
+{
+    BEE_ADD_FIELD(1, target);
+    BEE_ADD_FIELD(1, source_paths);
+}
 
 
 } // namespace bee

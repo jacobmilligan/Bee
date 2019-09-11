@@ -27,7 +27,7 @@ bool MemorySerializer::begin()
         buffer_->clear();
     }
 
-    offset_ = 0;
+    offset_ = buffer_->size();
     return true;
 }
 

@@ -22,8 +22,8 @@ enum class BSCRecvResult
 
 struct BSCClient
 {
-    socket_t    socket;
-    char        recv_buffer[4096];
+    socket_t            socket;
+    DynamicArray<u8>    recv_buffer;
 };
 
 
@@ -39,10 +39,9 @@ static struct BSCServer
 
 bool bsc_server_read(BSCClient* client, const i32 read_size)
 {
-    if (read_size > static_array_length(client->recv_buffer))
+    if (client->recv_buffer.size() < read_size)
     {
-        log_warning("BSC: Invalid command sent to server");
-        return false;
+        client->recv_buffer.resize(read_size);
     }
 
     int bytes_read = 0;
@@ -50,7 +49,7 @@ bool bsc_server_read(BSCClient* client, const i32 read_size)
 
     do
     {
-        recv_count = socket_recv(client->socket, client->recv_buffer + bytes_read, read_size - bytes_read);
+        recv_count = socket_recv(client->socket, reinterpret_cast<char*>(client->recv_buffer.data() + bytes_read), read_size - bytes_read);
         bytes_read += recv_count;
     } while (recv_count > 0 && bytes_read < read_size);
 
@@ -97,6 +96,7 @@ BSCRecvResult bsc_server_recv()
 {
     // TODO(Jacob): handle the message
     BSCCommandType header;
+    i32 read_size = 0;
     bool deferred_shutdown = false;
 
     for (auto& client : g_server.clients)
@@ -111,9 +111,16 @@ BSCRecvResult bsc_server_recv()
             return BSCRecvResult::error;
         }
 
-        header = *reinterpret_cast<BSCCommandType*>(client.recv_buffer);
+        header = *reinterpret_cast<BSCCommandType*>(client.recv_buffer.data());
+        MemorySerializer serializer(&client.recv_buffer);
         switch (header)
         {
+            case BSCShutdownCmd::type:
+            {
+                BSCShutdownCmd cmd{};
+                serialize(SerializerMode::reading, &serializer, &cmd);
+                break;
+            }
             BSC_PROCESS_CMD(BSCShutdownCmd);
             default: break;
         }

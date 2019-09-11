@@ -101,7 +101,7 @@ public:
 
     const T* end() const;
 
-    void reserve(i32 new_capacity) noexcept;
+    void reserve(i32 amount) noexcept;
 
     // resize with default-initialized values
     void resize(i32 new_size);
@@ -440,10 +440,10 @@ const T* Array<T, Mode>::end() const
 }
 
 template <typename T, ContainerMode Mode>
-void Array<T, Mode>::reserve(const i32 new_capacity) noexcept
+void Array<T, Mode>::reserve(const i32 amount) noexcept
 {
     // FixedArray can reserve explicitly but can't push back etc.
-    ensure_capacity(dynamic_container_mode_t{}, new_capacity);
+    ensure_capacity(dynamic_container_mode_t{}, size_ + amount);
 }
 
 template <typename T, ContainerMode Mode>
