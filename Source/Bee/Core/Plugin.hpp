@@ -80,7 +80,7 @@ APIType* get_plugin(const char* name)
         static const char* BEE_PLUGIN_NAME_##name = #name;      \
         typedef api_type name##_plugin_t;                       \
         extern "C" void* bee_load_plugin_##name();              \
-        extern "C" void bee_unload_plugin_##name(void* plugin)
+        extern "C" void bee_unload_plugin_##name(void* library)
 #endif // BEE_DLL
 
 #define BEE_PLUGIN_ENTRY_LOAD(name) void* bee_load_plugin_##name()

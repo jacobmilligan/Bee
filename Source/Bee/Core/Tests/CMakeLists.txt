@@ -23,6 +23,7 @@ bee_test(Bee.Tests.Core
         HandleTableTests.cpp
         SoATests.cpp
         IOTests.cpp
+        JobsTests.cpp
 
         # Math tests from subdirectory
         Math/float2.cpp

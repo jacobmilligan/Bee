@@ -38,6 +38,8 @@ enum class SocketAddressFamily
     ipv6
 };
 
+#define BEE_SOCKET_SUCCESS 0
+
 #if BEE_OS_WINDOWS == 1
 
     using socket_t = SOCKET;
@@ -51,6 +53,28 @@ enum class SocketAddressFamily
 #endif // BEE_OS_WINDOWS == 1
 
 using port_t = u16;
+
+
+enum class SocketError : i32
+{
+    success = 0,
+    api_not_initialized,
+    network_failure,
+    bad_address,
+    socket_not_connected,
+    function_call_interrupted,
+    blocking_operation_executing,
+    nonsocket_operation_detected,
+    operation_not_supported,
+    send_after_socket_shutdown,
+    resource_temporarily_unavailable,
+    message_too_long,
+    invalid_argument,
+    connection_aborted_by_host,
+    connection_timed_out,
+    connection_reset_by_peer,
+    unknown_error
+};
 
 
 struct BEE_CORE_API SocketAddress
@@ -68,28 +92,35 @@ struct BEE_CORE_API SocketAddress
     {
         return info;
     }
+
+    const char* to_string() const;
 };
 
 
-BEE_CORE_API bool socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const port_t port);
 
-BEE_CORE_API bool socket_startup();
+BEE_CORE_API i32 socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const port_t port);
 
-BEE_CORE_API void socket_cleanup();
+BEE_CORE_API i32 socket_startup();
 
-BEE_CORE_API bool socket_open(socket_t* dst, const SocketAddress& address);
+BEE_CORE_API const char* socket_code_to_string(const i32 code);
 
-BEE_CORE_API void socket_close(const socket_t& socket);
+BEE_CORE_API SocketError socket_code_to_error(const i32 code);
 
-BEE_CORE_API bool socket_connect(socket_t* dst, const SocketAddress& address);
+BEE_CORE_API i32 socket_cleanup();
 
-BEE_CORE_API bool socket_shutdown(const socket_t client);
+BEE_CORE_API i32 socket_open(socket_t* dst, const SocketAddress& address);
 
-BEE_CORE_API void socket_bind(const socket_t& socket, const SocketAddress& address);
+BEE_CORE_API i32 socket_close(const socket_t& socket);
 
-BEE_CORE_API void socket_listen(const socket_t& socket, i32 max_waiting_clients);
+BEE_CORE_API i32 socket_connect(socket_t* dst, const SocketAddress& address);
 
-BEE_CORE_API bool socket_accept(const socket_t& socket, socket_t* client);
+BEE_CORE_API i32 socket_shutdown(const socket_t client);
+
+BEE_CORE_API i32 socket_bind(const socket_t& socket, const SocketAddress& address);
+
+BEE_CORE_API i32 socket_listen(const socket_t& socket, i32 max_waiting_clients);
+
+BEE_CORE_API i32 socket_accept(const socket_t& socket, socket_t* client);
 
 
 // close connection if result == 0, otherwise success with bytes recieved if > 0, otherwise error

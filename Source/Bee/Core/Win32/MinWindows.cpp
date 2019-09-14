@@ -36,7 +36,7 @@ const char* win32_get_last_error_string(char* dst_buffer, const int buffer_size)
 const char* win32_get_last_error_string()
 {
     static constexpr int message_buffer_size = 1024;
-    static char message_buffer[message_buffer_size]{0};
+    static thread_local char message_buffer[message_buffer_size]{0};
     return win32_get_last_error_string(message_buffer, message_buffer_size);
 }
 

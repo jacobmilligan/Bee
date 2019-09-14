@@ -8,6 +8,7 @@
 #include "Bee/Core/Socket.hpp"
 #include "Bee/Core/String.hpp"
 
+
 namespace bee {
 
 
@@ -20,14 +21,12 @@ SocketAddress::~SocketAddress()
     info = nullptr;
 }
 
-
-const char* wsa_get_last_error_string()
+const char* SocketAddress::to_string() const
 {
-    static char msg_buffer[1024];
-    return win32_format_error(WSAGetLastError(), msg_buffer, 1024);
+    return info->ai_canonname;
 }
 
-bool socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const port_t port)
+i32 socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const port_t port)
 {
     if (address->info != nullptr)
     {
@@ -43,121 +42,149 @@ bool socket_reset_address(SocketAddress* address, const SocketType type, const S
     char port_string[8];
     str::format(port_string, 8, "%u", htons(port));
 
-    const auto iresult = getaddrinfo(hostname, port_string, &hints, &address->info);
-    if (BEE_FAIL_F(iresult == 0, "Failed to get address info: %s", wsa_get_last_error_string()))
-    {
-        return false;
-    }
-
-    return true;
+    return getaddrinfo(hostname, port_string, &hints, &address->info);
 }
 
-bool socket_startup()
+i32 socket_startup()
 {
     WSADATA wsa;
-    const auto startup_result = WSAStartup(MAKEWORD(2, 2), &wsa);
-    if (BEE_FAIL_F(startup_result == 0, "Failed to initialize winsock library: %s", wsa_get_last_error_string()))
-    {
-        return false;
-    }
-    return true;
+    return WSAStartup(MAKEWORD(2, 2), &wsa);
 }
 
-void socket_cleanup()
+i32 socket_cleanup()
 {
-    WSACleanup();
+    return WSACleanup();
 }
 
-bool socket_open(socket_t* dst, const SocketAddress& address)
+const char* socket_code_to_string(const i32 code)
+{
+    static thread_local char msg_buffer[1024];
+    return win32_format_error(code == SOCKET_ERROR ? WSAGetLastError() : code, msg_buffer, static_array_length(msg_buffer));
+}
+
+SocketError socket_code_to_error(const i32 code)
+{
+#define BEE_SOCKET_CODE_MAPPING(wsa_code, bee_error) case wsa_code: return SocketError::bee_error;
+    switch (code)
+    {
+        case 0: return SocketError::success;
+        BEE_SOCKET_CODE_MAPPING(WSANOTINITIALISED, api_not_initialized)
+        BEE_SOCKET_CODE_MAPPING(WSAENETDOWN, network_failure)
+        BEE_SOCKET_CODE_MAPPING(WSAEFAULT, bad_address)
+        BEE_SOCKET_CODE_MAPPING(WSAENOTCONN, socket_not_connected)
+        BEE_SOCKET_CODE_MAPPING(WSAEINTR, function_call_interrupted)
+        BEE_SOCKET_CODE_MAPPING(WSAEINPROGRESS, blocking_operation_executing)
+        BEE_SOCKET_CODE_MAPPING(WSAENOTSOCK, nonsocket_operation_detected)
+        BEE_SOCKET_CODE_MAPPING(WSAEOPNOTSUPP, operation_not_supported)
+        BEE_SOCKET_CODE_MAPPING(WSAESHUTDOWN, send_after_socket_shutdown)
+        BEE_SOCKET_CODE_MAPPING(WSAEWOULDBLOCK, resource_temporarily_unavailable)
+        BEE_SOCKET_CODE_MAPPING(WSAEMSGSIZE, message_too_long)
+        BEE_SOCKET_CODE_MAPPING(WSAEINVAL, invalid_argument)
+        BEE_SOCKET_CODE_MAPPING(WSAECONNABORTED, connection_aborted_by_host)
+        BEE_SOCKET_CODE_MAPPING(WSAETIMEDOUT, connection_timed_out)
+        BEE_SOCKET_CODE_MAPPING(WSAECONNRESET, connection_reset_by_peer)
+        default: break;
+    }
+#undef BEE_SOCKET_CODE_MAPPING
+
+    return SocketError::unknown_error;
+}
+
+i32 socket_open(socket_t* dst, const SocketAddress& address)
 {
     *dst = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
     if (*dst == INVALID_SOCKET)
     {
-        log_error("Failed to open socket: %s", wsa_get_last_error_string());
-        return false;
+        return WSAGetLastError();
     }
-    return true;
+
+    return BEE_SOCKET_SUCCESS;
 }
 
-void socket_close(const socket_t& socket)
+i32 socket_close(const socket_t& socket)
 {
-    closesocket(socket);
+    return closesocket(socket);
 }
 
-bool socket_connect(socket_t* dst, const SocketAddress& address)
+i32 socket_connect(socket_t* dst, const SocketAddress& address)
 {
-    const auto result = connect(*dst, address->ai_addr, (int)address->ai_addrlen);
-    if (result == SOCKET_ERROR)
+    auto result = connect(*dst, address->ai_addr, (int)address->ai_addrlen);
+
+    if (result == 0)
     {
-        log_error("Failed to connect socket: %s", wsa_get_last_error_string());
-        socket_close(*dst);
-        *dst = INVALID_SOCKET;
-        return false;
+        return BEE_SOCKET_SUCCESS;
     }
-    return true;
+    result = WSAGetLastError();
+
+    socket_close(*dst);
+    *dst = INVALID_SOCKET;
+    return result;
 }
 
-bool socket_shutdown(const socket_t client)
+i32 socket_shutdown(const socket_t client)
 {
-    const auto result = shutdown(client, SD_SEND);
-    if (BEE_FAIL_F(result != SOCKET_ERROR, "Failed to shutdown socket: %s", wsa_get_last_error_string()))
+    auto result = shutdown(client, SD_SEND);
+    if (result == 0)
     {
-        log_error("Failed to connect socket");
-        socket_close(client);
-        return false;
+        return BEE_SOCKET_SUCCESS;
     }
-    return true;
+    result = WSAGetLastError();
+
+    socket_close(client);
+    return result;
 }
 
-void socket_bind(const socket_t& socket, const SocketAddress& address)
+i32 socket_bind(const socket_t& socket, const SocketAddress& address)
 {
-    const auto result = bind(socket, address->ai_addr, sign_cast<i32>(address->ai_addrlen));
-    if (BEE_FAIL_F(result != SOCKET_ERROR, "Failed to bind socket: %s", wsa_get_last_error_string()))
+    auto result = bind(socket, address->ai_addr, sign_cast<i32>(address->ai_addrlen));
+    if (result == 0)
     {
-        socket_close(socket);
+        return BEE_SOCKET_SUCCESS;
     }
+
+    result = WSAGetLastError();
+    socket_close(socket);
+    return result;
 }
 
-void socket_listen(const socket_t& socket, const i32 max_waiting_clients)
+i32 socket_listen(const socket_t& socket, const i32 max_waiting_clients)
 {
-    const auto result = listen(socket, max_waiting_clients);
-    if (BEE_FAIL_F(result != SOCKET_ERROR, "Failed to listen to socket: %s", wsa_get_last_error_string()))
+    auto result = listen(socket, max_waiting_clients);
+    if (result == 0)
     {
-        socket_close(socket);
+        return BEE_SOCKET_SUCCESS;
     }
+
+    result = WSAGetLastError();
+    socket_close(socket);
+    return result;
 }
 
-bool socket_accept(const socket_t& socket, socket_t* client)
+i32 socket_accept(const socket_t& socket, socket_t* client)
 {
     *client = accept(socket, nullptr, nullptr);
-    if (BEE_FAIL_F(*client >= 0, "Failed to accept a socket connection: %s", wsa_get_last_error_string()))
+    if (*client != INVALID_SOCKET)
     {
-        return false;
+        return BEE_SOCKET_SUCCESS;
     }
-    return *client != INVALID_SOCKET;
+    return WSAGetLastError();
 }
 
 
 // close connection if result == 0, otherwise success with bytes recieved if > 0, otherwise error
 i32 socket_recv(const socket_t& client, char* buffer, const i32 buffer_length)
 {
-    const auto result = recv(client, buffer, buffer_length, 0);
-    BEE_ASSERT_F(result >= 0, "Failed to recv socket data: %s", wsa_get_last_error_string());
-    return result;
+    return recv(client, buffer, buffer_length, 0);
 }
 
 i32 socket_send(const socket_t& client, const char* buffer, const i32 buffer_length)
 {
-    const auto result = send(client, buffer, buffer_length, 0);
-    BEE_ASSERT_F(result >= 0, "Failed to send socket data: %s", wsa_get_last_error_string());
-    return result;
+    return send(client, buffer, buffer_length, 0);
 }
 
 i32 socket_select(const socket_t& socket, fd_set_t* read_fd_set, fd_set_t* write_fd_set, fd_set_t* except_fd_set, const timeval& timeout)
 {
-    const auto result = select(0, read_fd_set, write_fd_set, except_fd_set, &timeout);
-    BEE_ASSERT_F(result >= 0, "Failed to socket select: %s", wsa_get_last_error_string());
-    return result;
+    return select(0, read_fd_set, write_fd_set, except_fd_set, &timeout);
 }
 
 void socket_fd_zero(fd_set_t* set)
