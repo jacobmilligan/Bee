@@ -65,7 +65,7 @@ const char* socket_code_to_string(const i32 code)
 SocketError socket_code_to_error(const i32 code)
 {
 #define BEE_SOCKET_CODE_MAPPING(wsa_code, bee_error) case wsa_code: return SocketError::bee_error;
-    switch (code)
+    switch (code == SOCKET_ERROR ? WSAGetLastError() : code)
     {
         case 0: return SocketError::success;
         BEE_SOCKET_CODE_MAPPING(WSANOTINITIALISED, api_not_initialized)

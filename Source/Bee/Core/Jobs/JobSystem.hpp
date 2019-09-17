@@ -17,6 +17,11 @@
 namespace bee {
 
 
+#ifndef BEE_WORKER_MAX_COMPLETED_JOBS
+    #define BEE_WORKER_MAX_COMPLETED_JOBS 4096
+#endif // BEE_WORKER_MAX_COMPLETED_JOBS
+
+
 struct JobSystemInitInfo
 {
     static constexpr i32 auto_worker_count = -1;
@@ -35,7 +40,7 @@ BEE_CORE_API void schedule_job(Job* job);
 
 BEE_CORE_API void schedule_job_group(Job* job, Job** dependencies, i32 dependency_count);
 
-BEE_CORE_API void job_wait(const Job* job);
+BEE_CORE_API bool job_wait(Job* job);
 
 BEE_CORE_API Allocator* local_job_allocator();
 
@@ -53,7 +58,7 @@ BEE_CORE_API size_t get_local_job_allocator_size();
 template <typename JobType, typename... ConstructorArgs>
 inline Job* allocate_job(ConstructorArgs&&... args)
 {
-    auto job = BEE_NEW(local_job_allocator(), JobType)(get_local_job_worker_id(), std::forward<ConstructorArgs>(args)...);
+    auto job = BEE_NEW(local_job_allocator(), JobType)(std::forward<ConstructorArgs>(args)...);
     BEE_ASSERT(job->parent() == nullptr);
     return job;
 }
@@ -62,7 +67,7 @@ template <typename FunctionType, typename... Args>
 inline Job* allocate_job(FunctionType&& function, Args&&... args)
 {
     using job_t = FunctionJob<decltype(std::bind(function, args...))>;
-    auto job = BEE_NEW(local_job_allocator(), job_t)(get_local_job_worker_id(), std::bind(function, args...));
+    auto job = BEE_NEW(local_job_allocator(), job_t)(std::bind(function, args...));
     BEE_ASSERT(job->parent() == nullptr);
     return job;
 }

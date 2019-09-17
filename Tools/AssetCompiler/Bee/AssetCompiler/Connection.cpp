@@ -6,7 +6,6 @@
  */
 
 #include "Bee/AssetCompiler/Connection.hpp"
-#include "Bee/Core/Serialization/MemorySerializer.hpp"
 #include "Bee/AssetCompiler/Pipeline.hpp"
 #include "Bee/AssetCompiler/Messages.hpp"
 
@@ -33,11 +32,27 @@ enum class ACServerReadResult
 
 struct ACClient
 {
-    ACConnectionType    connection_type { ACConnectionType::not_connected };
-    socket_t            socket { 0 };
-    char                temp_msg_buffer[16];
-    i32                 temp_msg_buffer_offset { 0 };
-    DynamicArray<u8>    message_buffer;
+    ACConnectionType          connection_type { ACConnectionType::not_connected };
+    socket_t                  socket { 0 };
+    char                      temp_msg_buffer[16];
+    i32                       temp_msg_buffer_offset { 0 };
+    DynamicArray<u8>          message_buffer;
+    AssetCompileWaitHandle    active_wait_handles[BEE_AC_MAX_PENDING_JOBS_PER_CLIENT];
+
+    // This is a non-blocking operation and will return nullptr if no wait handles are free
+    AssetCompileWaitHandle* complete_wait_handles()
+    {
+        for (auto& wait_handle : active_wait_handles)
+        {
+            if (wait_handle.is_complete() && wait_handle.result.status != AssetCompilerStatus::unknown)
+            {
+                // TODO(Jacob): send result here to client
+                return &wait_handle;
+            }
+        }
+
+        return nullptr;
+    }
 };
 
 bool asset_compiler_recv(const socket_t socket, char* buffer, const i32 buffer_max, const i32 read_size)
@@ -59,20 +74,20 @@ bool asset_compiler_recv(const socket_t socket, char* buffer, const i32 buffer_m
     // Handle errors with the recv loop
     if (socket_code_to_error(recv_count) == SocketError::connection_reset_by_peer)
     {
-        log_info("Host disconnected: %llu", socket);
+        log_info("Bee Asset Compiler: Host disconnected: %llu", socket);
         socket_close(socket);
         return false;
     }
 
     if (recv_count < 0)
     {
-        log_error("Recv failed");
+        log_error("Bee Asset Compiler: recv failed: %s", socket_code_to_string(recv_count));
         return false;
     }
 
     if (recv_count == 0)
     {
-        log_info("Disconnected client");
+        log_info("Bee Asset Compiler: client disconnected");
     }
 
     return true;
@@ -255,6 +270,8 @@ ACServerReadResult asset_compiler_server_read(AssetPipeline* pipeline, fd_set_t*
             continue; // socket did nothing in the last select call
         }
 
+        // Handle all of the clients in-progress compile jobs
+
         // Read the id and then the message size
         static constexpr i32 header_size = sizeof(ACMessageId) + sizeof(i32);
         if (!asset_compiler_recv(client.socket, client.temp_msg_buffer, static_array_length(client.temp_msg_buffer), header_size))
@@ -309,7 +326,20 @@ ACServerReadResult asset_compiler_server_read(AssetPipeline* pipeline, fd_set_t*
             {
                 ACCompileMsg msg{};
                 serialize(SerializerMode::reading, &serializer, &msg);
-                pipeline->compile(msg.platform, msg.src_path, msg.dst_path);
+                auto wait_handle = client.complete_wait_handles();
+                auto job = pipeline->compile(msg.platform, msg.src_path);
+                if (job != nullptr)
+                {
+                    client.compile_jobs.push_back(job);
+                }
+                break;
+            }
+
+            case ACMessageId::asset_data:
+            {
+                ACAssetDataMsg msg{};
+                serialize(SerializerMode::reading, &serializer, &msg);
+                log_error("Server doesn't support the `asset_data` message");
                 break;
             }
 
@@ -359,40 +389,6 @@ bool asset_compiler_connect(const SocketAddress& address, AssetCompilerConnectio
 
     connection->connection_type = ACConnectionType::client;
     return true;
-}
-
-
-template <typename MsgType>
-bool asset_compiler_client_send(const AssetCompilerConnection& client, const MsgType& msg)
-{
-    /*
-     * Commands are sent to the bee shader compiler server like this:
-     * | id | cmd size | cmd data |
-     */
-    auto msg_allocator = client.message_allocator == nullptr ? system_allocator() : client.message_allocator;
-    DynamicArray<u8> send_buffer(sizeof(ACMessageId) + sizeof(i32), msg_allocator);
-
-    // Allocate enough memory for the size and header info
-    // Copy header first
-    memcpy(send_buffer.data(), &msg.id, sizeof(ACMessageId));
-
-
-    // Serialize the command data
-    MemorySerializer serializer(&send_buffer);
-    serialize(SerializerMode::writing, &serializer, &msg);
-
-    // Copy the total command size minus sizeof the id and size info
-    const auto msg_size = send_buffer.size() - sizeof(i32) - sizeof(ACMessageId);
-    memcpy(send_buffer.data() + sizeof(ACMessageId), &msg_size, sizeof(i32));
-
-    return socket_send(client.socket, reinterpret_cast<char*>(send_buffer.data()), send_buffer.size()) == send_buffer.size();
-}
-
-
-bool asset_compiler_shutdown_server(const AssetCompilerConnection& client)
-{
-    ACShutdownMsg msg{};
-    return asset_compiler_client_send(client, msg);
 }
 
 

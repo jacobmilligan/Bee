@@ -191,32 +191,29 @@ bool AssetPipeline::unload_plugin(const char* name)
 
 struct AssetCompileJob final : Job
 {
-    AssetPlatform                           platform { AssetPlatform::unknown };
-    char                                    src[1024];
-    char                                    dst[1024];
-    AssetCompilerHandle                     compiler;
-    AssetPipelinePlugin::compile_function_t compile { nullptr };
+    AssetPlatform            platform { AssetPlatform::unknown };
+    char                     src[1024];
+    AssetCompileWaitHandle*  wait_handle { nullptr };
+    AssetCompilerHandle      compiler;
+    asset_compile_function_t compile { nullptr };
 
 
     AssetCompileJob(
-        const i32 worker_id,
         const AssetPlatform dst_platform,
         const char* src_path,
-        const char* dst_path,
+        AssetCompileWaitHandle* wait_handle,
         const AssetCompilerHandle& compiler_handle,
-        AssetPipelinePlugin::compile_function_t compile_function
-    ) : Job(worker_id),
-        platform(dst_platform),
+        asset_compile_function_t compile_function
+    ) : platform(dst_platform),
         compiler(compiler_handle),
         compile(compile_function)
     {
         str::copy(src, static_array_length(src), src_path);
-        str::copy(dst, static_array_length(dst), dst_path);
     }
 
     void execute() override
     {
-        io::FileStream stream(dst, "wb");
+        io::MemoryStream stream(&wait_handle->data);
 
         AssetPipelineContext ctx{};
         ctx.location = src;
@@ -224,13 +221,13 @@ struct AssetCompileJob final : Job
         ctx.temp_allocator = job_temp_allocator();
         ctx.stream = &stream;
 
-        compile(compiler, &ctx);
+        wait_handle->result = compile(compiler, &ctx);
+        wait_handle->is_complete_flag.store(true, std::memory_order_seq_cst);
     }
-
 };
 
 
-Job* AssetPipeline::compile(const AssetPlatform platform, const char* src, const char* dst)
+bool AssetPipeline::compile(const AssetPlatform platform, const char* src, AssetCompileWaitHandle* wait_handle)
 {
     const auto filetype = path_get_extension(src);
     const auto filetype_hash = get_hash(filetype);
@@ -241,7 +238,7 @@ Job* AssetPipeline::compile(const AssetPlatform platform, const char* src, const
     if (found_filetype == nullptr)
     {
         log_error("Bee Asset Compiler: file type not supported by any plugins: %" BEE_PRIsv, BEE_FMT_SV(filetype));
-        return nullptr;
+        return false;
     }
 
     plugin_name_hash = found_filetype->value;
@@ -252,7 +249,7 @@ Job* AssetPipeline::compile(const AssetPlatform platform, const char* src, const
     {
         log_error("Bee Asset Compiler: invalid plugin for filetype \"%" BEE_PRIsv "\". Removing filetype mapping...", BEE_FMT_SV(filetype));
         file_type_map.erase(filetype_hash);
-        return nullptr;
+        return false;
     }
 
     auto& local_compiler = found_plugin->value.compilers[get_local_job_worker_id()];
@@ -261,7 +258,7 @@ Job* AssetPipeline::compile(const AssetPlatform platform, const char* src, const
         local_compiler = found_plugin->value.create_compiler();
     }
 
-    auto job = allocate_job<AssetCompileJob>(platform, src, dst, local_compiler, found_plugin->value.compile);
+    auto job = allocate_job<AssetCompileJob>(platform, src, wait_handle, local_compiler, found_plugin->value.compile);
     root_job->add_dependency(job);
     schedule_job(job);
     return job;

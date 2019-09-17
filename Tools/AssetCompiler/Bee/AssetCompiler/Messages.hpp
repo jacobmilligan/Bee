@@ -13,7 +13,6 @@
 
 namespace bee {
 
-
 /*
  ****************************************************************
  *
@@ -31,7 +30,8 @@ enum class ACMessageId
     complete,
     load_plugin,
     unload_plugin,
-    compile
+    compile,
+    asset_data
 };
 
 
@@ -48,7 +48,6 @@ enum class ACMessageId
 struct ACMessage
 {
     ACMessageId id { ACMessageId::unknown };
-    i32         size { 0 };
 };
 
 template <ACMessageId Id>
@@ -57,7 +56,7 @@ struct ACMessageData : public ACMessage
     static constexpr ACMessageId type = Id;
 
     ACMessageData()
-        : ACMessage { Id, 0 }
+        : ACMessage { Id }
     {}
 };
 
@@ -126,6 +125,17 @@ BEE_SERIALIZE(ACCompileMsg, 1)
     BEE_ADD_FIELD(1, src_path);
     BEE_ADD_FIELD(1, dst_path);
 }
+
+struct ACAssetDataMsg : public ACMessageData<ACMessageId::asset_data>
+{
+    DynamicArray<u8> data;
+};
+
+BEE_SERIALIZE(ACAssetDataMsg, 1)
+{
+    BEE_ADD_FIELD(1, data);
+}
+
 
 
 } // namespace bee

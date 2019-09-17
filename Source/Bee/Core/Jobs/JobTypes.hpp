@@ -18,111 +18,49 @@ namespace bee {
 
 
 class Allocator;
+struct Worker;
 
-class Job
+class BEE_CORE_API  Job
 {
 public:
-    explicit Job(const i32 owning_worker)
-        : dependency_count_(1),
-          owning_worker_(owning_worker),
-          parent_(nullptr)
-    {}
+    explicit Job();
 
-    Job(Job&& other) noexcept
-    {
-        move_construct(other);
-    }
+    Job(Job&& other) noexcept;
 
-    Job& operator=(Job&& other) noexcept
-    {
-        move_construct(other);
-        return *this;
-    }
+    Job& operator=(Job&& other) noexcept;
 
-    virtual ~Job()
-    {
-        owning_worker_ = -1;
-        parent_.store(nullptr, std::memory_order_release);
-    }
+    virtual ~Job();
 
     virtual void execute() = 0;
 
-    void complete()
-    {
-        execute();
+    void complete();
 
-        if (parent() != nullptr)
-        {
-            parent()->signal_completed_dependency();
-        }
-        signal_completed_dependency();
-    }
+    void add_dependency(Job* dependency);
 
-    void add_dependency(Job* dependency)
-    {
-        if (BEE_FAIL(dependency != this))
-        {
-            return;
-        }
+    i32 dependency_count() const;
 
-        if (BEE_FAIL(dependency->parent() == nullptr))
-        {
-            return;
-        }
+    bool has_dependencies() const;
 
-        dependency_count_.fetch_add(1, std::memory_order_release);
-        dependency->parent_.store(this, std::memory_order_release);
-    }
+    Job* parent() const;
 
-    inline i32 dependency_count() const
-    {
-        return dependency_count_.load(std::memory_order_acquire);
-    }
-
-    inline bool has_dependencies() const
-    {
-        return dependency_count() > 0;
-    }
-
-    inline Job* parent() const
-    {
-        return parent_.load(std::memory_order_acquire);
-    }
-
-    inline i32 owning_worker_id() const
-    {
-        return owning_worker_;
-    }
+    i32 owning_worker_id() const;
 private:
     i32                 owning_worker_ { 0 };
     std::atomic_int32_t dependency_count_;
     std::atomic<Job*>   parent_;
     char                pad_[32 - sizeof(owning_worker_) - sizeof(dependency_count_) - sizeof(parent_)];
 
-    void move_construct(Job& other) noexcept
-    {
-        dependency_count_.store(other.dependency_count_, std::memory_order_acq_rel);
-        parent_.store(other.parent_, std::memory_order_acq_rel);
-        owning_worker_ = other.owning_worker_;
+    void move_construct(Job& other) noexcept;
 
-        other.dependency_count_.store(0, std::memory_order_acq_rel);
-        other.parent_.store(nullptr, std::memory_order_acq_rel);
-        other.owning_worker_ = -1;
-    }
-
-    inline void signal_completed_dependency()
-    {
-        dependency_count_.fetch_sub(1, std::memory_order_acq_rel);
-    }
+    void signal_completed_dependency();
 };
 
 template <typename FunctionType>
 class FunctionJob : public Job
 {
 public:
-    FunctionJob(const i32 owning_worker, const FunctionType& function)
-        : Job(owning_worker),
-          function_(function)
+    explicit FunctionJob(const FunctionType& function)
+        : function_(function)
     {}
 
     void execute() override
@@ -137,9 +75,7 @@ private:
 class EmptyOperationJob : public Job
 {
 public:
-    explicit EmptyOperationJob(const i32 owning_worker)
-        : Job(owning_worker)
-    {}
+    using Job::Job;
 
     void execute() override
     {

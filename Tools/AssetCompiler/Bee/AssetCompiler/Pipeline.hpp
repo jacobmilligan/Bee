@@ -37,7 +37,7 @@ BEE_FLAGS(AssetPlatform, u32)
 };
 
 
-enum class AssetCompilerResult
+enum class AssetCompilerStatus
 {
     success,
     fatal_error,
@@ -46,9 +46,9 @@ enum class AssetCompilerResult
 };
 
 
-struct AssetCompilerOutput
+struct AssetCompilerResult
 {
-    AssetCompilerResult result { AssetCompilerResult::unknown };
+    AssetCompilerStatus status { AssetCompilerStatus::unknown };
     Type                compiled_type;
 };
 
@@ -65,20 +65,39 @@ struct AssetPipelineContext
 BEE_DEFINE_VERSIONED_HANDLE(AssetCompiler);
 
 
+using create_asset_compiler_function_t = AssetCompilerHandle(*)();
+using asset_compile_function_t = AssetCompilerResult(*)(const AssetCompilerHandle& handle, AssetPipelineContext* ctx);
+
 struct AssetPipelinePlugin
 {
-    using create_compiler_function_t = AssetCompilerHandle(*)();
-    using compile_function_t = AssetCompilerOutput(*)(const AssetCompilerHandle& handle, AssetPipelineContext* ctx);
+    const char*                         name { nullptr };
+    i32                                 supported_file_type_count { 0 };
+    const char* const*                  supported_file_types { nullptr };
 
-    const char*                 name { nullptr };
-    i32                         supported_file_type_count { 0 };
-    const char* const*          supported_file_types { nullptr };
-
-    create_compiler_function_t  create_compiler { nullptr };
-    compile_function_t          compile { nullptr };
+    create_asset_compiler_function_t    create_compiler { nullptr };
+    asset_compile_function_t            compile { nullptr };
 };
 
+
+struct AssetCompileWaitHandle
+{
+    std::atomic_bool    is_complete_flag { false };
+    AssetCompilerResult result;
+    DynamicArray<u8>    data;
+
+    explicit AssetCompileWaitHandle(Allocator* data_allocator = system_allocator())
+        : data(data_allocator)
+    {}
+
+    inline bool is_complete() const
+    {
+        return is_complete_flag.load(std::memory_order_seq_cst);
+    }
+};
+
+
 class Job;
+
 
 class BEE_ASSETCOMPILER_API AssetPipeline
 {
@@ -87,7 +106,7 @@ public:
 
     bool unload_plugin(const char* name);
 
-    Job* compile(AssetPlatform platform, const char* src, const char* dst);
+    bool compile(AssetPlatform platform, const char* src, AssetCompileWaitHandle* wait_handle);
 private:
     using load_plugin_function_t    = AssetPipelinePlugin();
     using unload_plugin_function_t  = void();

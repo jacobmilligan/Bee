@@ -84,6 +84,26 @@ private:
     }
 };
 
+
+/*
+ ****************************************************************
+ *
+ * # Worker
+ *
+ * Holds all the data needed to process jobs on a single thread.
+ * Also contains a variable-sized pool allocator for allocating
+ * jobs and a linear allocator for temporary job allocations.
+ * Both of these allocators are non-locking and not thread-safe
+ * when shared between threads/workers but are safe to use in
+ * this context as the job system guarantees that allocations/
+ * deallocations are made on the same thread and are therefore
+ * ensured to be thread-safe by the job system - job deletion
+ * is deferred within a `job_complete` call until their owning
+ * worker can safely delete the jobs in a queue on its own
+ * thread.
+ *
+ ****************************************************************
+ */
 struct Worker
 {
     Thread                      thread;
@@ -91,15 +111,17 @@ struct Worker
     WorkStealingQueue           job_queue;
     Job*                        current_executing_job;
     RandomGenerator<Xorshift>   random;
-    JobAllocator                job_allocator;
+    VariableSizedPoolAllocator  job_allocator;
     LinearAllocator             temp_allocator;
+    std::atomic_int32_t         completed_job_count { 0 };
+    Job*                        completed_jobs[BEE_WORKER_MAX_COMPLETED_JOBS];
 
     Worker() = default;
 
     Worker(const i32 thread_index, const JobSystemInitInfo& info)
         : thread_local_idx(thread_index),
           job_queue(info.max_jobs_per_worker_per_chunk),
-          job_allocator(info.max_job_size, info.max_jobs_per_worker_per_chunk),
+          job_allocator(sizeof(Job), info.max_job_size, info.max_jobs_per_worker_per_chunk),
           temp_allocator(info.per_worker_temp_allocator_capacity)
     {}
 
@@ -127,9 +149,6 @@ struct JobSystemContext
 };
 
 static JobSystemContext* g_job_system = nullptr;
-
-
-i32 get_local_job_worker_id();
 
 
 void worker_execute_one_job(Worker* local_worker)
@@ -173,21 +192,39 @@ void worker_execute_one_job(Worker* local_worker)
             local_worker->temp_allocator.reset(); // HACK(Jacob): this needs to be replaced with a locking stack allocator
         }
 
-        // NOTE: This and the subsequent deallocation are blocking calls
+        // NOTE: This is a blocking call
         job->complete();
 
         local_worker->current_executing_job = nullptr;
 
-        // The job allocator guarantees that this delete is thread safe across non-local threads
+        g_job_system->pending_job_count.fetch_sub(1, std::memory_order_release);
+
+        // The job allocator guarantasdees that this delete is thread safe across non-local threads
         const auto owning_worker_idx = job->owning_worker_id();
         BEE_ASSERT(owning_worker_idx >= 0);
 
         auto& owning_worker = g_job_system->workers[owning_worker_idx];
+        const auto completed_idx = owning_worker.completed_job_count.fetch_add(1, std::memory_order_acquire);
 
-        BEE_DELETE(owning_worker.job_allocator, job);
+        if (BEE_FAIL_F(completed_idx < BEE_WORKER_MAX_COMPLETED_JOBS, "Detected a leak in the job system: too many jobs were allocated on a single thread"))
+        {
+            owning_worker.completed_job_count.store(completed_idx, std::memory_order_release);
+            return;
+        }
 
-        g_job_system->pending_job_count.fetch_sub(1, std::memory_order_release);
+        // Defer the actual delete until the local worker has no jobs left to execute
+        owning_worker.completed_jobs[completed_idx] = job;
     }
+}
+
+void worker_gc(Worker* worker)
+{
+    const auto completed_job_count = worker->completed_job_count.load(std::memory_order_acquire);
+    for (int j = 0; j < completed_job_count; ++j)
+    {
+        BEE_DELETE(worker->job_allocator, worker->completed_jobs[j]);
+    }
+    worker->completed_job_count.store(0, std::memory_order_release);
 }
 
 void worker_main(const WorkerMainParams& params)
@@ -204,7 +241,9 @@ void worker_main(const WorkerMainParams& params)
         // we don't want to sleep if we're only running jobs while waiting on a counter
         if (g_job_system->pending_job_count.load() <= 0)
         {
-            // no jobs to do so put the worker to sleep
+            // no jobs to do - clean up all completed jobs and then put the worker to sleep
+            worker_gc(params.worker);
+
             std::unique_lock<std::mutex> wait_lock(g_job_system->worker_wait_mutex);
 
             g_job_system->worker_wait_cv.wait(wait_lock, [&]()
@@ -326,14 +365,15 @@ void schedule_job(Job* job)
     schedule_job_group(job, nullptr, 0);
 }
 
-void job_wait(const Job* job)
+bool job_wait(Job* job)
 {
     BEE_ASSERT_F(g_job_system->initialized.load(), "Attempted to wait on a job without initializing the job system");
 
+    // Wait on the job to finish before we actually go and complete it
     const auto local_worker_idx = get_local_job_worker_id();
     if (BEE_FAIL_F(local_worker_idx >= 0, "Couldn't find a worker for the current thread. Ensure you're not calling job system functions from an non-worker, external thread"))
     {
-        return;
+        return false;
     }
     auto local_worker = &g_job_system->workers[local_worker_idx];
 
@@ -346,6 +386,10 @@ void job_wait(const Job* job)
         }
         worker_execute_one_job(local_worker);
     }
+
+    worker_gc(local_worker);
+
+    return true;
 }
 
 Allocator* local_job_allocator()

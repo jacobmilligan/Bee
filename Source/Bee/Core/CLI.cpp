@@ -9,10 +9,56 @@
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Debug.hpp"
 
-
 namespace bee {
 namespace cli {
 
+
+Results::Results(const char* dynamic_argv, Allocator* allocator)
+    : dynamic_argv_(dynamic_argv, allocator),
+      dynamic_argv_ptrs_(allocator)
+{
+    int offset = 0;
+    char* cur_ptr = dynamic_argv_.data();
+
+    auto skip_whitespace = [&]()
+    {
+        for (; offset < dynamic_argv_.size(); ++offset)
+        {
+            if (!str::is_space(dynamic_argv_[offset]))
+            {
+                break;
+            }
+        }
+    };
+
+    for (; offset < dynamic_argv_.size(); ++offset)
+    {
+        // Process strings
+        if (dynamic_argv_[offset] == '"')
+        {
+            for (; offset < dynamic_argv_.size(); ++offset)
+            {
+                if (dynamic_argv_[offset] == '"')
+                {
+                    break;
+                }
+            }
+        }
+
+        if (str::is_space(dynamic_argv_[offset]))
+        {
+            dynamic_argv_[offset] = '\0';
+            dynamic_argv_ptrs_.push_back(cur_ptr);
+            ++offset;
+            skip_whitespace();
+            cur_ptr = dynamic_argv_.data() + offset;
+        }
+    }
+
+    dynamic_argv_ptrs_.push_back(cur_ptr);
+    argv = dynamic_argv_ptrs_.data();
+    argc = dynamic_argv_ptrs_.size();
+}
 
 Results::Results(Results&& other) noexcept
 {
@@ -39,6 +85,8 @@ void Results::move_construct(Results& other) noexcept
     requested_help_string = other.requested_help_string;
     error_message = std::move(other.error_message);
     argv_parsed_count = other.argv_parsed_count;
+    dynamic_argv_ = std::move(other.dynamic_argv_);
+    dynamic_argv_ptrs_ = std::move(other.dynamic_argv_ptrs_);
 
     other.argc = 0;
     other.argv = nullptr;
@@ -489,6 +537,14 @@ Results parse(const i32 argc, char** const argv, const ParserDescriptor& desc)
     Results results{};
     parse_recursive(prog_name, argc - 1, argv + 1, desc, &results);
     ++results.argv_parsed_count; // program name
+    return results;
+}
+
+Results parse(const char* program_name, const char* command_line, const ParserDescriptor& desc, Allocator* allocator)
+{
+    Results results(command_line, allocator);
+    auto argv = const_cast<char**>(results.argv);
+    parse_recursive(program_name, results.argc, argv, desc, &results);
     return results;
 }
 

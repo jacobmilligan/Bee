@@ -42,9 +42,8 @@ struct CountJob : public bee::Job
 {
     bee::i32 job_id { -1 };
 
-    CountJob(const bee::i32 worker, const bee::i32 job_id)
-        : Job(worker),
-          job_id(job_id)
+    CountJob(const bee::i32 job_id)
+        : job_id(job_id)
     {}
 
     void execute() override

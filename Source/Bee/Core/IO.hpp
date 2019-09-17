@@ -217,6 +217,13 @@ public:
           current_stream_size_(initial_size)
     {}
 
+    explicit MemoryStream(DynamicArray<u8>* growable_buffer)
+        : Stream(Mode::container),
+          buffer_(growable_buffer->data()),
+          capacity_(limits::max<i32>()),
+          current_stream_size_(growable_buffer->size())
+    {}
+
     i32 read(void* dst_buffer, i32 dst_buffer_size) override;
 
     i32 write(const void* src_buffer, i32 src_buffer_size) override;
@@ -254,10 +261,11 @@ public:
         return capacity_;
     }
 private:
-    i32     current_offset_ { 0 };
-    u8*     buffer_ { nullptr };
-    i32     capacity_ { 0 };
-    i32     current_stream_size_ { 0 };
+    i32                 current_offset_ { 0 };
+    i32                 capacity_ { 0 };
+    i32                 current_stream_size_ { 0 };
+    u8*                 buffer_ { nullptr };
+    DynamicArray<u8>*   container_ { nullptr };
 };
 
 

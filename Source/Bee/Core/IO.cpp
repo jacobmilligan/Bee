@@ -102,12 +102,20 @@ i32 MemoryStream::write(const void* src_buffer, const i32 src_buffer_size)
 
     write_size = math::max(write_size, 0);
     BEE_ASSERT(write_size >= 0);
+
     if (src_buffer != nullptr)
     {
+        if (mode() == Mode::container && container_->size() < current_offset_ + write_size)
+        {
+            container_->resize(current_offset_ + write_size);
+            buffer_ = container_->data(); // fixup pointer to containers internal buffer
+        }
+
         memcpy(buffer_ + current_offset_, src_buffer, write_size);
         current_offset_ += write_size;
         current_stream_size_ = math::max(current_offset_, current_stream_size_);
     }
+
     return write_size;
 }
 

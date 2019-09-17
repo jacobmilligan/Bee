@@ -74,6 +74,8 @@ struct BEE_CORE_API Results : public Noncopyable
 {
     Results() = default;
 
+    Results(const char* dynamic_argv, Allocator* allocator);
+
     Results(Results&& other) noexcept;
 
     Results& operator=(Results&& other) noexcept;
@@ -92,6 +94,9 @@ struct BEE_CORE_API Results : public Noncopyable
     String                              error_message;
 
 private:
+    String                              dynamic_argv_;
+    DynamicArray<char*>                 dynamic_argv_ptrs_;
+
     void move_construct(Results& other) noexcept;
 };
 
@@ -109,6 +114,8 @@ struct BEE_CORE_API ParserDescriptor
 
 
 BEE_CORE_API Results parse(i32 argc, char** argv, const ParserDescriptor& desc);
+
+BEE_CORE_API Results parse(const char* program_name, const char* command_line, const ParserDescriptor& desc, Allocator* allocator = system_allocator());
 
 BEE_CORE_API bool has_option(const Results& results, const char* option_long_name);
 
