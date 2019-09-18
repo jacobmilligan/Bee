@@ -6,6 +6,7 @@
  */
 
 #include "Bee/Core/String.hpp"
+#include "Bee/Application/AppLoop.hpp"
 
 #include <stdlib.h>
 

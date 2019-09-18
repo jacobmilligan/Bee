@@ -7,6 +7,19 @@
 
 #include <Bee/Application/Main.hpp>
 #include <Bee/Graphics/GPU.hpp>
+#include <Bee/AssetPipeline/AssetCompiler.hpp>
+
+
+struct TextureCompiler final : public bee::AssetCompiler
+{
+    static constexpr const char* supported_file_types[] = { ".png", ".jpg", ".tiff" };
+
+    bee::AssetCompilerResult compile(bee::AssetCompileContext* ctx) override
+    {
+        bee::log_info("Compiling asset from %s: ", ctx->location->c_str());
+        return bee::AssetCompilerResult(bee::AssetCompilerStatus::success, bee::Type::from<int>());
+    }
+};
 
 
 class CubesApp final : public bee::Application
@@ -14,6 +27,18 @@ class CubesApp final : public bee::Application
 public:
     int launch(bee::AppContext* ctx) override
     {
+        bee::job_system_init(bee::JobSystemInitInfo{});
+
+        bee::AssetCompilerPipeline pipeline;
+        pipeline.register_compiler<TextureCompiler>();
+
+        bee::AssetCompileRequest req("C:\\Path\\at\\here.png", bee::AssetPlatform::unknown);
+        bee::DynamicArray<bee::u8> data;
+        bee::io::MemoryStream data_stream(&data);
+        bee::AssetCompileOperation op(&data_stream);
+        auto job = pipeline.compile_assets(1, &req, &op);
+        bee::job_wait(job);
+
         bee::PhysicalDeviceInfo devices[BEE_GPU_MAX_PHYSICAL_DEVICES];
         const auto device_count = bee::gpu_enumerate_physical_devices(devices, BEE_GPU_MAX_DEVICES);
 
@@ -36,7 +61,7 @@ public:
 
         bee::SwapchainCreateInfo swapchain_info{};
         swapchain_info.texture_format = bee::PixelFormat::bgra8;
-        swapchain_info.texture_extent = bee::Extent::from_platform_size(get_window_size(ctx->main_window));
+        swapchain_info.texture_extent = bee::Extent::from_platform_size(bee::get_window_size(ctx->main_window));
         swapchain_info.texture_usage = bee::TextureUsage::color_attachment;
         swapchain_info.texture_array_layers = 1;
         swapchain_info.vsync = true;

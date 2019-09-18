@@ -140,11 +140,15 @@ private:
     using storage_t = detail::__function_storage_t<BufferSize>;
     using destructor_t = void(*)(storage_t& storage);
     using invoker_t = ReturnType(*)(storage_t& storage, Args&&... args);
+    using this_t = Function<ReturnType(Args...), BufferSize, Alignment>;
+
+    template <typename CallableType>
+    using enable_if_callable_t = std::enable_if_t<!std::is_same_v<std::decay_t<CallableType>, this_t>>;
 public:
     Function() noexcept = default;
 
-    template <typename CallableType>
-    Function(CallableType&& callable) noexcept
+    template <typename CallableType, typename = enable_if_callable_t<CallableType>>
+    Function(CallableType&& callable) noexcept // NOLINT
     {
         using decayed_callable_t = std::decay_t<CallableType>;
 
@@ -168,14 +172,14 @@ public:
         new (storage_) decayed_callable_t { std::forward<CallableType>(callable) };
     }
 
-    Function(const Function<ReturnType(Args...), BufferSize, Alignment>& other) noexcept
+    Function(const Function& other) noexcept
     {
         copy_construct(other);
     }
 
-    Function(Function<ReturnType(Args...), BufferSize, Alignment>&& other) noexcept
+    Function(Function&& other) noexcept
     {
-        move_construct(std::forward(other));
+        move_construct(other);
     }
 
     ~Function() noexcept
@@ -191,7 +195,7 @@ public:
 
     Function& operator=(Function<ReturnType(Args...), BufferSize, Alignment>&& other) noexcept
     {
-        move_construct(std::forward<Function<ReturnType(Args...), BufferSize, Alignment>>(other));
+        move_construct(other);
         return *this;
     }
 
@@ -221,7 +225,7 @@ private:
         destructor_ = other.destructor_;
     }
 
-    void move_construct(Function<ReturnType(Args...), BufferSize, Alignment>&& other)
+    void move_construct(Function<ReturnType(Args...), BufferSize, Alignment>& other)
     {
         destruct_storage();
         memcpy(storage_, other.storage_, sign_cast<size_t>(BufferSize));

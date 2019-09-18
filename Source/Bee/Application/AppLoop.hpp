@@ -30,7 +30,7 @@ struct AppContext
 };
 
 
-struct BEE_API Application
+struct BEE_RUNTIME_API Application
 {
     virtual int launch(AppContext* ctx) = 0;
 
@@ -40,7 +40,7 @@ struct BEE_API Application
 };
 
 
-BEE_API int app_loop(const AppLaunchConfig& config, Application* app);
+BEE_RUNTIME_API int app_loop(const AppLaunchConfig& config, Application* app);
 
 
 

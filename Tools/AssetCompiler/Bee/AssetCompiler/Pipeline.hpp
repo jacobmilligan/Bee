@@ -53,7 +53,7 @@ struct AssetCompilerResult
 };
 
 
-struct AssetPipelineContext
+struct AssetCompileContext
 {
     const char*     location;
     io::Stream*     stream { nullptr };
@@ -66,7 +66,7 @@ BEE_DEFINE_VERSIONED_HANDLE(AssetCompiler);
 
 
 using create_asset_compiler_function_t = AssetCompilerHandle(*)();
-using asset_compile_function_t = AssetCompilerResult(*)(const AssetCompilerHandle& handle, AssetPipelineContext* ctx);
+using asset_compile_function_t = AssetCompilerResult(*)(const AssetCompilerHandle& handle, AssetCompileContext* ctx);
 
 struct AssetPipelinePlugin
 {
@@ -123,9 +123,9 @@ private:
         unload_plugin_function_t*   unload_plugin_symbol { nullptr };
 
         // Registered callbacks and compilers
-        DynamicArray<AssetCompilerHandle>               compilers;
-        AssetPipelinePlugin::create_compiler_function_t create_compiler { nullptr };
-        AssetPipelinePlugin::compile_function_t         compile { nullptr };
+        DynamicArray<AssetCompilerHandle>   compilers;
+        create_asset_compiler_function_t    create_compiler { nullptr };
+        asset_compile_function_t            compile { nullptr };
 
         RegisteredPlugin() = default;
 

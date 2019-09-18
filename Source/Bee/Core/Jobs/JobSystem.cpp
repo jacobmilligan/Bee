@@ -199,7 +199,7 @@ void worker_execute_one_job(Worker* local_worker)
 
         g_job_system->pending_job_count.fetch_sub(1, std::memory_order_release);
 
-        // The job allocator guarantasdees that this delete is thread safe across non-local threads
+        // The job allocator guarantees that this delete is thread safe across non-local threads
         const auto owning_worker_idx = job->owning_worker_id();
         BEE_ASSERT(owning_worker_idx >= 0);
 

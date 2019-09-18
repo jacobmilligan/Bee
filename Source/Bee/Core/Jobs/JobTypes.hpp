@@ -72,7 +72,7 @@ private:
 };
 
 
-class EmptyOperationJob : public Job
+class EmptyJob : public Job
 {
 public:
     using Job::Job;

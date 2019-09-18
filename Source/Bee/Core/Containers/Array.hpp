@@ -51,6 +51,8 @@ public:
 
     Array& operator=(Array&& other) noexcept;
 
+    Array& operator=(std::initializer_list<T> init) noexcept;
+
     T& operator[](i32 index);
 
     const T& operator[](i32 index) const;
@@ -298,6 +300,22 @@ template <typename T, ContainerMode Mode>
 Array<T, Mode>& Array<T, Mode>::operator=(Array<T, Mode>&& other) noexcept
 {
     move_construct(other);
+    return *this;
+}
+
+template <typename T, ContainerMode Mode>
+Array<T, Mode>& Array<T, Mode>::operator=(std::initializer_list<T> init) noexcept
+{
+    destroy();
+
+    if (allocator_ == nullptr)
+    {
+        allocator_ = system_allocator();
+    }
+
+    resize(init.size());
+    copy(0, init.begin(), init.end());
+
     return *this;
 }
 

@@ -327,15 +327,15 @@ struct InputBuffer
 };
 
 
-BEE_API void input_buffer_init(InputBuffer* buffer);
+BEE_RUNTIME_API void input_buffer_init(InputBuffer* buffer);
 
-BEE_API void input_buffer_frame(InputBuffer* buffer);
+BEE_RUNTIME_API void input_buffer_frame(InputBuffer* buffer);
 
-BEE_API bool key_down(const InputBuffer& buffer, Key key);
+BEE_RUNTIME_API bool key_down(const InputBuffer& buffer, Key key);
 
-BEE_API bool key_up(const InputBuffer& buffer, Key key);
+BEE_RUNTIME_API bool key_up(const InputBuffer& buffer, Key key);
 
-BEE_API bool key_typed(const InputBuffer& buffer, Key key);
+BEE_RUNTIME_API bool key_typed(const InputBuffer& buffer, Key key);
 
 
 } // namespace bee

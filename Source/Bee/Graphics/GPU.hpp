@@ -845,28 +845,28 @@ struct PipelineStateDescriptor
  *
  ********************************************************
  */
-BEE_API bool gpu_init();
+BEE_RUNTIME_API bool gpu_init();
 
-BEE_API void gpu_destroy();
+BEE_RUNTIME_API void gpu_destroy();
 
-BEE_API i32 gpu_enumerate_physical_devices(PhysicalDeviceInfo* dst_buffer, const i32 buffer_size);
+BEE_RUNTIME_API i32 gpu_enumerate_physical_devices(PhysicalDeviceInfo* dst_buffer, const i32 buffer_size);
 
-BEE_API DeviceHandle gpu_create_device(const DeviceCreateInfo& create_info);
+BEE_RUNTIME_API DeviceHandle gpu_create_device(const DeviceCreateInfo& create_info);
 
-BEE_API void gpu_destroy_device(const DeviceHandle& handle);
+BEE_RUNTIME_API void gpu_destroy_device(const DeviceHandle& handle);
 
-BEE_API void gpu_device_wait(const DeviceHandle& handle);
+BEE_RUNTIME_API void gpu_device_wait(const DeviceHandle& handle);
 
-BEE_API SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const SwapchainCreateInfo& create_info);
+BEE_RUNTIME_API SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const SwapchainCreateInfo& create_info);
 
-BEE_API void gpu_destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle);
+BEE_RUNTIME_API void gpu_destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle);
 
-BEE_API TextureHandle gpu_create_texture(const DeviceHandle& device_handle, const TextureCreateInfo& create_info);
+BEE_RUNTIME_API TextureHandle gpu_create_texture(const DeviceHandle& device_handle, const TextureCreateInfo& create_info);
 
-BEE_API void gpu_destroy_texture(const DeviceHandle& device_handle, const TextureHandle& texture_handle);
+BEE_RUNTIME_API void gpu_destroy_texture(const DeviceHandle& device_handle, const TextureHandle& texture_handle);
 
-BEE_API TextureViewHandle gpu_create_texture_view(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info);
+BEE_RUNTIME_API TextureViewHandle gpu_create_texture_view(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info);
 
-BEE_API void gpu_destroy_texture_view(const DeviceHandle& device_handle, const TextureViewHandle& texture_view_handle);
+BEE_RUNTIME_API void gpu_destroy_texture_view(const DeviceHandle& device_handle, const TextureViewHandle& texture_view_handle);
 
 } // namespace bee

@@ -6,5 +6,10 @@ bee_new_source_root()
 add_subdirectory(Application)
 add_subdirectory(Graphics)
 
-bee_library(Bee LINK_LIBRARIES Bee.Core)
-target_compile_definitions(Bee PUBLIC BEE_BUILD_EXPORT_LIBRARY)
+bee_library(Bee.Runtime LINK_LIBRARIES Bee.Core)
+target_compile_definitions(Bee.Runtime PUBLIC BEE_BUILD_EXPORT_LIBRARY)
+
+# Make a new target for tools
+bee_new_source_root()
+add_subdirectory(AssetPipeline)
+bee_library(Bee.Develop LINK_LIBRARIES Bee.Core)
