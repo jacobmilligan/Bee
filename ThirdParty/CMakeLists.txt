@@ -62,3 +62,31 @@ function(copy_dxc_binaries target_name)
         COMMENT "${target_name}: Copying DXC binaries to ${CMAKE_CURRENT_BINARY_DIR}"
     )
 endfunction()
+
+###########################
+#
+# LMDB
+#
+##########################
+function(lmdb_configure target)
+    if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
+        target_compile_options(${target} PRIVATE /wd4267 /wd4146 /wd4244 /wd4996 /wd4333 /wd4172 /wd4389 /wd4456 /wd4127 /wd4457 /wd4706 /wd4701)
+        target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS)
+    else()
+        FIND_PACKAGE(Threads REQUIRED)
+        target_link_libraries(${target} Threads::Threads)
+    endif ()
+endfunction()
+
+set(lmdb_root "${CMAKE_CURRENT_SOURCE_DIR}/lmdb/libraries/liblmdb")
+
+bee_new_source_root()
+bee_add_sources(
+    ${lmdb_root}/mdb.c
+    ${lmdb_root}/lmdb.h
+    ${lmdb_root}/midl.h
+    ${lmdb_root}/midl.c
+)
+bee_library(lmdb)
+bee_add_include_dirs(${lmdb_root})
+lmdb_configure(lmdb)

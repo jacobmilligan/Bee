@@ -65,7 +65,7 @@ endfunction()
 ################################################################################
 #
 # Begins a new source root - this resets all previously added source files and
-# will persist until the next `bee_new_source_root` or until a `bee_` target is
+# will persist until the next_free `bee_new_source_root` or until a `bee_` target is
 # added
 #
 ################################################################################

@@ -12,4 +12,4 @@ target_compile_definitions(Bee.Runtime PUBLIC BEE_BUILD_EXPORT_LIBRARY)
 # Make a new target for tools
 bee_new_source_root()
 add_subdirectory(AssetPipeline)
-bee_library(Bee.Develop LINK_LIBRARIES Bee.Core)
+bee_library(Bee.Develop LINK_LIBRARIES Bee.Core lmdb)
