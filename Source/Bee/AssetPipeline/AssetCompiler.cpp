@@ -159,11 +159,9 @@ void AssetCompilerPipeline::AssetCompileJob::execute()
 }
 
 
-Job* AssetCompilerPipeline::compile_assets(const i32 count, const AssetCompileRequest* requests, AssetCompileOperation* operations)
+void AssetCompilerPipeline::compile_assets(JobGroup* group, const i32 count, const AssetCompileRequest* requests, AssetCompileOperation* operations)
 {
     scoped_spinlock_t lock(mutex_);
-
-    auto root_job = allocate_job<EmptyJob>();
 
     for (int req = 0; req < count; ++req)
     {
@@ -176,12 +174,8 @@ Job* AssetCompilerPipeline::compile_assets(const i32 count, const AssetCompileRe
         }
 
         operations[req].job = allocate_job<AssetCompileJob>(&compilers_[compiler->value], requests[req], &operations[req]);
-        root_job->add_dependency(operations[req].job);
-        schedule_job(operations[req].job);
+        job_schedule(group, operations[req].job);
     }
-
-    schedule_job(root_job);
-    return root_job;
 }
 
 

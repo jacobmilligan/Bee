@@ -117,8 +117,9 @@ TEST_F(JobsTests, test_count)
 
     done = 0;
     auto jobs_begin = bee::time::now();
-    bee::schedule_job_group(jobs[0], jobs + 1, 999);
-    bee::job_wait(jobs[0]);
+    bee::JobGroup group{};
+    bee::job_schedule_group(&group, jobs, bee::static_array_length(jobs));
+    bee::job_wait(&group);
     auto jobs_time = bee::TimePoint(bee::time::now() - jobs_begin).total_milliseconds();
 
     printf("Job function time: %f. Done: %d\n", jobs_time, done.load());
@@ -144,8 +145,8 @@ TEST_F(JobsTests, test_count)
     }
 
     jobs_begin = bee::time::now();
-    bee::schedule_job_group(jobs[0], jobs + 1, 999);
-    bee::job_wait(jobs[0]);
+    bee::job_schedule_group(&group, jobs, bee::static_array_length(jobs));
+    bee::job_wait(&group);
     jobs_time = bee::TimePoint(bee::time::now() - jobs_begin).total_milliseconds();
 
     printf("Job struct time: %f. Done: %d\n", jobs_time, done.load());
@@ -170,7 +171,8 @@ TEST_F(JobsTests, parallel_for)
     ParallelForData data[1000];
 
     const auto jobs_begin = bee::time::now();
-    auto parallel_for = bee::parallel_for(1000, 1, [&](const bee::i32 index)
+    bee::JobGroup group{};
+    bee::parallel_for(&group, 1000, 1, [&](const bee::i32 index)
     {
         auto count = 0;
         for (int i = 0; i < 100000; ++i)
@@ -184,7 +186,7 @@ TEST_F(JobsTests, parallel_for)
         data[index].w = count;
     });
 
-    bee::job_wait(parallel_for);
+    bee::job_wait(&group);
     const auto jobs_time = bee::TimePoint(bee::time::now() - jobs_begin).total_milliseconds();
     printf("Parallel for time: %f\n", jobs_time);
 

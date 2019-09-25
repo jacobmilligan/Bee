@@ -131,9 +131,9 @@ struct AssetImportJob final : public Job
             ++op_count;
         }
 
-        auto compile_job = compiler_pipeline->compile_assets(op_count, compile_reqs.data(), compile_ops.data());
-        schedule_job(compile_job);
-        job_wait(compile_job);
+        JobGroup group{};
+        compiler_pipeline->compile_assets(&group, op_count, compile_reqs.data(), compile_ops.data());
+        job_wait(&group);
 
         for (int op = 0; op < op_count; ++op)
         {
@@ -160,11 +160,10 @@ struct AssetImportJob final : public Job
 };
 
 
-Job* AssetPipeline::import_assets(const i32 asset_count, const char* const* paths, AssetPlatform dst_platform)
+void AssetPipeline::import_assets(JobGroup* group, const i32 asset_count, const char* const* paths, AssetPlatform dst_platform)
 {
     auto job = allocate_job<AssetImportJob>(assets_root_, asset_count, paths, dst_platform, &assetdb_, &compiler_pipeline_);
-    schedule_job(job);
-    return job;
+    job_schedule(group, job);
 }
 
 

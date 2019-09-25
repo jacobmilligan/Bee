@@ -124,7 +124,7 @@ public:
 
     void unregister_compiler(const char* name);
 
-    Job* compile_assets(i32 count, const AssetCompileRequest* requests, AssetCompileOperation* operations);
+    void compile_assets(JobGroup* group, i32 count, const AssetCompileRequest* requests, AssetCompileOperation* operations);
 private:
     using create_function_t = Function<AssetCompiler*(Allocator*)>;
 

@@ -36,11 +36,11 @@ BEE_CORE_API bool job_system_init(const JobSystemInitInfo& info);
 
 BEE_CORE_API void job_system_shutdown();
 
-BEE_CORE_API void schedule_job(Job* job);
+BEE_CORE_API void job_schedule(JobGroup* group, Job* job);
 
-BEE_CORE_API void schedule_job_group(Job* job, Job** dependencies, i32 dependency_count);
+BEE_CORE_API void job_schedule_group(JobGroup* group, Job** dependencies, i32 dependency_count);
 
-BEE_CORE_API bool job_wait(Job* job);
+BEE_CORE_API bool job_wait(JobGroup* group);
 
 BEE_CORE_API Allocator* local_job_allocator();
 
@@ -83,7 +83,7 @@ inline void __parallel_for_single_batch(const i32 range_begin, const i32 range_e
 
 
 template <typename FunctionType>
-inline Job* parallel_for(const i32 iteration_count, const i32 execute_batch_size, const FunctionType& function)
+inline void parallel_for(JobGroup* group, const i32 iteration_count, const i32 execute_batch_size, const FunctionType& function)
 {
     const auto first_batch_size = math::min(iteration_count, execute_batch_size);
     auto job = allocate_job(&__parallel_for_single_batch<FunctionType>, 0, first_batch_size, function);
@@ -92,12 +92,10 @@ inline Job* parallel_for(const i32 iteration_count, const i32 execute_batch_size
     {
         const auto batch_end = math::min(iteration_count, batch + execute_batch_size);
         auto loop_job = allocate_job(&__parallel_for_single_batch<FunctionType>, batch, batch_end, function);
-        job->add_dependency(loop_job);
-        schedule_job(loop_job);
+        job_schedule(group, loop_job);
     }
 
-    schedule_job(job);
-    return job;
+    job_schedule(group, job);
 }
 
 

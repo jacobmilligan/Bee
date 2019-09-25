@@ -237,13 +237,11 @@ void worker_main(const WorkerMainParams& params)
     while (g_job_system->is_active.load(std::memory_order_acquire))
     {
         worker_execute_one_job(params.worker);
+        worker_gc(params.worker);
 
         // we don't want to sleep if we're only running jobs while waiting on a counter
         if (g_job_system->pending_job_count.load() <= 0)
         {
-            // no jobs to do - clean up all completed jobs and then put the worker to sleep
-            worker_gc(params.worker);
-
             std::unique_lock<std::mutex> wait_lock(g_job_system->worker_wait_mutex);
 
             g_job_system->worker_wait_cv.wait(wait_lock, [&]()
@@ -339,7 +337,7 @@ void job_system_shutdown()
     g_job_system = nullptr;
 }
 
-void schedule_job_group(Job* job, Job** dependencies, const i32 dependency_count)
+void job_schedule_group(JobGroup* group, Job** dependencies, const i32 dependency_count)
 {
     BEE_ASSERT_F(g_job_system != nullptr, "Job system has been shutdown or was never started");
     BEE_ASSERT_F(g_job_system->initialized.load(), "Attempted to run jobs without initializing the job system");
@@ -349,23 +347,20 @@ void schedule_job_group(Job* job, Job** dependencies, const i32 dependency_count
 
     for (int d = 0; d < dependency_count; ++d)
     {
-        job->add_dependency(dependencies[d]);
+        group->add_job(dependencies[d]);
         g_job_system->pending_job_count.fetch_add(1, std::memory_order_release);
         local_worker.job_queue.push(dependencies[d]);
     }
 
-    g_job_system->pending_job_count.fetch_add(1, std::memory_order_release);
-    local_worker.job_queue.push(job);
-
     g_job_system->worker_wait_cv.notify_all();
 }
 
-void schedule_job(Job* job)
+void job_schedule(JobGroup* group, Job* job)
 {
-    schedule_job_group(job, nullptr, 0);
+    job_schedule_group(group, &job, 1);
 }
 
-bool job_wait(Job* job)
+bool job_wait(JobGroup* group)
 {
     BEE_ASSERT_F(g_job_system->initialized.load(), "Attempted to wait on a job without initializing the job system");
 
@@ -378,7 +373,7 @@ bool job_wait(Job* job)
     auto local_worker = &g_job_system->workers[local_worker_idx];
 
     // Try and help execute jobs while we're waiting for this job to complete
-    while (job->has_dependencies())
+    while (group->has_pending_jobs())
     {
         if (!g_job_system->is_active.load(std::memory_order_acquire))
         {

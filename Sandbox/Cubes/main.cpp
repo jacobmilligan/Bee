@@ -37,8 +37,9 @@ public:
         pipeline_.init(pipeline_info);
 
         const char* shader_path = "Shaders/Triangle.bsc";
-        auto job = pipeline_.import_assets(1, &shader_path);
-        bee::job_wait(job);
+        bee::JobGroup group{};
+        pipeline_.import_assets(&group, 1, &shader_path);
+        bee::job_wait(&group);
 
         bee::PhysicalDeviceInfo devices[BEE_GPU_MAX_PHYSICAL_DEVICES];
         const auto device_count = bee::gpu_enumerate_physical_devices(devices, BEE_GPU_MAX_DEVICES);

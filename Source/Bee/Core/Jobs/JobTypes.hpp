@@ -19,6 +19,21 @@ namespace bee {
 
 class Allocator;
 struct Worker;
+class Job;
+
+class JobGroup
+{
+public:
+    void add_job(Job* job);
+
+    i32 pending_count();
+
+    bool has_pending_jobs();
+
+    void signal(Job* job);
+private:
+    std::atomic_int32_t pending_count_ { 0 };
+};
 
 class BEE_CORE_API  Job
 {
@@ -35,24 +50,18 @@ public:
 
     void complete();
 
-    void add_dependency(Job* dependency);
+    void set_group(JobGroup* group);
 
-    i32 dependency_count() const;
-
-    bool has_dependencies() const;
-
-    Job* parent() const;
+    JobGroup* parent() const;
 
     i32 owning_worker_id() const;
 private:
-    i32                 owning_worker_ { 0 };
-    std::atomic_int32_t dependency_count_;
-    std::atomic<Job*>   parent_;
-    char                pad_[32 - sizeof(owning_worker_) - sizeof(dependency_count_) - sizeof(parent_)];
+    i32                     owning_worker_ { 0 };
+    std::atomic<JobGroup*>  parent_;
+
+    char                    pad_[32 - sizeof(owning_worker_) - sizeof(parent_)];
 
     void move_construct(Job& other) noexcept;
-
-    void signal_completed_dependency();
 };
 
 template <typename FunctionType>

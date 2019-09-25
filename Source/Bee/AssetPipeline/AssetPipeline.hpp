@@ -42,7 +42,7 @@ public:
         compiler_pipeline_.unregister_compiler(name);
     }
 
-    Job* import_assets(const i32 asset_count, const char* const* paths, AssetPlatform dst_platform = asset_pipeline_default_platform());
+    void import_assets(JobGroup* group, const i32 asset_count, const char* const* paths, AssetPlatform dst_platform = asset_pipeline_default_platform());
 private:
     Path                    assets_root_;
     AssetDB                 assetdb_;
