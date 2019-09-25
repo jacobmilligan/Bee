@@ -38,6 +38,11 @@ void write_dash_if_needed(String* dst_str, const GUIDFormat format)
  *
  ************************************
  */
+i32 guid_to_string(const GUID& guid, GUIDFormat format, char* dst, i32 dst_buffer_size)
+{
+    return guid_to_string(guid, format, make_span(dst, dst_buffer_size));
+}
+
 i32 guid_to_string(const GUID& guid, GUIDFormat format, const Span<char>& dst)
 {
     if (BEE_FAIL(dst.size() >= 33))

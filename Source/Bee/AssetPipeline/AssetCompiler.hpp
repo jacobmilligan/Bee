@@ -72,6 +72,8 @@ struct AssetCompileRequest
     AssetPlatform   platform { AssetPlatform::unknown };
     const char*     src_path { nullptr };
 
+    AssetCompileRequest() = default;
+
     AssetCompileRequest(const char* new_src_path, const AssetPlatform new_platform)
         : src_path(new_src_path),
           platform(new_platform)
@@ -82,11 +84,18 @@ struct AssetCompileOperation
 {
     Job*                job { nullptr };
     AssetCompilerResult result;
-    io::MemoryStream*   data { nullptr };
+    io::MemoryStream    data { nullptr };
 
-    explicit AssetCompileOperation(io::MemoryStream* dst_data)
+    AssetCompileOperation() = default;
+
+    explicit AssetCompileOperation(DynamicArray<u8>* dst_data)
         : data(dst_data)
     {}
+
+    void reset(DynamicArray<u8>* dst_data)
+    {
+        new (&data) io::MemoryStream(dst_data);
+    }
 };
 
 
@@ -101,6 +110,7 @@ struct BEE_DEVELOP_API AssetCompiler
 class BEE_DEVELOP_API AssetCompilerPipeline
 {
 public:
+
     template <typename CompilerType>
     bool register_compiler()
     {

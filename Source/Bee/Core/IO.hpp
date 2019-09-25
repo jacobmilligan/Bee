@@ -203,6 +203,10 @@ protected:
 class BEE_CORE_API MemoryStream : public Stream
 {
 public:
+    explicit MemoryStream(nullptr_t)
+        : Stream(Mode::invalid)
+    {}
+
     MemoryStream(const void* read_only_buffer, const i32 buffer_capacity)
         : Stream(Mode::read_only),
           buffer_(const_cast<u8*>(static_cast<const u8*>(read_only_buffer))),

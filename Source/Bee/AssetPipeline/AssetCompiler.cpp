@@ -147,7 +147,7 @@ void AssetCompilerPipeline::AssetCompileJob::execute()
 {
     AssetCompileContext ctx(platform, &src_path);
     ctx.temp_allocator = job_temp_allocator();
-    ctx.stream = operation->data;
+    ctx.stream = &operation->data;
 
     auto instance = compiler->instances[get_local_job_worker_id()];
     if (instance == nullptr)

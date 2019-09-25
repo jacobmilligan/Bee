@@ -178,6 +178,8 @@ BEE_CORE_API String guid_to_string(const GUID& guid, GUIDFormat format, Allocato
 
 BEE_CORE_API i32 guid_to_string(const GUID& guid, GUIDFormat format, const Span<char>& dst);
 
+BEE_CORE_API i32 guid_to_string(const GUID& guid, GUIDFormat format, char* dst, i32 dst_buffer_size);
+
 /**
  * Parses an input string and returns it as a GUID structure. The input string is parsed as case-insensitive, i.e.
  * accepting either 'a' or 'A' as a valid hexadecimal character (see: https://tools.ietf.org/html/rfc4122 - section 3)

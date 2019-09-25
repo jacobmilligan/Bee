@@ -239,7 +239,14 @@ template <typename SerializerType, typename ElementType, i32 Size>
 inline void serialize_type(SerializerType* serializer, ElementType(*data)[Size], const char* name)
 {
     BEE_ASSERT(serializer != nullptr);
-    serializer->convert_cbuffer(*data, Size, name);
+    serializer->convert_cbuffer(&((*data)[0]), Size, name);
+}
+
+template <typename SerializerType, i32 Size>
+inline void serialize_type(SerializerType* serializer, char(*data)[Size], const char* name)
+{
+    BEE_ASSERT(serializer != nullptr);
+    serializer->convert_cstr(&((*data)[0]), str::length(*data), name);
 }
 
 template <typename SerializerType>

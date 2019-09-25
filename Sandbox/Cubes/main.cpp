@@ -7,7 +7,8 @@
 
 #include <Bee/Application/Main.hpp>
 #include <Bee/Graphics/GPU.hpp>
-#include <Bee/AssetPipeline/AssetCompiler.hpp>
+#include <Bee/AssetPipeline/AssetPipeline.hpp>
+#include <Bee/Core/Filesystem.hpp>
 
 
 struct TextureCompiler final : public bee::AssetCompiler
@@ -29,14 +30,14 @@ public:
     {
         bee::job_system_init(bee::JobSystemInitInfo{});
 
-        bee::AssetCompilerPipeline pipeline;
-        pipeline.register_compiler<TextureCompiler>();
+        bee::AssetPipelineInitInfo pipeline_info{};
+        pipeline_info.asset_source_root = bee::fs::get_appdata().assets_root.c_str();
+        pipeline_info.assetdb_name = "AssetDB";
+        pipeline_info.assetdb_location = bee::fs::get_appdata().root.c_str();
+        pipeline_.init(pipeline_info);
 
-        bee::AssetCompileRequest req("C:\\Path\\at\\here.png", bee::AssetPlatform::unknown);
-        bee::DynamicArray<bee::u8> data;
-        bee::io::MemoryStream data_stream(&data);
-        bee::AssetCompileOperation op(&data_stream);
-        auto job = pipeline.compile_assets(1, &req, &op);
+        const char* shader_path = "Shaders/Triangle.bsc";
+        auto job = pipeline_.import_assets(1, &shader_path);
         bee::job_wait(job);
 
         bee::PhysicalDeviceInfo devices[BEE_GPU_MAX_PHYSICAL_DEVICES];
@@ -89,6 +90,7 @@ public:
 private:
     bee::DeviceHandle       device_;
     bee::SwapchainHandle    swapchain_;
+    bee::AssetPipeline      pipeline_;
 };
 
 int bee_main(int argc, char** argv)
