@@ -440,7 +440,7 @@ i32 get_local_job_worker_id()
 
 i32 get_job_worker_count()
 {
-    return g_job_system->workers.size() - 1; // last 'worker' is the main thread
+    return g_job_system->workers.size(); // last 'worker' is the main thread
 }
 
 size_t get_local_job_allocator_size()

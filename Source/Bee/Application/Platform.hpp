@@ -49,7 +49,7 @@ struct WindowConfig
 };
 
 
-BEE_SERIALIZE(WindowConfig, 1)
+BEE_SERIALIZE(1, WindowConfig)
 {
     BEE_ADD_FIELD(1, fullscreen);
     BEE_ADD_FIELD(1, borderless);

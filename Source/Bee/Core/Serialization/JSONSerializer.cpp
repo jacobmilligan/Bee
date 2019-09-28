@@ -9,7 +9,6 @@
 #include "Bee/Core/Meta.hpp"
 
 #define BEE_RAPIDJSON_RAPIDJSON_H
-#define BEE_RAPIDJSON_DOCUMENT_H
 #define BEE_RAPIDJSON_ERROR_H
 #include "Bee/Core/Serialization/JSONSerializer.hpp"
 

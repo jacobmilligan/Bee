@@ -11,7 +11,7 @@ namespace bee {
 
 
 AssetCompilerPipeline::RegisteredCompiler::RegisteredCompiler(
-    const bee::Type& new_type,
+    const Type& new_type,
     const char* const* new_file_types,
     const i32 new_file_type_count,
     create_function_t&& create_function
@@ -134,18 +134,22 @@ void AssetCompilerPipeline::unregister_compiler(const char* name)
 }
 
 AssetCompilerPipeline::AssetCompileJob::AssetCompileJob(
-    bee::AssetCompilerPipeline::RegisteredCompiler* requested_compiler,
-    const bee::AssetCompileRequest& request,
-    bee::AssetCompileOperation* dst_operation
+    AssetCompilerPipeline::RegisteredCompiler* requested_compiler,
+    const AssetCompileRequest& request,
+    AssetCompileOperation* dst_operation
 ) : compiler(requested_compiler),
     platform(request.platform),
     src_path(request.src_path, job_temp_allocator()),
     operation(dst_operation)
-{}
+{
+    settings.json = String(request.settings.json.view(), job_temp_allocator());
+}
 
 void AssetCompilerPipeline::AssetCompileJob::execute()
 {
-    AssetCompileContext ctx(platform, &src_path);
+    AssetCompileContext ctx(platform, &src_path, &settings);
+    const auto meta_path = Path(src_path.view(), job_temp_allocator()).append_extension(".meta");
+
     ctx.temp_allocator = job_temp_allocator();
     ctx.stream = &operation->data;
 

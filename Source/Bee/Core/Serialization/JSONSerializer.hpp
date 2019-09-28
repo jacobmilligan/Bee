@@ -122,6 +122,11 @@ public:
         return string_buffer_.GetString();
     }
 
+    inline rapidjson::PrettyWriter<rapidjson::StringBuffer>& pretty_writer()
+    {
+        return writer_;
+    }
+
 private:
     Allocator*                                          allocator_ { nullptr };
     DynamicArray<rapidjson::Type>                       stack_;
@@ -137,7 +142,7 @@ private:
 class BEE_CORE_API JSONReader : public Serializer
 {
 public:
-    JSONReader(bee::String* source, Allocator* allocator = system_allocator())
+    explicit JSONReader(bee::String* source, Allocator* allocator = system_allocator())
         : source_(source),
           stack_(allocator)
     {}
@@ -234,6 +239,11 @@ public:
     }
 
     void convert_cstr(char* string, i32 size, const char* name);
+
+    inline rapidjson::Document& document()
+    {
+        return document_;
+    }
 
 private:
     struct Scope

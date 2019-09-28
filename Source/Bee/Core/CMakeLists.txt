@@ -24,7 +24,7 @@ bee_add_sources(
         Path.hpp        Path.cpp
         Process.hpp
         Random.hpp      Random.cpp
-        Reflection.hpp
+        Reflection.hpp  Reflection.cpp
         Span.hpp
         Socket.hpp
         String.hpp      String.cpp

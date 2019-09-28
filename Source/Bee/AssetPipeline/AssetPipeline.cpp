@@ -24,7 +24,7 @@ bool AssetPipeline::init(const AssetPipelineInitInfo& info)
     return true;
 }
 
-AssetPlatform asset_pipeline_default_platform()
+AssetPlatform asset_platform_default()
 {
     return AssetPlatform::unknown
         | get_flag_if_true(BEE_OS_WINDOWS == 1, AssetPlatform::windows)
@@ -32,22 +32,6 @@ AssetPlatform asset_pipeline_default_platform()
         | get_flag_if_true(BEE_OS_LINUX == 1, AssetPlatform::linux)
         | get_flag_if_true(BEE_CONFIG_GRAPHICS_API_METAL == 1, AssetPlatform::metal)
         | get_flag_if_true(BEE_CONFIG_GRAPHICS_API_VULKAN == 1, AssetPlatform::vulkan);
-}
-
-void meta_serialize(const SerializerMode mode, const Path& path, AssetMeta* meta, Allocator* allocator)
-{
-    if (mode == SerializerMode::reading)
-    {
-        auto src = fs::read(path, allocator);
-        JSONReader reader(&src, allocator);
-        serialize(mode, &reader, meta);
-    }
-    else
-    {
-        JSONWriter writer(allocator);
-        serialize(mode, &writer, meta);
-        fs::write(path, writer.c_str());
-    }
 }
 
 
@@ -63,96 +47,99 @@ struct AssetImportJob final : public Job
 
     FixedArray<Path>                    meta_paths;
     FixedArray<Path>                    paths;
-    AssetPlatform                       platform;
+    FixedArray<AssetCompileRequest>     requests;
     AssetDB*                            assetdb { nullptr };
     AssetCompilerPipeline*              compiler_pipeline { nullptr };
 
-    explicit AssetImportJob(const Path& assets_root, const i32 count, const char* const* src_paths, const AssetPlatform dst_platform, AssetDB* assetdb_ptr, AssetCompilerPipeline* compiler_pipeline_ptr)
-        : platform(dst_platform),
-          assetdb(assetdb_ptr),
+    explicit AssetImportJob(const Path& assets_root, const i32 count, const AssetCompileRequest* new_requests, AssetDB* assetdb_ptr, AssetCompilerPipeline* compiler_pipeline_ptr)
+        : assetdb(assetdb_ptr),
           compiler_pipeline(compiler_pipeline_ptr)
     {
         paths = FixedArray<Path>::with_size(count, job_temp_allocator());
         meta_paths = FixedArray<Path>::with_size(count, job_temp_allocator());
-        for (int p = 0; p < paths.size(); ++p)
+        requests = FixedArray<AssetCompileRequest>::with_size(count, job_temp_allocator());
+
+        for (int p = 0; p < count; ++p)
         {
-            paths[p] = Path(assets_root.view(), job_temp_allocator()).append(src_paths[p]);
+            paths[p] = Path(assets_root.view(), job_temp_allocator()).append(new_requests[p].src_path);
             meta_paths[p] = Path(paths[p].view(), job_temp_allocator()).append_extension(".meta");
+            requests[p] = new_requests[p];
+            requests[p].src_path = paths[p].c_str();
         }
     }
 
     void execute() override
     {
         auto import_ops = FixedArray<ImportOperation>::with_size(paths.size(), job_temp_allocator());
-        auto compile_reqs = FixedArray<AssetCompileRequest>::with_size(paths.size(), job_temp_allocator());
         auto compile_ops = FixedArray<AssetCompileOperation>::with_size(paths.size(), job_temp_allocator());
 
         int op_count = 0;
 
         for (int req = 0; req < paths.size(); ++req)
         {
-            auto& src_path = paths[req];
             auto& meta_path = meta_paths[req];
             auto& op = import_ops[op_count];
             auto& compile_op = compile_ops[op_count];
-            auto& compile_req = compile_reqs[op_count];
+            auto settings = &requests[op_count].settings;
 
             // Has this already been imported?
             if (meta_path.exists())
             {
-                meta_serialize(SerializerMode::reading, meta_path, &op.meta, job_temp_allocator());
-
-                if (assetdb->asset_exists(op.meta.guid))
-                {
-                    log_info("Asset already exists - reimport?");
-                    continue;
-                }
-
-                // Get the latest DB version of the info as we'll update the .meta file later
-                assetdb->get_asset(op.meta.guid, &op.meta);
+                asset_meta_serialize(SerializerMode::reading, meta_path, &op.meta, settings, job_temp_allocator());
             }
             else
             {
-                // Write out the new meta file
+                // Write out the new meta file with new GUID if not imported
                 op.meta.guid = generate_guid();
-                meta_serialize(SerializerMode::writing, meta_path, &op.meta, job_temp_allocator());
-                assetdb->put_asset(op.meta.guid, src_path.c_str());
+                asset_meta_serialize(SerializerMode::writing, meta_path, &op.meta, settings, job_temp_allocator());
+            }
+
+            op.artifact_path = Path(job_temp_allocator());
+
+            if (!assetdb->get_artifact_path(op.meta.guid, &op.artifact_path))
+            {
+                log_error("Failed to get asset artifact path");
+                continue;
             }
 
             op.meta_path = &meta_path;
             op.buffer = DynamicArray<u8>(job_temp_allocator());
-            op.artifact_path = Path(job_temp_allocator());
-            assetdb->get_paths(op.meta.guid, nullptr, &op.artifact_path);
-
-            compile_req.src_path = src_path.c_str();
-            compile_req.platform = platform;
             compile_op.reset(&op.buffer);
-
             ++op_count;
         }
 
         JobGroup group{};
-        compiler_pipeline->compile_assets(&group, op_count, compile_reqs.data(), compile_ops.data());
+        compiler_pipeline->compile_assets(&group, op_count, requests.data(), compile_ops.data());
         job_wait(&group);
 
         for (int op = 0; op < op_count; ++op)
         {
             auto& import_op = import_ops[op];
             auto& compile_op = compile_ops[op];
-            auto& compile_req = compile_reqs[op];
+            auto& compile_req = requests[op];
+            auto settings = &requests[op].settings;
 
+            import_op.meta.type = compile_op.result.compiled_type;
+
+            // Serialize meta to file first to ensure integrity if any of the following functions fail
+            asset_meta_serialize(SerializerMode::writing, *import_op.meta_path, &import_op.meta, settings, job_temp_allocator());
+
+            // Update the assetdb before writing the artifacts
+            import_op.meta.type = (compile_op.result.compiled_type);
+            assetdb->put_asset(import_op.meta, compile_req.src_path);
+
+            // Don't write out any artifacts if compilation failed - we still want to update assetdb and meta to maintain GUID's and types
             if (compile_op.result.status != AssetCompilerStatus::success)
             {
                 log_error("Failed to compile asset: %d", compile_op.result.status);
                 continue;
             }
 
-            // Serialize to file first
-            meta_serialize(SerializerMode::writing, *import_op.meta_path, &import_op.meta, job_temp_allocator());
-
-            // Update the assetdb first before writing the artifacts
-            import_op.meta.type = (compile_op.result.compiled_type);
-            assetdb->put_asset(import_op.meta, compile_req.src_path);
+            const auto dir = import_op.artifact_path.parent(job_temp_allocator());
+            if (!dir.exists())
+            {
+                fs::mkdir(dir);
+            }
 
             fs::write(import_op.artifact_path, import_op.buffer.const_span());
         }
@@ -160,9 +147,9 @@ struct AssetImportJob final : public Job
 };
 
 
-void AssetPipeline::import_assets(JobGroup* group, const i32 asset_count, const char* const* paths, AssetPlatform dst_platform)
+void AssetPipeline::import_assets(JobGroup* group, const i32 asset_count, const AssetCompileRequest* requests)
 {
-    auto job = allocate_job<AssetImportJob>(assets_root_, asset_count, paths, dst_platform, &assetdb_, &compiler_pipeline_);
+    auto job = allocate_job<AssetImportJob>(assets_root_, asset_count, requests, &assetdb_, &compiler_pipeline_);
     job_schedule(group, job);
 }
 

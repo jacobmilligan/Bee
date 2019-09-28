@@ -448,6 +448,11 @@ i32 length(const char* string)
  */
 void copy(char* dst, i32 dst_size, const char* src, const i32 src_count)
 {
+    if (src_count <= 0)
+    {
+        return;
+    }
+
     BEE_ASSERT(dst != nullptr);
     BEE_ASSERT(src != nullptr);
 

@@ -18,6 +18,7 @@ int app_loop(const AppLaunchConfig& config, Application* app)
      ************************************
      *
      * Engine initialization order:
+     *  0. init reflection etc.
      *  1. platform launch
      *  2. ctx alloc
      *  3. input buffer init
@@ -26,6 +27,8 @@ int app_loop(const AppLaunchConfig& config, Application* app)
      *
      ************************************
      */
+    reflection_init();
+
     if (!platform_launch(config.app_name))
     {
         return EXIT_FAILURE;

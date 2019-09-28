@@ -11,6 +11,7 @@
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
 #include "Bee/Core/Concurrency.hpp"
+#include "Bee/AssetPipeline/AssetMeta.hpp"
 
 
 struct MDB_txn;
@@ -25,39 +26,6 @@ enum class AssetDBTxnType
     read_only,
     write
 };
-
-
-struct AssetMeta
-{
-    GUID    guid;
-    Type    type;
-    char    name[256];
-
-    AssetMeta()
-    {
-        name[0] = '\0';
-    }
-
-    AssetMeta(const GUID& new_guid, const Type& new_type, const char* new_name)
-        : guid(new_guid),
-          type(new_type)
-    {
-        str::copy(name, static_array_length(name), new_name);
-    }
-
-    inline bool is_valid() const
-    {
-        return type.is_valid();
-    }
-};
-
-
-BEE_SERIALIZE(AssetMeta, 1)
-{
-    BEE_ADD_FIELD(1, guid);
-    BEE_ADD_FIELD(1, type);
-    BEE_ADD_FIELD(1, name);
-}
 
 
 class BEE_DEVELOP_API AssetDB
@@ -77,7 +45,9 @@ public:
 
     bool get_asset(const GUID& guid, AssetMeta* meta);
 
-    bool get_paths(const GUID& guid, Path* src_path, Path* artifact_path);
+    bool get_source_path(const GUID& guid, Path* path);
+
+    bool get_artifact_path(const GUID& guid, Path* path);
 
     bool delete_asset(const GUID& guid);
 
@@ -122,7 +92,7 @@ private:
 
     bool set_asset_name(Transaction& txn, const GUID& guid, const StringView& name);
 
-    bool get_asset(Transaction& txn, const GUID& guid, AssetMeta* meta, const char** src_path, const char** artifact_path);
+    bool get_asset(Transaction& txn, const GUID& guid, AssetMeta* meta, const char** src_path);
 
     bool put_asset(Transaction& txn, const AssetMeta& meta, const char* src_path);
 };

@@ -178,7 +178,7 @@ MDB_val make_key(const StringView& name)
 // Temporary buffer for storing records
 static thread_local char value_buffer[4096];
 
-MDB_val make_value(const AssetMeta& meta, const char* path, const char* artifact_path)
+MDB_val make_value(const AssetMeta& meta, const char* path)
 {
     const auto src_length = str::length(path);
 
@@ -187,7 +187,6 @@ MDB_val make_value(const AssetMeta& meta, const char* path, const char* artifact
     io::MemoryStream stream(value_buffer, static_array_length(value_buffer), 0);
     stream.write(&meta, sizeof(AssetMeta));
     stream.write(path, src_length);
-    stream.write(artifact_path, str::length(artifact_path));
 
     MDB_val val{};
     val.mv_size = stream.size();
@@ -195,7 +194,7 @@ MDB_val make_value(const AssetMeta& meta, const char* path, const char* artifact
     return val;
 }
 
-void assetdb_record_serialize(const MDB_val& value, AssetMeta* meta, const char** path, const char** artifact_path)
+void assetdb_record_serialize(const MDB_val& value, AssetMeta* meta, const char** path)
 {
     const auto size = math::min(sign_cast<i32>(value.mv_size), static_array_length(value_buffer));
     memcpy(value_buffer, value.mv_data, size);
@@ -209,11 +208,6 @@ void assetdb_record_serialize(const MDB_val& value, AssetMeta* meta, const char*
     if (path != nullptr)
     {
         *path = path_ptr;
-    }
-
-    if (artifact_path != nullptr)
-    {
-        *artifact_path = path_ptr + str::length(path_ptr);
     }
 }
 
@@ -249,15 +243,9 @@ bool AssetDB::put_asset(const AssetMeta& meta, const char* src_path)
 
 bool AssetDB::put_asset(Transaction& txn, const AssetMeta& meta, const char* src_path)
 {
-    static thread_local char artifact_path_buffer[64];
-
-    // Use the existing meta buffer to create the path to look like e.g: "3c\\3cf924e1bb4d47779c6014e532b49357"
-    guid_to_string(meta.guid, GUIDFormat::digits, artifact_path_buffer + 3, static_array_length(artifact_path_buffer) - 3);
-    str::format(artifact_path_buffer, 3, "%s%c", artifact_path_buffer + 3, Path::preferred_slash);
-
     // Update the data in the asset dbi
     auto key = make_key(meta.guid);
-    auto val = make_value(meta, src_path, artifact_path_buffer);
+    auto val = make_value(meta, src_path);
 
     if (BEE_LMDB_FAIL(mdb_put(*txn, asset_dbi_, &key, &val, 0)))
     {
@@ -285,10 +273,10 @@ bool AssetDB::get_asset(const GUID& guid, AssetMeta* meta)
 {
     BEE_ASSERT(is_valid());
     Transaction txn(env_, MDB_RDONLY);
-    return get_asset(txn, guid, meta, nullptr, nullptr);
+    return get_asset(txn, guid, meta, nullptr);
 }
 
-bool AssetDB::get_asset(Transaction& txn, const GUID& guid, AssetMeta* meta, const char** src_path, const char** artifact_path)
+bool AssetDB::get_asset(Transaction& txn, const GUID& guid, AssetMeta* meta, const char** src_path)
 {
     if (BEE_FAIL(meta != nullptr))
     {
@@ -307,14 +295,19 @@ bool AssetDB::get_asset(Transaction& txn, const GUID& guid, AssetMeta* meta, con
     // Get the actual meta data
     txn.commit();
 
-    assetdb_record_serialize(val, meta, src_path, artifact_path);
+    assetdb_record_serialize(val, meta, src_path);
 
     return true;
 }
 
-bool AssetDB::get_paths(const GUID& guid, Path* src_path, Path* artifact_path)
+bool AssetDB::get_source_path(const GUID& guid, Path* path)
 {
     BEE_ASSERT(is_valid());
+
+    if (BEE_FAIL(path != nullptr))
+    {
+        return false;
+    }
 
     Transaction txn(env_, MDB_RDONLY);
     MDB_val val{};
@@ -329,20 +322,28 @@ bool AssetDB::get_paths(const GUID& guid, Path* src_path, Path* artifact_path)
     txn.commit();
 
     const char* src_path_ptr = nullptr;
-    const char* artifact_path_ptr = nullptr;
-    assetdb_record_serialize(val, nullptr, &src_path_ptr, &artifact_path_ptr);
+    assetdb_record_serialize(val, nullptr, &src_path_ptr);
 
-    if (src_path_ptr != nullptr)
+    path->clear();
+    path->append(assets_root_).append(src_path_ptr);
+    return true;
+}
+
+bool AssetDB::get_artifact_path(const GUID& guid, Path* path)
+{
+    static thread_local char guid_string_buffer[33];
+
+    BEE_ASSERT(is_valid());
+    if (BEE_FAIL(path != nullptr))
     {
-        src_path->clear();
-        src_path->append(assets_root_).append(src_path_ptr);
+        return false;
     }
 
-    if (artifact_path_ptr != nullptr)
-    {
-        artifact_path->clear();
-        artifact_path->append(artifacts_root_).append(artifact_path_ptr);
-    }
+    // Use the existing meta buffer to create the path to look like e.g: "3c\\3cf924e1bb4d47779c6014e532b49357"
+    guid_to_string(guid, GUIDFormat::digits, guid_string_buffer, static_array_length(guid_string_buffer));
+
+    path->clear();
+    path->append(artifacts_root_).append(StringView(guid_string_buffer, 2)).append(guid_string_buffer);
 
     return true;
 }
@@ -401,7 +402,7 @@ bool AssetDB::set_asset_name(Transaction& txn, const GUID& guid, const StringVie
     // Update the name in the asset dbi
     const char* src_path = nullptr;
     AssetMeta meta{};
-    if (!get_asset(txn, guid, &meta, &src_path, nullptr))
+    if (!get_asset(txn, guid, &meta, &src_path))
     {
         return false;
     }

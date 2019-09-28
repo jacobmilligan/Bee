@@ -23,7 +23,7 @@ struct AssetPipelineInitInfo
 };
 
 
-BEE_DEVELOP_API AssetPlatform asset_pipeline_default_platform();
+BEE_DEVELOP_API AssetPlatform asset_platform_default();
 
 
 class BEE_DEVELOP_API AssetPipeline
@@ -42,7 +42,7 @@ public:
         compiler_pipeline_.unregister_compiler(name);
     }
 
-    void import_assets(JobGroup* group, const i32 asset_count, const char* const* paths, AssetPlatform dst_platform = asset_pipeline_default_platform());
+    void import_assets(JobGroup* group, const i32 asset_count, const AssetCompileRequest* requests);
 private:
     Path                    assets_root_;
     AssetDB                 assetdb_;

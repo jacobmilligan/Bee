@@ -14,9 +14,10 @@
 #include "Bee/Core/Containers/HashMap.hpp"
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
-
+#include "Bee/Core/Serialization/JSONSerializer.hpp"
 
 #include <atomic>
+
 
 namespace bee {
 
@@ -54,29 +55,74 @@ struct AssetCompilerResult
     {}
 };
 
+
+struct AssetCompileSettings
+{
+    String json;
+
+    AssetCompileSettings() = default;
+
+    template <typename T>
+    explicit AssetCompileSettings(T* settings, Allocator* allocator = system_allocator())
+    {
+        JSONWriter writer(allocator);
+        serialize(SerializerMode::writing, &writer, settings);
+        json = String(writer.c_str(), allocator);
+    }
+
+    template <typename T>
+    void load(T* dst)
+    {
+        JSONReader reader(&json, json.allocator());
+        serialize(SerializerMode::reading, &reader, dst);
+    }
+
+    inline bool is_valid() const
+    {
+        return !json.empty();
+    }
+};
+
+
 struct AssetCompileContext
 {
-    const AssetPlatform platform { AssetPlatform::unknown };
-    const Path*         location;
-    io::Stream*         stream { nullptr };
-    Allocator*          temp_allocator { nullptr };
+    const AssetPlatform     platform { AssetPlatform::unknown };
+    const Path*             location;
+    io::Stream*             stream { nullptr };
+    Allocator*              temp_allocator { nullptr };
+    AssetCompileSettings*   settings { nullptr };
 
-    AssetCompileContext(const AssetPlatform new_platform, const Path* new_location)
+    AssetCompileContext(const AssetPlatform new_platform, const Path* new_location, AssetCompileSettings* new_settings)
         : platform(new_platform),
-          location(new_location)
+          location(new_location),
+          settings(new_settings)
     {}
+
+    template <typename T>
+    void load_settings(T* dst)
+    {
+        settings->load(dst);
+    }
 };
 
 struct AssetCompileRequest
 {
-    AssetPlatform   platform { AssetPlatform::unknown };
-    const char*     src_path { nullptr };
+    AssetPlatform        platform { AssetPlatform::unknown };
+    const char*          src_path { nullptr };
+    AssetCompileSettings settings;
 
     AssetCompileRequest() = default;
 
     AssetCompileRequest(const char* new_src_path, const AssetPlatform new_platform)
         : src_path(new_src_path),
           platform(new_platform)
+    {}
+
+    template <typename SettingsType>
+    AssetCompileRequest(const char* new_src_path, const AssetPlatform new_platform, SettingsType* new_settings, Allocator* settings_allocator = system_allocator())
+        : src_path(new_src_path),
+          platform(new_platform),
+          settings(new_settings, settings_allocator)
     {}
 };
 
@@ -116,7 +162,7 @@ public:
     {
         auto file_types = CompilerType::supported_file_types;
         auto file_type_count = static_array_length(CompilerType::supported_file_types);
-        return register_compiler(Type::from<CompilerType>(), file_types, file_type_count, [](Allocator* allocator)
+        return register_compiler(Type::from_static<CompilerType>(), file_types, file_type_count, [](Allocator* allocator)
         {
             return BEE_NEW(allocator, CompilerType)();
         });
@@ -150,9 +196,14 @@ private:
         RegisteredCompiler*     compiler { nullptr };
         AssetPlatform           platform;
         Path                    src_path;
+        AssetCompileSettings    settings;
         AssetCompileOperation*  operation{ nullptr };
 
-        AssetCompileJob(RegisteredCompiler* requested_compiler, const AssetCompileRequest& request, AssetCompileOperation* dst_operation);
+        AssetCompileJob(
+            RegisteredCompiler* requested_compiler,
+            const AssetCompileRequest& request,
+            AssetCompileOperation* dst_operation
+        );
 
         void execute() override;
     };

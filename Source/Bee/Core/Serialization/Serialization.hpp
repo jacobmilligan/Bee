@@ -23,8 +23,7 @@ namespace bee {
  *
  ***************************
  */
-
-#define BEE_SERIALIZE(type, current_version)                                                        \
+#define BEE_DEFINE_SERIALIZE_TYPE(current_version, type, type_name)                                 \
     template <typename SerializerType>                                                              \
     inline void serialize_convert(SerializerType* serializer, type* data, const char* name);        \
                                                                                                     \
@@ -35,7 +34,7 @@ namespace bee {
         {                                                                                           \
             serializer->version = current_version;                                                  \
         }                                                                                           \
-        serializer->convert_begin_type(#type);                                                      \
+        serializer->convert_begin_type(type_name);                                                  \
         serialize_type(serializer, &serializer->version, "bee::version");                           \
         serialize_convert(serializer, data, name);                                                  \
         serializer->convert_end_type();                                                             \
@@ -43,6 +42,8 @@ namespace bee {
                                                                                                     \
     template <typename SerializerType>                                                              \
     inline void serialize_convert(SerializerType* serializer, type* data, const char* name)
+
+#define BEE_SERIALIZE(current_version, type) BEE_DEFINE_SERIALIZE_TYPE(current_version, type, #type)
 
 /**
  * Adds a class/struct field to be serialized alongside a version number specifying which version of the structure
@@ -246,25 +247,37 @@ template <typename SerializerType, i32 Size>
 inline void serialize_type(SerializerType* serializer, char(*data)[Size], const char* name)
 {
     BEE_ASSERT(serializer != nullptr);
-    serializer->convert_cstr(&((*data)[0]), str::length(*data), name);
+    serializer->convert_cstr(&((*data)[0]), *data == nullptr ? 0 : str::length(*data), name);
 }
 
 template <typename SerializerType>
 inline void serialize_type(SerializerType* serializer, const char** data, const char* name)
 {
     BEE_ASSERT(serializer != nullptr);
-    serializer->convert_cstr(const_cast<char*>(*data), str::length(*data), name);
+    serializer->convert_cstr(const_cast<char*>(*data), *data == nullptr ? 0 : str::length(*data), name);
 }
 
-BEE_SERIALIZE(Type, 1)
+BEE_SERIALIZE(1, Type)
 {
     BEE_ADD_FIELD(1, hash);
     BEE_ADD_FIELD(1, size);
     BEE_ADD_FIELD(1, alignment);
-    // TODO(Jacob): figure out a way to deserialize these off disc without having to store malloc'd memory in the Type
-//    BEE_ADD_FIELD(1, annotated_name);
-//    BEE_ADD_FIELD(1, fully_qualified_name);
-//    BEE_ADD_FIELD(1, name);
+
+    if (serializer->mode() == SerializerMode::reading)
+    {
+        // Fixup string pointers
+        const auto registered_type = get_type(data->hash);
+        if (registered_type.is_valid())
+        {
+            *data = registered_type;
+        }
+    }
+    else
+    {
+        BEE_ADD_FIELD(1, annotated_name);
+        BEE_ADD_FIELD(1, fully_qualified_name);
+        BEE_ADD_FIELD(1, name);
+    }
 }
 
 
