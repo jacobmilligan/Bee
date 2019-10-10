@@ -8,7 +8,7 @@ include(${CMAKE_MODULE_PATH}/project.cmake)
 
 bee_begin()
     add_subdirectory(ThirdParty)
-    add_subdirectory(Source/Bee)
+    add_subdirectory(Source)
     add_subdirectory(Tools)
     add_subdirectory(Sandbox)
 bee_end()

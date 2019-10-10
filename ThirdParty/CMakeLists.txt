@@ -25,6 +25,17 @@ bee_add_include_dirs(volk)
 bee_add_include_dirs(VulkanMemoryAllocator/src)
 
 
+#################
+#
+# SPIRV-Reflect
+#
+#################
+bee_new_source_root()
+bee_add_sources(SPIRV-Reflect/spirv_reflect.h SPIRV-Reflect/spirv_reflect.c)
+bee_add_include_dirs(SPIRV-Reflect)
+bee_library(SPIRV-Reflect)
+
+
 ##############
 #
 # gtest

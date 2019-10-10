@@ -1,18 +1,16 @@
 {
-    "guid": "0c833575d1ab44b49975745cb81ec20f",
+    "guid": "a53b032dbc8d418dba08e3ef2010fe31",
     "Type": {
         "bee::version": 1,
-        "hash": 2515107422,
-        "size": 4,
-        "alignment": 4,
-        "annotated_name": "int",
-        "fully_qualified_name": "int",
-        "name": "int"
+        "hash": 620196593,
+        "size": 1,
+        "alignment": 1,
+        "annotated_name": "struct bee::Shader",
+        "fully_qualified_name": "bee::Shader",
+        "name": "Shader"
     },
     "name": "",
     "compile_settings": {
-        "bee::type": "TextureSettings",
-        "bee::version": 1,
-        "quality": 0
+        "bee::type": ""
     }
 }

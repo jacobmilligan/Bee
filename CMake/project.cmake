@@ -13,7 +13,8 @@ endif ()
 
 set(BEE_CMAKE_ROOT ${CMAKE_CURRENT_LIST_DIR})
 set(BEE_PROJECT_ROOT ${PROJECT_SOURCE_DIR})
-set(BEE_SOURCE_ROOT ${BEE_PROJECT_ROOT}/Source)
+set(BEE_RUNTIME_ROOT ${BEE_PROJECT_ROOT}/Source/Runtime)
+set(BEE_DEVELOP_ROOT ${BEE_PROJECT_ROOT}/Source/Develop)
 set(BEE_THIRD_PARTY ${BEE_PROJECT_ROOT}/ThirdParty)
 set(BEE_BUILD_ROOT ${BEE_PROJECT_ROOT}/Build)
 set(BEE_DEBUG_BINARY_DIR ${BEE_BUILD_ROOT}/Debug)
@@ -81,7 +82,7 @@ endfunction()
 #
 ################################################################################
 function(bee_begin)
-    set(__bee_include_dirs ${BEE_SOURCE_ROOT} CACHE INTERNAL "")
+    set(__bee_include_dirs ${BEE_RUNTIME_ROOT} ${BEE_DEVELOP_ROOT} CACHE INTERNAL "")
     set(__bee_libraries "" CACHE INTERNAL "")
     bee_new_source_root()
 endfunction()
@@ -274,7 +275,7 @@ function(bee_test name)
         set(cached_sources ${__bee_sources})
 
         bee_new_source_root()
-        bee_add_sources(${BEE_SOURCE_ROOT}/Bee/TestMain.cpp ${ARGS_SOURCES})
+        bee_add_sources(${BEE_RUNTIME_ROOT}/Bee/TestMain.cpp ${ARGS_SOURCES})
         bee_exe(${name} LINK_LIBRARIES ${ARGS_LINK_LIBRARIES} gtest)
 
         __bee_set_compile_options(${name})

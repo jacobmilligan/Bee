@@ -9,33 +9,10 @@
 #include <Bee/Graphics/GPU.hpp>
 #include <Bee/AssetPipeline/AssetPipeline.hpp>
 #include <Bee/Core/Filesystem.hpp>
-
-struct TextureSettings
-{
-    int quality { 0 };
-};
-
-BEE_SERIALIZE(1, TextureSettings)
-{
-    BEE_ADD_FIELD(1, quality);
-}
-
-
-struct TextureCompiler final : public bee::AssetCompiler
-{
-    static constexpr const char* supported_file_types[] = { ".png", ".jpg", ".tiff", ".bsc" };
-
-    using settings_t = TextureSettings;
-
-    bee::AssetCompilerResult compile(bee::AssetCompileContext* ctx) override
-    {
-        TextureSettings settings{};
-        ctx->load_settings(&settings);
-
-        bee::log_info("Compiling asset from %s: ", ctx->location->c_str());
-        return bee::AssetCompilerResult(bee::AssetCompilerStatus::success, bee::get_type<int>());
-    }
-};
+#include <Bee/Asset/Asset.hpp>
+#include <Bee/Core/Containers/HandleTable.hpp>
+#include <Bee/ShaderCompiler/ShaderCompiler.hpp>
+#include <Bee/Graphics/Shader.hpp>
 
 
 class CubesApp final : public bee::Application
@@ -50,11 +27,9 @@ public:
         pipeline_info.assetdb_name = "AssetDB";
         pipeline_info.assetdb_location = bee::fs::get_appdata().root.c_str();
         pipeline_.init(pipeline_info);
-        pipeline_.register_asset_compiler<TextureCompiler>();
+        pipeline_.register_asset_compiler<bee::ShaderCompiler>();
 
-        TextureSettings settings{};
-        settings.quality = 0;
-        bee::AssetCompileRequest req("Shaders/Triangle.bsc", bee::asset_platform_default(), &settings);
+        bee::AssetCompileRequest req("Shaders/Triangle.bsc", bee::asset_platform_default());
 
         bee::JobGroup group{};
         pipeline_.import_assets(&group, 1, &req);

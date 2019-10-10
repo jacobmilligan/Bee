@@ -1,0 +1,1 @@
+bee_add_sources(Asset.hpp Asset.cpp)
