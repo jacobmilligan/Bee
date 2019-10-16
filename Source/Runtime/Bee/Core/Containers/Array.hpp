@@ -461,7 +461,7 @@ template <typename T, ContainerMode Mode>
 void Array<T, Mode>::reserve(const i32 amount) noexcept
 {
     // FixedArray can reserve explicitly but can't push back etc.
-    ensure_capacity(dynamic_container_mode_t{}, size_ + amount);
+    ensure_capacity(dynamic_container_mode_t{}, amount);
 }
 
 template <typename T, ContainerMode Mode>

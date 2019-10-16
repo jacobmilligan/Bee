@@ -31,7 +31,7 @@ struct PrimitivesStruct
 int PrimitivesStruct::current_version = 1;
 
 
-BEE_SERIALIZE(PrimitivesStruct, PrimitivesStruct::current_version)
+BEE_SERIALIZE(PrimitivesStruct::current_version, PrimitivesStruct)
 {
     BEE_ADD_FIELD(1, intval);
     BEE_ADD_FIELD(1, charval);
@@ -152,7 +152,7 @@ struct Id
     u32 value { 0 };
 };
 
-BEE_SERIALIZE(Id, 1)
+BEE_SERIALIZE(1, Id)
 {
     BEE_ADD_FIELD(1, value);
 }
@@ -169,12 +169,12 @@ struct Settings
     NestedType nested;
 };
 
-BEE_SERIALIZE(Settings::NestedType, 1)
+BEE_SERIALIZE(1, Settings::NestedType)
 {
     BEE_ADD_FIELD(1, id_values);
 }
 
-BEE_SERIALIZE(Settings, 1)
+BEE_SERIALIZE(1, Settings)
 {
     BEE_ADD_FIELD(1, is_active);
     BEE_ADD_FIELD(1, nested);
@@ -186,7 +186,7 @@ struct TestStruct
     Settings settings;
 };
 
-BEE_SERIALIZE(TestStruct, 1)
+BEE_SERIALIZE(1, TestStruct)
 {
     BEE_ADD_FIELD(1, value);
     BEE_ADD_FIELD(1, settings);

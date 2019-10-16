@@ -6,7 +6,6 @@
  */
 
 #include "Bee/Core/Containers/HandleTable.hpp"
-#include "Bee/Core/Containers/DynamicHandleTable.hpp"
 
 #include <gtest/gtest.h>
 #include <Bee/Core/Random.hpp>
