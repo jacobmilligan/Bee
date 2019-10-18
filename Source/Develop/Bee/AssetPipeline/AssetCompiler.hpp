@@ -69,10 +69,10 @@ struct AssetCompileSettings
     AssetCompileSettings() = default;
 
     template <typename T>
-    explicit AssetCompileSettings(T* settings, Allocator* allocator = system_allocator())
+    explicit AssetCompileSettings(const T& settings, Allocator* allocator = system_allocator())
     {
         JSONWriter writer(allocator);
-        serialize(SerializerMode::writing, &writer, settings);
+        serialize(SerializerMode::writing, &writer, const_cast<T*>(&settings));
         json = String(writer.c_str(), allocator);
     }
 
@@ -86,6 +86,11 @@ struct AssetCompileSettings
     inline bool is_valid() const
     {
         return !json.empty();
+    }
+
+    inline void clear()
+    {
+        json.clear();
     }
 };
 
@@ -125,7 +130,7 @@ struct AssetCompileRequest
     {}
 
     template <typename SettingsType>
-    AssetCompileRequest(const char* new_src_path, const AssetPlatform new_platform, SettingsType* new_settings, Allocator* settings_allocator = system_allocator())
+    AssetCompileRequest(const char* new_src_path, const AssetPlatform new_platform, const SettingsType& new_settings, Allocator* settings_allocator = system_allocator())
         : src_path(new_src_path),
           platform(new_platform),
           settings(new_settings, settings_allocator)

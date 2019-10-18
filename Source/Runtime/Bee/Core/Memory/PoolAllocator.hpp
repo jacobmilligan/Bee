@@ -12,7 +12,7 @@
 namespace bee {
 
 
-class BEE_CORE_API PoolAllocator : public Allocator
+class BEE_CORE_API PoolAllocator final : public Allocator
 {
 public:
     using Allocator::allocate;
@@ -23,7 +23,7 @@ public:
 
     PoolAllocator(PoolAllocator&& other) noexcept;
 
-    ~PoolAllocator();
+    ~PoolAllocator() override;
 
     PoolAllocator& operator=(PoolAllocator&& other) noexcept;
 

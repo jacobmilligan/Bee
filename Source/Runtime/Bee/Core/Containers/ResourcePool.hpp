@@ -127,7 +127,7 @@ public:
             return *this;
         }
     private:
-        ResourcePool*  pool_ {nullptr };
+        ResourcePool*   pool_ {nullptr };
         i32             current_index_ { 0 };
         i32             current_chunk_ { 0 };
     };

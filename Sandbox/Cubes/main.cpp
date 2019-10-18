@@ -10,7 +10,6 @@
 #include <Bee/AssetPipeline/AssetPipeline.hpp>
 #include <Bee/Core/Filesystem.hpp>
 #include <Bee/Asset/Asset.hpp>
-#include <Bee/Core/Containers/HandleTable.hpp>
 #include <Bee/ShaderCompiler/ShaderCompiler.hpp>
 #include <Bee/Graphics/Shader.hpp>
 
@@ -25,18 +24,22 @@ public:
         bee::AssetPipelineInitInfo pipeline_info{};
         pipeline_info.asset_source_root = bee::fs::get_appdata().assets_root.c_str();
         pipeline_info.assetdb_name = "AssetDB";
-        pipeline_info.assetdb_location = bee::fs::get_appdata().root.c_str();
+        pipeline_info.assetdb_location = bee::fs::get_appdata().data_root.c_str();
         pipeline_.init(pipeline_info);
         pipeline_.register_asset_compiler<bee::ShaderCompiler>();
 
-        bee::AssetCompileRequest req("Shaders/Triangle.bsc", bee::asset_platform_default());
+        bee::AssetCompileRequest req("Shaders/Triangle.bsc", bee::asset_platform_default(), bee::ShaderCompilerSettings{true});
 
         bee::JobGroup group{};
         pipeline_.import_assets(&group, 1, &req);
         bee::job_wait(&group);
 
+        bee::register_asset_loader(&shader_loader_);
+
         bee::PhysicalDeviceInfo devices[BEE_GPU_MAX_PHYSICAL_DEVICES];
         const auto device_count = bee::gpu_enumerate_physical_devices(devices, BEE_GPU_MAX_DEVICES);
+
+        auto shader = bee::load_asset<bee::Shader>(bee::guid_from_string("a53b032dbc8d418dba08e3ef2010fe31"));
 
         bee::log_info("Enumerating available GPU's:");
         for (int d = 0; d < device_count; ++d)
@@ -86,6 +89,7 @@ private:
     bee::DeviceHandle       device_;
     bee::SwapchainHandle    swapchain_;
     bee::AssetPipeline      pipeline_;
+    bee::ShaderLoader       shader_loader_;
 };
 
 int bee_main(int argc, char** argv)

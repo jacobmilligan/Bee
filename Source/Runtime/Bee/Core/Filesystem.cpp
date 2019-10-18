@@ -201,7 +201,7 @@ const AppData& get_appdata()
 {
     static AppData appdata{};
 
-    if (!appdata.root.empty())
+    if (!appdata.data_root.empty())
     {
         // Already discovered appdata previously
         return appdata;
@@ -211,16 +211,16 @@ const AppData& get_appdata()
     const auto editor_exe_path = Path::executable_path().parent();
     bool is_installed_build = editor_exe_path.filename() != "Debug" && editor_exe_path.filename() != "Release";
 
-    appdata.root = is_installed_build
-                   ? fs::user_local_appdata_path().join("Bee").join(BEE_VERSION)
-                   : editor_exe_path.parent().join("DevData");
+    appdata.data_root = is_installed_build
+                      ? fs::user_local_appdata_path().join("Bee").join(BEE_VERSION)
+                      : editor_exe_path.parent().join("DevData");
 
-    if (!appdata.root.exists())
+    if (!appdata.data_root.exists())
     {
-        fs::mkdir(appdata.root);
+        fs::mkdir(appdata.data_root);
     }
 
-    appdata.logs_root = appdata.root.join("Logs");
+    appdata.logs_root = appdata.data_root.join("Logs");
 
     if (!appdata.logs_root.exists())
     {

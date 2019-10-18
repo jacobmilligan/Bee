@@ -55,6 +55,12 @@ public:
     void convert(const char** str);
 
     template <typename T>
+    inline std::enable_if_t<std::is_enum_v<T>> convert(T* value)
+    {
+        convert(reinterpret_cast<std::underlying_type_t<T>*>(value));
+    }
+
+    template <typename T>
     inline void convert(T* value, const char* name)
     {
         assert_trivial<T>();

@@ -10,7 +10,7 @@
 
 #include "Bee/AssetPipeline/AssetCompiler.hpp"
 #include "Bee/AssetPipeline/AssetDatabase.hpp"
-#include "Bee/Asset/Asset.hpp"
+#include "Bee/Asset/AssetSystem.hpp"
 
 
 namespace bee {
@@ -23,15 +23,17 @@ namespace bee {
 
 struct AssetPipelineInitInfo
 {
-    const char* asset_source_root { nullptr };
-    const char* assetdb_location { nullptr };
-    const char* assetdb_name { nullptr };
+    const char*     asset_source_root { nullptr };
+    const char*     assetdb_location { nullptr };
+    const char*     assetdb_name { nullptr };
 };
 
 
 class BEE_DEVELOP_API AssetPipeline
 {
 public:
+    ~AssetPipeline();
+
     bool init(const AssetPipelineInitInfo& info);
 
     template <typename CompilerType>

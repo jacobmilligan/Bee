@@ -21,7 +21,13 @@ namespace bee {
 
 
 ShaderCompiler::ShaderCompiler()
+    : debug_location_(fs::get_appdata().data_root.join("ShaderCompilerDebug"))
 {
+    if (!debug_location_.exists())
+    {
+        fs::mkdir(debug_location_);
+    }
+
     auto dxc_path = fs::get_appdata().binaries_root.join("dxcompiler");
 #if BEE_OS_WINDOWS == 1
     dxc_path.set_extension(".dll");
@@ -217,6 +223,18 @@ AssetCompilerResult ShaderCompiler::compile(AssetCompileContext* ctx)
 
     StreamSerializer serializer(ctx->stream);
     serialize(SerializerMode::writing, &serializer, &module);
+
+    ShaderCompilerSettings settings;
+    ctx->settings->load(&settings);
+
+    if (settings.output_debug_artifacts)
+    {
+        const auto debug_location = debug_location_.join(module.name, job_temp_allocator()).append_extension("json");
+        JSONWriter json_writer(job_temp_allocator());
+        serialize(SerializerMode::writing, &json_writer, &module);
+        fs::write(debug_location, json_writer.c_str());
+        ctx->settings->clear();
+    }
 
     return AssetCompilerResult(AssetCompilerStatus::success, Type::from_static<Shader>());
 }

@@ -3,6 +3,7 @@ bee_add_sources(
     GPULimits.hpp
     BSC.hpp         BSC.cpp
     Mesh.hpp        Mesh.cpp
+    Shader.hpp
 )
 
 if (VULKAN_BACKEND)

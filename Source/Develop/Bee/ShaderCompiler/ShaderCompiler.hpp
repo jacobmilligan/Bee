@@ -16,6 +16,17 @@ struct IDxcLibrary;
 namespace bee {
 
 
+struct ShaderCompilerSettings
+{
+    bool output_debug_artifacts { false };
+};
+
+
+BEE_SERIALIZE(1, ShaderCompilerSettings)
+{
+    BEE_ADD_FIELD(1, output_debug_artifacts);
+}
+
 
 class BEE_DEVELOP_API ShaderCompiler final : public AssetCompiler
 {
@@ -32,6 +43,7 @@ private:
     DynamicLibrary  dxc_dll_;
     IDxcCompiler*   dxc_compiler_ { nullptr };
     IDxcLibrary*    dxc_library_ { nullptr };
+    Path            debug_location_;
 };
 
 

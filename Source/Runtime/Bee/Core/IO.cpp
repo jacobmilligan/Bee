@@ -188,6 +188,8 @@ void FileStream::reopen(const char* path, const char* file_mode)
     size_ = ftell(file_);
     fseek(file_, 0, SEEK_SET);
 
+    BEE_ASSERT(ftell(file_) == 0);
+
     stream_mode = file_mode_to_stream_mode(file_mode);
 }
 
@@ -207,9 +209,11 @@ i32 FileStream::read(void* dst_buffer, i32 dst_buffer_size)
     }
 
     const auto size_read = sign_cast<i32>(fread(dst_buffer, 1, dst_buffer_size, file_));
-    const auto read_error = size_read != dst_buffer_size && ferror(file_) != 0;
+    const auto read_error = size_read != dst_buffer_size || ferror(file_) != 0;
 
-    BEE_ASSERT_F(!read_error, "Failed to read from file with error code: %d", errno);
+    const auto read = ftell(file_);
+    BEE_ASSERT(read <= size_);
+    BEE_ASSERT_F(!read_error, "Failed to read from file with error: %s", strerror(errno));
 
     return size_read;
 }

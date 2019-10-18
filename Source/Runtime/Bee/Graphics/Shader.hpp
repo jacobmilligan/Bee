@@ -9,6 +9,8 @@
 
 
 #include "Bee/Graphics/BSC.hpp"
+#include "Bee/Asset/AssetSystem.hpp"
+#include "Bee/Core/Serialization/StreamSerializer.hpp"
 
 
 namespace bee {
@@ -23,30 +25,22 @@ struct Shader
 class ShaderLoader final : public AssetLoader
 {
 public:
-    void setup(AssetLoaderSetupContext* context) override
+    void setup(DynamicArray<Type>* context) override
     {
-        context->supported_types.push_back(Type::from_static<Shader>());
+        context->push_back(Type::from_static<Shader>());
     }
 
-    AssetHandle allocate_asset(const Type& asset_type, Allocator* default_allocator) override
+    bool load_asset(const AssetLoadMode mode, AssetPtr& asset, io::Stream* src_stream) override
     {
-        return AssetHandle();
+        BSCModule module;
+        StreamSerializer serializer(src_stream);
+        serialize(SerializerMode::reading, &serializer, &module);
+        return true;
     }
 
-    bool load_asset(const AssetHandle& handle, const AssetLoadMode mode, const Type& asset_type, io::Stream* src_stream,
-                    Allocator* default_allocator) override
-    {
-        return false;
-    }
-
-    void unload_asset(const AssetHandle& handle, const AssetUnloadMode mode, const Type& asset_type) override
+    void unload_asset(const AssetUnloadMode mode, AssetPtr& asset) override
     {
 
-    }
-
-    void* get_asset_data(const bee::AssetHandle& handle, const bee::Type& asset_type) override
-    {
-        return nullptr;
     }
 
 private:

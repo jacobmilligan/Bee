@@ -62,7 +62,7 @@ private:
 
 struct AppData
 {
-    Path    root;
+    Path    data_root;
     Path    logs_root;
     Path    binaries_root;
     Path    assets_root;

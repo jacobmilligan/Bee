@@ -136,7 +136,7 @@ public:
 
     bool operator==(const Enumerator& other) const
     {
-        return iterator_ == other.iterator_ && index_ == other.index_;
+        return iterator_ == other.iterator_;
     }
 
     bool operator!=(const Enumerator& other) const

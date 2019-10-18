@@ -247,14 +247,30 @@ template <typename SerializerType, i32 Size>
 inline void serialize_type(SerializerType* serializer, char(*data)[Size], const char* name)
 {
     BEE_ASSERT(serializer != nullptr);
-    serializer->convert_cstr(&((*data)[0]), *data == nullptr ? 0 : str::length(*data), name);
+    int size = 0;
+
+    if (*data != nullptr && serializer->mode() == SerializerMode::writing)
+    {
+        size = str::length(*data) + 1;
+    }
+
+    serialize_type(serializer, &size, "bee::size");
+    serializer->convert_cstr(&((*data)[0]), size, name);
 }
 
 template <typename SerializerType>
 inline void serialize_type(SerializerType* serializer, const char** data, const char* name)
 {
     BEE_ASSERT(serializer != nullptr);
-    serializer->convert_cstr(const_cast<char*>(*data), *data == nullptr ? 0 : str::length(*data), name);
+
+    int size = 0;
+
+    if (*data != nullptr && serializer->mode() == SerializerMode::writing)
+    {
+        size = str::length(*data) + 1;
+    }
+
+    serializer->convert_cstr(const_cast<char*>(*data), size, name);
 }
 
 BEE_SERIALIZE(1, Type)

@@ -5,13 +5,18 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include <Bee/Core/Path.hpp>
+#include "Bee/Core/Path.hpp"
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/Serialization/JSONSerializer.hpp"
 #include "Bee/AssetPipeline/AssetPipeline.hpp"
 
 namespace bee {
 
+
+AssetPipeline::~AssetPipeline()
+{
+    remove_asset_registry(&runtime_registry_);
+}
 
 bool AssetPipeline::init(const AssetPipelineInitInfo& info)
 {
@@ -22,6 +27,7 @@ bool AssetPipeline::init(const AssetPipelineInitInfo& info)
 
     assets_root_ = info.asset_source_root;
     runtime_registry_.assetdb = &assetdb_;
+    add_asset_registry(&runtime_registry_);
     return true;
 }
 
