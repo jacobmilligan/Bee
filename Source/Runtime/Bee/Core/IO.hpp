@@ -17,6 +17,14 @@
 namespace bee {
 namespace io {
 
+
+enum class SeekOrigin
+{
+    begin,
+    current,
+    end
+};
+
 /*
  *************************
  *
@@ -34,7 +42,7 @@ inline i32 read(ReaderType* reader, Span<u8> dst)
 {
     BEE_ASSERT(reader != nullptr);
 
-    if (dst.size() <= 0 || dst.data() == nullptr)
+    if (dst.empty() || dst.data() == nullptr)
     {
         return 0;
     }
@@ -127,13 +135,6 @@ inline i32 write_fmt(T* dst, const char* format, ...) BEE_PRINTFLIKE(2, 3);
  *
  ****************************************************************************************************
  */
-
-enum class SeekOrigin
-{
-    begin,
-    current,
-    end
-};
 
 /**
  * Manages the reading/writing of data into files, buffers, strings etc.

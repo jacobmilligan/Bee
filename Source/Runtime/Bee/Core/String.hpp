@@ -491,7 +491,7 @@ inline String operator+(const String& lhs, const T& rhs)
 {
     auto result = lhs;
     result.append(rhs);
-    return std::move(result);
+    return result;
 }
 
 template <typename T>

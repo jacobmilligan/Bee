@@ -179,6 +179,7 @@ function(__bee_get_api_macro target dst)
     # Setup a <module_name>_API macro as a compile define
     string(REPLACE "Bee" "BEE" api_macro "${target}")
     string(REPLACE "." "_" api_macro "${api_macro}")
+    string(REPLACE "-" "_" api_macro "${api_macro}")
     string(TOUPPER "${api_macro}_API" api_macro)
 
     string(FIND "${target}" "Bee" bee_name_idx)

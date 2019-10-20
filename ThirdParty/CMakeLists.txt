@@ -11,7 +11,9 @@ bee_add_sources(
 )
 bee_add_include_dirs(xxHash)
 bee_library(xxHash)
-target_compile_options(xxHash PRIVATE /wd4204 /wd4146)
+if (WIN32)
+    target_compile_options(xxHash PRIVATE /wd4204 /wd4146)
+endif ()
 
 
 ##########################################
