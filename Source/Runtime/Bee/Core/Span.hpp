@@ -26,7 +26,7 @@ public:
     Span(T* first, T* last) noexcept;
 
     template <i32 Size>
-    constexpr Span(T(&static_array)[Size]) noexcept; // NOLINT(google-explicit-constructor)
+    constexpr explicit Span(T(&static_array)[Size]) noexcept; // NOLINT(google-explicit-constructor)
 
     constexpr Span(const Span<T>& other) noexcept = default;
 
@@ -67,7 +67,7 @@ Span<T>::Span(T* first, T* last) noexcept
     : data_(first),
       size_(sign_cast<i32>(last - first))
 {
-    BEE_ASSERT(last > first);
+    static_assert(last > first, "Last must be at a higher address than first");
 }
 
 template <typename T>

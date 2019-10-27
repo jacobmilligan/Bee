@@ -113,7 +113,7 @@ public:
 
     void append(const Array& other);
 
-    void append(const Span<T>& other);
+    void append(Span<T>& other);
 
     void append(const Span<const T>& other);
 
@@ -522,7 +522,7 @@ void Array<T, Mode>::append(const Array<T, Mode>& other)
 }
 
 template <typename T, ContainerMode Mode>
-void Array<T, Mode>::append(const Span<T>& other)
+void Array<T, Mode>::append(Span<T>& other)
 {
     const auto const_other = make_const_span(other.data(), other.size());
     append(const_other);

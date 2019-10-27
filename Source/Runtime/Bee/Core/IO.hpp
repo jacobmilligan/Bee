@@ -42,7 +42,7 @@ inline i32 read(ReaderType* reader, Span<u8> dst)
 {
     BEE_ASSERT(reader != nullptr);
 
-    if (dst.size() <= 0 || dst.data() == nullptr)
+    if (dst.empty() || dst.data() == nullptr)
     {
         return 0;
     }
