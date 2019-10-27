@@ -115,7 +115,7 @@ public:
             return &const_cast<map_t*>(map_)->node_storage_[node_idx_].kv;
         }
 
-        const reference operator*() const
+        reference operator*() const
         {
             return map_->node_storage_[node_idx_].kv;
         }

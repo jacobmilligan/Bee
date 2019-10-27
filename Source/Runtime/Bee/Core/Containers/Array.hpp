@@ -12,7 +12,6 @@
 #include "Bee/Core/Span.hpp"
 
 #include <initializer_list>
-#include <string.h>
 
 namespace bee {
 
@@ -211,8 +210,8 @@ template <typename T, ContainerMode Mode>
 Array<T, Mode>::Array(Allocator* allocator) noexcept
     : size_(0),
       capacity_(0),
-      allocator_(allocator),
-      data_(nullptr)
+      data_(nullptr),
+      allocator_(allocator)
 {}
 
 template <typename T, ContainerMode Mode>
@@ -525,7 +524,7 @@ void Array<T, Mode>::append(const Array<T, Mode>& other)
 template <typename T, ContainerMode Mode>
 void Array<T, Mode>::append(const Span<T>& other)
 {
-    const const_other = make_const_span(other.data(), other.size());
+    const auto const_other = make_const_span(other.data(), other.size());
     append(const_other);
 }
 
@@ -760,18 +759,22 @@ bool Array<T, Mode>::ensure_capacity(const dynamic_container_mode_t& dynamic_con
     BEE_ASSERT(resize_amount > capacity_);
 
     // Allocate new data and copy over the old data to the new allocation if it exists
-    auto new_data = BEE_MALLOC_ALIGNED(allocator_, resize_amount * sizeof(T), alignof(T));
+    auto new_data = static_cast<T*>(BEE_MALLOC_ALIGNED(allocator_, resize_amount * sizeof(T), alignof(T)));
     BEE_ASSERT_F(new_data != nullptr, "Failed to reallocate memory while resizing a buffer");
 
     if (data_ != nullptr)
     {
-        memcpy(new_data, data_, capacity_ * sizeof(T));
+        for (int i = 0; i < size_; ++i)
+        {
+            new (new_data + i) T(std::move(data_[i]));
+        }
+
         // deallocate the old data that was copied
         BEE_FREE(allocator_, data_);
     }
 
     capacity_ = resize_amount;
-    data_ = static_cast<T*>(new_data);
+    data_ = new_data;
     return true;
 }
 

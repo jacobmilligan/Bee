@@ -53,8 +53,8 @@ public:
 
         iterator(const iterator& other)
             : pool_(other.pool_),
-              current_chunk_(other.current_chunk_),
-              current_index_(other.current_index_)
+              current_index_(other.current_index_),
+              current_chunk_(other.current_chunk_)
         {}
 
         iterator& operator=(const iterator& other)
@@ -135,8 +135,8 @@ public:
     explicit ResourcePool(const size_t chunk_byte_size, Allocator* allocator = system_allocator())
         : chunk_byte_size_(chunk_byte_size),
           chunk_capacity_(chunk_byte_size / sizeof(ResourceType)),
-          chunks_(allocator),
-          allocator_(allocator)
+          allocator_(allocator),
+          chunks_(allocator)
     {}
 
     HandleType allocate()

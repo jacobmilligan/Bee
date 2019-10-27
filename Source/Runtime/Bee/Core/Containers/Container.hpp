@@ -10,6 +10,9 @@
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/declval.hpp"
 
+#include <type_traits>
+#include <string.h> // for memcpy
+
 
 namespace bee {
 
@@ -35,8 +38,29 @@ using fixed_container_mode_t = container_mode_constant<ContainerMode::fixed_capa
 using dynamic_container_mode_t = container_mode_constant<ContainerMode::dynamic_capacity>;
 
 /*
- * # add
+ * # copy
  */
+template <typename T>
+inline void memcpy_or_assign_chooser(T* dst, const T* src, const i32 count, const std::true_type& /* true_type */)
+{
+    memcpy(dst, src, sizeof(T) * count);
+}
+
+template <typename T>
+inline void memcpy_or_assign_chooser(T* dst, const T* src, const i32 count, const std::false_type& /* false_type */)
+{
+    for (int item = 0; item < count; ++item)
+    {
+        dst[item] = src[item];
+    }
+}
+
+template <typename T>
+inline void memcpy_or_assign(T* dst, const T* src, const i32 count)
+{
+    memcpy_or_assign_chooser(dst, src, count, std::is_trivially_copyable<T>{});
+}
+
 
 /*
  * # begin/end
@@ -118,7 +142,7 @@ class Enumerator
 public:
     using iterator_t = decltype(begin(declval<IterableType>()));
 
-    Enumerator(iterator_t begin)
+    explicit Enumerator(iterator_t begin)
         : iterator_(begin)
     {}
 

@@ -24,8 +24,9 @@ namespace bee {
 
 template <i32 Capacity, typename HandleType, typename DataType>
 HandleTable<Capacity, HandleType, DataType>::HandleTable()
-    : size_(0),
-      next_available_index_(0)
+    : next_available_index_(0),
+      size_(0)
+
 {
     reset();
 }
