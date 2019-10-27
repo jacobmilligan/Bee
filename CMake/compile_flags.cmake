@@ -71,7 +71,19 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 else()
-    list(APPEND bee_compile_flags "-Wall" "-Wno-unused-function")
+    list(APPEND bee_compile_flags
+        -fvisibility=hidden
+        -fvisibility-inlines-hidden
+        -fno-rtti
+
+        -Wall
+        -Werror
+        -Wno-unused-function
+    )
+
+    if (WIN32)
+        add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+    endif ()
 endif()
 
 # check for ASAN & TSAN availability
