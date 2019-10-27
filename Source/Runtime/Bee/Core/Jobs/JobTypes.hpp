@@ -59,8 +59,6 @@ private:
     i32                     owning_worker_ { 0 };
     std::atomic<JobGroup*>  parent_;
 
-    char                    pad_[32 - sizeof(owning_worker_) - sizeof(parent_)];
-
     void move_construct(Job& other) noexcept;
 };
 

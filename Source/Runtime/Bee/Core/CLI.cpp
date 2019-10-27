@@ -438,7 +438,7 @@ void parse_recursive(const char* prog_name, const i32 argc, char** const argv, c
         // Process the subparser and not the rest of the command line
         if (found_subparser >= 0)
         {
-            auto subparser_results = results->subparsers.insert(String(desc.subparsers[found_subparser].command_name), std::move(Results()));
+            auto subparser_results = results->subparsers.insert(String(desc.subparsers[found_subparser].command_name), Results());
             parse_recursive(prog_name, argc - 1, argv + 1, desc.subparsers[found_subparser], &subparser_results->value);
             results->requested_help_string = subparser_results->value.requested_help_string;
             results->help_requested = subparser_results->value.help_requested;

@@ -482,7 +482,7 @@ String v_format(Allocator* allocator, const char* format, va_list args)
     String result(length, '\0', allocator);
     // include null-terminator
     system_snprintf(result.data(), sign_cast<size_t>(length + 1), format, args);
-    return std::move(result);
+    return result;
 }
 
 /*
@@ -495,7 +495,7 @@ String format(Allocator* allocator, const char* format, ...)
     va_start(args, format);
     auto result = v_format(allocator, format, args);
     va_end(args);
-    return std::move(result);
+    return result;
 }
 
 String format(const char* format, ...)
@@ -504,7 +504,7 @@ String format(const char* format, ...)
     va_start(args, format);
     auto result = v_format(system_allocator(), format, args);
     va_end(args);
-    return std::move(result);
+    return result;
 }
 
 void format(char* buffer, i32 buffer_size, const char* format, ...)

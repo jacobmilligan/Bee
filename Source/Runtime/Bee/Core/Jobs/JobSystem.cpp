@@ -104,7 +104,7 @@ private:
  *
  ****************************************************************
  */
-struct Worker
+struct Worker final : public Noncopyable
 {
     Thread                      thread;
     i32                         thread_local_idx { -1 };
@@ -124,6 +124,23 @@ struct Worker
           job_allocator(sizeof(Job), info.max_job_size, info.max_jobs_per_worker_per_chunk),
           temp_allocator(info.per_worker_temp_allocator_capacity)
     {}
+
+    Worker(Worker&& other) noexcept
+        : thread(std::move(other.thread)),
+          thread_local_idx(other.thread_local_idx),
+          job_queue(std::move(other.job_queue)),
+          current_executing_job(other.current_executing_job),
+          random(other.random),
+          job_allocator(std::move(other.job_allocator)),
+          temp_allocator(std::move(other.temp_allocator)),
+          completed_job_count(other.completed_job_count.load(std::memory_order_seq_cst))
+    {
+        memcpy(completed_jobs, other.completed_jobs, BEE_WORKER_MAX_COMPLETED_JOBS * sizeof(Job*));
+        memset(other.completed_jobs, 0, sizeof(Job*) * BEE_WORKER_MAX_COMPLETED_JOBS);
+        other.thread_local_idx = 0;
+        other.current_executing_job = nullptr;
+        other.completed_job_count.store(0, std::memory_order_seq_cst);
+    }
 
     // cache-line pad to avoid false sharing
     char pad[64]{};

@@ -37,13 +37,13 @@ String from_wchar(const wchar_t* wchar_str, Allocator* allocator)
 
     String utf8_string(byte_count - 1, '\0', allocator);
     WideCharToMultiByte(CP_UTF8, 0, wchar_str, -1, utf8_string.data(), utf8_string.size(), nullptr, nullptr);
-    return std::move(utf8_string);
+    return utf8_string;
 }
 
 
 wchar_array_t to_wchar(const StringView& src, Allocator* allocator)
 {
-    if (src.size() <= 0)
+    if (src.empty())
     {
         return wchar_array_t(allocator);
     }
@@ -66,7 +66,7 @@ wchar_array_t to_wchar(const StringView& src, Allocator* allocator)
         return wchar_array_t(allocator);
     }
 
-    return std::move(result);
+    return result;
 }
 
 

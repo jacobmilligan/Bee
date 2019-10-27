@@ -77,7 +77,7 @@ String read(const Path& filepath, Allocator* allocator)
 
     fclose(file);
 
-    return std::move(result);
+    return result;
 }
 
 FixedArray<u8> read_bytes(const Path& filepath, Allocator* allocator)
@@ -98,7 +98,7 @@ FixedArray<u8> read_bytes(const Path& filepath, Allocator* allocator)
     BEE_ASSERT_F(static_cast<long>(chars_read) == file_length, "Failed to read entire file");
     fclose(file);
 
-    return std::move(result);
+    return result;
 }
 
 bool write(const Path& filepath, const String& string_to_write)

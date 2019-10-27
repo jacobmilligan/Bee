@@ -23,7 +23,7 @@ public:
 
     constexpr Span(T* data, i32 size) noexcept;
 
-    constexpr Span(T* first, T* last) noexcept;
+    Span(T* first, T* last) noexcept;
 
     template <i32 Size>
     constexpr Span(T(&static_array)[Size]) noexcept; // NOLINT(google-explicit-constructor)
@@ -36,7 +36,7 @@ public:
 
     constexpr T* end() const;
 
-    constexpr T& operator[](i32 index) const;
+    T& operator[](i32 index) const;
 
     constexpr T* data() const noexcept;
 
@@ -48,7 +48,7 @@ public:
 
     constexpr bool empty() const;
 
-    constexpr Span<T> subspan(i32 offset, i32 count) const;
+    Span<T> subspan(i32 offset, i32 count) const;
 
     Span<u8> to_bytes() const;
 private:
@@ -63,7 +63,7 @@ constexpr Span<T>::Span(T* data, const i32 size) noexcept
 {}
 
 template <typename T>
-constexpr Span<T>::Span(T* first, T* last) noexcept
+Span<T>::Span(T* first, T* last) noexcept
     : data_(first),
       size_(sign_cast<i32>(last - first))
 {
@@ -90,7 +90,7 @@ constexpr T* Span<T>::end() const
 }
 
 template <typename T>
-constexpr T& Span<T>::operator[](const i32 index) const
+T& Span<T>::operator[](const i32 index) const
 {
     BEE_ASSERT(index < size_);
     return data_[index];
@@ -127,7 +127,7 @@ constexpr bool Span<T>::empty() const
 }
 
 template <typename T>
-constexpr Span<T> Span<T>::subspan(const i32 offset, const i32 count) const
+Span<T> Span<T>::subspan(const i32 offset, const i32 count) const
 {
     BEE_ASSERT(offset < size_);
     BEE_ASSERT(offset + count <= size_);

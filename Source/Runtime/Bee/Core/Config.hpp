@@ -163,11 +163,6 @@ namespace bee {
 
     #define BEE_PRINTFLIKE(fmt, firstvararg)
 
-    #ifdef BEE_DLL
-        #define BEE_EXPORT_SYMBOL                   __declspec(dllexport)
-        #define BEE_IMPORT_SYMBOL                   __declspec(dllimport)
-    #endif // BEE_DLL
-
     #define BEE_PUSH_WARNING                    __pragma(warning( push ))
     #define BEE_DISABLE_WARNING_MSVC(w)         __pragma(warning( disable: w ))
     #define BEE_POP_WARNING                     __pragma(warning( pop ))
@@ -183,6 +178,19 @@ namespace bee {
         #define BEE_ARCH_32BIT
     #endif // _WIN64
 #endif // BEE_COMPILER_*
+
+/*
+ * Define dllexport/import for windows if compiler is MSVC or Clang (supported in clang since at least v3.5)
+ */
+#if BEE_OS_WINDOWS == 1 && BEE_COMPILER_GCC == 0
+    #ifdef BEE_DLL
+        #undef BEE_EXPORT_SYMBOL
+        #undef BEE_IMPORT_SYMBOL
+
+        #define BEE_EXPORT_SYMBOL               __declspec(dllexport)
+        #define BEE_IMPORT_SYMBOL               __declspec(dllimport)
+    #endif // BEE_DLL
+#endif
 
 /*
  * Processor architecture - this only works for x86_64 currently.

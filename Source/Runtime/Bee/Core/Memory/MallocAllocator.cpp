@@ -26,8 +26,11 @@ size_t MallocAllocator::allocation_size(const void* ptr) const
     return malloc_size(const_cast<void*>(ptr));
 
 #elif BEE_OS_WINDOWS == 1
-
+    #if BEE_COMPILER_MSVC == 1
     return _aligned_msize(const_cast<void*>(ptr), 1, 0);
+    #else
+    return _msize(const_cast<void*>(ptr)); // HACK(Jacob): probably doesn't even work on clang
+    #endif
 
 #else
 

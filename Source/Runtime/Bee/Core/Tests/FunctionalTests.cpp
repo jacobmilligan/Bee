@@ -214,8 +214,12 @@ TEST(FunctionalTests, function)
     ASSERT_EQ(sizeof(bee::Function<void()>), 32);
     ASSERT_EQ(sizeof(bee::Function<void(bee::u8[32])>), 32);
 
+BEE_PUSH_WARNING
+BEE_DISABLE_WARNING_CLANG("-Wuninitialized")
+BEE_DISABLE_WARNING_CLANG("-Wunused-lambda-capture")
     int val1, val2, val3, val4;
     auto lambda_16bytes = [val1, val2, val3, val4](bee::u8[32]) { };
+BEE_POP_WARNING
 
     ASSERT_EQ(sizeof(lambda_16bytes), 16);
 

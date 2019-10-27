@@ -11,6 +11,47 @@
 
 
 namespace bee {
+
+
+/*
+ * Invoke adapted from minimal implementation as described here:
+ * http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4169.html
+ */
+
+// member function specialization with a reference or value instance
+template <typename CallableType, typename ClassType, typename... Args>
+constexpr auto invoke(CallableType&& callable, ClassType&& class_instance, Args&&... args) noexcept ->
+typename std::enable_if_t<
+    std::is_member_function_pointer_v<typename std::decay_t<CallableType>>, // is a member function pointer
+    decltype(((std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...))
+>
+{
+    return ((std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...);
+}
+
+// member function specialization with a reference/pointer parameter
+template <typename CallableType, typename ClassType, typename... Args>
+constexpr auto invoke(CallableType&& callable, ClassType&& class_instance, Args&&... args) noexcept ->
+typename std::enable_if_t<
+    std::is_member_function_pointer_v<typename std::decay_t<CallableType>>, // is a member function pointer
+    decltype(((*std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...))
+>
+{
+    return ((*std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...);
+}
+
+// Free-function specialization - Not a member pointer implies also not a member function pointer
+template <typename CallableType, typename... Args>
+constexpr auto invoke(CallableType&& callable, Args&&... args) noexcept ->
+typename std::enable_if_t<
+    !std::is_member_pointer_v<typename std::decay_t<CallableType>>,
+    decltype(std::forward<CallableType>(callable)(std::forward<Args>(args)...))
+>
+{
+    return std::forward<CallableType>(callable)(std::forward<Args>(args)...);
+}
+
+
 namespace detail {
 
 
@@ -57,45 +98,6 @@ struct __is_invocable_r<
 
 
 } // namespace detail
-
-
-/*
- * Invoke adapted from minimal implementation as described here:
- * http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4169.html
- */
-
-// member function specialization with a reference or value instance
-template <typename CallableType, typename ClassType, typename... Args>
-constexpr auto invoke(CallableType&& callable, ClassType&& class_instance, Args&&... args) noexcept ->
-typename std::enable_if_t<
-    std::is_member_function_pointer_v<typename std::decay_t<CallableType>>, // is a member function pointer
-    decltype(((std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...))
->
-{
-    return ((std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...);
-}
-
-// member function specialization with a reference/pointer parameter
-template <typename CallableType, typename ClassType, typename... Args>
-constexpr auto invoke(CallableType&& callable, ClassType&& class_instance, Args&&... args) noexcept ->
-typename std::enable_if_t<
-    std::is_member_function_pointer_v<typename std::decay_t<CallableType>>, // is a member function pointer
-    decltype(((*std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...))
->
-{
-    return ((*std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...);
-}
-
-// Free-function specialization - Not a member pointer implies also not a member function pointer
-template <typename CallableType, typename... Args>
-constexpr auto invoke(CallableType&& callable, Args&&... args) noexcept ->
-typename std::enable_if_t<
-    !std::is_member_pointer_v<typename std::decay_t<CallableType>>,
-    decltype(std::forward<CallableType>(callable)(std::forward<Args>(args)...))
->
-{
-    return std::forward<CallableType>(callable)(std::forward<Args>(args)...);
-}
 
 /**
  * Determines whether the given callable `CallableType` can be invoked with the set of arguments `Args`

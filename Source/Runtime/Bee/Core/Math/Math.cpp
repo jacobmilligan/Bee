@@ -8,7 +8,6 @@
 #include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/Math/quaternion.hpp"
 
-#include <stdlib.h>
 #include <cmath>
 
 

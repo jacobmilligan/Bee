@@ -80,7 +80,7 @@ struct ValueData {
 };
 
 
-class ValueAllocator : public Noncopyable {
+class BEE_CORE_API ValueAllocator : public Noncopyable {
 public:
     ValueAllocator(AllocationMode allocation_mode, i32 initial_capacity);
 

@@ -38,7 +38,7 @@ BEE_CORE_API void __bee_print_error(
     const char* type,
     const char* msgformat,
     ...
-) BEE_PRINTFLIKE(5, 6);
+) BEE_PRINTFLIKE(6, 7);
 
 /// @brief Handles the assertion macro. Prints the format assertion string to stderr
 /// @param function The function the assertion occurred in
@@ -86,7 +86,8 @@ BEE_CORE_API void __bee_abort_handler();
 /// Stops the debugger at the given point if it's attached
 #if BEE_DEBUG
     #if BEE_COMPILER_CLANG == 1
-        #define BEE_DEBUG_BREAK() asm("int $3")
+        BEE_FORCE_INLINE void clang_debugbreak() { asm("int $3"); }
+        #define BEE_DEBUG_BREAK() bee::clang_debugbreak()
     #elif BEE_COMPILER_GCC == 1
         #define BEE_DEBUG_BREAK() raise(SIGTRAP)
     #elif BEE_COMPILER_MSVC == 1
@@ -95,7 +96,7 @@ BEE_CORE_API void __bee_abort_handler();
         #error No debug break instruction implemented for the current platform
     #endif // BEE_COMPILER_*
 #else
-    #define BEE_DEBUG_BREAK()
+    #define BEE_DEBUG_BREAK() ((void)0)
 #endif
 
 /*

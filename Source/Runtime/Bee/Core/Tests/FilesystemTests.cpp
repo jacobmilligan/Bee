@@ -11,8 +11,8 @@
 
 TEST(FilesystemTests, appdata)
 {
-    const auto engine_appdata = bee::fs::get_appdata();
-    ASSERT_STREQ(engine_appdata.root.filename().c_str(), "DevData");
+    const auto& engine_appdata = bee::fs::get_appdata();
+    ASSERT_STREQ(engine_appdata.data_root.filename().c_str(), "DevData");
     ASSERT_TRUE(engine_appdata.binaries_root.filename() == "Debug" || engine_appdata.binaries_root.filename() == "Release");
     ASSERT_STREQ(engine_appdata.logs_root.filename().c_str(), "Logs");
     ASSERT_STREQ(engine_appdata.config_root.filename().c_str(), "Config");
@@ -29,7 +29,7 @@ TEST(FilesystemTests, read_write_file)
     static constexpr auto test_string = "This is a test string";
     static constexpr bee::u8 test_bytes[] = { 1, 2, 3, 4, 5, 6 };
 
-    const auto filepath = bee::fs::get_appdata().root.join("TestFile.txt");
+    const auto filepath = bee::fs::get_appdata().data_root.join("TestFile.txt");
 
     ASSERT_FALSE(filepath.exists());
     ASSERT_TRUE(bee::fs::write(filepath, test_string));
@@ -57,8 +57,8 @@ TEST(FilesystemTests, read_write_file)
 TEST(FilesystemTests, copy_file)
 {
     static constexpr auto test_string = "This is a test string";
-    const auto src_filepath = bee::fs::get_appdata().root.join("TestFile.txt");
-    const auto dst_filepath = bee::fs::get_appdata().root.join("TestFile2.txt");
+    const auto src_filepath = bee::fs::get_appdata().data_root.join("TestFile.txt");
+    const auto dst_filepath = bee::fs::get_appdata().data_root.join("TestFile2.txt");
 
     ASSERT_FALSE(src_filepath.exists());
     ASSERT_TRUE(bee::fs::write(src_filepath, test_string));
@@ -74,7 +74,7 @@ TEST(FilesystemTests, copy_file)
 
 TEST(FilesystemTests, make_and_remove_directory)
 {
-    const auto dirpath = bee::fs::get_appdata().root.join("NonRecursiveTestDir");
+    const auto dirpath = bee::fs::get_appdata().data_root.join("NonRecursiveTestDir");
     if (!dirpath.exists())
     {
         ASSERT_TRUE(bee::fs::mkdir(dirpath));
@@ -85,7 +85,7 @@ TEST(FilesystemTests, make_and_remove_directory)
 
 TEST(FilesystemTests, make_and_remove_directory_recursive)
 {
-    const auto dirpath = bee::fs::get_appdata().root.join("RecursiveTestDir");
+    const auto dirpath = bee::fs::get_appdata().data_root.join("RecursiveTestDir");
     const bee::Path test_paths[] = {
         dirpath,
         dirpath.join("Nested"),
@@ -152,7 +152,7 @@ TEST(FilesystemTests, read_directory)
 {
     static constexpr int max_nested_dir_level = 4;
     static constexpr auto test_string = "This is a test string";
-    const auto dirpath = bee::fs::get_appdata().root.join("TestDir\\");
+    const auto dirpath = bee::fs::get_appdata().data_root.join("TestDir\\");
 
     // Make a bunch of test folders and files
     bee::Path test_data[] = {

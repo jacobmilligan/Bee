@@ -11,6 +11,8 @@
 #include "Bee/Core/Debug.hpp"
 #include "Bee/Core/IO.hpp"
 
+#include <stdlib.h>
+
 
 namespace bee {
 namespace detail {

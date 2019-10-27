@@ -25,26 +25,26 @@ struct TempAllocator final : public Allocator
     BEE_ALLOCATOR_DO_NOT_TRACK
 
     explicit TempAllocator(const size_t capacity) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
-        : allocators(system_allocator()),
-          capacity_(capacity)
+        : capacity_(capacity),
+          allocators_(system_allocator())
     {}
 
     ~TempAllocator() override
     {
-        scoped_spinlock_t lock(global_lock);
+        scoped_spinlock_t lock(global_lock_);
 
-        for (auto& allocator : allocators)
+        for (auto& allocator : allocators_)
         {
             allocator->destroy();
         }
 
-        allocators.clear();
+        allocators_.clear();
     }
 
     void reset()
     {
-        scoped_spinlock_t lock(global_lock);
-        for (auto allocator : allocators)
+        scoped_spinlock_t lock(global_lock_);
+        for (auto allocator : allocators_)
         {
             allocator->reset();
         }
@@ -75,10 +75,8 @@ struct TempAllocator final : public Allocator
 
 private:
     size_t                              capacity_ { 0 };
-    SpinLock                            global_lock;
-    DynamicArray<LinearAllocator*>       allocators;
-
-    char pad[64];
+    SpinLock                            global_lock_;
+    DynamicArray<LinearAllocator*>      allocators_;
 
     static thread_local LinearAllocator  thread_local_allocator;
 
@@ -91,8 +89,8 @@ private:
 
         thread_local_allocator = LinearAllocator(capacity_);
 
-        scoped_spinlock_t lock(global_lock);
-        allocators.push_back(&thread_local_allocator);
+        scoped_spinlock_t lock(global_lock_);
+        allocators_.push_back(&thread_local_allocator);
     }
 };
 

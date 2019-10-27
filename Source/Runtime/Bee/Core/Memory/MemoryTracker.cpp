@@ -27,9 +27,9 @@ struct Proxy
     isize                                   peak_allocations { 0 };
 
     Proxy()
-        : total_allocations(0),
-          peak_allocations(0),
-          allocations(system_allocator())
+        : allocations(system_allocator()),
+          total_allocations(0),
+          peak_allocations(0)
     {}
 
     ~Proxy()

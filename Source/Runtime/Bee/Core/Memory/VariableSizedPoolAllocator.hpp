@@ -83,8 +83,8 @@ private:
         Chunk(const size_t new_capacity, const size_t new_data_size)
             : capacity(new_capacity),
               data_size(new_data_size),
-              free_list(nullptr),
-              data(reinterpret_cast<Allocation*>(reinterpret_cast<u8*>(this) + sizeof(Chunk)))
+              data(reinterpret_cast<Allocation*>(reinterpret_cast<u8*>(this) + sizeof(Chunk))),
+              free_list(nullptr)
         {}
 
         size_t          capacity { 0 };

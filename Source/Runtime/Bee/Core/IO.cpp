@@ -9,6 +9,7 @@
 #include "Bee/Core/Math/Math.hpp"
 
 #include <string.h>
+#include <errno.h>
 
 
 namespace bee {

@@ -15,10 +15,10 @@ namespace bee {
 
 
 VariableSizedPoolAllocator::VariableSizedPoolAllocator(const size_t min_allocation_size, const size_t max_allocation_size, const size_t max_items_per_chunk)
-    : item_count_per_chunk_(max_items_per_chunk),
+    : capacity_(0),
+      item_count_per_chunk_(max_items_per_chunk),
       chunk_count_(0),
-      allocated_size_(0),
-      capacity_(0)
+      allocated_size_(0)
 {
     BEE_ASSERT_F(min_allocation_size > 0, "Min allocation size must be nonzero");
     BEE_ASSERT_F(max_allocation_size >= min_allocation_size, "Max allocation size must be at least equal to the min allocation size");

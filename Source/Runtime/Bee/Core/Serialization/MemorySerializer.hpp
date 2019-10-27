@@ -70,7 +70,7 @@ public:
         {
             for (int i = 0; i < size; ++i)
             {
-                KeyValuePair<KeyType, ValueType> keyval{};
+                KeyValuePair<KeyType, ValueType> keyval;
                 serialize_type(this, &keyval.key, name);
                 serialize_type(this, &keyval.value, name);
                 map->insert(keyval);

@@ -10,6 +10,7 @@
 #include "Bee/Core/Memory/Allocator.hpp"
 #include "Bee/Core/Noncopyable.hpp"
 #include "Bee/Core/NumericTypes.hpp"
+#include "Bee/Core/Memory/Memory.hpp"
 
 #include <string>
 

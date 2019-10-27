@@ -22,10 +22,6 @@ public:
 
     VMAllocator() = default;
 
-    VMAllocator(VMAllocator&& other) noexcept = default;
-
-    VMAllocator& operator=(VMAllocator&& other) noexcept = default;
-
     bool is_valid(const void* ptr) const override
     {
         return ptr != nullptr;

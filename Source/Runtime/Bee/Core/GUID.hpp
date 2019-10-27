@@ -15,6 +15,32 @@
 
 namespace bee {
 
+
+enum class GUIDFormat
+{
+    /**
+     * 00000000000000000000000000000000
+     */
+        digits,
+
+    /**
+     * 00000000-0000-0000-0000-000000000000
+     */
+        digits_with_hyphen,
+
+    /**
+     * {00000000-0000-0000-0000-000000000000}
+     */
+        braced_digits_with_hyphen,
+
+    /**
+     * (00000000-0000-0000-0000-000000000000)
+     */
+        parens_digits_with_hyphen,
+
+    unknown
+};
+
 /*
  ************************************************************************************************************
  *
@@ -54,38 +80,6 @@ struct GUID
     }
 };
 
-
-/**
- * Serializes a GUID without also serializing the whole object with version etc. so it just ends up in text formats
- * (such as JSON) as a key-value pair
- */
-template <typename SerializerType>
-inline void serialize_type(SerializerType* serializer, GUID* guid, const char* name)
-{
-    static constexpr i32 string_buffer_size = 33;
-
-    BEE_ASSERT(serializer != nullptr);
-
-    // include null-termination
-    char string_buffer[string_buffer_size] { 0 };
-    auto convert_size = string_buffer_size;
-
-    if (serializer->mode() == SerializerMode::writing)
-    {
-        convert_size = guid_to_string(*guid, GUIDFormat::digits, make_span(string_buffer, string_buffer_size));
-        BEE_ASSERT(convert_size == string_buffer_size - 1);
-    }
-
-    serializer->convert_cstr(string_buffer, convert_size, name);
-
-    if (serializer->mode() == SerializerMode::reading)
-    {
-        *guid = guid_from_string(string_buffer);
-#if BEE_DEBUG
-        memcpy(guid->debug_string, string_buffer, string_buffer_size * sizeof(char));
-#endif // BEE_DEBUG
-    }
-}
 
 inline bool operator==(const GUID& lhs, const GUID& rhs)
 {
@@ -132,6 +126,7 @@ BEE_FORCE_INLINE u32 get_hash(const GUID& object)
     return Hash<GUID>{}(object);
 }
 
+
 /*
  ******************
  *
@@ -140,30 +135,6 @@ BEE_FORCE_INLINE u32 get_hash(const GUID& object)
  ******************
  */
 
-enum class GUIDFormat
-{
-    /**
-     * 00000000000000000000000000000000
-     */
-    digits,
-
-    /**
-     * 00000000-0000-0000-0000-000000000000
-     */
-    digits_with_hyphen,
-
-    /**
-     * {00000000-0000-0000-0000-000000000000}
-     */
-    braced_digits_with_hyphen,
-
-    /**
-     * (00000000-0000-0000-0000-000000000000)
-     */
-    parens_digits_with_hyphen,
-
-    unknown
-};
 
 /**
  * Generates a random GUID using the platforms UUID implementation
@@ -185,6 +156,39 @@ BEE_CORE_API i32 guid_to_string(const GUID& guid, GUIDFormat format, char* dst, 
  * accepting either 'a' or 'A' as a valid hexadecimal character (see: https://tools.ietf.org/html/rfc4122 - section 3)
  */
 BEE_CORE_API GUID guid_from_string(const StringView& string);
+
+
+/**
+ * Serializes a GUID without also serializing the whole object with version etc. so it just ends up in text formats
+ * (such as JSON) as a key-value pair
+ */
+template <typename SerializerType>
+inline void serialize_type(SerializerType* serializer, GUID* guid, const char* name)
+{
+    static constexpr i32 string_buffer_size = 33;
+
+    BEE_ASSERT(serializer != nullptr);
+
+    // include null-termination
+    char string_buffer[string_buffer_size] { 0 };
+    auto convert_size = string_buffer_size;
+
+    if (serializer->mode() == SerializerMode::writing)
+    {
+        convert_size = guid_to_string(*guid, GUIDFormat::digits, make_span(string_buffer, string_buffer_size));
+        BEE_ASSERT(convert_size == string_buffer_size - 1);
+    }
+
+    serializer->convert_cstr(string_buffer, convert_size, name);
+
+    if (serializer->mode() == SerializerMode::reading)
+    {
+        *guid = guid_from_string(string_buffer);
+#if BEE_DEBUG
+        memcpy(guid->debug_string, string_buffer, string_buffer_size * sizeof(char));
+#endif // BEE_DEBUG
+    }
+}
 
 
 } // namespace bee

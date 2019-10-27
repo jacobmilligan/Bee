@@ -17,6 +17,14 @@
 namespace bee {
 namespace io {
 
+
+enum class SeekOrigin
+{
+    begin,
+    current,
+    end
+};
+
 /*
  *************************
  *
@@ -128,13 +136,6 @@ inline i32 write_fmt(T* dst, const char* format, ...) BEE_PRINTFLIKE(2, 3);
  ****************************************************************************************************
  */
 
-enum class SeekOrigin
-{
-    begin,
-    current,
-    end
-};
-
 /**
  * Manages the reading/writing of data into files, buffers, strings etc.
  */
@@ -203,30 +204,30 @@ protected:
 class BEE_CORE_API MemoryStream : public Stream
 {
 public:
-    explicit MemoryStream(nullptr_t)
+    explicit MemoryStream(std::nullptr_t)
         : Stream(Mode::invalid)
     {}
 
     MemoryStream(const void* read_only_buffer, const i32 buffer_capacity)
         : Stream(Mode::read_only),
-          buffer_(const_cast<u8*>(static_cast<const u8*>(read_only_buffer))),
           capacity_(buffer_capacity),
-          current_stream_size_(buffer_capacity)
+          current_stream_size_(buffer_capacity),
+          buffer_(const_cast<u8*>(static_cast<const u8*>(read_only_buffer)))
     {}
 
     MemoryStream(void* read_write_buffer, const i32 buffer_capacity, const i32 initial_size)
         : Stream(Mode::read_write),
-          buffer_(static_cast<u8*>(read_write_buffer)),
           capacity_(buffer_capacity),
-          current_stream_size_(initial_size)
+          current_stream_size_(initial_size),
+          buffer_(static_cast<u8*>(read_write_buffer))
     {}
 
     explicit MemoryStream(DynamicArray<u8>* growable_buffer)
         : Stream(Mode::container),
-          container_(growable_buffer),
-          buffer_(growable_buffer->data()),
           capacity_(limits::max<i32>()),
-          current_stream_size_(growable_buffer->size())
+          current_stream_size_(growable_buffer->size()),
+          buffer_(growable_buffer->data()),
+          container_(growable_buffer)
     {}
 
     i32 read(void* dst_buffer, i32 dst_buffer_size) override;
@@ -324,9 +325,9 @@ public:
     Mode file_mode_to_stream_mode(const char* file_mode);
 private:
     FILE*           file_ { nullptr };
-    bool            close_on_destruct_ { false };
-    i32             size_ { 0 };
     const char*     file_mode_;
+    i32             size_ { 0 };
+    bool            close_on_destruct_ { false };
 };
 
 
