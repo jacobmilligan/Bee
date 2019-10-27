@@ -47,7 +47,7 @@ cmake-build-debug
 cmake-build-release
 CMakeFiles/
 ./CMakeCache.txt
-!/ThirdParty/Binaries/**/*
+/Settings/User.json
 
 
 !/tstfile

@@ -1,0 +1,6 @@
+{
+    "cmake_options": {
+        "VULKAN_BACKEND": "ON",
+        "BUILD_CLANG_TOOLS": "OFF"
+    }
+}

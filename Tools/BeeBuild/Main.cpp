@@ -5,12 +5,15 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
+#include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/Process.hpp"
 #include "Bee/Core/CLI.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/IO.hpp"
+#include "Bee/Core/Logger.hpp"
 #include "Bee/Application/Main.hpp"
+#include "Bee/Core/JSON/JSON.hpp"
 
 namespace bee {
 
@@ -30,12 +33,12 @@ struct BuildInfo
 
 struct ConfigureInfo
 {
-    const char*         bb_generator { nullptr };
-    const char*         cmake_generator { nullptr };
-    const char*         build_type { nullptr };
-    i32                 cmake_options_count { 0 };
-    const char* const*  cmake_options { nullptr };
+    const char*             bb_generator { nullptr };
+    const char*             cmake_generator { nullptr };
+    const char*             build_type { nullptr };
+    DynamicArray<String>    cmake_options;
 };
+
 
 const BuildInfo& get_build_info()
 {
@@ -45,15 +48,15 @@ const BuildInfo& get_build_info()
     {
         info.project_root = Path::executable_path().parent().parent().parent();
         info.build_dir = info.project_root.join("Build");
-#if BEE_OS_WINDOWS == 1
-        const auto win32_bin_root = info.project_root.join("ThirdParty/Binaries/Win32");
 
-        info.cmake_path = win32_bin_root.join("cmake/bin/cmake.exe").normalize();
+        const auto bin_root = info.project_root.join("ThirdParty/Binaries");
+#if BEE_OS_WINDOWS == 1
+        info.cmake_path = bin_root.join("cmake/bin/cmake.exe").normalize();
 
         // Get the path to vcvarsall - this is a complicated process so buckle up...
 
         // Run cmake in a shell with vcvarsall if the CLion generator is used otherwise NMake won't know where to find VS
-        const auto vswhere_location = win32_bin_root.join("vswhere.exe");
+        const auto vswhere_location = bin_root.join("vswhere.exe");
         auto vswhere_cmd = str::format(
             "%s -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath",
             vswhere_location.c_str()
@@ -131,19 +134,18 @@ bool configure(const ConfigureInfo& config_info)
     {
         stream.write_fmt(R"("%s" )", build_dir.join(config_info.build_type).c_str());
         stream.write_fmt(" -DCMAKE_BUILD_TYPE=%s", config_info.build_type);
-        stream.write_fmt(R"(-DCMAKE_INSTALL_PREFIX="%s")", install_dir.join(config_info.build_type).c_str());
+        stream.write_fmt(R"( -DCMAKE_INSTALL_PREFIX="%s" )", install_dir.join(config_info.build_type).c_str());
     }
     else
     {
         stream.write_fmt(R"("%s" )", build_dir.c_str());
-        stream.write_fmt(R"(-DCMAKE_INSTALL_PREFIX="%s")", install_dir.c_str());
+        stream.write_fmt(R"(-DCMAKE_INSTALL_PREFIX="%s" )", install_dir.c_str());
     }
 
-
     // Add the extra cmake options to pass to the build system
-    for (int opt = 0; opt < config_info.cmake_options_count; ++opt)
+    for (const auto& opt : config_info.cmake_options)
     {
-        stream.write_fmt("%s ", config_info.cmake_options[opt]);
+        stream.write_fmt("%s ", opt.c_str());
     }
 
     log_info("Running CMake with command: %s", cmd.c_str());
@@ -171,6 +173,41 @@ int build(const String& cmake_cmd)
     return EXIT_SUCCESS;
 }
 
+
+void parse_settings_json(const Path& location, DynamicArray<String>* cmake_options)
+{
+    if (!location.exists())
+    {
+        log_error("No settings JSON file exists at that location: %s", location.c_str());
+        return;
+    }
+
+    auto json_src = fs::read(location);
+
+    json::Document doc(json::ParseOptions{});
+    doc.parse(json_src.data());
+
+    const auto options_json = doc.get_member(doc.root(), "cmake_options");
+    if (!options_json.is_valid() || doc.get_data(options_json).type != json::ValueType::object)
+    {
+        log_error("Missing `cmake_options` array in settings JSON root");
+        return;
+    }
+
+    for (auto opt : doc.get_members_range(options_json))
+    {
+        const auto data = doc.get_data(opt.value);
+        if (data.type != json::ValueType::string)
+        {
+            log_error("invalid option format - not a string");
+            continue;
+        }
+
+        cmake_options->push_back(str::format("-D%s=%s", opt.key, data.as_string()));
+    }
+}
+
+
 int bb_entry(int argc, char** argv)
 {
     FixedHashMap<String, String> generator_mappings =
@@ -186,6 +223,11 @@ int bb_entry(int argc, char** argv)
     }
 
     cli::Positional generator_pos("generator", "The project generator to use. Available options: ");
+
+    /*
+     * Add all the generator types to the positional arguments help string, i.e.:
+     * `The project generator to use. Available options: VS2017, CLion`
+     */
     int cur_generator = 0;
     for (const auto& g : generator_mappings)
     {
@@ -197,12 +239,18 @@ int bb_entry(int argc, char** argv)
         ++cur_generator;
     }
 
+    cli::Option config_file_option('s', "settings", false, "A JSON file containing CMake settings", 1);
+
     cli::ParserDescriptor subparsers[2]{};
     subparsers[0].command_name = "configure";
     subparsers[0].positional_count = 1;
     subparsers[0].positionals = &generator_pos;
+    subparsers[0].option_count = 1;
+    subparsers[0].options = &config_file_option;
 
     subparsers[1].command_name = "build";
+    subparsers[1].option_count = 1;
+    subparsers[1].options = &config_file_option;
 
     cli::ParserDescriptor parser{};
     parser.subparser_count = bee::static_array_length(subparsers);
@@ -246,8 +294,19 @@ int bb_entry(int argc, char** argv)
         ConfigureInfo config_info{};
         config_info.bb_generator = generator;
         config_info.cmake_generator = cmake_generator->value.c_str();
-        config_info.cmake_options_count = cli::get_remainder_count(command_line);
-        config_info.cmake_options = cli::get_remainder(command_line);
+
+        const auto settings_file = cli::get_option(configure_cmd->value, "settings");
+        if (settings_file != nullptr)
+        {
+            parse_settings_json(Path::current_working_directory().join(settings_file), &config_info.cmake_options);
+        }
+
+        const auto remainder_count = cli::get_remainder_count(command_line);
+        const auto remainder = cli::get_remainder(command_line);
+        for (int i = 0; i < remainder_count; ++i)
+        {
+            config_info.cmake_options.push_back(String(remainder[i]));
+        }
 
         DynamicArray<String> build_types;
 
@@ -255,6 +314,7 @@ int bb_entry(int argc, char** argv)
         {
             build_types.push_back("Debug");
             build_types.push_back("Release");
+            config_info.bb_generator = "CLion";
         }
         else
         {

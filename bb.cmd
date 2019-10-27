@@ -1,7 +1,11 @@
 @echo off
 
 set BUILD_DIR=.\Build\Bootstrap
-set CMAKE_EXE=.\ThirdParty\Binaries\Win32\cmake\bin\cmake.exe
+set CMAKE_EXE=.\ThirdParty\Binaries\cmake\bin\cmake.exe
+
+cd .\ThirdParty
+call .\get.bat
+cd ..
 
 if NOT EXIST .\Build\Release\bb.exe (
     echo.

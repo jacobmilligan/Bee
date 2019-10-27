@@ -11,7 +11,9 @@ bee_add_sources(
 )
 bee_add_include_dirs(xxHash)
 bee_library(xxHash)
-target_compile_options(xxHash PRIVATE /wd4204 /wd4146)
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
+    target_compile_options(xxHash PRIVATE /wd4204 /wd4146)
+endif ()
 
 
 ##########################################
@@ -62,7 +64,7 @@ endif ()
 # DirectX Shader Compiler
 #
 ############################
-set(dxc_dir ${CMAKE_CURRENT_SOURCE_DIR}/Binaries/${BEE_PLATFORM}/DirectXShaderCompiler)
+set(dxc_dir ${CMAKE_CURRENT_SOURCE_DIR}/Binaries/DirectXShaderCompiler)
 bee_add_include_dirs(${dxc_dir}/include)
 function(copy_dxc_binaries target_name)
     file(GLOB dxc_binaries ${dxc_dir}/*.dll ${dxc_dir}/*.pdb ${dxc_dir}/*.exe ${dxc_dir}/*.lib)
@@ -101,3 +103,10 @@ bee_add_sources(
 bee_library(lmdb)
 bee_add_include_dirs(${lmdb_root})
 lmdb_configure(lmdb)
+
+
+###########################
+#
+# Clang tooling
+#
+##########################
