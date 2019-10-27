@@ -38,8 +38,8 @@ static TypeRegistrationListNode* last_type = nullptr;
 static DynamicHashMap<u32, RegisteredType> type_map;
 
 TypeRegistrationListNode::TypeRegistrationListNode(const Type& new_type)
-    : type(new_type),
-      next(nullptr)
+    : next(nullptr),
+      type(new_type)
 {
     if (first_type == nullptr)
     {

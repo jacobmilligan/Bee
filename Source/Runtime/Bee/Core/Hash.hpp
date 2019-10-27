@@ -72,6 +72,21 @@ inline constexpr u32 fnv1a(const char* string, const u32 hash_so_far) noexcept
     return fnv1a_compute(string[Index], fnv1a<Index - 1>(string, hash_so_far));
 }
 
+
+inline constexpr u32 runtime_fnv1a(const char* string, const i32 string_length, const u32 seed = static_string_hash_seed_default)
+{
+    constexpr u32 prime = detail::static_string_hash_prime;
+    u32 hash = seed;
+
+    for(int i = 0; i < string_length; ++i)
+    {
+        hash = hash ^ string[i];
+        hash *= prime;
+    }
+
+    return hash;
+}
+
 } // namespace detail
 
 

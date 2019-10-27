@@ -1,5 +1,5 @@
 /*
- *  Reflection.hpp
+ *  ReflectionV2.hpp
  *  Bee
  *
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
@@ -7,31 +7,129 @@
 
 #pragma once
 
-#include "Bee/Core/NumericTypes.hpp"
+#include "Bee/Core/Enum.hpp"
+#include "Bee/Core/Containers/Array.hpp"
+#include "Bee/Core/String.hpp"
+#include "Bee/Core/Logger.hpp"
 #include "Bee/Core/Hash.hpp"
 
 namespace bee {
 
 
+#ifdef BEE_COMPILE_REFLECTION
+    #define BEE_REFLECT(...) __attribute__((annotate("bee-reflect[" #__VA_ARGS__ "]")))
+    #define BEE_ATTRIBUTE __attribute__((annotate("bee-attribute[]")))
+#else
+    #define BEE_REFLECT(...)
+    #define BEE_ATTRIBUTE
+#endif // BEE_COMPILE_REFLECTION
+
+
+BEE_FLAGS(Qualifier, u32)
+{
+    none        = 0u,
+    cv_const    = 1u << 0u,
+    cv_volatile = 1u << 1u,
+    lvalue_ref  = 1u << 2u,
+    rvalue_ref  = 1u << 3u,
+    pointer     = 1u << 4u
+};
+
+BEE_FLAGS(StorageClass, u32)
+{
+    none                    = 0u,
+    auto_storage            = 1u << 0u,
+    register_storage        = 1u << 1u,
+    static_storage          = 1u << 2u,
+    extern_storage          = 1u << 3u,
+    thread_local_storage    = 1u << 4u,
+    mutable_storage         = 1u << 5u
+};
+
+BEE_FLAGS(TypeKind, u32)
+{
+    unknown                 = 0u,
+    class_decl              = 1u << 0u,
+    struct_decl             = 1u << 1u,
+    enum_decl               = 1u << 2u,
+    union_decl              = 1u << 3u,
+    template_decl           = 1u << 4u,
+    field                   = 1u << 5u,
+    function                = 1u << 6u,
+    fundamental             = 1u << 7u
+};
+
+enum class AttributeType
+{
+    invalid,
+    empty,
+    int_attr,
+    float_attr,
+    type_attr,
+    string_attr
+};
+
+
+struct Type;
+
+
+struct Attribute {};
+
+
+struct Field
+{
+    size_t          offset { 0 };
+    Qualifier       qualifier { Qualifier::none };
+    StorageClass    storage_class { StorageClass::none };
+    const char*     name { nullptr };
+    const Type*     type { nullptr };
+};
+
+
+struct Type
+{
+    u32                     hash { 0 };
+    size_t                  size { 0 };
+    size_t                  alignment { 0 };
+    TypeKind                kind { TypeKind::unknown };
+    const char*             name { nullptr };
+};
+
+
+struct FunctionType final : public Type
+{
+    StorageClass        storage_class { StorageClass::none };
+    bool                is_constexpr { false };
+    Field               return_value;
+    DynamicArray<Field> parameters;
+};
+
+
+struct RecordType final : public Type
+{
+    DynamicArray<Field>                 fields;
+    DynamicArray<const FunctionType*>   functions;
+};
+
 /*
  **************************************************************************************************************
  *
- * # static_type<T>
+ * # static_type_info<T>
  *
  * Provides static and compile-time information about a given type `T`.
  *
  **************************************************************************************************************
  */
 template <typename T>
-struct static_type
+struct static_type_info
 {
 private:
 #if BEE_COMPILER_MSVC == 1
-    static constexpr int parse_name_offset = sizeof("const char *__cdecl bee::static_type<") - 1;
-    static constexpr int parse_name_length_offset = sizeof("int __cdecl bee::static_type<") - 1;
+    static constexpr int parse_name_offset = sizeof("const char *__cdecl bee::static_type_info<") - 1;
+    static constexpr int parse_name_length_offset = sizeof("int __cdecl bee::static_type_info<") - 1;
     static constexpr int parse_name_length_right_pad = sizeof(">::parse_name_length(void) noexcept") - 1;
 #else
-    static constexpr int parse_name_offset = sizeof("static const char *bee::static_type<") - 1;
+    static constexpr int parse_name_offset = sizeof("static const char *bee::static_type_info<") - 1;
     static constexpr int parse_name_length_offset = sizeof("static int bee::type_info<") - 1;
     static constexpr int parse_name_length_right_pad = sizeof(">::parse_name_length() [T = int]") - 1;
 #endif // BEE_COMPILER_* == 1
@@ -172,14 +270,16 @@ public:
     static const char* name;
 };
 
-template <typename T>
-const char* static_type<T>::annotated_name = get_annotated_name();
 
 template <typename T>
-const char* static_type<T>::fully_qualified_name = get_fully_qualified_name();
+const char* static_type_info<T>::annotated_name = get_annotated_name();
 
 template <typename T>
-const char* static_type<T>::name = get_name();
+const char* static_type_info<T>::fully_qualified_name = get_fully_qualified_name();
+
+template <typename T>
+const char* static_type_info<T>::name = get_name();
+
 
 template <typename T>
 inline size_t alignof_helper()
@@ -206,140 +306,19 @@ inline size_t sizeof_helper<void>()
 }
 
 
-/*
- **************************************************************************************************************
- *
- * # Type
- *
- * Type structure that can be serialized and stored in containers for runtime type introspection. This is
- * more heavy-weight than `static_type<T>` as types are stored and retrieved in a hash map internally and
- * require registration at runtime
- *
- **************************************************************************************************************
- */
-struct Type
+template <typename T>
+constexpr u32 get_type_hash()
 {
-    u32         hash { limits::max<u32>() };
-    size_t      size { 0 };
-    size_t      alignment { 0 };
-    const char* annotated_name { nullptr };
-    const char* fully_qualified_name { nullptr };
-    const char* name { nullptr };
-
-    Type() = default;
-
-    template <typename T>
-    static Type from_static()
-    {
-        return Type(
-            static_type<T>::hash,
-            static_type<T>::size,
-            alignof_helper<T>(),
-            static_type<T>::annotated_name,
-            static_type<T>::fully_qualified_name,
-            static_type<T>::name
-        );
-    }
-
-    inline constexpr bool is_valid() const
-    {
-        return hash != limits::max<u32>() && annotated_name != nullptr && fully_qualified_name != nullptr && name != nullptr;
-    }
-
-private:
-    Type(const u32 new_hash, const size_t new_size, const size_t new_alignment, const char* new_annotated_name, const char* new_fully_qualified_name, const char* new_name) noexcept
-        : hash(new_hash),
-          size(new_size),
-          alignment(new_alignment),
-          annotated_name(new_annotated_name),
-          fully_qualified_name(new_fully_qualified_name),
-          name(new_name)
-    {}
-};
-
-inline bool operator<(const Type& lhs, const Type& rhs)
-{
-    return lhs.hash < rhs.hash;
+    return static_type_info<T>::hash;
 }
-
-inline bool operator>(const Type& lhs, const Type& rhs)
-{
-    return lhs.hash > rhs.hash;
-}
-
-inline bool operator<=(const Type& lhs, const Type& rhs)
-{
-    return lhs.hash <= rhs.hash;
-}
-
-inline bool operator>=(const Type& lhs, const Type& rhs)
-{
-    return lhs.hash >= rhs.hash;
-}
-
-inline bool operator==(const Type& lhs, const Type& rhs)
-{
-    return lhs.hash == rhs.hash;
-}
-
-inline bool operator!=(const Type& lhs, const Type& rhs)
-{
-    return lhs.hash != rhs.hash;
-}
-
-template <>
-struct Hash<Type> {
-    inline u32 operator()(const Type& key) const
-    {
-        return key.hash;
-    }
-};
-
-
-struct BEE_CORE_API TypeRegistrationListNode
-{
-    TypeRegistrationListNode* next { nullptr };
-    Type type;
-
-    explicit TypeRegistrationListNode(const Type& new_type);
-};
-
 
 template <typename T>
-class TypeRegistration
+const char* get_type_name()
 {
-public:
-    TypeRegistration()
-        : node_(Type::from_static<T>())
-    {}
-
-private:
-    TypeRegistrationListNode node_;
-};
-
-
-BEE_CORE_API void reflection_init();
-
-BEE_CORE_API void register_type(const Type& type);
-
-template <typename T>
-inline void register_type()
-{
-    register_type(Type::from_static<T>());
+    return static_type_info<T>::fully_qualified_name;
 }
 
-BEE_CORE_API void unregister_type(const u32 hash);
-
-BEE_CORE_API Type get_type(const u32 hash) noexcept;
-
-template <typename T>
-Type get_type() noexcept
-{
-    return get_type(static_type<T>::hash);
-}
-
-
-#define BEE_REFLECT(type) static const TypeRegistration<type> BeeTypeRegistration_##type;
+BEE_CORE_API void reflection_register_type(const Type& type);
 
 
 } // namespace bee

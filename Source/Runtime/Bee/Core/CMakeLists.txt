@@ -3,33 +3,34 @@ bee_new_source_root()
 bee_add_sources(
         AtomicCounter.hpp
         Bitset.hpp
-        CLI.hpp         CLI.cpp
-        Concurrency.hpp Concurrency.cpp
+        CLI.hpp             CLI.cpp
+        Concurrency.hpp     Concurrency.cpp
         Config.hpp
         declval.hpp
         DynamicLibrary.hpp
-        Debug.hpp       Debug.cpp
-        Error.hpp       Error.cpp
-        Filesystem.hpp  Filesystem.cpp
+        Debug.hpp           Debug.cpp
+        Error.hpp           Error.cpp
+        Filesystem.hpp      Filesystem.cpp
         Functional.hpp
-        GUID.hpp        GUID.cpp
+        GUID.hpp            GUID.cpp
         Handle.hpp
-        Hash.hpp        Hash.cpp
-        IO.hpp          IO.cpp      IO.inl
-        Logger.hpp      Logger.cpp
+        Hash.hpp            Hash.cpp
+        IO.hpp              IO.cpp      IO.inl
+        Logger.hpp          Logger.cpp
         Meta.hpp
-        Plugin.hpp      Plugin.cpp
+        Plugin.hpp          Plugin.cpp
         Noncopyable.hpp
         NumericTypes.hpp
-        Path.hpp        Path.cpp
+        Path.hpp            Path.cpp
         Process.hpp
-        Random.hpp      Random.cpp
-        Reflection.hpp  Reflection.cpp
+        Random.hpp          Random.cpp
+        Reflection.hpp      Reflection.cpp
+        ReflectionV2.hpp    ReflectionV2.cpp
         Span.hpp
         Socket.hpp
-        String.hpp      String.cpp
-        Thread.hpp      Thread.cpp
-        Time.hpp        Time.cpp
+        String.hpp          String.cpp
+        Thread.hpp          Thread.cpp
+        Time.hpp            Time.cpp
 )
 
 add_subdirectory(Containers)
