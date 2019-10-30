@@ -1,6 +1,7 @@
 bee_new_source_root()
 bee_add_sources(
     RecordFinder.hpp    RecordFinder.cpp
+    CodeGen.hpp         CodeGen.cpp
     Frontend.hpp        Frontend.cpp
     FileTemplates.hpp   FileTemplates.cpp
     Main.cpp

@@ -719,11 +719,11 @@ u32 HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::hash_key(
     const u32 capacity
 ) const
 {
-    BEE_ASSERT_F((1u << (32u - hash_shift)) == capacity, "HashMap: Invalid hash shift");
+    BEE_ASSERT_F((1u << (32u - hash_shift)) == capacity, "HashMap: Invalid hash shift: %u (capacity: %u)", hash_shift, capacity);
 
     const auto hash = (2654435769u * hasher_(key)) >> hash_shift;
 
-    BEE_ASSERT_F(hash < capacity, "HashMap: Invalid hash shift");
+    BEE_ASSERT_F(hash < capacity, "HashMap: Invalid hash shift: %u (capacity: %u)", hash_shift, capacity);
 
     return hash;
 }
@@ -793,7 +793,8 @@ constexpr bool HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::implicit_gro
     const fixed_container_mode_t& fixed_capacity
 )
 {
-    return BEE_CHECK_F(active_node_count_ <= sign_cast<u32>(node_storage_.size()), "FixedHashMap: new capacity exceeded the fixed capacity of the HashMap");
+    const auto reached_fixed_size = active_node_count_ <= sign_cast<u32>(node_storage_.size()) && node_storage_.size() > 0;
+    return BEE_CHECK_F(reached_fixed_size, "FixedHashMap: new capacity exceeded the fixed capacity of the HashMap");
 }
 
 /*

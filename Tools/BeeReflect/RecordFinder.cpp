@@ -20,43 +20,6 @@
 namespace bee {
 
 
-template <typename T>
-Type builtin_type()
-{
-    Type t;
-    t.hash = get_type_hash<T>();
-    t.name = get_type_name<T>();
-    t.size = sizeof_helper<T>();
-    t.alignment = alignof_helper<T>();
-    t.kind = TypeKind::fundamental;
-
-    return t;
-}
-
-
-// This has to be a static local so that static_type_info<T> has its name fields intitialized first
-Span<Type> get_builtin_types()
-{
-    static Type builtin[] =
-    {
-        builtin_type<bool>(),
-        builtin_type<i8>(),
-        builtin_type<i16>(),
-        builtin_type<i32>(),
-        builtin_type<i64>(),
-        builtin_type<u8>(),
-        builtin_type<u16>(),
-        builtin_type<u32>(),
-        builtin_type<u64>(),
-        builtin_type<float>(),
-        builtin_type<double>(),
-        builtin_type<char>(),
-        builtin_type<void>()
-    };
-
-    return make_span(builtin, static_array_length(builtin));
-}
-
 
 bool parse_attribute(const llvm::StringRef src, Attribute* attr)
 {
@@ -188,27 +151,46 @@ StorageClass get_storage_class(const clang::StorageClass cls, const clang::Stora
 }
 
 
-RecordFinder::RecordFinder(bee::DynamicArray<bee::Type*>* type_array, bee::ReflectionAllocator* allocator_ptr)
-    : types(type_array),
+Type* TypeStorage::add_type(Type* type, const clang::Decl& decl)
+{
+    auto& src_manager = decl.getASTContext().getSourceManager();
+    const auto file = src_manager.getFileEntryForID(src_manager.getFileID(decl.getLocation()));
+    const auto filename_ref = file->getName();
+    const auto filename = StringView(filename_ref.data(), filename_ref.size());
+
+    if (hash_to_type_map.find(type->hash) != nullptr)
+    {
+        return nullptr;
+    }
+
+    types.emplace_back(type);
+
+    hash_to_type_map.insert(type->hash, type);
+
+    auto mapped_file = file_to_type_map.find(filename);
+
+    if (mapped_file == nullptr)
+    {
+        mapped_file = file_to_type_map.insert(Path(filename), DynamicArray<const Type*>());
+    }
+
+    mapped_file->value.push_back(type);
+
+    return types.back();
+
+}
+
+const Type* TypeStorage::find_type(const u32 hash)
+{
+    auto type = hash_to_type_map.find(hash);
+    return type == nullptr ? nullptr : type->value;
+}
+
+
+RecordFinder::RecordFinder(TypeStorage* type_array, bee::ReflectionAllocator* allocator_ptr)
+    : storage(type_array),
       allocator(allocator_ptr)
-{
-    // Add all the builtin types to the lookup
-    for (Type& type : get_builtin_types())
-    {
-        add_type(&type);
-    }
-}
-
-void RecordFinder::add_type(Type* type)
-{
-    if (type_lookup.find(type->hash) != nullptr)
-    {
-        return;
-    }
-
-    types->push_back(type);
-    type_lookup.insert(type->hash, type);
-}
+{}
 
 
 void RecordFinder::run(const clang::ast_matchers::MatchFinder::MatchResult& result)
@@ -252,7 +234,7 @@ void RecordFinder::reflect_record(const clang::CXXRecordDecl& decl)
     llvm::raw_svector_ostream type_name_stream(type_name);
     decl.printQualifiedName(type_name_stream);
 
-    auto type = allocator->allocate_type<RecordType>();
+    auto type = allocator->allocate_type<DynamicRecordType>();
     type->size = layout.getSize().getQuantity();
     type->alignment = layout.getAlignment().getQuantity();
     type->name = allocator->allocate_name(type_name);
@@ -285,7 +267,7 @@ void RecordFinder::reflect_record(const clang::CXXRecordDecl& decl)
         type->kind |= TypeKind::template_decl;
     }
 
-    add_type(type);
+    storage->add_type(type, decl);
     current_record = type;
 }
 
@@ -338,17 +320,26 @@ Field RecordFinder::create_field(const llvm::StringRef& name, const i32 index, c
     type_name.clear();
     llvm::raw_svector_ostream type_name_stream(type_name);
     auto fully_qualified_name = clang::TypeName::getFullyQualifiedName(original_type, ast_context, ast_context.getPrintingPolicy());
+
     const auto type_hash = detail::runtime_fnv1a(fully_qualified_name.data(), fully_qualified_name.size());
 
-    auto type = type_lookup.find(type_hash);
+    auto type = storage->find_type(type_hash);
     if (type == nullptr)
     {
-        log_error("Missing type: %s (0x%08x)", fully_qualified_name.c_str(), type_hash);
-        diagnostics.Report(location, clang::diag::err_field_incomplete);
-        return Field{};
+        /*
+         * If the type is missing it might be a core builtin type which can be accessed by bee-reflect via
+         * get_type. This is safe to do here as bee-reflect doesn't link to any generated cpp files
+         */
+        type = get_type(type_hash);
+        if (type->kind == TypeKind::unknown)
+        {
+            log_error("Missing type: %s (0x%08x)", fully_qualified_name.c_str(), type_hash);
+            diagnostics.Report(location, clang::diag::err_field_incomplete);
+            return Field{};
+        }
     }
 
-    field.type = type->value;
+    field.type = type;
     return field;
 }
 
@@ -381,7 +372,7 @@ void RecordFinder::reflect_field(const clang::FieldDecl& decl)
         return;
     }
 
-    current_record->fields.push_back(field);
+    current_record->add_field(field);
 }
 
 
@@ -400,7 +391,7 @@ void RecordFinder::reflect_function(const clang::FunctionDecl& decl)
     llvm::raw_svector_ostream type_name_stream(type_name);
     decl.printQualifiedName(type_name_stream);
 
-    auto type = allocator->allocate_type<FunctionType>();
+    auto type = allocator->allocate_type<DynamicFunctionType>();
     type->hash = detail::runtime_fnv1a(type_name.data(), type_name.size());
     type->name = allocator->allocate_name(type_name);
     type->size = sizeof(void*); // functions only have size when used as function pointer
@@ -417,7 +408,7 @@ void RecordFinder::reflect_function(const clang::FunctionDecl& decl)
         auto field = create_field(param->getName(), param->getFunctionScopeIndex(), param->getASTContext(), parent, param->getType(), param->getLocation(), diagnostics);
         field.offset = param->getFunctionScopeIndex();
         field.storage_class = get_storage_class(param->getStorageClass(), param->getStorageDuration());
-        type->parameters.push_back(field);
+        type->add_parameter(field);
     }
 
     type->storage_class = get_storage_class(decl.getStorageClass(), static_cast<clang::StorageDuration>(0));
@@ -431,10 +422,10 @@ void RecordFinder::reflect_function(const clang::FunctionDecl& decl)
             return;
         }
 
-        current_record->functions.push_back(type);
+        current_record->add_function(type);
     }
 
-    add_type(type);
+    storage->add_type(type, decl);
 }
 
 

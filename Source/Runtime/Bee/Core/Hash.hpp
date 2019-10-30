@@ -54,7 +54,7 @@ inline constexpr u32 fnv1a_compute(const char byte, const u32 hash_so_far) noexc
     return 1ull * (static_cast<u8>(byte) ^ hash_so_far) * static_string_hash_prime;
 }
 
-template <u32 Index>
+template <u32 LastIndex>
 inline constexpr u32 fnv1a(const char* string, u32 hash_so_far) noexcept;
 
 // Index == 0 base case. Computes the hash of the first char
@@ -65,23 +65,22 @@ inline constexpr u32 fnv1a<0>(const char* string, const u32 hash_so_far) noexcep
 }
 
 // Index > 0 case. The iteration is depth-first so as to start hashing from Index == 0 and backtrack to Index == Size-1
-template <u32 Index>
+template <u32 LastIndex>
 inline constexpr u32 fnv1a(const char* string, const u32 hash_so_far) noexcept
 {
-    static_assert(Index > 0, "Invalid index");
-    return fnv1a_compute(string[Index], fnv1a<Index - 1>(string, hash_so_far));
+    static_assert(LastIndex > 0, "Invalid index");
+    return fnv1a_compute(string[LastIndex], fnv1a<LastIndex - 1>(string, hash_so_far));
 }
 
 
-inline constexpr u32 runtime_fnv1a(const char* string, const i32 string_length, const u32 seed = static_string_hash_seed_default)
+inline u32 runtime_fnv1a(const char* string, const i32 string_length, const u32 seed = static_string_hash_seed_default)
 {
-    constexpr u32 prime = detail::static_string_hash_prime;
     u32 hash = seed;
 
     for(int i = 0; i < string_length; ++i)
     {
         hash = hash ^ string[i];
-        hash *= prime;
+        hash *= detail::static_string_hash_prime;
     }
 
     return hash;
@@ -96,7 +95,12 @@ inline constexpr u32 runtime_fnv1a(const char* string, const i32 string_length, 
 template <u32 Size>
 inline constexpr u32 get_static_string_hash(const char(&input)[Size], const u32 seed = static_string_hash_seed_default)
 {
-    return detail::fnv1a<Size - 1>(input, seed);
+    static_assert(Size >= 2, "Only null-terminated, non-empty strings can be statically hashed");
+    /*
+     * Given Size = length + 1 for null terminator, the hashing should start at the the strings last index
+     * which is: Size - 2 = (length + 1) - 2 = length - 1
+     */
+    return detail::fnv1a<Size - 2>(input, seed);
 }
 
 

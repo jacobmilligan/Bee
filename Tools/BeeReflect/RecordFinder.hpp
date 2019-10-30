@@ -11,6 +11,7 @@
 #include "ReflectionAllocator.hpp"
 
 #include "Bee/Core/Containers/HashMap.hpp"
+#include "Bee/Core/Path.hpp"
 
 #include <clang/ASTMatchers/ASTMatchFinder.h>
 
@@ -21,15 +22,75 @@ namespace bee {
 class ReflectionAllocator;
 
 
+struct DynamicRecordType final : public RecordType
+{
+    DynamicArray<Field>                 field_storage;
+    DynamicArray<const FunctionType*>   function_storage;
+
+    DynamicRecordType() = default;
+
+    explicit DynamicRecordType(Allocator* allocator)
+        : field_storage(allocator),
+          function_storage(allocator)
+    {}
+
+    void add_field(const Field& field)
+    {
+        field_storage.push_back(field);
+        fields = field_storage.span();
+    }
+
+    void add_function(const FunctionType* function)
+    {
+        function_storage.push_back(function);
+        functions = function_storage.span();
+    }
+};
+
+struct DynamicFunctionType final : public FunctionType
+{
+    DynamicArray<Field> parameter_storage;
+
+    DynamicFunctionType() = default;
+
+    DynamicFunctionType(FunctionType* new_type, Allocator* allocator)
+        : parameter_storage(allocator)
+    {}
+
+    void add_parameter(const Field& field)
+    {
+        parameter_storage.push_back(field);
+        parameters = parameter_storage.span();
+    }
+};
+
+
+struct TypeStorage
+{
+    DynamicArray<Type*>                              types;
+    DynamicHashMap<Path, DynamicArray<const Type*>>  file_to_type_map;
+    DynamicHashMap<u32, const Type*>                 hash_to_type_map;
+
+    explicit TypeStorage(Allocator* allocator)
+        : types(allocator),
+          file_to_type_map(allocator),
+          hash_to_type_map(allocator)
+    {}
+
+    Type* add_type(Type* type, const clang::Decl& decl);
+
+    const Type* find_type(const u32 hash);
+};
+
+
 struct RecordFinder final : public clang::ast_matchers::MatchFinder::MatchCallback
 {
-    RecordType*                         current_record { nullptr };
-    DynamicArray<Type*>*                types {nullptr };
-    DynamicHashMap<u32, const Type*>    type_lookup;
+    TypeStorage*                        storage { nullptr };
+    DynamicRecordType*                  current_record { nullptr };
     ReflectionAllocator*                allocator { nullptr };
     llvm::SmallString<1024>             type_name;
 
-    RecordFinder(DynamicArray<Type*>* type_array, ReflectionAllocator* allocator_ptr);
+    RecordFinder(TypeStorage* type_array, ReflectionAllocator* allocator_ptr);
 
     void run(const clang::ast_matchers::MatchFinder::MatchResult& result) override;
 
@@ -40,8 +101,6 @@ struct RecordFinder final : public clang::ast_matchers::MatchFinder::MatchCallba
     void reflect_function(const clang::FunctionDecl& decl);
 
     Field create_field(const llvm::StringRef& name, const i32 index, const clang::ASTContext& ast_context, const clang::RecordDecl* parent, const clang::QualType& qual_type, const clang::SourceLocation& location, clang::DiagnosticsEngine& diagnostics);
-
-    void add_type(Type* type);
 };
 
 

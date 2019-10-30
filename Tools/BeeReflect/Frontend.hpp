@@ -20,7 +20,7 @@ namespace bee {
 class ClangReflectFrontendAction final : public clang::ASTFrontendAction
 {
 public:
-    explicit ClangReflectFrontendAction(DynamicArray<Type*>* types, ReflectionAllocator* allocator);
+    explicit ClangReflectFrontendAction(TypeStorage* storage, ReflectionAllocator* allocator);
 protected:
     std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance& CI, llvm::StringRef InFile) override;
 
@@ -33,8 +33,8 @@ private:
 
 struct ClangReflectFrontendActionFactory : public clang::tooling::FrontendActionFactory
 {
-    ReflectionAllocator   allocator;
-    DynamicArray<Type*>   types;
+    ReflectionAllocator     allocator;
+    TypeStorage             storage;
 
     ClangReflectFrontendActionFactory();
 

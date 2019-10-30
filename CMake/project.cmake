@@ -174,7 +174,6 @@ function(__bee_finalize_target name)
     endforeach ()
 
     target_compile_definitions(${name} PUBLIC ${__bee_defines})
-
     bee_new_source_root()
 endfunction()
 

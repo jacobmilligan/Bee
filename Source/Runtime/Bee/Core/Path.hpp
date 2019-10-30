@@ -8,6 +8,7 @@
 #pragma once
 
 #include "Bee/Core/String.hpp"
+#include "Bee/Core/Hash.hpp"
 
 
 namespace bee {
@@ -208,6 +209,30 @@ inline bool operator!=(const StringView& lhs, const Path& rhs)
 {
     return !(lhs == rhs);
 }
+
+template <>
+struct Hash<Path>
+{
+    inline u32 operator()(const Path& key) const
+    {
+        return get_hash(key.c_str(), key.size(), 0xF00D);
+    }
+
+    inline u32 operator()(const String& key) const
+    {
+        return get_hash(key);
+    }
+
+    inline u32 operator()(const StringView& key) const
+    {
+        return get_hash(key);
+    }
+
+    inline u32 operator()(const char* key) const
+    {
+        return get_hash(key, str::length(key), 0xF00D);
+    }
+};
 
 /*
  ***************************************

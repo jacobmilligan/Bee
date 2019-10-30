@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "Bee/Core/ReflectionV2.hpp"
+#include "OtherHeader.hpp"
 
 struct BEE_ATTRIBUTE Attribute
 {
@@ -16,6 +16,21 @@ struct BEE_ATTRIBUTE Attribute
 
 class MyClass;
 
+
+enum BEE_REFLECT() AnEnum
+{
+    One,
+    Two,
+    Three = 56
+};
+
+enum class BEE_REFLECT() EnumClass : unsigned int
+{
+    unknown = 0u,
+    A       = 1u << 0u,
+    B       = 1u << 1u,
+    C       = 1u << 2u
+};
 
 struct BEE_REFLECT(Thing(12)) HeaderStruct
 {
@@ -53,6 +68,19 @@ private:
 };
 
 
+
 }
+
+
+class BEE_REFLECT() DerivedClass final : public BaseClass
+{
+    BEE_REFLECT()
+    int get_int() override
+    {
+        return 23;
+    }
+};
+
+
 }
 

@@ -19,18 +19,18 @@ namespace bee {
 
 
 ClangReflectFrontendActionFactory::ClangReflectFrontendActionFactory()
-    : allocator(mebibytes(4), mebibytes(4)),
-      types(temp_allocator())
+    : allocator(mebibytes(4), mebibytes(4), mebibytes(4)),
+      storage(system_allocator())
 {}
 
 std::unique_ptr<clang::FrontendAction> ClangReflectFrontendActionFactory::create()
 {
-    return std::make_unique<ClangReflectFrontendAction>(&types, &allocator);
+    return std::make_unique<ClangReflectFrontendAction>(&storage, &allocator);
 }
 
 
-ClangReflectFrontendAction::ClangReflectFrontendAction(DynamicArray<Type*>* types, ReflectionAllocator* allocator)
-    : record_finder_(types, allocator)
+ClangReflectFrontendAction::ClangReflectFrontendAction(TypeStorage* storage, ReflectionAllocator* allocator)
+    : record_finder_(storage, allocator)
 {
     // Match any record with an __annotate__ attribute and bind it to "id"
     auto decl_matcher = clang::ast_matchers::cxxRecordDecl(clang::ast_matchers::recordDecl().bind("id"), clang::ast_matchers::hasAttr(clang::attr::Annotate));

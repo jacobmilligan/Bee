@@ -113,6 +113,8 @@ private:
     i32         size_ { 0 };
 };
 
+#define BEE_TIMESTAMP_FMT "%Y-%m-%d %H:%M:%S"
+
 #define BEE_PRIsv ".*s"
 
 #define BEE_FMT_SV(string_view) string_view.size(), string_view.data()

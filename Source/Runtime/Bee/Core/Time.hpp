@@ -9,7 +9,17 @@
 
 #include "Bee/Core/NumericTypes.hpp"
 
+
 namespace bee {
+namespace io {
+
+
+class StringStream;
+
+
+}
+
+
 namespace time {
 
 /// Queries the systems high-resolution timer for the current time since startup
