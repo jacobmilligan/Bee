@@ -49,5 +49,8 @@ CMakeFiles/
 ./CMakeCache.txt
 /Settings/User.json
 
+# Generated reflection data
+*.generated.cpp
+
 
 !/tstfile

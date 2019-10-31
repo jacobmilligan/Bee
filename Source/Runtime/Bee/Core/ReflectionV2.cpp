@@ -61,7 +61,7 @@ constexpr size_t sizeof_helper<void>()
                                                                         \
     template <> BEE_CORE_API  const Type* get_type<builtin_type>()      \
     {                                                                   \
-        static constexpr Type instance                                  \
+        static Type instance                                            \
         {                                                               \
             get_type_hash<builtin_type>(),                              \
             sizeof_helper<builtin_type>(),                              \
@@ -80,9 +80,23 @@ BUILTIN_TYPES
 static DynamicHashMap<u32, const Type*> g_type_map;
 
 
+const Type* get_type(const u32 hash)
+{
+    static Type unknown_type { 0, 0, 0, TypeKind::unknown, "missing" };
+
+    auto type = g_type_map.find(hash);
+    if (type != nullptr)
+    {
+        return type->value;
+    }
+
+    return &unknown_type;
+}
+
+
 void reflection_initv2()
 {
-    #define BUILTIN(builtin_type) get_type<builtin_type>(),
+#define BUILTIN(builtin_type) get_type<builtin_type>(),
 
     static const Type* builtin_types[] { BUILTIN_TYPES };
 
@@ -93,22 +107,62 @@ void reflection_initv2()
 }
 
 
-void reflection_register_type(const Type& type)
+const char* reflection_flag_to_string(const Qualifier qualifier)
 {
+#define QUALIFIER(x) case Qualifier::x: return "Qualifier::" #x
 
-}
-
-const Type* get_type(const u32 hash)
-{
-    static constexpr Type unknown_type { 0, 0, 0, TypeKind::unknown, "missing" };
-
-    auto type = g_type_map.find(hash);
-    if (type != nullptr)
+    switch (qualifier)
     {
-        return type->value;
+        QUALIFIER(cv_const);
+        QUALIFIER(cv_volatile);
+        QUALIFIER(lvalue_ref);
+        QUALIFIER(rvalue_ref);
+        QUALIFIER(pointer);
+        default: break;
     }
 
-    return &unknown_type;
+    return "Qualifier::none";
+#undef QUALIFIER
+}
+
+const char* reflection_flag_to_string(const StorageClass storage_class)
+{
+#define STORAGE_CLASS(x) case StorageClass::x: return "StorageClass::" #x
+
+    switch (storage_class)
+    {
+        STORAGE_CLASS(auto_storage);
+        STORAGE_CLASS(register_storage);
+        STORAGE_CLASS(static_storage);
+        STORAGE_CLASS(extern_storage);
+        STORAGE_CLASS(thread_local_storage);
+        STORAGE_CLASS(mutable_storage);
+        default: break;
+    }
+
+    return "StorageClass::none";
+#undef STORAGE_CLASS
+}
+
+const char* reflection_type_kind_to_string(const TypeKind type_kind)
+{
+#define TYPE_KIND(x) case TypeKind::x: return "TypeKind::" #x
+
+    switch (type_kind)
+    {
+        TYPE_KIND(class_decl);
+        TYPE_KIND(struct_decl);
+        TYPE_KIND(enum_decl);
+        TYPE_KIND(union_decl);
+        TYPE_KIND(template_decl);
+        TYPE_KIND(field);
+        TYPE_KIND(function);
+        TYPE_KIND(fundamental);
+        default: break;
+    }
+
+    return "TypeKind::unknown";
+#undef TYPE_KIND
 }
 
 

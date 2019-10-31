@@ -202,6 +202,14 @@ void RecordFinder::run(const clang::ast_matchers::MatchFinder::MatchResult& resu
         return;
     }
 
+    auto as_enum = result.Nodes.getNodeAs<clang::EnumDecl>("id");
+    if (as_enum != nullptr)
+    {
+        log_info("Enum1");
+        reflect_enum(*as_enum);
+        return;
+    }
+
     auto as_field = result.Nodes.getNodeAs<clang::FieldDecl>("id");
     if (as_field != nullptr)
     {
@@ -269,6 +277,45 @@ void RecordFinder::reflect_record(const clang::CXXRecordDecl& decl)
 
     storage->add_type(type, decl);
     current_record = type;
+}
+
+
+void RecordFinder::reflect_enum(const clang::EnumDecl& decl)
+{
+    auto& ast_context = decl.getASTContext();
+    auto& diagnostics = ast_context.getDiagnostics();
+    auto annotation = get_annotation(decl);
+
+    if (annotation.data() == nullptr)
+    {
+        diagnostics.Report(decl.getLocation(), clang::diag::warn_unknown_attribute_ignored);
+        return;
+    }
+
+    const auto underlying = decl.getIntegerType().getDesugaredType(ast_context);
+    const auto underlying_type = get_type(detail::runtime_fnv1a(type_name.data(), type_name.size()));
+
+    if (underlying_type == nullptr)
+    {
+        diagnostics.Report(decl.getLocation(), clang::diag::err_enum_invalid_underlying);
+        return;
+    }
+
+    auto type = allocator->allocate_type<DynamicEnumType>();
+    type->size = ast_context.getTypeSize(underlying) / 8;
+    type->alignment = ast_context.getTypeAlign(underlying) / 8;
+    type->name = allocator->allocate_name(type_name);
+    type->hash = detail::runtime_fnv1a(type_name.data(), type_name.size());
+    type->is_scoped = decl.isScoped();
+
+    for (const clang::EnumConstantDecl* ast_constant : decl.enumerators())
+    {
+        EnumConstant constant{};
+        constant.name = allocator->allocate_name(ast_constant->getName());
+        constant.value = ast_constant->getInitVal().getRawData()[0];
+        constant.underlying_type = underlying_type;
+        type->add_constant(constant);
+    }
 }
 
 
@@ -424,8 +471,10 @@ void RecordFinder::reflect_function(const clang::FunctionDecl& decl)
 
         current_record->add_function(type);
     }
-
-    storage->add_type(type, decl);
+    else
+    {
+        storage->add_type(type, decl);
+    }
 }
 
 

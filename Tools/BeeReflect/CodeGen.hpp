@@ -104,38 +104,5 @@ void reflection_pretty_print(const Span<const Type*>& types, io::StringStream* s
 
 void reflection_codegen(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream);
 
-const char* reflection_flag_to_string(const bee::Qualifier qualifier);
-
-const char* reflection_flag_to_string(const bee::StorageClass storage_class);
-
-const char* reflection_type_kind_to_string(const bee::TypeKind type_kind);
-
-template <typename FlagType>
-const char* reflection_dump_flags(const FlagType flag)
-{
-    static thread_local char buffer[4096];
-    bee::io::StringStream stream(buffer, bee::static_array_length(buffer), 0);
-
-    int count = 0;
-    bee::for_each_flag(flag, [&](const FlagType& f)
-    {
-        stream.write_fmt(" %s |", reflection_flag_to_string(f));
-        ++count;
-    });
-
-    if (count == 0)
-    {
-        stream.write(reflection_flag_to_string(static_cast<FlagType>(0u)));
-    }
-
-    if (buffer[stream.size() - 1] == '|')
-    {
-        buffer[stream.size() - 1] = '\0';
-    }
-
-    // Skip the first space that occurs when getting multiple flags
-    return count > 0 ? buffer + 1 : buffer;
-}
-
 
 }

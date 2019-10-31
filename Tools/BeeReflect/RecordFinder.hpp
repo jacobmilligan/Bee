@@ -24,8 +24,8 @@ class ReflectionAllocator;
 
 struct DynamicRecordType final : public RecordType
 {
-    DynamicArray<Field>                 field_storage;
-    DynamicArray<const FunctionType*>   function_storage;
+    DynamicArray<Field>          field_storage;
+    DynamicArray<FunctionType>   function_storage;
 
     DynamicRecordType() = default;
 
@@ -42,7 +42,7 @@ struct DynamicRecordType final : public RecordType
 
     void add_function(const FunctionType* function)
     {
-        function_storage.push_back(function);
+        function_storage.push_back(*function);
         functions = function_storage.span();
     }
 };
@@ -53,7 +53,7 @@ struct DynamicFunctionType final : public FunctionType
 
     DynamicFunctionType() = default;
 
-    DynamicFunctionType(FunctionType* new_type, Allocator* allocator)
+    explicit DynamicFunctionType(Allocator* allocator)
         : parameter_storage(allocator)
     {}
 
@@ -61,6 +61,24 @@ struct DynamicFunctionType final : public FunctionType
     {
         parameter_storage.push_back(field);
         parameters = parameter_storage.span();
+    }
+};
+
+
+struct DynamicEnumType final : public EnumType
+{
+    DynamicArray<EnumConstant> constant_storage;
+
+    DynamicEnumType() = default;
+
+    explicit DynamicEnumType(Allocator* allocator)
+        : constant_storage(allocator)
+    {}
+
+    void add_constant(const EnumConstant& constant)
+    {
+        constant_storage.push_back(constant);
+        constants = constant_storage.span();
     }
 };
 
@@ -95,6 +113,8 @@ struct RecordFinder final : public clang::ast_matchers::MatchFinder::MatchCallba
     void run(const clang::ast_matchers::MatchFinder::MatchResult& result) override;
 
     void reflect_record(const clang::CXXRecordDecl& decl);
+
+    void reflect_enum(const clang::EnumDecl& decl);
 
     void reflect_field(const clang::FieldDecl& decl);
 

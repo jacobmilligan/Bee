@@ -34,10 +34,12 @@ ClangReflectFrontendAction::ClangReflectFrontendAction(TypeStorage* storage, Ref
 {
     // Match any record with an __annotate__ attribute and bind it to "id"
     auto decl_matcher = clang::ast_matchers::cxxRecordDecl(clang::ast_matchers::recordDecl().bind("id"), clang::ast_matchers::hasAttr(clang::attr::Annotate));
+    auto enum_matcher = clang::ast_matchers::enumDecl(clang::ast_matchers::enumDecl().bind("id"), clang::ast_matchers::hasAttr(clang::attr::Annotate));
     auto field_matcher = clang::ast_matchers::fieldDecl(clang::ast_matchers::decl().bind("id"), clang::ast_matchers::hasAttr(clang::attr::Annotate));
     auto function_matcher = clang::ast_matchers::functionDecl(clang::ast_matchers::decl().bind("id"), clang::ast_matchers::hasAttr(clang::attr::Annotate));
 
     finder_.addMatcher(decl_matcher, &record_finder_);
+    finder_.addMatcher(enum_matcher, &record_finder_);
     finder_.addMatcher(field_matcher, &record_finder_);
     finder_.addMatcher(function_matcher, &record_finder_);
 }

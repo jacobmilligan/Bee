@@ -8,3 +8,5 @@ bee_add_sources(
 )
 bee_exe(bee-reflect LINK_LIBRARIES Bee.Core clangTooling)
 target_compile_options(bee-reflect PRIVATE ${bee_clang_tool_compile_options})
+
+add_subdirectory(Tests)

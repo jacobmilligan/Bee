@@ -9,12 +9,10 @@
 
 #include "OtherHeader.hpp"
 
-struct BEE_ATTRIBUTE Attribute
+struct BEE_ATTRIBUTE MyAttribute
 {
 
 };
-
-class MyClass;
 
 
 enum BEE_REFLECT() AnEnum
