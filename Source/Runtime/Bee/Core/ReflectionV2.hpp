@@ -13,6 +13,7 @@
 #include "Bee/Core/Logger.hpp"
 #include "Bee/Core/Hash.hpp"
 
+
 namespace bee {
 
 
@@ -157,8 +158,11 @@ struct FunctionType : public Type
 
 struct RecordType : public Type
 {
-    Span<Field>          fields;
-    Span<FunctionType>   functions;
+    Span<Field>         fields;
+    Span<FunctionType>  functions;
+    Span<Type*>         template_arguments;
+    bool                is_template { false };
+
 
     using Type::Type;
 
@@ -188,7 +192,11 @@ const Type* get_type();
 
 BEE_CORE_API const Type* get_type(const u32 hash);
 
-BEE_CORE_API void reflection_initv2();
+extern void reflection_init();
+
+BEE_CORE_API void reflection_register_builtin_types();
+
+BEE_CORE_API void register_type(const Type* type);
 
 BEE_CORE_API const char* reflection_flag_to_string(const bee::Qualifier qualifier);
 

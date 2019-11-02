@@ -214,7 +214,7 @@ i32 FileStream::read(void* dst_buffer, i32 dst_buffer_size)
 
     const auto read = ftell(file_);
     BEE_ASSERT(read <= size_);
-    BEE_ASSERT_F(!read_error, "Failed to read from file with error: %s", strerror(errno));
+    BEE_ASSERT_F(!read_error, "Failed to read from file with error %d: %s", errno, strerror(errno));
 
     return size_read;
 }

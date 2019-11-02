@@ -93,8 +93,7 @@ const Type* get_type(const u32 hash)
     return &unknown_type;
 }
 
-
-void reflection_initv2()
+BEE_CORE_API void reflection_register_builtin_types()
 {
 #define BUILTIN(builtin_type) get_type<builtin_type>(),
 
@@ -102,10 +101,17 @@ void reflection_initv2()
 
     for (auto& type : builtin_types)
     {
-        g_type_map.insert(type->hash, type);
+        register_type(type);
     }
 }
 
+void register_type(const Type* type)
+{
+    if (g_type_map.find(type->hash) == nullptr)
+    {
+        g_type_map.insert(type->hash, type);
+    }
+}
 
 const char* reflection_flag_to_string(const Qualifier qualifier)
 {
