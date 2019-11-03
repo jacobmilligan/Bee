@@ -27,6 +27,8 @@ public:
 
     explicit LinearAllocator(const size_t capacity);
 
+    LinearAllocator(const size_t capacity, Allocator* overflow_allocator);
+
     LinearAllocator(LinearAllocator&& other) noexcept;
 
     ~LinearAllocator() override
@@ -87,12 +89,11 @@ private:
     size_t              offset_ { 0 };
     size_t              capacity_ { 0 };
     size_t              allocated_size_ { 0 }; // for i.e. job system where its only safe to reset if none of the memory is active
+    size_t              allocated_overflow_ { 0 };
     u8*                 memory_{ nullptr };
+    Allocator*          overflow_ { nullptr };
 
-    inline size_t get_header(void* ptr)
-    {
-        return *reinterpret_cast<size_t*>(static_cast<u8*>(ptr) - sizeof(size_t));
-    }
+    bool is_overflow_memory(void* ptr);
 };
 
 

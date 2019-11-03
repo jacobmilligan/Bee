@@ -87,7 +87,8 @@ private:
             return;
         }
 
-        thread_local_allocator = LinearAllocator(capacity_);
+        // Overflow into system malloc if
+        thread_local_allocator = LinearAllocator(capacity_, system_allocator());
 
         scoped_spinlock_t lock(global_lock_);
         allocators_.push_back(&thread_local_allocator);

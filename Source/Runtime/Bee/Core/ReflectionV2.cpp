@@ -77,6 +77,96 @@ BUILTIN_TYPES
 #undef BUILTIN
 
 
+/*
+ ****************************************
+ *
+ * namespace_iterator - implementation
+ *
+ ****************************************
+ */
+namespace_iterator::namespace_iterator(const Type* type)
+    : namespace_iterator(type->name)
+{}
+
+namespace_iterator::namespace_iterator(const StringView& fully_qualified_name)
+    : current_(fully_qualified_name.c_str()),
+      end_(fully_qualified_name.data() + fully_qualified_name.size()),
+      size_(str::first_index_of(fully_qualified_name, "::"))
+{
+    if (size_ < 0)
+    {
+        // If there's no namespace then this should be equal to end()
+        current_ = end_;
+        size_ = 0;
+    }
+}
+
+const StringView namespace_iterator::operator*() const
+{
+    return StringView(current_, size_);
+}
+
+const StringView namespace_iterator::operator->() const
+{
+    return StringView(current_, size_);
+}
+
+namespace_iterator& namespace_iterator::operator++()
+{
+    next_namespace();
+    return *this;
+}
+
+bool namespace_iterator::operator==(const bee::namespace_iterator& other) const
+{
+    return current_ == other.current_;
+}
+
+StringView namespace_iterator::view() const
+{
+    return StringView(current_, static_cast<i32>(end_ - current_));
+}
+
+void namespace_iterator::next_namespace()
+{
+    // Type name strings are guaranteed to be null-terminated
+    const auto ns = str::first_index_of(view(), "::");
+    if (ns > 0)
+    {
+        current_ += ns + 2;
+    }
+
+    const auto next_ns = str::first_index_of(view(), "::");
+
+    if (next_ns > 0)
+    {
+        size_ = next_ns;
+    }
+    else
+    {
+        // either this is the last namespace and we've reached the unqualified type or this is an empty name
+        current_ = end_;
+        size_ = 0;
+    }
+}
+
+namespace_iterator NamespaceRangeAdapter::begin() const
+{
+    return type->namespaces_begin();
+}
+
+namespace_iterator NamespaceRangeAdapter::end() const
+{
+    return type->namespaces_end();
+}
+
+/*
+ ****************************************
+ *
+ * Reflection API - implementation
+ *
+ ****************************************
+ */
 static DynamicHashMap<u32, const Type*> g_type_map;
 
 
@@ -168,6 +258,24 @@ const char* reflection_type_kind_to_string(const TypeKind type_kind)
     }
 
     return "TypeKind::unknown";
+#undef TYPE_KIND
+}
+
+
+const char* reflection_type_kind_to_code_string(const TypeKind type_kind)
+{
+#define TYPE_KIND(x, str) case TypeKind::x: return str
+
+    switch (type_kind)
+    {
+        TYPE_KIND(class_decl, "class");
+        TYPE_KIND(struct_decl, "struct");
+        TYPE_KIND(enum_decl, "enum class");
+        TYPE_KIND(union_decl, "union");
+        default: break;
+    }
+
+    return "";
 #undef TYPE_KIND
 }
 

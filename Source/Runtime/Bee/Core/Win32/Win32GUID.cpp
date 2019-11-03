@@ -46,7 +46,7 @@ GUID generate_guid()
     guid.data[15] = win_guid.Data4[2];
 
 #if BEE_DEBUG
-    guid_to_string(guid, GUIDFormat::digits, guid.debug_string);
+    guid_to_string(guid, GUIDFormat::digits, guid.debug_string, static_array_length(guid.debug_string));
 #endif // BEE_DEBUG
 
     return guid;

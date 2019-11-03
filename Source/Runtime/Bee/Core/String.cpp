@@ -522,10 +522,9 @@ void format(char* buffer, i32 buffer_size, const char* format, ...)
 i32 last_index_of_n(const StringView& src, const char* substring, i32 substring_size)
 {
     BEE_ASSERT(substring != nullptr);
-    BEE_ASSERT(str::length(src.data()) == src.size());
 
     // Empty string - no matches
-    if (src.size() <= 0)
+    if (src.empty())
     {
         return -1;
     }

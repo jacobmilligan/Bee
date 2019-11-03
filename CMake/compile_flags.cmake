@@ -50,6 +50,13 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
         /D_RELEASE
     )
 
+    # See: https://www.wintellect.com/correctly-creating-native-c-release-build-pdbs/
+    set(msvc_release_linker_flags
+        /DEBUG      # Generate PDB's
+        /OPT:REF    # Remove unused functions
+        /OPT:ICF    # Enable COMDAT folding
+    )
+
     string(REPLACE ";" " " cxx_flags_debug "${msvc_debug_flags}")
     string(REPLACE ";" " " cxx_flags_release "${msvc_release_flags}")
 
@@ -58,6 +65,10 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 
     set(CMAKE_C_FLAGS_RELEASE "${cxx_flags_release}" CACHE STRING "C flags" FORCE)
     set(CMAKE_CXX_FLAGS_RELEASE "${cxx_flags_release}" CACHE STRING "C++ flags" FORCE)
+
+    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "/DEBUG" CACHE STRING "Link flags for release" FORCE)
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE    "/DEBUG" CACHE STRING "Link flags for release" FORCE)
+    set(CMAKE_MODULE_LINKER_FLAGS_RELEASE "${msvc_release_linker_flags}" CACHE STRING "Release link flags" FORCE)
 
     # Flags added to Skyrocket targets only
     set(bee_compile_flags

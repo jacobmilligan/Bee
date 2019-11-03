@@ -110,7 +110,7 @@ void __bee_print_error(
 
     va_end(args);
 
-    stream.write_fmt("at %s:%d\n\tin function %s", file, line, func);
+    stream.write_fmt(" at %s:%d\n\tin function %s", file, line, func);
     log_error("%s", stream.c_str());
     if (with_trace)
     {

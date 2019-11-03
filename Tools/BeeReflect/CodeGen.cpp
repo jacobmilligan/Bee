@@ -8,6 +8,10 @@
 #include "CodeGen.hpp"
 
 #include "Bee/Core/IO.hpp"
+#include "Bee/Core/Filesystem.hpp"
+
+#include <map>
+#include <inttypes.h>
 
 
 namespace bee {
@@ -162,7 +166,31 @@ void codegen_record(const RecordType* type, CodeGenerator* codegen)
 }
 
 
-void reflection_codegen(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream)
+void codegen_enum(const EnumType* type, CodeGenerator* codegen)
+{
+    codegen->write("static EnumConstant constants[] =");
+    codegen->scope([&]()
+    {
+        for (const EnumConstant& constant : type->constants)
+        {
+            codegen->write_line("EnumConstant { \"%s\", %" PRIi64 ", get_type<%s>() },", constant.name, constant.value, constant.underlying_type->name);
+        }
+    }, ";");
+    codegen->newline();
+    codegen->newline();
+    codegen->write("static EnumType instance");
+    codegen->scope([&]()
+    {
+        codegen_type(type, codegen);
+        codegen->append_line("%s, Span<EnumConstant>(constants)", type->is_scoped ? "true" : "false");
+    }, ";");
+    codegen->newline();
+    codegen->newline();
+    codegen->write_line("return &instance;");
+}
+
+
+void codegen_reflection(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream)
 {
     CodeGenerator codegen(stream, 4);
 
@@ -192,7 +220,12 @@ void reflection_codegen(const Path& source_location, const Span<const Type*>& ty
                 }
                 case TypeKind::enum_decl:
                 {
-//                    codegen_enum(type, &codegen);
+                    codegen.write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>()", type->name);
+                    codegen.scope([&]()
+                    {
+                        codegen_enum(reinterpret_cast<const EnumType*>(type), &codegen);
+                    });
+                    codegen.write_line("// get_type<%s>()\n", type->name);
                     break;
                 }
                 case TypeKind::template_decl:
@@ -208,6 +241,225 @@ void reflection_codegen(const Path& source_location, const Span<const Type*>& ty
         }
     }, " // namespace bee\n");
     codegen.newline();
+}
+
+
+void codegen_registration_file(const Span<const Type*>& types, io::StringStream* stream)
+{
+    // Generate the output .cpp file that the user will need to link in their project
+    RegistrationHeader header{};
+    memcpy(header.magic, bee_reflect_magic, bee_reflect_magic_size);
+    header.version = RegistrationVersion::current;
+    header.type_count = 0;
+    header.types_byte_count = 0;
+
+    FixedArray<RegistrationTypeOffset> hashes(types.size(), temp_allocator());
+
+    u32 offset = 0;
+    for (const Type* type : types)
+    {
+        if (type->kind == TypeKind::enum_decl && !reinterpret_cast<const EnumType*>(type)->is_scoped)
+        {
+            log_warning("bee-reflect: skipping dynamic reflection for unscoped `enum %s`. Consider converting to scoped `enum class` to enable dynamic reflection.", type->name);
+            continue;
+        }
+
+        const auto size = str::length(type->name)
+            + str::length(reflection_type_kind_to_code_string(type->kind))
+            + sizeof("BEE_REGISTER_TYPE(,)");
+
+        hashes.push_back({ type->hash, offset });
+        ++header.type_count;
+        header.types_byte_count += size;
+        offset += size;
+    }
+
+    const auto hashes_byte_size = sizeof(RegistrationTypeOffset) * header.type_count;
+    header.hashes_offset = sizeof(RegistrationHeader);
+    header.types_offset = sizeof(RegistrationHeader) + header.type_count;
+
+    stream->write(&header, sizeof(RegistrationHeader));
+    stream->write(hashes.data(), hashes_byte_size);
+
+    for (const auto type : enumerate(types))
+    {
+        if (type.value->kind == TypeKind::enum_decl && !reinterpret_cast<const EnumType*>(type.value)->is_scoped)
+        {
+            continue;
+        }
+
+        stream->write_fmt("BEE_REGISTER_TYPE(%s,%s)", reflection_type_kind_to_code_string(type.value->kind), type.value->name);
+        stream->write('\0');
+    }
+
+    const auto eof = EOF;
+    stream->write(&eof, sizeof(int));
+}
+
+
+struct LinkResult
+{
+    String                          str;
+    StringView                      kind;
+    StringView                      fully_qualified_name;
+    StringView                      unqualified_name;
+    RegistrationVersion             version;
+
+    LinkResult() = default;
+
+    LinkResult(const char* type_macro, const RegistrationVersion version, Allocator* allocator)
+        : str(type_macro, allocator),
+          version(version)
+    {
+        constexpr auto kind_begin = sizeof("BEE_REGISTER_TYPE(") - 1;
+
+        const auto first_comma = str::first_index_of(str, ',');
+        const auto last_paren = str::last_index_of(str, ')');
+
+        kind = str::substring(str, kind_begin, first_comma - kind_begin);
+        fully_qualified_name = str::substring(str, first_comma + 1, last_paren - (first_comma + 1));
+        unqualified_name = get_unqualified_name(fully_qualified_name);
+    }
+
+    NamespaceRangeFromNameAdapter namespaces() const
+    {
+        return get_namespaces_from_name(fully_qualified_name);
+    }
+};
+
+
+void read_registration_file(const Path& path, std::map<u32, LinkResult>* results)
+{
+    io::FileStream file(path, "rb");
+    RegistrationHeader header{};
+    file.read(&header, sizeof(RegistrationHeader));
+
+    if (memcmp(header.magic, bee_reflect_magic, bee_reflect_magic_size) != 0)
+    {
+        log_error("bee-reflect: invalid file signature in .registration file (%s)", path.c_str());
+        return;
+    }
+
+    auto hashes = FixedArray<RegistrationTypeOffset>::with_size(header.type_count, temp_allocator());
+    file.read(hashes.data(), sizeof(RegistrationTypeOffset) * header.type_count);
+
+    String types_string(header.types_byte_count, '\0', temp_allocator());
+    file.read(types_string.data(), header.types_byte_count);
+
+    for (const auto& hash : hashes)
+    {
+        const char* type_macro = types_string.data() + hash.offset;
+        const auto existing = results->find(hash.hash);
+
+        if (existing != results->end())
+        {
+            log_error(
+                "bee-reflect: internal error: %s (0x%08X) was linked multiple times.\npreviously linked as: %" BEE_PRIsv,
+                type_macro,
+                hash.hash,
+                BEE_FMT_SV(existing->second.fully_qualified_name)
+            );
+            continue;
+        }
+        auto pair = results->insert(std::make_pair(hash.hash,LinkResult(type_macro, header.version, temp_allocator())));
+    }
+}
+
+
+void read_registrations(const Path& root, std::map<u32, LinkResult>* results)
+{
+    for (const auto& path : fs::read_dir(root))
+    {
+        if (fs::is_dir(path))
+        {
+            read_registrations(path, results);
+            continue;
+        }
+
+        if (fs::is_file(path) && path.extension() == ".registration")
+        {
+            read_registration_file(path, results);
+        }
+    }
+}
+
+void link_registrations(const Span<const Path>& search_paths, io::StringStream* stream)
+{
+    std::map<u32, LinkResult> link_results;
+
+    for (const auto& path : search_paths)
+    {
+        read_registrations(path, &link_results);
+    }
+
+    CodeGenerator codegen(stream);
+    codegen.write_header_comment("bee-reflect linker");
+    codegen.write_line("#include <Bee/Core/ReflectionV2.hpp>");
+    codegen.newline();
+    codegen.write(R"(/*
+ * Forward-declared types required for linking each call to `get_type<T>()` correctly. Each declaration
+ * precedes a comment stating which version of bee-reflect was used to generate the type.
+ */)");
+
+    for (const auto& result : link_results)
+    {
+        const LinkResult& data = result.second;
+
+        codegen.newline();
+
+        auto ns_count = 0;
+        for (const auto& ns : data.namespaces())
+        {
+            codegen.append_line("namespace %" BEE_PRIsv " { ", BEE_FMT_SV(ns));
+            ++ns_count;
+        }
+
+        codegen.append_line("%" BEE_PRIsv " %" BEE_PRIsv "; ", BEE_FMT_SV(data.kind), BEE_FMT_SV(data.unqualified_name));
+
+        for (int ns = 0; ns < ns_count; ++ns)
+        {
+            codegen.append_line("} ");
+        }
+
+        codegen.append_line("// v%d", data.version);
+    }
+
+    codegen.newline();
+    codegen.newline();
+    codegen.newline();
+    codegen.write_line("namespace bee {");
+    codegen.newline();
+    codegen.newline();
+    codegen.write_line(R"(/*
+ * MUST be called from an executables `main()` to register all types so that
+ * the version of `get_type()` that uses type hashes instead of template types
+ * works correctly.
+ */)");
+    codegen.write("void reflection_init()");
+    codegen.scope([&]()
+    {
+        codegen.write("static const Type* types[] = ");
+        codegen.scope([&]()
+        {
+            for (const auto& result : link_results)
+            {
+                const LinkResult& data = result.second;
+                codegen.write_line("get_type<%" BEE_PRIsv ">(),", BEE_FMT_SV(data.fully_qualified_name));
+            }
+        }, "; // types");
+        codegen.newline();
+        codegen.newline();
+        codegen.write_line("reflection_register_builtin_types();");
+        codegen.newline();
+        codegen.write("for (const Type* type : types)");
+        codegen.scope([&]()
+        {
+            codegen.write("register_type(type);");
+        });
+    }, " // void reflection_init()\n");
+    codegen.newline();
+    codegen.newline();
+    codegen.write("} // namespace bee");
 }
 
 

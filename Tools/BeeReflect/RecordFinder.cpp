@@ -205,7 +205,6 @@ void RecordFinder::run(const clang::ast_matchers::MatchFinder::MatchResult& resu
     auto as_enum = result.Nodes.getNodeAs<clang::EnumDecl>("id");
     if (as_enum != nullptr)
     {
-        log_info("Enum1");
         reflect_enum(*as_enum);
         return;
     }
@@ -224,6 +223,22 @@ void RecordFinder::run(const clang::ast_matchers::MatchFinder::MatchResult& resu
     }
 }
 
+llvm::StringRef RecordFinder::print_name(const clang::NamedDecl& decl)
+{
+    type_name.clear();
+    llvm::raw_svector_ostream type_name_stream(type_name);
+    decl.printQualifiedName(type_name_stream);
+    return type_name;
+}
+
+std::string RecordFinder::print_qualtype_name(const clang::QualType& type, const clang::ASTContext& ast_context)
+{
+    type_name.clear();
+    llvm::raw_svector_ostream type_name_stream(type_name);
+    return clang::TypeName::getFullyQualifiedName(type, ast_context, ast_context.getPrintingPolicy());
+}
+
+
 void RecordFinder::reflect_record(const clang::CXXRecordDecl& decl)
 {
     auto& ast_context = decl.getASTContext();
@@ -236,17 +251,13 @@ void RecordFinder::reflect_record(const clang::CXXRecordDecl& decl)
         return;
     }
 
-    auto& layout = decl.getASTContext().getASTRecordLayout(&decl);
-
-    type_name.clear();
-    llvm::raw_svector_ostream type_name_stream(type_name);
-    decl.printQualifiedName(type_name_stream);
-
+    const auto name = print_name(decl);
+    auto& layout = decl.getASTContext().getASTRecordLayout(&decl);;
     auto type = allocator->allocate_type<DynamicRecordType>();
     type->size = layout.getSize().getQuantity();
     type->alignment = layout.getAlignment().getQuantity();
-    type->name = allocator->allocate_name(type_name);
-    type->hash = detail::runtime_fnv1a(type_name.data(), type_name.size());
+    type->name = allocator->allocate_name(name);
+    type->hash = detail::runtime_fnv1a(name.data(), name.size());
 
     if (decl.isStruct())
     {
@@ -293,7 +304,9 @@ void RecordFinder::reflect_enum(const clang::EnumDecl& decl)
     }
 
     const auto underlying = decl.getIntegerType().getDesugaredType(ast_context);
-    const auto underlying_type = get_type(detail::runtime_fnv1a(type_name.data(), type_name.size()));
+    // Get the associated types hash so we can look it up later
+    const auto underlying_name = print_qualtype_name(underlying, ast_context);
+    const auto underlying_type = get_type(detail::runtime_fnv1a(underlying_name.data(), underlying_name.size()));
 
     if (underlying_type == nullptr)
     {
@@ -301,11 +314,13 @@ void RecordFinder::reflect_enum(const clang::EnumDecl& decl)
         return;
     }
 
+    const auto name = print_name(decl);
     auto type = allocator->allocate_type<DynamicEnumType>();
+    type->kind = TypeKind::enum_decl;
     type->size = ast_context.getTypeSize(underlying) / 8;
     type->alignment = ast_context.getTypeAlign(underlying) / 8;
-    type->name = allocator->allocate_name(type_name);
-    type->hash = detail::runtime_fnv1a(type_name.data(), type_name.size());
+    type->name = allocator->allocate_name(name);
+    type->hash = detail::runtime_fnv1a(name.data(), name.size());
     type->is_scoped = decl.isScoped();
 
     for (const clang::EnumConstantDecl* ast_constant : decl.enumerators())
@@ -316,6 +331,9 @@ void RecordFinder::reflect_enum(const clang::EnumDecl& decl)
         constant.underlying_type = underlying_type;
         type->add_constant(constant);
     }
+
+    log_info("%s", type->name);
+    storage->add_type(type, decl);
 }
 
 
@@ -364,10 +382,7 @@ Field RecordFinder::create_field(const llvm::StringRef& name, const i32 index, c
     }
 
     // Get the associated types hash so we can look it up later
-    type_name.clear();
-    llvm::raw_svector_ostream type_name_stream(type_name);
-    auto fully_qualified_name = clang::TypeName::getFullyQualifiedName(original_type, ast_context, ast_context.getPrintingPolicy());
-
+    const auto fully_qualified_name = print_qualtype_name(original_type, ast_context);
     const auto type_hash = detail::runtime_fnv1a(fully_qualified_name.data(), fully_qualified_name.size());
 
     auto type = storage->find_type(type_hash);

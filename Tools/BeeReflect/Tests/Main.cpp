@@ -80,7 +80,9 @@ void pretty_print_type(const bee::Type* type, bee::io::StringStream* stream)
 
 int main(int argc, char** argv)
 {
-    const auto type = bee::get_type<bee::test_reflection::MyClass>();
+    bee::reflection_init();
+    
+    const auto type = bee::get_type(bee::get_type<bee::test_reflection::MyClass>()->hash);
     bee::String str;
     bee::io::StringStream stream(&str);
     pretty_print_type(type, &stream);

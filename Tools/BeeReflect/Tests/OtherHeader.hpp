@@ -13,3 +13,10 @@ struct BEE_REFLECT() BaseClass
 {
     virtual int get_int() = 0;
 };
+
+enum class BEE_REFLECT() AnotherOne
+{
+    A,
+    B,
+    C
+};

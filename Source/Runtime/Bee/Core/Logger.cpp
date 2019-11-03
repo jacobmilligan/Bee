@@ -159,7 +159,8 @@ void default_logger_callback(const LogVerbosity verbosity, const char* fmt, va_l
 #if BEE_OS_WINDOWS == 1
     static constexpr int write_buffer_size = 4096; // 4K
 
-    char write_buffer[write_buffer_size];
+    static thread_local char write_buffer[write_buffer_size];
+
     io::StringStream stream(write_buffer, write_buffer_size, 0);
     stream.write_v(fmt, va_args);
     stream.write("\n");

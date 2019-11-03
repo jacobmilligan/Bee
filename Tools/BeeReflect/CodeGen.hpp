@@ -10,12 +10,47 @@
 
 #include "Bee/Core/ReflectionV2.hpp"
 #include "Bee/Core/IO.hpp"
-
+#include "Bee/Core/Containers/HashMap.hpp"
 
 #include <time.h>
 
-
 namespace bee {
+
+
+static constexpr unsigned char bee_reflect_magic[] = { 0x7C, 0xDD, 0x93, 0xB4 };
+static constexpr i32 bee_reflect_magic_size = sizeof(unsigned char) * static_array_length(bee_reflect_magic);
+
+
+enum class RegistrationVersion
+{
+    unknown = 0,
+    init,
+    current = init
+};
+
+/*
+ * .registration files are defined in memory as:
+ *
+ * magic | type_count | hashes_offset | get_type_offset | hash_0,offset_0 | hash_1,offset1 | get_type_0 | get_type_1 | ...
+ *
+ * A registration header contains the size and hash for a single type in the file
+ */
+struct RegistrationHeader
+{
+    unsigned char       magic[8];
+    RegistrationVersion version { RegistrationVersion::unknown };
+    i32                 type_count { 0 };
+    u32                 hashes_offset { 0 };
+    u32                 types_offset { 0 };
+    u32                 types_byte_count { 0 };
+};
+
+
+struct RegistrationTypeOffset
+{
+    u32 hash { 0 };
+    u32 offset { 0 };
+};
 
 
 class CodeGenerator
@@ -126,7 +161,11 @@ private:
 
 void reflection_pretty_print(const Span<const Type*>& types, io::StringStream* stream);
 
-void reflection_codegen(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream);
+void codegen_reflection(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream);
+
+void codegen_registration_file(const Span<const Type*>& types, io::StringStream* stream);
+
+void link_registrations(const Span<const Path>& search_paths, io::StringStream* stream);
 
 
-}
+} // namespace bee

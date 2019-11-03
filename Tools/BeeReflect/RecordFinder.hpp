@@ -85,9 +85,9 @@ struct DynamicEnumType final : public EnumType
 
 struct TypeStorage
 {
-    DynamicArray<Type*>                              types;
-    DynamicHashMap<Path, DynamicArray<const Type*>>  file_to_type_map;
-    DynamicHashMap<u32, const Type*>                 hash_to_type_map;
+    DynamicArray<Type*>                                 types;
+    DynamicHashMap<Path, DynamicArray<const Type*>>     file_to_type_map;
+    DynamicHashMap<u32, const Type*>                    hash_to_type_map;
 
     explicit TypeStorage(Allocator* allocator)
         : types(allocator),
@@ -111,6 +111,10 @@ struct RecordFinder final : public clang::ast_matchers::MatchFinder::MatchCallba
     RecordFinder(TypeStorage* type_array, ReflectionAllocator* allocator_ptr);
 
     void run(const clang::ast_matchers::MatchFinder::MatchResult& result) override;
+
+    llvm::StringRef print_name(const clang::NamedDecl& decl);
+
+    std::string print_qualtype_name(const clang::QualType& type, const clang::ASTContext& ast_context);
 
     void reflect_record(const clang::CXXRecordDecl& decl);
 

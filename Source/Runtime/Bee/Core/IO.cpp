@@ -210,11 +210,12 @@ i32 FileStream::read(void* dst_buffer, i32 dst_buffer_size)
     }
 
     const auto size_read = sign_cast<i32>(fread(dst_buffer, 1, dst_buffer_size, file_));
-    const auto read_error = size_read != dst_buffer_size || ferror(file_) != 0;
+    const auto read_error = ferror(file_) != 0;
+    const auto bytes_read = ftell(file_);
 
-    const auto read = ftell(file_);
-    BEE_ASSERT(read <= size_);
-    BEE_ASSERT_F(!read_error, "Failed to read from file with error %d: %s", errno, strerror(errno));
+
+    BEE_ASSERT(bytes_read <= size_);
+    BEE_ASSERT_F(!read_error, "Failed to bytes_read from file with error %s", strerror(errno));
 
     return size_read;
 }
@@ -528,6 +529,11 @@ const char* StringStream::c_str() const
 
     BEE_ASSERT(string.container != nullptr);
     return string.container->data();
+}
+
+StringView StringStream::view() const
+{
+    return StringView(c_str(), size());
 }
 
 char* StringStream::data()

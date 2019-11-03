@@ -74,6 +74,82 @@ enum class AttributeType
 struct Type;
 
 
+class BEE_CORE_API namespace_iterator
+{
+public:
+    using value_type    = StringView;
+    using reference     = StringView&;
+    using pointer       = StringView*;
+
+    explicit namespace_iterator(const Type* type);
+
+    explicit namespace_iterator(const StringView& fully_qualified_name);
+
+    namespace_iterator(const namespace_iterator& other) = default;
+
+    namespace_iterator& operator=(const namespace_iterator& other) = default;
+
+    const StringView operator*() const;
+
+    const StringView operator->() const;
+
+    namespace_iterator& operator++();
+
+    bool operator==(const namespace_iterator& other) const;
+
+    inline bool operator!=(const namespace_iterator& other) const
+    {
+        return !(*this == other);
+    }
+private:
+    const char* current_ { nullptr };
+    const char* end_ { nullptr };
+    i32         size_ { 0 };
+
+    void next_namespace();
+
+    StringView view() const;
+};
+
+
+struct BEE_CORE_API NamespaceRangeAdapter
+{
+    const Type* type { nullptr };
+
+    namespace_iterator begin() const;
+
+    namespace_iterator end() const;
+};
+
+
+struct NamespaceRangeFromNameAdapter
+{
+    const StringView& fully_qualified_name { nullptr };
+
+    namespace_iterator begin() const
+    {
+        return namespace_iterator(fully_qualified_name);
+    }
+
+    namespace_iterator end() const
+    {
+        return namespace_iterator(StringView(fully_qualified_name.data() + fully_qualified_name.size(), 0));
+    }
+};
+
+
+inline NamespaceRangeFromNameAdapter get_namespaces_from_name(const StringView& fully_qualified_type_name)
+{
+    return NamespaceRangeFromNameAdapter { fully_qualified_type_name };
+}
+
+inline StringView get_unqualified_name(const StringView& fully_qualified_name)
+{
+    const auto last_ns = str::last_index_of(fully_qualified_name, "::");
+    return last_ns >= 0 ? str::substring(fully_qualified_name, last_ns + 2) : fully_qualified_name;
+}
+
+
 struct Attribute {};
 
 
@@ -84,6 +160,21 @@ struct Field
     StorageClass    storage_class { StorageClass::none };
     const char*     name { nullptr };
     const Type*     type { nullptr };
+
+    Field() = default;
+
+    Field(
+        const size_t new_offset,
+        const Qualifier new_qualifier,
+        const StorageClass new_storage_class,
+        const char* new_name,
+        const Type* new_type
+    ) : offset(new_offset),
+        qualifier(new_qualifier),
+        storage_class(new_storage_class),
+        name(new_name),
+        type(new_type)
+    {}
 };
 
 
@@ -109,6 +200,26 @@ struct Type
         kind(new_kind),
         name(new_name)
     {}
+
+    inline NamespaceRangeAdapter namespaces() const
+    {
+        return NamespaceRangeAdapter { this };
+    }
+
+    inline namespace_iterator namespaces_begin() const
+    {
+        return namespace_iterator(this);
+    }
+
+    inline namespace_iterator namespaces_end() const
+    {
+        return namespace_iterator(StringView(name + str::length(name), 0));
+    }
+
+    inline const char* unqualified_name() const
+    {
+        return name + str::last_index_of(name, ':') + 1;
+    }
 };
 
 
@@ -117,12 +228,35 @@ struct EnumConstant
     const char* name { nullptr };
     i64         value { 0 };
     const Type* underlying_type { nullptr };
+
+    EnumConstant() = default;
+
+    EnumConstant(const char* new_name, const i64 new_value, const Type* new_underlying_type)
+        : name(new_name),
+          value(new_value),
+          underlying_type(new_underlying_type)
+    {}
 };
 
 struct EnumType : public Type
 {
     bool                is_scoped { false };
     Span<EnumConstant>  constants;
+
+    EnumType() = default;
+
+    EnumType(
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const TypeKind new_kind,
+        const char* new_name,
+        const bool scoped,
+        const Span<EnumConstant> new_constants
+    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name),
+        is_scoped(scoped),
+        constants(new_constants)
+    {}
 };
 
 
@@ -183,7 +317,6 @@ struct RecordType : public Type
 };
 
 
-
 template <typename T>
 constexpr u32 get_type_hash();
 
@@ -198,20 +331,22 @@ BEE_CORE_API void reflection_register_builtin_types();
 
 BEE_CORE_API void register_type(const Type* type);
 
-BEE_CORE_API const char* reflection_flag_to_string(const bee::Qualifier qualifier);
+BEE_CORE_API const char* reflection_flag_to_string(const Qualifier qualifier);
 
-BEE_CORE_API const char* reflection_flag_to_string(const bee::StorageClass storage_class);
+BEE_CORE_API const char* reflection_flag_to_string(const StorageClass storage_class);
 
-BEE_CORE_API const char* reflection_type_kind_to_string(const bee::TypeKind type_kind);
+BEE_CORE_API const char* reflection_type_kind_to_string(const TypeKind type_kind);
+
+BEE_CORE_API const char* reflection_type_kind_to_code_string(const TypeKind type_kind);
 
 template <typename FlagType>
 const char* reflection_dump_flags(const FlagType flag)
 {
     static thread_local char buffer[4096];
-    bee::io::StringStream stream(buffer, bee::static_array_length(buffer), 0);
+    io::StringStream stream(buffer, static_array_length(buffer), 0);
 
     int count = 0;
-    bee::for_each_flag(flag, [&](const FlagType& f)
+    for_each_flag(flag, [&](const FlagType& f)
     {
         stream.write_fmt(" %s |", reflection_flag_to_string(f));
         ++count;
@@ -230,5 +365,6 @@ const char* reflection_dump_flags(const FlagType flag)
     // Skip the first space that occurs when getting multiple flags
     return count > 0 ? buffer + 1 : buffer;
 }
+
 
 } // namespace bee

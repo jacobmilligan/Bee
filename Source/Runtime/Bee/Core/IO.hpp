@@ -376,6 +376,8 @@ public:
 
     const char* c_str() const;
 
+    StringView view() const;
+
 private:
     union StringUnion
     {
