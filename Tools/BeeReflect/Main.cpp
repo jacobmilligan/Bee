@@ -21,37 +21,6 @@
 #include <clang/Tooling/Tooling.h>
 
 
-namespace bee {
-
-
-/*
- * Recursively search for .registration files from the root directory down
- */
-void find_registration_files(const Path& root, DynamicHashMap<u32, String>* types)
-{
-//    for (const auto& path : fs::read_dir(root))
-//    {
-//        if (fs::is_dir(path))
-//        {
-//            find_registration_files(path, types);
-//            continue;
-//        }
-//
-//        if (fs::is_file(path) && path.extension() == ".registration")
-//        {
-//            if (!read_registration_file(path, types))
-//            {
-//                log_error("Failed to read registration file: %s", path.c_str());
-//                continue;
-//            }
-//        }
-//    }
-}
-
-
-}
-
-
 int bee_main(int argc, char** argv)
 {
     bee::reflection_register_builtin_types();
@@ -99,7 +68,7 @@ int bee_main(int argc, char** argv)
             bee::fs::mkdir(output_dir);
         }
 
-        bee::ClangReflectFrontendActionFactory factory;
+        bee::reflect::BeeReflectFrontendActionFactory factory;
 
         const auto result = tool.run(&factory);
         if (result != 0)
@@ -112,7 +81,7 @@ int bee_main(int argc, char** argv)
         {
             bee::String output;
             bee::io::StringStream stream(&output);
-            bee::codegen_reflection(file.key, file.value.span(), &stream);
+            bee::reflect::generate_reflection(file.key, file.value.span(), &stream);
 
             auto output_path = output_dir.join(file.key.filename(), bee::temp_allocator())
                                          .set_extension("generated")
@@ -125,7 +94,7 @@ int bee_main(int argc, char** argv)
 
             // Output a .registration file for looking up a type by hash
             const auto reg_path = output_dir.join(file.key.filename(), bee::temp_allocator()).set_extension("registration");
-            bee::codegen_registration_file(file.value.span(), &stream);
+            bee::reflect::generate_registration(file.value.span(), &stream);
 
             bee::fs::write(reg_path, output.view());
         }
@@ -150,7 +119,7 @@ int bee_main(int argc, char** argv)
 
         bee::String output;
         bee::io::StringStream stream(&output);
-        bee::link_registrations(search_paths.const_span(), &stream);
+        bee::reflect::link_registrations(search_paths.const_span(), &stream);
 
         bee::Path output_path(output_link_opt.getValue().c_str());
         bee::fs::write(output_path, stream.view());

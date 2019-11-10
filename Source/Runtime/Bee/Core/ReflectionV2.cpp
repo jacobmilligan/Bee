@@ -280,4 +280,12 @@ const char* reflection_type_kind_to_code_string(const TypeKind type_kind)
 }
 
 
+BEE_TRANSLATION_TABLE(reflection_attribute_kind_to_string, AttributeKind, const char*, AttributeKind::invalid,
+    "AttributeKind::boolean",           // boolean
+    "AttributeKind::integer",           // integer
+    "AttributeKind::floating_point",    // floating_point
+    "AttributeKind::string",            // string
+)
+
+
 } // namespace bee

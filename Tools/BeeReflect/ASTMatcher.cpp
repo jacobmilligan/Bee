@@ -6,7 +6,7 @@
  */
 
 
-#include "RecordFinder.hpp"
+#include "ASTMatcher.hpp"
 
 #include <clang/Lex/PreprocessorOptions.h>
 #include <clang/ASTMatchers/ASTMatchFinder.h>
@@ -18,91 +18,8 @@
 
 
 namespace bee {
+namespace reflect {
 
-
-
-bool parse_attribute(const llvm::StringRef src, Attribute* attr)
-{
-    auto attr_ast = clang::tooling::buildASTFromCode(src);
-    auto results = clang::ast_matchers::match(clang::ast_matchers::callExpr(), attr_ast->getASTContext());
-
-    return false;
-}
-
-
-bool parse_attributes(const TypeKind kind, const llvm::StringRef attribute_string, DynamicArray<Attribute>* attributes)
-{
-    if (kind == TypeKind::function)
-    {
-        return false;
-    }
-
-    std::pair<llvm::StringRef, llvm::StringRef> attr_begin;
-
-    if (kind == TypeKind::field)
-    {
-        attr_begin = attribute_string.split("bee-reflect-field[");
-    }
-    else
-    {
-        attr_begin = attribute_string.split("bee-reflect-class[");
-    }
-
-    if (attr_begin.first == attribute_string)
-    {
-        attributes->push_back(Attribute{});
-        return true;
-    }
-
-    while (true)
-    {
-        attr_begin = attr_begin.second.split(',');
-        if (attr_begin.second.empty())
-        {
-            break;
-        }
-
-        attributes->emplace_back();
-
-        if (!parse_attribute(attr_begin.first, &attributes->back()))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-llvm::StringRef get_annotation(const clang::Decl& decl)
-{
-    for (auto& attribute : decl.attrs())
-    {
-        if (attribute->getKind() != clang::attr::Annotate)
-        {
-            continue;
-        }
-
-        auto annotation_decl = llvm::dyn_cast<clang::AnnotateAttr>(attribute);
-        if (annotation_decl == nullptr)
-        {
-            continue;
-        }
-
-        llvm::StringRef annotation = annotation_decl->getAnnotation();
-
-        const auto is_reflected = annotation.startswith("bee-reflect");
-        const auto is_attribute = annotation.startswith("bee-attribute");
-
-        if ((!is_reflected && !is_attribute) || !annotation.endswith("]"))
-        {
-            continue;
-        }
-
-        return annotation.split("[").second;
-    }
-
-    return llvm::StringRef{};
-}
 
 
 Qualifier get_qualifier(const clang::QualType& type)
@@ -151,49 +68,20 @@ StorageClass get_storage_class(const clang::StorageClass cls, const clang::Stora
 }
 
 
-Type* TypeStorage::add_type(Type* type, const clang::Decl& decl)
-{
-    auto& src_manager = decl.getASTContext().getSourceManager();
-    const auto file = src_manager.getFileEntryForID(src_manager.getFileID(decl.getLocation()));
-    const auto filename_ref = file->getName();
-    const auto filename = StringView(filename_ref.data(), filename_ref.size());
-
-    if (hash_to_type_map.find(type->hash) != nullptr)
-    {
-        return nullptr;
-    }
-
-    types.emplace_back(type);
-
-    hash_to_type_map.insert(type->hash, type);
-
-    auto mapped_file = file_to_type_map.find(filename);
-
-    if (mapped_file == nullptr)
-    {
-        mapped_file = file_to_type_map.insert(Path(filename), DynamicArray<const Type*>());
-    }
-
-    mapped_file->value.push_back(type);
-
-    return types.back();
-
-}
-
-const Type* TypeStorage::find_type(const u32 hash)
-{
-    auto type = hash_to_type_map.find(hash);
-    return type == nullptr ? nullptr : type->value;
-}
-
-
-RecordFinder::RecordFinder(TypeStorage* type_array, bee::ReflectionAllocator* allocator_ptr)
-    : storage(type_array),
+/*
+ *************************************
+ *
+ * ASTMatcher - implementation
+ *
+ *************************************
+ */
+ASTMatcher::ASTMatcher(TypeStorage* type_storage, ReflectionAllocator* allocator_ptr)
+    : storage(type_storage),
       allocator(allocator_ptr)
 {}
 
 
-void RecordFinder::run(const clang::ast_matchers::MatchFinder::MatchResult& result)
+void ASTMatcher::run(const clang::ast_matchers::MatchFinder::MatchResult& result)
 {
     auto as_record = result.Nodes.getNodeAs<clang::CXXRecordDecl>("id");
     if (as_record != nullptr)
@@ -223,7 +111,7 @@ void RecordFinder::run(const clang::ast_matchers::MatchFinder::MatchResult& resu
     }
 }
 
-llvm::StringRef RecordFinder::print_name(const clang::NamedDecl& decl)
+llvm::StringRef ASTMatcher::print_name(const clang::NamedDecl& decl)
 {
     type_name.clear();
     llvm::raw_svector_ostream type_name_stream(type_name);
@@ -231,7 +119,7 @@ llvm::StringRef RecordFinder::print_name(const clang::NamedDecl& decl)
     return type_name;
 }
 
-std::string RecordFinder::print_qualtype_name(const clang::QualType& type, const clang::ASTContext& ast_context)
+std::string ASTMatcher::print_qualtype_name(const clang::QualType& type, const clang::ASTContext& ast_context)
 {
     type_name.clear();
     llvm::raw_svector_ostream type_name_stream(type_name);
@@ -239,15 +127,12 @@ std::string RecordFinder::print_qualtype_name(const clang::QualType& type, const
 }
 
 
-void RecordFinder::reflect_record(const clang::CXXRecordDecl& decl)
+void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl)
 {
-    auto& ast_context = decl.getASTContext();
-    auto& diagnostics = ast_context.getDiagnostics();
-    auto annotation = get_annotation(decl);
+    AttributeParser attr_parser{};
 
-    if (annotation.data() == nullptr)
+    if (!attr_parser.init(decl, &diagnostics))
     {
-        diagnostics.Report(decl.getLocation(), clang::diag::warn_unknown_attribute_ignored);
         return;
     }
 
@@ -277,7 +162,7 @@ void RecordFinder::reflect_record(const clang::CXXRecordDecl& decl)
     }
     else
     {
-        diagnostics.Report(decl.getLocation(), clang::diag::err_attribute_argument_invalid);
+        diagnostics.Report(decl.getLocation(), clang::diag::err_type_unsupported);
         return;
     }
 
@@ -286,20 +171,24 @@ void RecordFinder::reflect_record(const clang::CXXRecordDecl& decl)
         type->kind |= TypeKind::template_decl;
     }
 
+    if (!attr_parser.parse(&type->attribute_storage, allocator))
+    {
+        return;
+    }
+
+    type->attributes = type->attribute_storage.span();
     storage->add_type(type, decl);
     current_record = type;
 }
 
 
-void RecordFinder::reflect_enum(const clang::EnumDecl& decl)
+void ASTMatcher::reflect_enum(const clang::EnumDecl& decl)
 {
     auto& ast_context = decl.getASTContext();
-    auto& diagnostics = ast_context.getDiagnostics();
-    auto annotation = get_annotation(decl);
+    AttributeParser attr_parser{};
 
-    if (annotation.data() == nullptr)
+    if (!attr_parser.init(decl, &diagnostics))
     {
-        diagnostics.Report(decl.getLocation(), clang::diag::warn_unknown_attribute_ignored);
         return;
     }
 
@@ -332,12 +221,17 @@ void RecordFinder::reflect_enum(const clang::EnumDecl& decl)
         type->add_constant(constant);
     }
 
-    log_info("%s", type->name);
+    if (!attr_parser.parse(&type->attribute_storage, allocator))
+    {
+        return;
+    }
+
+    type->attributes = type->attribute_storage.span();
     storage->add_type(type, decl);
 }
 
 
-Field RecordFinder::create_field(const llvm::StringRef& name, const i32 index, const clang::ASTContext& ast_context, const clang::RecordDecl* parent, const clang::QualType& qual_type, const clang::SourceLocation& location, clang::DiagnosticsEngine& diagnostics)
+Field ASTMatcher::create_field(const llvm::StringRef& name, const i32 index, const clang::ASTContext& ast_context, const clang::RecordDecl* parent, const clang::QualType& qual_type, const clang::SourceLocation& location)
 {
     /*
      * Get the layout of the parent record this field is in and also get pointers to the desugared type so that
@@ -357,7 +251,7 @@ Field RecordFinder::create_field(const llvm::StringRef& name, const i32 index, c
 
     if (current_record == nullptr)
     {
-        diagnostics.Report(location, clang::diag::err_invalid_member_in_interface);
+        diagnostics.Report(location, clang::diag::err_incomplete_type);
         return Field{};
     }
 
@@ -406,18 +300,16 @@ Field RecordFinder::create_field(const llvm::StringRef& name, const i32 index, c
 }
 
 
-void RecordFinder::reflect_field(const clang::FieldDecl& decl)
+void ASTMatcher::reflect_field(const clang::FieldDecl& decl)
 {
-    auto& diagnostics = decl.getASTContext().getDiagnostics();
-    auto annotation = get_annotation(decl);
+    AttributeParser attr_parser{};
 
-    if (annotation.data() == nullptr)
+    if (!attr_parser.init(decl, &diagnostics))
     {
-        diagnostics.Report(decl.getLocation(), clang::diag::warn_unknown_attribute_ignored);
         return;
     }
 
-    auto field = create_field(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), decl.getParent(), decl.getType(), decl.getTypeSpecStartLoc(), diagnostics);
+    auto field = create_field(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), decl.getParent(), decl.getType(), decl.getTypeSpecStartLoc());
     if (field.type == nullptr)
     {
         return;
@@ -430,22 +322,26 @@ void RecordFinder::reflect_field(const clang::FieldDecl& decl)
 
     if (current_record == nullptr)
     {
-        diagnostics.Report(decl.getLocation(), clang::diag::err_invalid_member_in_interface);
+        diagnostics.Report(decl.getLocation(), clang::diag::err_incomplete_type);
         return;
     }
 
-    current_record->add_field(field);
+    DynamicArray<Attribute> attributes;
+    if (!attr_parser.parse(&attributes, allocator))
+    {
+        return;
+    }
+
+    current_record->add_field(field, std::move(attributes));
 }
 
 
-void RecordFinder::reflect_function(const clang::FunctionDecl& decl)
+void ASTMatcher::reflect_function(const clang::FunctionDecl& decl)
 {
-    auto& diagnostics = decl.getASTContext().getDiagnostics();
-    auto annotation = get_annotation(decl);
+    AttributeParser attr_parser{};
 
-    if (annotation.data() == nullptr)
+    if (attr_parser.init(decl, &diagnostics))
     {
-        diagnostics.Report(decl.getLocation(), clang::diag::warn_unknown_attribute_ignored);
         return;
     }
 
@@ -463,11 +359,11 @@ void RecordFinder::reflect_function(const clang::FunctionDecl& decl)
     const auto is_member_function = decl.isCXXClassMember();
     const auto parent = decl.isCXXClassMember() ? (const clang::RecordDecl*)(decl.getParent()) : nullptr;
 
-    type->return_value = create_field(decl.getName(), -1, decl.getASTContext(), parent, decl.getReturnType(), decl.getTypeSpecStartLoc(), diagnostics);
+    type->return_value = create_field(decl.getName(), -1, decl.getASTContext(), parent, decl.getReturnType(), decl.getTypeSpecStartLoc());
 
     for (auto& param : decl.parameters())
     {
-        auto field = create_field(param->getName(), param->getFunctionScopeIndex(), param->getASTContext(), parent, param->getType(), param->getLocation(), diagnostics);
+        auto field = create_field(param->getName(), param->getFunctionScopeIndex(), param->getASTContext(), parent, param->getType(), param->getLocation());
         field.offset = param->getFunctionScopeIndex();
         field.storage_class = get_storage_class(param->getStorageClass(), param->getStorageDuration());
         type->add_parameter(field);
@@ -476,11 +372,18 @@ void RecordFinder::reflect_function(const clang::FunctionDecl& decl)
     type->storage_class = get_storage_class(decl.getStorageClass(), static_cast<clang::StorageDuration>(0));
     type->is_constexpr = decl.isConstexpr();
 
+    if (!attr_parser.parse(&type->attribute_storage, allocator))
+    {
+        return;
+    }
+
+    type->attributes = type->attribute_storage.span();
+
     if (is_member_function)
     {
         if (current_record == nullptr)
         {
-            diagnostics.Report(decl.getLocation(), clang::diag::err_invalid_member_in_interface);
+            diagnostics.Report(decl.getLocation(), clang::diag::err_incomplete_type);
             return;
         }
 
@@ -493,5 +396,240 @@ void RecordFinder::reflect_function(const clang::FunctionDecl& decl)
 }
 
 
+/*
+ *************************************
+ *
+ * Attribute parsing - implementation
+ *
+ *************************************
+ */
+void AttributeParser::next()
+{
+    if (current == end)
+    {
+        return;
+    }
 
+    ++current;
+}
+
+void AttributeParser::skip_whitespace()
+{
+    while (current != end && str::is_space(*current))
+    {
+        ++current;
+    }
+}
+
+const char* AttributeParser::parse_name()
+{
+    const char* begin = current;
+
+    while (current != end)
+    {
+        if (str::is_space(*current) || *current == '=' || *current == ',')
+        {
+            return allocator->allocate_name(llvm::StringRef(begin, current - begin));
+        }
+
+        next();
+    }
+
+    diagnostics->Report(location, clang::diag::err_expected_string_literal);
+    return nullptr;
+}
+
+bool AttributeParser::parse_value(Attribute* attribute)
+{
+    // Parse as string
+    if (*current == '\"')
+    {
+        next();
+
+        const auto begin = current;
+
+        while (current != end && *current != '\"')
+        {
+            ++current;
+        }
+
+        if (*current != '\"')
+        {
+            diagnostics->Report(location, clang::diag::err_expected_string_literal);
+            return false;
+        }
+
+        attribute->kind = AttributeKind::string;
+        attribute->value.string = allocator->allocate_name(llvm::StringRef(begin, current - begin));
+        next();
+        return true;
+    }
+
+
+    const char* begin = current;
+
+    // Otherwise parse as unquoted value type
+    while (current != end && *current != ',' && !str::is_space(*current) && *current != ']')
+    {
+        ++current;
+    }
+
+    llvm::StringRef ref(begin, current - begin);
+
+    if (ref.empty())
+    {
+        diagnostics->Report(location, clang::diag::err_attribute_unsupported);
+        return false;
+    }
+
+    /*
+     * Test:
+     * - bool
+     * - double
+     * - int
+     */
+    const auto is_true = ref == "true";
+    const auto is_false = ref == "false";
+    if (is_true || is_false)
+    {
+        attribute->kind = AttributeKind::boolean;
+        attribute->value.boolean = is_true;
+        return true;
+    }
+
+    double result = 0.0;
+    if (!ref.getAsDouble(result))
+    {
+        attribute->kind = AttributeKind::floating_point;
+        attribute->value.floating_point = static_cast<float>(result);
+        return true;
+    }
+
+    if (!ref.getAsInteger(10, attribute->value.integer))
+    {
+        attribute->kind = AttributeKind::integer;
+        return true;
+    }
+
+    diagnostics->Report(location, clang::diag::err_type_unsupported);
+    return false;
+}
+
+bool AttributeParser::parse_attribute()
+{
+    skip_whitespace();
+
+    Attribute attribute{};
+    attribute.name = parse_name();
+
+    if (attribute.name == nullptr)
+    {
+        return false;
+    }
+
+    skip_whitespace();
+
+    attribute.hash = detail::runtime_fnv1a(attribute.name, str::length(attribute.name));
+
+    if (*current == ',')
+    {
+        attribute.kind = AttributeKind::boolean;
+        attribute.value.boolean = true;
+        next();
+    }
+    else
+    {
+        if (*current != '=')
+        {
+            diagnostics->Report(location, diagnostics->err_attribute_missing_equals);
+            return false;
+        }
+
+        next();
+        skip_whitespace();
+
+        if (!parse_value(&attribute))
+        {
+            return false;
+        }
+
+        if (*current == ',')
+        {
+            next();
+        }
+    }
+
+    dst->push_back(attribute);
+    return true;
+}
+
+bool AttributeParser::parse(DynamicArray<Attribute>* dst_attributes, ReflectionAllocator* refl_allocator)
+{
+    dst = dst_attributes;
+    allocator = refl_allocator;
+
+    while (current != end && *current != ']')
+    {
+        if (!parse_attribute())
+        {
+            return false;
+        }
+    }
+
+    if (*current != ']')
+    {
+        diagnostics->Report(location, diagnostics->err_invalid_annotation_format);
+        return false;
+    }
+
+    return true;
+}
+
+
+bool AttributeParser::init(const clang::Decl& decl, Diagnostics* new_diagnostics)
+{
+    llvm::StringRef annotation_str;
+    diagnostics = new_diagnostics;
+
+    for (auto& attribute : decl.attrs())
+    {
+        if (attribute->getKind() != clang::attr::Annotate)
+        {
+            continue;
+        }
+
+        auto annotation_decl = llvm::dyn_cast<clang::AnnotateAttr>(attribute);
+        if (annotation_decl == nullptr)
+        {
+            continue;
+        }
+
+        annotation_str = annotation_decl->getAnnotation();
+        break;
+    }
+
+
+    if (annotation_str.empty() || !annotation_str.startswith("bee-reflect"))
+    {
+        diagnostics->Report(decl.getLocation(), diagnostics->err_invalid_annotation_format);
+        return false;
+    }
+
+    auto attributes_str = annotation_str.split("[");
+
+    if (attributes_str.first == annotation_str)
+    {
+        diagnostics->Report(decl.getLocation(), diagnostics->err_invalid_annotation_format);
+        return false;
+    }
+
+    current = attributes_str.second.data();
+    end = attributes_str.second.end();
+    location = decl.getLocation();
+
+    return true;
+}
+
+
+} // namespace reflect
 } // namespace bee

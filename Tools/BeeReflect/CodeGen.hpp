@@ -15,6 +15,7 @@
 #include <time.h>
 
 namespace bee {
+namespace reflect {
 
 
 static constexpr unsigned char bee_reflect_magic[] = { 0x7C, 0xDD, 0x93, 0xB4 };
@@ -159,13 +160,14 @@ private:
 
 
 
-void reflection_pretty_print(const Span<const Type*>& types, io::StringStream* stream);
+void pretty_print_types(const Span<const Type*>& types, io::StringStream* stream);
 
-void codegen_reflection(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream);
+void generate_reflection(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream);
 
-void codegen_registration_file(const Span<const Type*>& types, io::StringStream* stream);
+void generate_registration(const Span<const Type*>& types, io::StringStream* stream);
 
 void link_registrations(const Span<const Path>& search_paths, io::StringStream* stream);
 
 
+} // namespace reflect
 } // namespace bee

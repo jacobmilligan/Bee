@@ -7,20 +7,20 @@
 
 #pragma once
 
-#include "RecordFinder.hpp"
+#include "ASTMatcher.hpp"
 
 #include <clang/Frontend/FrontendAction.h>
 #include <clang/Tooling/Tooling.h>
 
 
 namespace bee {
+namespace reflect {
 
 
-
-class ClangReflectFrontendAction final : public clang::ASTFrontendAction
+class BeeReflectFrontendAction final : public clang::ASTFrontendAction
 {
 public:
-    explicit ClangReflectFrontendAction(TypeStorage* storage, ReflectionAllocator* allocator);
+    explicit BeeReflectFrontendAction(TypeStorage* storage, ReflectionAllocator* allocator);
 protected:
     std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance& CI, llvm::StringRef InFile) override;
 
@@ -28,19 +28,20 @@ protected:
 
 private:
     clang::ast_matchers::MatchFinder    finder_;
-    RecordFinder                        record_finder_;
+    ASTMatcher                          matcher_;
 };
 
 
-struct ClangReflectFrontendActionFactory : public clang::tooling::FrontendActionFactory
+struct BeeReflectFrontendActionFactory : public clang::tooling::FrontendActionFactory
 {
     ReflectionAllocator     allocator;
     TypeStorage             storage;
 
-    ClangReflectFrontendActionFactory();
+    BeeReflectFrontendActionFactory();
 
     std::unique_ptr<clang::FrontendAction> create() override;
 };
 
 
+} // namespace reflect
 } // namespace bee

@@ -9,11 +9,6 @@
 
 #include "OtherHeader.hpp"
 
-struct BEE_ATTRIBUTE MyAttribute
-{
-
-};
-
 
 enum BEE_REFLECT() AnEnum
 {
@@ -30,7 +25,7 @@ enum class BEE_REFLECT() EnumClass : unsigned int
     C       = 1u << 2u
 };
 
-struct BEE_REFLECT(Thing(12)) HeaderStruct
+struct BEE_REFLECT(tag = "Special struct tag") HeaderStruct
 {
     BEE_REFLECT()
     unsigned int int_field;
@@ -43,7 +38,12 @@ namespace bee {
 namespace test_reflection {
 
 
-class BEE_REFLECT() MyClass
+enum class MyClassVersions
+{
+
+};
+
+class BEE_REFLECT(serialized, version = 1) MyClass
 {
 public:
     explicit MyClass(const int value)
@@ -56,18 +56,16 @@ public:
         return 23;
     }
 private:
-    BEE_REFLECT()
+    BEE_REFLECT(version_added = 1)
     mutable int field;
 
-    BEE_REFLECT()
-    HeaderStruct s;
+    BEE_DEPRECATE_FIELD(HeaderStruct s, 2, 3);
+
+    BEE_REFLECT(version_added = 4)
+    int val;
 
     const char* name;
 };
-
-
-
-}
 
 
 class BEE_REFLECT() DerivedClass final : public BaseClass
@@ -81,4 +79,4 @@ class BEE_REFLECT() DerivedClass final : public BaseClass
 
 
 }
-
+}

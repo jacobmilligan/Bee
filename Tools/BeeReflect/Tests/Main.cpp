@@ -41,6 +41,32 @@ void pretty_print_type(const bee::Type* type, bee::io::StringStream* stream)
                 reflection_dump_flags(field.storage_class),
                 field.offset
             );
+
+            stream->write("    - attributes: ");
+            for (const bee::Attribute& attr : field.attributes)
+            {
+                stream->write_fmt("%s = ", attr.name);
+                switch (attr.kind)
+                {
+                    case bee::AttributeKind::boolean:
+                        stream->write_fmt("%s", attr.value.boolean ? "true" : "false");
+                        break;
+                    case bee::AttributeKind::integer:
+                        stream->write_fmt("%d", attr.value.integer);
+                        break;
+                    case bee::AttributeKind::floating_point:
+                        stream->write_fmt("%f", attr.value.floating_point);
+                        break;
+                    case bee::AttributeKind::string:
+                        stream->write_fmt("%s", attr.value.string);
+                        break;
+                    default:
+                        break;
+                }
+                stream->write(", ");
+            }
+            stream->write("\n");
+
         }
 
         stream->write("- functions:\n");
@@ -72,6 +98,31 @@ void pretty_print_type(const bee::Type* type, bee::io::StringStream* stream)
             stream->write(") ");
             stream->write_fmt("[storage_class: %s]\n", reflection_dump_flags(function.storage_class));
         }
+
+        stream->write(" - attributes: ");
+        for (const bee::Attribute& attr : as_class->attributes)
+        {
+            stream->write_fmt("%s = ", attr.name);
+            switch (attr.kind)
+            {
+                case bee::AttributeKind::boolean:
+                    stream->write_fmt("%s", attr.value.boolean ? "true" : "false");
+                    break;
+                case bee::AttributeKind::integer:
+                    stream->write_fmt("%d", attr.value.integer);
+                    break;
+                case bee::AttributeKind::floating_point:
+                    stream->write_fmt("%f", attr.value.floating_point);
+                    break;
+                case bee::AttributeKind::string:
+                    stream->write_fmt("%s", attr.value.string);
+                    break;
+                default:
+                    break;
+            }
+            stream->write(", ");
+        }
+        stream->write("\n");
     }
 
     stream->write("\n");

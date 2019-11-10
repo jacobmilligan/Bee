@@ -117,7 +117,7 @@ private:
 
 #define BEE_PRIsv ".*s"
 
-#define BEE_FMT_SV(string_view) string_view.size(), string_view.data()
+#define BEE_FMT_SV(string_view) static_cast<int>(string_view.size()), string_view.data()
 
 
 /**

@@ -16,21 +16,23 @@
 
 
 namespace bee {
+namespace reflect {
 
 
-ClangReflectFrontendActionFactory::ClangReflectFrontendActionFactory()
-    : allocator(mebibytes(4), mebibytes(4), mebibytes(4)),
+
+BeeReflectFrontendActionFactory::BeeReflectFrontendActionFactory()
+    : allocator(mebibytes(8), mebibytes(8)),
       storage(system_allocator())
 {}
 
-std::unique_ptr<clang::FrontendAction> ClangReflectFrontendActionFactory::create()
+std::unique_ptr<clang::FrontendAction> BeeReflectFrontendActionFactory::create()
 {
-    return std::make_unique<ClangReflectFrontendAction>(&storage, &allocator);
+    return std::make_unique<BeeReflectFrontendAction>(&storage, &allocator);
 }
 
 
-ClangReflectFrontendAction::ClangReflectFrontendAction(TypeStorage* storage, ReflectionAllocator* allocator)
-    : record_finder_(storage, allocator)
+BeeReflectFrontendAction::BeeReflectFrontendAction(TypeStorage* storage, ReflectionAllocator* allocator)
+    : matcher_(storage, allocator)
 {
     // Match any record with an __annotate__ attribute and bind it to "id"
     auto decl_matcher = clang::ast_matchers::cxxRecordDecl(clang::ast_matchers::recordDecl().bind("id"), clang::ast_matchers::hasAttr(clang::attr::Annotate));
@@ -38,23 +40,24 @@ ClangReflectFrontendAction::ClangReflectFrontendAction(TypeStorage* storage, Ref
     auto field_matcher = clang::ast_matchers::fieldDecl(clang::ast_matchers::decl().bind("id"), clang::ast_matchers::hasAttr(clang::attr::Annotate));
     auto function_matcher = clang::ast_matchers::functionDecl(clang::ast_matchers::decl().bind("id"), clang::ast_matchers::hasAttr(clang::attr::Annotate));
 
-    finder_.addMatcher(decl_matcher, &record_finder_);
-    finder_.addMatcher(enum_matcher, &record_finder_);
-    finder_.addMatcher(field_matcher, &record_finder_);
-    finder_.addMatcher(function_matcher, &record_finder_);
+    finder_.addMatcher(decl_matcher, &matcher_);
+    finder_.addMatcher(enum_matcher, &matcher_);
+    finder_.addMatcher(field_matcher, &matcher_);
+    finder_.addMatcher(function_matcher, &matcher_);
 }
 
-std::unique_ptr<clang::ASTConsumer> ClangReflectFrontendAction::CreateASTConsumer(clang::CompilerInstance& CI, llvm::StringRef InFile)
+std::unique_ptr<clang::ASTConsumer> BeeReflectFrontendAction::CreateASTConsumer(clang::CompilerInstance& CI, llvm::StringRef InFile)
 {
     return finder_.newASTConsumer();
 }
 
-bool ClangReflectFrontendAction::BeginInvocation(clang::CompilerInstance& CI)
+bool BeeReflectFrontendAction::BeginInvocation(clang::CompilerInstance& CI)
 {
     CI.getInvocation().getPreprocessorOpts().addMacroDef("BEE_COMPILE_REFLECTION");
+    matcher_.diagnostics.init(&CI.getDiagnostics());
     return true;
 }
 
 
-
+} // namespace reflect
 } // namespace bee

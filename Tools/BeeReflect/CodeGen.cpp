@@ -15,6 +15,7 @@
 
 
 namespace bee {
+namespace reflect {
 
 
 String get_name_as_ident(const Type* type, Allocator* allocator = system_allocator())
@@ -41,18 +42,64 @@ void codegen_type(const Type* type, CodeGenerator* codegen)
 }
 
 
-void codegen_field(const Field& field, CodeGenerator* codegen)
+void codegen_attribute(const Attribute& attr, CodeGenerator* codegen)
+{
+    codegen->write("Attribute");
+    codegen->scope([&]()
+    {
+        codegen->write(
+            "%s, %u, \"%s\", Attribute::Value(",
+            reflection_attribute_kind_to_string(attr.kind),
+            attr.hash,
+            attr.name
+        );
+
+        switch (attr.kind)
+        {
+            case AttributeKind::boolean:
+            {
+                codegen->append_line("%s", attr.value.boolean ? "true" : "false");
+                break;
+            }
+            case AttributeKind::integer:
+            {
+                codegen->append_line("%d", attr.value.integer);
+                break;
+            }
+            case AttributeKind::floating_point:
+            {
+                codegen->append_line("%ff", attr.value.floating_point);
+                break;
+            }
+            case AttributeKind::string:
+            {
+                codegen->append_line("\"%s\"", attr.value.string);
+                break;
+            }
+            default:
+            {
+                BEE_UNREACHABLE("Invalid attribute kind: AttributeKind::invalid");
+            }
+        }
+
+        codegen->append_line(")");
+    });
+}
+
+
+void codegen_field(const Field& field, const char* attributes_array_name, CodeGenerator* codegen)
 {
     codegen->write("Field");
     codegen->scope([&]()
     {
         codegen->write(
-            "%zu, %s, %s, \"%s\", get_type<%s>() ",
+            "%zu, %s, %s, \"%s\", get_type<%s>(), %s",
             field.offset,
             reflection_flag_to_string(field.qualifier),
             reflection_flag_to_string(field.storage_class),
             field.name,
-            field.type->name
+            field.type->name,
+            attributes_array_name == nullptr ? "{}" : attributes_array_name
         );
     });
 }
@@ -62,6 +109,21 @@ void codegen_function(const FunctionType* type, CodeGenerator* codegen)
 {
     const auto function_name_as_ident = get_name_as_ident(type, temp_allocator());
 
+    if (!type->attributes.empty())
+    {
+        codegen->write("static Attribute %s__attributes[] =", function_name_as_ident.c_str());
+        codegen->scope([&]()
+        {
+            for (const Attribute& attr : type->attributes)
+            {
+                codegen_attribute(attr, codegen);
+                codegen->append_line(",\n");
+            }
+        }, ";");
+        codegen->newline();
+        codegen->newline();
+    }
+
     if (!type->parameters.empty())
     {
         codegen->write("static Field %s__parameters[] =", function_name_as_ident.c_str());
@@ -69,7 +131,7 @@ void codegen_function(const FunctionType* type, CodeGenerator* codegen)
         {
             for (const Field& field : type->parameters)
             {
-                codegen_field(field, codegen);
+                codegen_field(field, nullptr, codegen);
                 codegen->append_line(",\n");
             }
         }, ";");
@@ -85,7 +147,7 @@ void codegen_function(const FunctionType* type, CodeGenerator* codegen)
         codegen->append_line("%s, %s,", reflection_flag_to_string(type->storage_class), type->is_constexpr ? "true" : "false");
         codegen->newline();
 
-        codegen_field(type->return_value, codegen);
+        codegen_field(type->return_value, nullptr, codegen);
 
         if (!type->parameters.empty())
         {
@@ -102,14 +164,54 @@ void codegen_record(const RecordType* type, CodeGenerator* codegen)
 {
     const auto name_as_ident = get_name_as_ident(type, temp_allocator());
 
+    if (!type->attributes.empty())
+    {
+        codegen->write("static Attribute %s__attributes[] =", name_as_ident.c_str());
+        codegen->scope([&]()
+        {
+            for (const Attribute& attr : type->attributes)
+            {
+                codegen_attribute(attr, codegen);
+                codegen->append_line(",\n");
+            }
+        }, ";");
+        codegen->newline();
+        codegen->newline();
+    }
+
     if (!type->fields.empty())
     {
+        for (const Field& field : type->fields)
+        {
+            if (field.attributes.empty())
+            {
+                continue;
+            }
+
+            codegen->write("static Attribute %s__%s__attributes[] =", name_as_ident.c_str(), field.name);
+            codegen->scope([&]()
+            {
+                for (const Attribute& attr : field.attributes)
+                {
+                    codegen_attribute(attr, codegen);
+                    codegen->append_line(",\n");
+                }
+            }, ";");
+
+            codegen->newline();
+            codegen->newline();
+        }
+
         codegen->write("static Field %s__fields[] =", name_as_ident.c_str());
         codegen->scope([&]()
         {
             for (const Field& field : type->fields)
             {
-                codegen_field(field, codegen);
+                const char* attr_array_name = field.attributes.empty()
+                    ? nullptr
+                    : str::format(temp_allocator(), "Span<Attribute>(%s__%s__attributes)", name_as_ident.c_str(), field.name).c_str();
+
+                codegen_field(field, attr_array_name, codegen);
                 codegen->append_line(",\n");
             }
         }, ";");
@@ -161,6 +263,17 @@ void codegen_record(const RecordType* type, CodeGenerator* codegen)
         {
             codegen->append_line("{}");
         }
+
+        codegen->append_line(", ");
+
+        if (!type->attributes.empty())
+        {
+            codegen->append_line("Span<Attribute>(%s__attributes)", name_as_ident.c_str());
+        }
+        else
+        {
+            codegen->append_line("{}");
+        }
     }, ";\n\n");
     codegen->write_line("return &instance;");
 }
@@ -168,6 +281,21 @@ void codegen_record(const RecordType* type, CodeGenerator* codegen)
 
 void codegen_enum(const EnumType* type, CodeGenerator* codegen)
 {
+    if (!type->attributes.empty())
+    {
+        codegen->write("static Attribute attributes[] =");
+        codegen->scope([&]()
+        {
+            for (const Attribute& attr : type->attributes)
+            {
+                codegen_attribute(attr, codegen);
+                codegen->append_line(",\n");
+            }
+        }, ";");
+        codegen->newline();
+        codegen->newline();
+    }
+
     codegen->write("static EnumConstant constants[] =");
     codegen->scope([&]()
     {
@@ -182,7 +310,11 @@ void codegen_enum(const EnumType* type, CodeGenerator* codegen)
     codegen->scope([&]()
     {
         codegen_type(type, codegen);
-        codegen->append_line("%s, Span<EnumConstant>(constants)", type->is_scoped ? "true" : "false");
+        codegen->append_line(
+            "%s, Span<EnumConstant>(constants), %s",
+            type->is_scoped ? "true" : "false",
+            type->attributes.empty() ? "{}" : "Span<Attribute>(attributes)"
+        );
     }, ";");
     codegen->newline();
     codegen->newline();
@@ -190,7 +322,7 @@ void codegen_enum(const EnumType* type, CodeGenerator* codegen)
 }
 
 
-void codegen_reflection(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream)
+void generate_reflection(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream)
 {
     CodeGenerator codegen(stream, 4);
 
@@ -244,7 +376,7 @@ void codegen_reflection(const Path& source_location, const Span<const Type*>& ty
 }
 
 
-void codegen_registration_file(const Span<const Type*>& types, io::StringStream* stream)
+void generate_registration(const Span<const Type*>& types, io::StringStream* stream)
 {
     // Generate the output .cpp file that the user will need to link in their project
     RegistrationHeader header{};
@@ -463,4 +595,5 @@ void link_registrations(const Span<const Path>& search_paths, io::StringStream* 
 }
 
 
+} // namespace reflect
 } // namespace bee

@@ -20,9 +20,13 @@ namespace bee {
 #ifdef BEE_COMPILE_REFLECTION
     #define BEE_REFLECT(...) __attribute__((annotate("bee-reflect[" #__VA_ARGS__ "]")))
     #define BEE_ATTRIBUTE __attribute__((annotate("bee-attribute[]")))
+    #define BEE_DEPRECATE_FIELD(field_decl, version_added, version_removed)                                                     \
+        __attribute__((annotate("bee-reflect[version_added = " #version_added ", version_removed = " #version_removed "]")))    \
+        field_decl
 #else
     #define BEE_REFLECT(...)
     #define BEE_ATTRIBUTE
+    #define BEE_DEPRECATE_FIELD(field_decl, ...)
 #endif // BEE_COMPILE_REFLECTION
 
 
@@ -60,14 +64,13 @@ BEE_FLAGS(TypeKind, u32)
     fundamental             = 1u << 7u
 };
 
-enum class AttributeType
+enum class AttributeKind
 {
-    invalid,
-    empty,
-    int_attr,
-    float_attr,
-    type_attr,
-    string_attr
+    boolean,
+    integer,
+    floating_point,
+    string,
+    invalid
 };
 
 
@@ -150,7 +153,47 @@ inline StringView get_unqualified_name(const StringView& fully_qualified_name)
 }
 
 
-struct Attribute {};
+struct Attribute
+{
+    union Value
+    {
+        bool        boolean;
+        int         integer;
+        float       floating_point;
+        const char* string;
+
+        explicit Value(const bool b)
+            : boolean(b)
+        {}
+
+        explicit Value(const int i)
+            : integer(i)
+        {}
+
+        explicit Value(const float f)
+            : floating_point(f)
+        {}
+
+        explicit Value(const char* s)
+            : string(s)
+        {}
+
+    };
+
+    AttributeKind   kind { AttributeKind::invalid };
+    u32             hash { 0 };
+    const char*     name { nullptr };
+    Value           value { false };
+
+    Attribute() = default;
+
+    Attribute(const AttributeKind new_kind, const u32 new_hash, const char* new_name, const Value& new_value)
+        : kind(new_kind),
+          hash(new_hash),
+          name(new_name),
+          value(new_value)
+    {}
+};
 
 
 struct Field
@@ -160,6 +203,8 @@ struct Field
     StorageClass    storage_class { StorageClass::none };
     const char*     name { nullptr };
     const Type*     type { nullptr };
+    Span<Attribute> attributes;
+    bool            is_deprecated { false };
 
     Field() = default;
 
@@ -168,12 +213,16 @@ struct Field
         const Qualifier new_qualifier,
         const StorageClass new_storage_class,
         const char* new_name,
-        const Type* new_type
+        const Type* new_type,
+        const Span<Attribute> new_attributes,
+        const bool deprecated = false
     ) : offset(new_offset),
         qualifier(new_qualifier),
         storage_class(new_storage_class),
         name(new_name),
-        type(new_type)
+        type(new_type),
+        attributes(new_attributes),
+        is_deprecated(deprecated)
     {}
 };
 
@@ -242,6 +291,7 @@ struct EnumType : public Type
 {
     bool                is_scoped { false };
     Span<EnumConstant>  constants;
+    Span<Attribute>     attributes;
 
     EnumType() = default;
 
@@ -252,10 +302,12 @@ struct EnumType : public Type
         const TypeKind new_kind,
         const char* new_name,
         const bool scoped,
-        const Span<EnumConstant> new_constants
+        const Span<EnumConstant> new_constants,
+        const Span<Attribute> new_attributes
     ) : Type(new_hash, new_size, new_alignment, new_kind, new_name),
         is_scoped(scoped),
-        constants(new_constants)
+        constants(new_constants),
+        attributes(new_attributes)
     {}
 };
 
@@ -266,6 +318,7 @@ struct FunctionType : public Type
     bool                is_constexpr { false };
     Field               return_value;
     Span<Field>         parameters;
+    Span<Attribute>     attributes;
 
     using Type::Type;
 
@@ -280,12 +333,14 @@ struct FunctionType : public Type
         const StorageClass new_storage_class,
         const bool make_constexpr,
         const Field& new_return_value,
-        const Span<Field> new_parameters
+        const Span<Field> new_parameters,
+        const Span<Attribute> new_attributes
     ) : Type(hash, size, alignment, kind, name),
         storage_class(new_storage_class),
         is_constexpr(make_constexpr),
         return_value(new_return_value),
-        parameters(new_parameters)
+        parameters(new_parameters),
+        attributes(new_attributes)
     {}
 };
 
@@ -294,6 +349,7 @@ struct RecordType : public Type
 {
     Span<Field>         fields;
     Span<FunctionType>  functions;
+    Span<Attribute>     attributes;
     Span<Type*>         template_arguments;
     bool                is_template { false };
 
@@ -309,10 +365,12 @@ struct RecordType : public Type
         const TypeKind kind,
         const char* name,
         const Span<Field>& new_fields,
-        const Span<FunctionType> new_functions
+        const Span<FunctionType> new_functions,
+        const Span<Attribute> new_attributes
     ) : Type(hash, size, alignment, kind, name),
         fields(new_fields),
-        functions(new_functions)
+        functions(new_functions),
+        attributes(new_attributes)
     {}
 };
 
@@ -338,6 +396,8 @@ BEE_CORE_API const char* reflection_flag_to_string(const StorageClass storage_cl
 BEE_CORE_API const char* reflection_type_kind_to_string(const TypeKind type_kind);
 
 BEE_CORE_API const char* reflection_type_kind_to_code_string(const TypeKind type_kind);
+
+BEE_CORE_API const char* reflection_attribute_kind_to_string(const AttributeKind attr_kind);
 
 template <typename FlagType>
 const char* reflection_dump_flags(const FlagType flag)

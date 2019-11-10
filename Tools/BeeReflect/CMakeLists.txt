@@ -1,8 +1,9 @@
 bee_new_source_root()
 bee_add_sources(
-    RecordFinder.hpp    RecordFinder.cpp
+    ASTMatcher.hpp      ASTMatcher.cpp
     CodeGen.hpp         CodeGen.cpp
     Frontend.hpp        Frontend.cpp
+    Storage.hpp         Storage.cpp
     Main.cpp
 )
 bee_exe(bee-reflect LINK_LIBRARIES Bee.Core clangTooling)
