@@ -142,7 +142,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl)
     type->size = layout.getSize().getQuantity();
     type->alignment = layout.getAlignment().getQuantity();
     type->name = allocator->allocate_name(name);
-    type->hash = detail::runtime_fnv1a(name.data(), name.size());
+    type->hash = get_hash(name.data(), name.size(), 0x827359);
 
     if (decl.isStruct())
     {
@@ -195,7 +195,10 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl)
     const auto underlying = decl.getIntegerType().getDesugaredType(ast_context);
     // Get the associated types hash so we can look it up later
     const auto underlying_name = print_qualtype_name(underlying, ast_context);
-    const auto underlying_type = get_type(detail::runtime_fnv1a(underlying_name.data(), underlying_name.size()));
+    const auto underlying_type = get_type(get_type_hash({
+        underlying_name.c_str(),
+        static_cast<i32>(underlying_name.size())
+    }));
 
     if (underlying_type == nullptr)
     {
@@ -209,7 +212,7 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl)
     type->size = ast_context.getTypeSize(underlying) / 8;
     type->alignment = ast_context.getTypeAlign(underlying) / 8;
     type->name = allocator->allocate_name(name);
-    type->hash = detail::runtime_fnv1a(name.data(), name.size());
+    type->hash = get_type_hash({ name.data(), static_cast<i32>(name.size()) });
     type->is_scoped = decl.isScoped();
 
     for (const clang::EnumConstantDecl* ast_constant : decl.enumerators())
@@ -277,7 +280,7 @@ Field ASTMatcher::create_field(const llvm::StringRef& name, const i32 index, con
 
     // Get the associated types hash so we can look it up later
     const auto fully_qualified_name = print_qualtype_name(original_type, ast_context);
-    const auto type_hash = detail::runtime_fnv1a(fully_qualified_name.data(), fully_qualified_name.size());
+    const auto type_hash = get_type_hash({ fully_qualified_name.data(), static_cast<i32>(fully_qualified_name.size()) });
 
     auto type = storage->find_type(type_hash);
     if (type == nullptr)
@@ -350,7 +353,7 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl)
     decl.printQualifiedName(type_name_stream);
 
     auto type = allocator->allocate_type<DynamicFunctionType>();
-    type->hash = detail::runtime_fnv1a(type_name.data(), type_name.size());
+    type->hash = get_type_hash({ type_name.data(), static_cast<i32>(type_name.size()) });
     type->name = allocator->allocate_name(type_name);
     type->size = sizeof(void*); // functions only have size when used as function pointer
     type->alignment = alignof(void*);
@@ -529,7 +532,7 @@ bool AttributeParser::parse_attribute()
 
     skip_whitespace();
 
-    attribute.hash = detail::runtime_fnv1a(attribute.name, str::length(attribute.name));
+    attribute.hash = get_type_hash({ attribute.name, str::length(attribute.name) });
 
     if (*current == ',')
     {
@@ -580,6 +583,15 @@ bool AttributeParser::parse(DynamicArray<Attribute>* dst_attributes, ReflectionA
     {
         diagnostics->Report(location, diagnostics->err_invalid_annotation_format);
         return false;
+    }
+
+    // We want to keep the attributes sorted by hash so that they can be searched much faster with a binary search
+    if (!dst_attributes->empty())
+    {
+        std::sort(dst_attributes->begin(), dst_attributes->end(), [](const Attribute& lhs, const Attribute& rhs)
+        {
+            return lhs.hash < rhs.hash;
+        });
     }
 
     return true;

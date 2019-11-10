@@ -56,14 +56,12 @@ constexpr size_t sizeof_helper<void>()
     BUILTIN(double)                 \
     BUILTIN(void)
 
-#define BUILTIN(builtin_type) \
-    template <> BEE_CORE_API  constexpr u32 get_type_hash<builtin_type>() { return get_static_string_hash(#builtin_type); } \
-                                                                        \
+#define BUILTIN(builtin_type)                                           \
     template <> BEE_CORE_API  const Type* get_type<builtin_type>()      \
     {                                                                   \
         static Type instance                                            \
         {                                                               \
-            get_type_hash<builtin_type>(),                              \
+            get_type_hash(#builtin_type),                               \
             sizeof_helper<builtin_type>(),                              \
             alignof_helper<builtin_type>(),                             \
             TypeKind::fundamental,                                      \
@@ -168,6 +166,12 @@ namespace_iterator NamespaceRangeAdapter::end() const
  ****************************************
  */
 static DynamicHashMap<u32, const Type*> g_type_map;
+
+
+u32 get_type_hash(const StringView& type_name)
+{
+    return get_hash(type_name.data(), type_name.size(), 0xb12e92e);
+}
 
 
 const Type* get_type(const u32 hash)

@@ -376,10 +376,9 @@ struct RecordType : public Type
 
 
 template <typename T>
-constexpr u32 get_type_hash();
-
-template <typename T>
 const Type* get_type();
+
+BEE_CORE_API u32 get_type_hash(const StringView& type_name);
 
 BEE_CORE_API const Type* get_type(const u32 hash);
 
