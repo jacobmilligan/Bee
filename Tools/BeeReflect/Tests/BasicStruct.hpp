@@ -43,7 +43,7 @@ enum class MyClassVersions
 
 };
 
-class BEE_REFLECT(serialized, version = 1) MyClass
+class BEE_REFLECT(serialized, version = 1, test_float = 2.23945f) MyClass
 {
 public:
     explicit MyClass(const int value)

@@ -142,7 +142,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl)
     type->size = layout.getSize().getQuantity();
     type->alignment = layout.getAlignment().getQuantity();
     type->name = allocator->allocate_name(name);
-    type->hash = get_hash(name.data(), name.size(), 0x827359);
+    type->hash = get_type_hash({ name.data(), static_cast<i32>(name.size()) });
 
     if (decl.isStruct())
     {
@@ -500,17 +500,17 @@ bool AttributeParser::parse_value(Attribute* attribute)
         return true;
     }
 
+    if (!ref.getAsInteger(10, attribute->value.integer))
+    {
+        attribute->kind = AttributeKind::integer;
+        return true;
+    }
+
     double result = 0.0;
     if (!ref.getAsDouble(result))
     {
         attribute->kind = AttributeKind::floating_point;
         attribute->value.floating_point = static_cast<float>(result);
-        return true;
-    }
-
-    if (!ref.getAsInteger(10, attribute->value.integer))
-    {
-        attribute->kind = AttributeKind::integer;
         return true;
     }
 
