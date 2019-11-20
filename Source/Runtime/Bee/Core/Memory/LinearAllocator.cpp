@@ -6,6 +6,7 @@
  */
 
 #include "Bee/Core/Memory/LinearAllocator.hpp"
+#include "Bee/Core/Logger.hpp"
 
 namespace bee {
 

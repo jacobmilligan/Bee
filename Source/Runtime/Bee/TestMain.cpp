@@ -10,6 +10,7 @@
 //
 
 #include <Bee/Core/Logger.hpp>
+#include <Bee/Core/ReflectionV2.hpp>
 
 #include <gtest/gtest.h>
 
@@ -24,6 +25,7 @@ void test_logger_callback(const bee::LogVerbosity verbosity, const char* fmt, va
 
 GTEST_API_ int main(int argc, char **argv)
 {
+    bee::reflection_init();
     printf("Running Bee TestMain...\n");
     testing::InitGoogleTest(&argc, argv);
     bee::logger_init();

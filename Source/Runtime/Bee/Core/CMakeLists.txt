@@ -38,6 +38,7 @@ add_subdirectory(Memory)
 add_subdirectory(Math)
 add_subdirectory(JSON)
 add_subdirectory(Serialization)
+add_subdirectory(SerializationV2)
 add_subdirectory(Jobs)
 
 if (WIN32)

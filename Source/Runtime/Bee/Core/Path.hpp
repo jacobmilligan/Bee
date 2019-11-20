@@ -30,7 +30,7 @@ public:
     static constexpr char   preferred_slash = '/';
 #endif // BEE_OS_WINDOWS == 1
 
-    static constexpr char   generic_slash_ = '/';
+    static constexpr char   generic_slash = '/';
     static constexpr char   colon = ':';
 
     Path(Allocator* allocator = system_allocator()); // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
@@ -210,6 +210,37 @@ inline bool operator!=(const StringView& lhs, const Path& rhs)
     return !(lhs == rhs);
 }
 
+inline bool operator<(const Path& lhs, const Path& rhs)
+{
+    return path_compare(lhs, rhs) < 0;
+}
+
+inline bool operator<(const Path& lhs, const StringView& rhs)
+{
+    return path_compare(lhs, rhs) < 0;
+}
+
+inline bool operator<(const StringView& lhs, const Path& rhs)
+{
+    return path_compare(lhs, rhs) < 0;
+}
+
+inline bool operator>(const Path& lhs, const Path& rhs)
+{
+    return path_compare(lhs, rhs) > 0;
+}
+
+inline bool operator>(const Path& lhs, const StringView& rhs)
+{
+    return path_compare(lhs, rhs) > 0;
+}
+
+inline bool operator>(const StringView& lhs, const Path& rhs)
+{
+    return path_compare(lhs, rhs) > 0;
+}
+
+
 template <>
 struct Hash<Path>
 {
@@ -281,6 +312,44 @@ private:
 
 
 } // namespace bee
+
+
+/*
+ ************************************************
+ *
+ * Adapters for std hash-based containers
+ *
+ ************************************************
+ */
+namespace std {
+
+
+template <>
+struct hash<bee::Path>
+{
+    inline size_t operator()(const bee::Path& key) const
+    {
+        return bee::Hash<bee::Path>{}(key);
+    }
+
+    inline size_t operator()(const bee::String& key) const
+    {
+        return bee::Hash<bee::Path>{}(key);
+    }
+
+    inline size_t operator()(const bee::StringView& key) const
+    {
+        return bee::Hash<bee::Path>{}(key);
+    }
+
+    inline size_t operator()(const char* key) const
+    {
+        return bee::Hash<bee::Path>{}(key);
+    }
+};
+
+
+}
 
 
 

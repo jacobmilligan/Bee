@@ -18,6 +18,8 @@ bee_test(Bee.Tests.Core
         HashTests.cpp
         GUIDTests.cpp
         SerializationTests.cpp
+        SerializationTestsTypes.hpp
+        SerializationTestsV2.cpp
         ReflectionTests.cpp
         PathTests.cpp
         HandleTableTests.cpp
@@ -39,3 +41,8 @@ bee_test(Bee.Tests.Core.ResourcePoolStressTests
         LINK_LIBRARIES Bee.Core
         SOURCES ResourcePoolStressTests.cpp
 )
+
+if (BUILD_TESTS)
+    bee_reflect(Bee.Tests.Core)
+    bee_reflect_link(Bee.Tests.Core)
+endif ()

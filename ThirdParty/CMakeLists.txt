@@ -57,6 +57,7 @@ if (BUILD_TESTS)
             ${CMAKE_CURRENT_BINARY_DIR}/googletest
             EXCLUDE_FROM_ALL
     )
+    bee_add_include_dirs("${gtest_SOURCE_DIR}/include")
 endif ()
 
 ############################

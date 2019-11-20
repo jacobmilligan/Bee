@@ -79,7 +79,7 @@ bool Path::is_absolute(const StringView& path) const
     // TODO(Jacob): Ignore UNC paths for now
 
     /* If in the format eg. 'C:\' it's absolute from the drive */
-    return path.size() >= 3 && isalpha(path[0]) && path[1] == ':' && (path[2] == preferred_slash || path[2] == generic_slash_);
+    return path.size() >= 3 && isalpha(path[0]) && path[1] == ':' && (path[2] == preferred_slash || path[2] == generic_slash);
 }
 
 

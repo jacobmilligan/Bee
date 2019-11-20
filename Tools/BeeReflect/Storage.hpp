@@ -25,11 +25,11 @@ class ReflectionAllocator
 public:
     ReflectionAllocator(const size_t type_capacity, const size_t name_capacity);
 
-    template <typename T>
-    T* allocate_type()
+    template <typename T, typename... Args>
+    T* allocate_type(Args&&... args)
     {
         static_assert(std::is_base_of_v<Type, T>, "Cannot allocate a type that doesn't derive from bee::Type");
-        return BEE_NEW(type_allocator_, T);
+        return BEE_NEW(type_allocator_, T)(std::forward<Args>(args)...);
     }
 
     const char* allocate_name(const llvm::StringRef& src);
@@ -44,6 +44,7 @@ struct TypeStorage
     DynamicArray<Type*>                                 types;
     DynamicHashMap<Path, DynamicArray<const Type*>>     file_to_type_map;
     DynamicHashMap<u32, const Type*>                    hash_to_type_map;
+    DynamicArray<Path>                                  include_dirs;
 
     explicit TypeStorage(Allocator* allocator)
         : types(allocator),
@@ -51,39 +52,100 @@ struct TypeStorage
           hash_to_type_map(allocator)
     {}
 
+    bool try_map_type(Type* type);
+
     Type* add_type(Type* type, const clang::Decl& decl);
 
     const Type* find_type(const u32 hash);
+
+    bool validate_and_reorder();
 };
+
+
+struct OrderedField final : public Field
+{
+    using Field::Field;
+
+    i32                         order { -1 };
+    clang::SourceLocation       location;
+    DynamicArray<Attribute>     attributes;
+};
+
+inline bool operator==(const OrderedField& lhs, const OrderedField& rhs)
+{
+    return lhs.order == rhs.order;
+}
+
+inline bool operator!=(const OrderedField& lhs, const OrderedField& rhs)
+{
+    return lhs.order != rhs.order;
+}
+
+inline bool operator>(const OrderedField& lhs, const OrderedField& rhs)
+{
+    return lhs.order > rhs.order;
+}
+
+inline bool operator<(const OrderedField& lhs, const OrderedField& rhs)
+{
+    return lhs.order < rhs.order;
+}
+
+inline bool operator>=(const OrderedField& lhs, const OrderedField& rhs)
+{
+    return lhs.order >= rhs.order;
+}
+
+inline bool operator<=(const OrderedField& lhs, const OrderedField& rhs)
+{
+    return lhs.order <= rhs.order;
+}
 
 
 struct DynamicRecordType final : public RecordType
 {
-    DynamicArray<DynamicArray<Attribute>>   field_attributes;
-    DynamicArray<Field>                     field_storage;
+    const clang::CXXRecordDecl*             decl { nullptr };
+    bool                                    has_explicit_version { false };
+    DynamicArray<OrderedField>              field_storage;
     DynamicArray<FunctionType>              function_storage;
     DynamicArray<Attribute>                 attribute_storage;
+    DynamicArray<const EnumType*>           enum_storage;
+    DynamicArray<const RecordType*>         record_storage;
 
     DynamicRecordType() = default;
 
-    explicit DynamicRecordType(Allocator* allocator)
-        : field_storage(allocator),
+    explicit DynamicRecordType(const clang::CXXRecordDecl* parsed_decl, Allocator* allocator = system_allocator())
+        : decl(parsed_decl),
+          field_storage(allocator),
           function_storage(allocator),
-          attribute_storage(allocator)
+          attribute_storage(allocator),
+          enum_storage(allocator),
+          record_storage(allocator)
     {}
 
-    void add_field(const Field& field, DynamicArray<Attribute>&& attributes)
+    void add_field(const OrderedField& field)
     {
         field_storage.push_back(field);
-        field_attributes.emplace_back(std::move(attributes));
+        field_storage.back().attributes = field.attributes;
         fields = Span<Field>(field_storage.data(), field_storage.size());
-        field_storage.back().attributes = field_attributes.back().span();
     }
 
     void add_function(const FunctionType* function)
     {
         function_storage.push_back(*function);
         functions = function_storage.span();
+    }
+
+    void add_record(const RecordType* record)
+    {
+        record_storage.push_back(record);
+        records = record_storage.span();
+    }
+
+    void add_enum(const EnumType* enum_type)
+    {
+        enum_storage.push_back(enum_type);
+        enums = enum_storage.span();
     }
 };
 

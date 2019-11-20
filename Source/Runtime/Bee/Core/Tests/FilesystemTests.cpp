@@ -41,7 +41,7 @@ TEST(FilesystemTests, read_write_file)
     ASSERT_TRUE(bee::fs::remove(filepath));
 
     // Test writing bytes
-    ASSERT_TRUE(bee::fs::write(filepath, test_bytes));
+    ASSERT_TRUE(bee::fs::write(filepath, bee::Span<const bee::u8>(test_bytes)));
     ASSERT_TRUE(filepath.exists());
 
     const auto read_bytes = bee::fs::read_bytes(filepath);
@@ -190,7 +190,7 @@ TEST(FilesystemTests, read_directory)
     }
 
     int recursive_calls = 0;
-    read_dir_recursive(dirpath, test_data, &recursive_calls);
+    read_dir_recursive(dirpath, bee::Span<bee::Path>(test_data), &recursive_calls);
 
     int empty_count = 0;
     for (const auto& path : test_data)

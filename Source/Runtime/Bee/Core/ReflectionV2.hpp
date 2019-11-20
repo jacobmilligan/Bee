@@ -19,15 +19,31 @@ namespace bee {
 
 #ifdef BEE_COMPILE_REFLECTION
     #define BEE_REFLECT(...) __attribute__((annotate("bee-reflect[" #__VA_ARGS__ "]")))
-    #define BEE_ATTRIBUTE __attribute__((annotate("bee-attribute[]")))
-    #define BEE_DEPRECATE_FIELD(field_decl, version_added, version_removed)                                                     \
-        __attribute__((annotate("bee-reflect[version_added = " #version_added ", version_removed = " #version_removed "]")))    \
-        field_decl
+    #define BEE_DEPRECATED(decl, ...) BEE_REFLECT(deprecated, __VA_ARGS__) decl
 #else
     #define BEE_REFLECT(...)
-    #define BEE_ATTRIBUTE
-    #define BEE_DEPRECATE_FIELD(field_decl, ...)
+    #define BEE_DEPRECATED(decl, ...)
 #endif // BEE_COMPILE_REFLECTION
+
+/*
+ * Whenever a new type is added here, BEE_SERIALIZER_INTERFACE must also be updated to match this macro
+ */
+#define BEE_BUILTIN_TYPES                                       \
+    BEE_BUILTIN_TYPE(bool, bool)                                \
+    BEE_BUILTIN_TYPE(char, char)                                \
+    BEE_BUILTIN_TYPE(signed char, signed_char)                  \
+    BEE_BUILTIN_TYPE(unsigned char, unsigned_char)              \
+    BEE_BUILTIN_TYPE(short, short)                              \
+    BEE_BUILTIN_TYPE(unsigned short, unsigned_short)            \
+    BEE_BUILTIN_TYPE(int, int)                                  \
+    BEE_BUILTIN_TYPE(unsigned int, unsigned_int)                \
+    BEE_BUILTIN_TYPE(long, long)                                \
+    BEE_BUILTIN_TYPE(unsigned long, unsigned_long)              \
+    BEE_BUILTIN_TYPE(long long, long_long)                      \
+    BEE_BUILTIN_TYPE(unsigned long long, unsigned_long_long)    \
+    BEE_BUILTIN_TYPE(float, float)                              \
+    BEE_BUILTIN_TYPE(double, double)                            \
+    BEE_BUILTIN_TYPE(void, void)
 
 
 BEE_FLAGS(Qualifier, u32)
@@ -72,6 +88,15 @@ enum class AttributeKind
     string,
     invalid
 };
+
+
+#define BEE_BUILTIN_TYPE(type, name) name##_kind,
+enum class FundamentalKind
+{
+    BEE_BUILTIN_TYPES
+    count
+};
+#undef BEE_BUILTIN_TYPE
 
 
 struct Type;
@@ -177,7 +202,6 @@ struct Attribute
         explicit Value(const char* s)
             : string(s)
         {}
-
     };
 
     AttributeKind   kind { AttributeKind::invalid };
@@ -198,31 +222,37 @@ struct Attribute
 
 struct Field
 {
+    u32             hash { 0 };
     size_t          offset { 0 };
     Qualifier       qualifier { Qualifier::none };
     StorageClass    storage_class { StorageClass::none };
     const char*     name { nullptr };
     const Type*     type { nullptr };
     Span<Attribute> attributes;
-    bool            is_deprecated { false };
+    i32             version_added { 0 };
+    i32             version_removed { limits::max<i32>() };
 
     Field() = default;
 
     Field(
+        const u32 new_hash,
         const size_t new_offset,
         const Qualifier new_qualifier,
         const StorageClass new_storage_class,
         const char* new_name,
         const Type* new_type,
         const Span<Attribute> new_attributes,
-        const bool deprecated = false
-    ) : offset(new_offset),
+        const i32 new_version_added = 0,
+        const i32 new_version_removed = limits::max<i32>()
+    ) : hash(new_hash),
+        offset(new_offset),
         qualifier(new_qualifier),
         storage_class(new_storage_class),
         name(new_name),
         type(new_type),
         attributes(new_attributes),
-        is_deprecated(deprecated)
+        version_added(new_version_added),
+        version_removed(new_version_removed)
     {}
 };
 
@@ -234,6 +264,7 @@ struct Type
     size_t                  alignment { 0 };
     TypeKind                kind { TypeKind::unknown };
     const char*             name { nullptr };
+    i32                     serialized_version { 0 };
 
     Type() = default;
 
@@ -242,13 +273,22 @@ struct Type
         const size_t new_size,
         const size_t new_alignment,
         const TypeKind new_kind,
-        const char* new_name
+        const char* new_name,
+        const i32 new_serialized_version
     ) : hash(new_hash),
         size(new_size),
         alignment(new_alignment),
         kind(new_kind),
-        name(new_name)
+        name(new_name),
+        serialized_version(new_serialized_version)
     {}
+
+    template <typename T>
+    inline const T* as() const
+    {
+        static_assert(std::is_base_of_v<Type, T>, "`T` must derive from bee::Type");
+        return reinterpret_cast<const T*>(this);
+    }
 
     inline NamespaceRangeAdapter namespaces() const
     {
@@ -269,6 +309,26 @@ struct Type
     {
         return name + str::last_index_of(name, ':') + 1;
     }
+};
+
+
+struct FundamentalType final : public Type
+{
+    FundamentalKind fundamental_kind { FundamentalKind::count };
+
+    FundamentalType() = default;
+
+    FundamentalType(
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const TypeKind new_kind,
+        const char* new_name,
+        const i32 new_serialized_version,
+        const FundamentalKind new_fundamental_kind
+    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version),
+        fundamental_kind(new_fundamental_kind)
+    {}
 };
 
 
@@ -301,10 +361,11 @@ struct EnumType : public Type
         const size_t new_alignment,
         const TypeKind new_kind,
         const char* new_name,
+        const i32 new_serialized_version,
         const bool scoped,
         const Span<EnumConstant> new_constants,
         const Span<Attribute> new_attributes
-    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name),
+    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version),
         is_scoped(scoped),
         constants(new_constants),
         attributes(new_attributes)
@@ -325,17 +386,18 @@ struct FunctionType : public Type
     FunctionType() = default;
 
     FunctionType(
-        const u32 hash,
-        const size_t size,
-        const size_t alignment,
-        const TypeKind kind,
-        const char* name,
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const TypeKind new_kind,
+        const char* new_name,
+        const i32 new_serialized_version,
         const StorageClass new_storage_class,
         const bool make_constexpr,
         const Field& new_return_value,
         const Span<Field> new_parameters,
         const Span<Attribute> new_attributes
-    ) : Type(hash, size, alignment, kind, name),
+    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version),
         storage_class(new_storage_class),
         is_constexpr(make_constexpr),
         return_value(new_return_value),
@@ -347,11 +409,13 @@ struct FunctionType : public Type
 
 struct RecordType : public Type
 {
-    Span<Field>         fields;
-    Span<FunctionType>  functions;
-    Span<Attribute>     attributes;
-    Span<Type*>         template_arguments;
-    bool                is_template { false };
+    Span<Field>                 fields;
+    Span<FunctionType>          functions;
+    Span<Attribute>             attributes;
+    Span<const EnumType*>       enums;
+    Span<const RecordType*>     records;
+    Span<Type*>                 template_arguments;
+    bool                        is_template { false };
 
 
     using Type::Type;
@@ -359,21 +423,35 @@ struct RecordType : public Type
     RecordType() = default;
 
     RecordType(
-        const u32 hash,
-        const size_t size,
-        const size_t alignment,
-        const TypeKind kind,
-        const char* name,
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const TypeKind new_kind,
+        const char* new_name,
+        const i32 new_serialized_version,
         const Span<Field>& new_fields,
         const Span<FunctionType> new_functions,
-        const Span<Attribute> new_attributes
-    ) : Type(hash, size, alignment, kind, name),
+        const Span<Attribute> new_attributes,
+        const Span<const EnumType*> nested_enums,
+        const Span<const RecordType*> nested_records
+    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version),
         fields(new_fields),
         functions(new_functions),
-        attributes(new_attributes)
+        attributes(new_attributes),
+        enums(nested_enums),
+        records(nested_records)
     {}
 };
 
+struct UnknownType : public Type
+{
+    UnknownType()
+        : Type(0, 0, 0, TypeKind::unknown, "bee::UnknownType", 0)
+    {}
+};
+
+
+extern void reflection_init();
 
 template <typename T>
 const Type* get_type();
@@ -382,11 +460,27 @@ BEE_CORE_API u32 get_type_hash(const StringView& type_name);
 
 BEE_CORE_API const Type* get_type(const u32 hash);
 
-extern void reflection_init();
+template <typename ReflectedType, typename T>
+inline const T* get_type_as()
+{
+    return get_type<ReflectedType>()->as<T>();
+}
 
 BEE_CORE_API void reflection_register_builtin_types();
 
 BEE_CORE_API void register_type(const Type* type);
+
+BEE_CORE_API const Attribute* find_attribute(const Type* type, const char* attribute_name);
+
+BEE_CORE_API const Attribute* find_attribute(const Field& field, const char* attribute_name);
+
+BEE_CORE_API const Attribute* find_attribute(const Type* type, const char* attribute_name, const AttributeKind kind);
+
+BEE_CORE_API const Attribute* find_attribute(const Field& field, const char* attribute_name, const AttributeKind kind);
+
+BEE_CORE_API const Attribute* find_attribute(const Type* type, const char* attribute_name, const AttributeKind kind, const Attribute::Value& value);
+
+BEE_CORE_API const Attribute* find_attribute(const Field& field, const char* attribute_name, const AttributeKind kind, const Attribute::Value& value);
 
 BEE_CORE_API const char* reflection_flag_to_string(const Qualifier qualifier);
 

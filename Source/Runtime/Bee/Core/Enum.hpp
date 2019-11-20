@@ -56,7 +56,7 @@ native_type func_name(const enum_type value)                                    
         return (lhs);                                                                               \
     }
 
-#define BEE_FLAGS(E, T) enum class  E : T;                          \
+#define BEE_FLAGS(E, T) enum class E : T;                           \
     inline constexpr T underlying_flag_t(E cls) noexcept            \
     {                                                               \
         return static_cast<T>(cls);                                 \

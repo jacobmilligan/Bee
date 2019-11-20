@@ -9,6 +9,7 @@
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
 
+
 namespace bee {
 
 
@@ -40,39 +41,32 @@ constexpr size_t sizeof_helper<void>()
 /*
  * Register all builtin fundamentals - these are registered as regular types
  */
-#define BUILTIN_TYPES               \
-    BUILTIN(bool)                   \
-    BUILTIN(char)                   \
-    BUILTIN(unsigned char)          \
-    BUILTIN(short)                  \
-    BUILTIN(unsigned short)         \
-    BUILTIN(int)                    \
-    BUILTIN(unsigned int)           \
-    BUILTIN(long)                   \
-    BUILTIN(unsigned long)          \
-    BUILTIN(long long)              \
-    BUILTIN(unsigned long long)     \
-    BUILTIN(float)                  \
-    BUILTIN(double)                 \
-    BUILTIN(void)
-
-#define BUILTIN(builtin_type)                                           \
+#define BEE_BUILTIN_TYPE(builtin_type, function_name)                   \
     template <> BEE_CORE_API  const Type* get_type<builtin_type>()      \
     {                                                                   \
-        static Type instance                                            \
+        static FundamentalType instance                                 \
         {                                                               \
             get_type_hash(#builtin_type),                               \
             sizeof_helper<builtin_type>(),                              \
             alignof_helper<builtin_type>(),                             \
             TypeKind::fundamental,                                      \
-            #builtin_type                                               \
+            #builtin_type,                                              \
+            1,                                                          \
+            FundamentalKind::function_name##_kind                       \
         };                                                              \
         return &instance;                                               \
     }
 
-BUILTIN_TYPES
+BEE_BUILTIN_TYPES
 
-#undef BUILTIN
+#undef BEE_BUILTIN_TYPE
+
+
+template <> BEE_CORE_API const Type* get_type<bee::UnknownType>()
+{
+    static UnknownType instance{};
+    return &instance;
+}
 
 
 /*
@@ -176,22 +170,20 @@ u32 get_type_hash(const StringView& type_name)
 
 const Type* get_type(const u32 hash)
 {
-    static Type unknown_type { 0, 0, 0, TypeKind::unknown, "missing" };
-
     auto type = g_type_map.find(hash);
     if (type != nullptr)
     {
         return type->value;
     }
 
-    return &unknown_type;
+    return get_type<bee::UnknownType>();
 }
 
 BEE_CORE_API void reflection_register_builtin_types()
 {
-#define BUILTIN(builtin_type) get_type<builtin_type>(),
+#define BEE_BUILTIN_TYPE(builtin_type, function_name) get_type<builtin_type>(),
 
-    static const Type* builtin_types[] { BUILTIN_TYPES };
+    static const Type* builtin_types[] { BEE_BUILTIN_TYPES };
 
     for (auto& type : builtin_types)
     {
@@ -205,6 +197,134 @@ void register_type(const Type* type)
     {
         g_type_map.insert(type->hash, type);
     }
+}
+
+/*
+ * Comparing sorted integers is extremely cheap so a linear search is the fastest option here for smaller arrays
+ * (less than 500 items) of small structs (i.e. Attribute is 24 bytes). It's still useful to keep the
+ * attributes sorted by hash though as this still improves the linear search by ~2x based on the benchmarks done on
+ * this data. Also, types usually have <= 5 attributes so doing i.e. a binary search would be a waste of CPU time
+ */
+const Attribute* find_attribute(const Span<Attribute>& attributes, const char* attribute_name, const AttributeKind kind, const Attribute::Value& value)
+{
+    const auto hash = get_type_hash(attribute_name);
+
+    for (const Attribute& attr: attributes)
+    {
+        if (attr.hash == hash && attr.kind == kind && memcmp(&attr.value, &value, sizeof(Attribute::Value)) == 0)
+        {
+            return &attr;
+        }
+    }
+
+    return nullptr;
+}
+
+const Attribute* find_attribute(const Span<Attribute>& attributes, const char* attribute_name, const AttributeKind kind)
+{
+    const auto hash = get_type_hash(attribute_name);
+
+    for (const Attribute& attr: attributes)
+    {
+        if (attr.hash == hash && attr.kind == kind)
+        {
+            return &attr;
+        }
+    }
+
+    return nullptr;
+}
+
+const Attribute* find_attribute(const Span<Attribute>& attributes, const char* attribute_name)
+{
+    const auto hash = get_type_hash(attribute_name);
+
+    for (const Attribute& attr: attributes)
+    {
+        if (attr.hash == hash)
+        {
+            return &attr;
+        }
+    }
+
+    return nullptr;
+}
+
+const Attribute* find_attribute(const Type* type, const char* attribute_name)
+{
+    switch(type->kind)
+    {
+        case TypeKind::class_decl:
+        case TypeKind::struct_decl:
+        case TypeKind::union_decl:
+        {
+            return find_attribute(reinterpret_cast<const RecordType*>(type)->attributes, attribute_name);
+        }
+        case TypeKind::enum_decl:
+        {
+            return find_attribute(reinterpret_cast<const EnumType*>(type)->attributes, attribute_name);
+        }
+        case TypeKind::function:
+        {
+            return find_attribute(reinterpret_cast<const FunctionType*>(type)->attributes, attribute_name);
+        }
+        default: break;
+    }
+
+    return nullptr;
+}
+
+const Attribute* find_attribute(const Type* type, const char* attribute_name, const AttributeKind kind)
+{
+    switch(type->kind)
+    {
+        case TypeKind::class_decl:
+        case TypeKind::struct_decl:
+        case TypeKind::union_decl:
+        {
+            return find_attribute(reinterpret_cast<const RecordType*>(type)->attributes, attribute_name, kind);
+        }
+        case TypeKind::enum_decl:
+        {
+            return find_attribute(reinterpret_cast<const EnumType*>(type)->attributes, attribute_name, kind);
+        }
+        case TypeKind::function:
+        {
+            return find_attribute(reinterpret_cast<const FunctionType*>(type)->attributes, attribute_name, kind);
+        }
+        default: break;
+    }
+
+    return nullptr;
+}
+
+const Attribute* find_attribute(const Type* type, const char* attribute_name, const AttributeKind kind, const Attribute::Value& value)
+{
+    switch(type->kind)
+    {
+        case TypeKind::class_decl:
+        case TypeKind::struct_decl:
+        case TypeKind::union_decl:
+        {
+            return find_attribute(reinterpret_cast<const RecordType*>(type)->attributes, attribute_name, kind, value);
+        }
+        case TypeKind::enum_decl:
+        {
+            return find_attribute(reinterpret_cast<const EnumType*>(type)->attributes, attribute_name, kind, value);
+        }
+        case TypeKind::function:
+        {
+            return find_attribute(reinterpret_cast<const FunctionType*>(type)->attributes, attribute_name, kind, value);
+        }
+        default: break;
+    }
+
+    return nullptr;
+}
+
+const Attribute* find_attribute(const Field& field, const char* attribute_name, const AttributeKind kind)
+{
+    return find_attribute(field.attributes, attribute_name, kind);
 }
 
 const char* reflection_flag_to_string(const Qualifier qualifier)

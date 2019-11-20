@@ -25,7 +25,6 @@ protected:
     std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance& CI, llvm::StringRef InFile) override;
 
     bool BeginInvocation(clang::CompilerInstance& CI) override;
-
 private:
     clang::ast_matchers::MatchFinder    finder_;
     ASTMatcher                          matcher_;

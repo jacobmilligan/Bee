@@ -21,6 +21,13 @@ namespace bee {
 namespace reflect {
 
 
+const u32 SerializationInfo::serialized_hash = get_type_hash(serialized_attr_name);
+const u32 SerializationInfo::nonserialized_hash = get_type_hash(nonserialized_attr_name);
+const u32 SerializationInfo::version_hash = get_type_hash(version_attr_name);
+const u32 SerializationInfo::version_added_hash = get_type_hash(version_added_attr_name);
+const u32 SerializationInfo::version_removed_hash = get_type_hash(version_removed_attr_name);
+const u32 SerializationInfo::id_hash = get_type_hash(id_attr_name);
+
 
 Qualifier get_qualifier(const clang::QualType& type)
 {
@@ -67,6 +74,62 @@ StorageClass get_storage_class(const clang::StorageClass cls, const clang::Stora
     return result;
 }
 
+i32 get_attribute_index(const DynamicArray<Attribute>& attributes, const char* name, const AttributeKind kind)
+{
+    const auto type_hash = get_type_hash(name);
+    return container_index_of(attributes, [&](const Attribute& attr)
+    {
+        return attr.hash == type_hash && attr.kind == kind;
+    });
+}
+
+void Diagnostics::init(clang::DiagnosticsEngine* diag_engine)
+{
+    engine = diag_engine;
+    engine->setSuppressSystemWarnings(true);
+
+    // Errors
+    err_attribute_missing_equals = engine->getCustomDiagID(
+        clang::DiagnosticsEngine::Error,
+        "invalid attribute format - missing '='"
+    );
+    err_invalid_annotation_format = engine->getCustomDiagID(
+        clang::DiagnosticsEngine::Error, "invalid reflection annotation `%0` - expected `bee-reflect`");
+    err_missing_version_added = engine->getCustomDiagID(
+        clang::DiagnosticsEngine::Error,
+        "invalid serialized version range: you must provide both `version_added` and `version_removed` attributes"
+    );
+    err_parent_not_marked_for_serialization = engine->getCustomDiagID(
+        clang::DiagnosticsEngine::Error,
+        "cannot serialize field: parent record is not marked for explicit versioned serialization using the "
+        "`version = <version>` attribute"
+    );
+    err_field_not_marked_for_serialization = engine->getCustomDiagID(
+        clang::DiagnosticsEngine::Error,
+        "cannot serialize field: missing the `added = <serialized_version>` attribute. If the parent record of a field "
+        "is marked for explicit versioned serialization all fields must contain the `added` attribute"
+    );
+    err_invalid_attribute_name_format = engine->getCustomDiagID(
+        clang::DiagnosticsEngine::Error,
+        "attribute name `%0` is not a valid identifier"
+    );
+    err_requires_explicit_ordering = engine->getCustomDiagID(
+        clang::DiagnosticsEngine::Error,
+        "field is missing the `id` attribute. If one field in a class, struct or union has the `id` attribute "
+        "then all other fields are required to also have an `id` attribute where each `id` is a unique integer id."
+    );
+    err_requires_explicit_ordering = engine->getCustomDiagID(
+        clang::DiagnosticsEngine::Error,
+        "`id` attribute on field is not unique - all fields that have the `id` attribute must be unique and greater "
+        "than zero"
+    );
+
+    // Warnings
+    warn_unknown_field_type = engine->getCustomDiagID(
+        clang::DiagnosticsEngine::Warning,
+        "non-reflected or incomplete field type: %0"
+    );
+}
 
 /*
  *************************************
@@ -97,15 +160,8 @@ void ASTMatcher::run(const clang::ast_matchers::MatchFinder::MatchResult& result
         return;
     }
 
-    auto as_field = result.Nodes.getNodeAs<clang::FieldDecl>("id");
-    if (as_field != nullptr)
-    {
-        reflect_field(*as_field);
-        return;
-    }
-
     auto as_function = result.Nodes.getNodeAs<clang::FunctionDecl>("id");
-    if (as_function != nullptr && as_function->isFirstDecl())
+    if (as_function != nullptr)
     {
         reflect_function(*as_function);
     }
@@ -127,7 +183,7 @@ std::string ASTMatcher::print_qualtype_name(const clang::QualType& type, const c
 }
 
 
-void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl)
+void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, DynamicRecordType* parent)
 {
     AttributeParser attr_parser{};
 
@@ -137,8 +193,8 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl)
     }
 
     const auto name = print_name(decl);
-    auto& layout = decl.getASTContext().getASTRecordLayout(&decl);;
-    auto type = allocator->allocate_type<DynamicRecordType>();
+    auto& layout = decl.getASTContext().getASTRecordLayout(&decl);
+    auto type = allocator->allocate_type<DynamicRecordType>(&decl);
     type->size = layout.getSize().getQuantity();
     type->alignment = layout.getAlignment().getQuantity();
     type->name = allocator->allocate_name(name);
@@ -171,18 +227,124 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl)
         type->kind |= TypeKind::template_decl;
     }
 
-    if (!attr_parser.parse(&type->attribute_storage, allocator))
+    SerializationInfo serialization_info{};
+    if (!attr_parser.parse(&type->attribute_storage, &serialization_info, allocator))
     {
         return;
     }
 
+    type->serialized_version = serialization_info.serialized_version;
+    type->has_explicit_version = serialization_info.using_explicit_versioning;
     type->attributes = type->attribute_storage.span();
-    storage->add_type(type, decl);
-    current_record = type;
+
+    if (parent == nullptr)
+    {
+        storage->add_type(type, decl);
+    }
+    else
+    {
+        if (!storage->try_map_type(type))
+        {
+            return;
+        }
+
+        parent->add_record(type);
+    }
+
+    bool requires_field_order_validation = false;
+
+    for (const clang::Decl* child : decl.decls())
+    {
+        const auto kind = child->getKind();
+        const auto is_enum_or_record = kind == clang::Decl::Kind::CXXRecord || kind == clang::Decl::Kind::Enum;
+
+        // Skip nested type decls that don't have the annotate attribute - we only automatically reflect fields
+        if (is_enum_or_record && !child->hasAttr<clang::AnnotateAttr>())
+        {
+            continue;
+        }
+
+        switch (kind)
+        {
+            case clang::Decl::Kind::CXXRecord:
+            {
+                const auto child_record = llvm::dyn_cast<clang::CXXRecordDecl>(child);
+                if (child_record != nullptr)
+                {
+                    reflect_record(*child_record, type);
+                }
+                break;
+            }
+            case clang::Decl::Kind::Enum:
+            {
+                const auto child_enum = llvm::dyn_cast<clang::EnumDecl>(child);
+                if (child_enum != nullptr)
+                {
+                    reflect_enum(*child_enum, type);
+                }
+                break;
+            }
+            case clang::Decl::Kind::Field:
+            {
+                const auto old_field_count = type->field_storage.size();
+                const auto child_field = llvm::dyn_cast<clang::FieldDecl>(child);
+
+                if (child_field != nullptr)
+                {
+                    reflect_field(*child_field, type);
+                }
+
+                if (type->field_storage.size() > old_field_count && !requires_field_order_validation)
+                {
+                    requires_field_order_validation = type->field_storage.back().order >= 0;
+                }
+                break;
+            }
+            case clang::Decl::Kind::Function:
+            case clang::Decl::Kind::CXXMethod:
+            {
+                const auto child_method = llvm::dyn_cast<clang::FunctionDecl>(child);
+                if (child_method != nullptr)
+                {
+                    reflect_function(*child_method, type);
+                }
+                break;
+            }
+            default: break;
+        }
+    }
+
+    // Check if a field was added and check if it declares an explicit ordering via the `id` attribute
+    if (!requires_field_order_validation)
+    {
+        return;
+    }
+
+    // Sort and ensure id's are unique and increasing - skip the first field
+    std::sort(type->field_storage.begin(), type->field_storage.end());
+
+    for (int f = 0; f < type->field_storage.size(); ++f)
+    {
+        auto& field = type->field_storage[f];
+        // Ensure each field has the `id` attribute
+        if (field.order < 0)
+        {
+            diagnostics.Report(field.location, diagnostics.err_requires_explicit_ordering);
+            return;
+        }
+
+        if (f >= 1 && field.order == type->field_storage[f - 1].order)
+        {
+            diagnostics.Report(field.location, diagnostics.err_id_is_not_unique);
+            return;
+        }
+    }
+
+    type->fields = Span<Field>(type->field_storage.data(), type->field_storage.size());
 }
 
 
-void ASTMatcher::reflect_enum(const clang::EnumDecl& decl)
+void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, DynamicRecordType* parent)
 {
     auto& ast_context = decl.getASTContext();
     AttributeParser attr_parser{};
@@ -224,95 +386,39 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl)
         type->add_constant(constant);
     }
 
-    if (!attr_parser.parse(&type->attribute_storage, allocator))
+    SerializationInfo serialization_info{};
+    if (!attr_parser.parse(&type->attribute_storage, &serialization_info, allocator))
     {
         return;
     }
 
     type->attributes = type->attribute_storage.span();
-    storage->add_type(type, decl);
+    type->serialized_version = serialization_info.serialized_version;
+
+    if (parent == nullptr)
+    {
+        storage->add_type(type, decl);
+        return;
+    }
+
+    if (storage->try_map_type(type))
+    {
+        parent->add_enum(type);
+    }
 }
 
-
-Field ASTMatcher::create_field(const llvm::StringRef& name, const i32 index, const clang::ASTContext& ast_context, const clang::RecordDecl* parent, const clang::QualType& qual_type, const clang::SourceLocation& location)
-{
-    /*
-     * Get the layout of the parent record this field is in and also get pointers to the desugared type so that
-     * i.e. u8 becomes unsigned char
-     */
-    auto desugared_type = qual_type.getDesugaredType(ast_context);
-
-    Field field;
-    field.name = allocator->allocate_name(name);
-    field.offset = 0;
-    field.qualifier = get_qualifier(desugared_type);
-
-    if (parent != nullptr && index >= 0)
-    {
-        field.offset = ast_context.getASTRecordLayout(parent).getFieldOffset(static_cast<u32>(index)) / 8;
-    }
-
-    if (current_record == nullptr)
-    {
-        diagnostics.Report(location, clang::diag::err_incomplete_type);
-        return Field{};
-    }
-
-    clang::QualType original_type;
-    auto type_ptr = desugared_type.getTypePtrOrNull();
-
-    // Check if reference or pointer and get the pointee and const-qualified info before removing qualifications
-    if (type_ptr != nullptr && (type_ptr->isPointerType() || type_ptr->isLValueReferenceType()))
-    {
-        const auto pointee = type_ptr->getPointeeType();
-
-        if (pointee.isConstQualified())
-        {
-            field.qualifier |= Qualifier::cv_const;
-        }
-
-        original_type = pointee.getUnqualifiedType();
-    }
-    else
-    {
-        original_type = desugared_type.getUnqualifiedType();
-    }
-
-    // Get the associated types hash so we can look it up later
-    const auto fully_qualified_name = print_qualtype_name(original_type, ast_context);
-    const auto type_hash = get_type_hash({ fully_qualified_name.data(), static_cast<i32>(fully_qualified_name.size()) });
-
-    auto type = storage->find_type(type_hash);
-    if (type == nullptr)
-    {
-        /*
-         * If the type is missing it might be a core builtin type which can be accessed by bee-reflect via
-         * get_type. This is safe to do here as bee-reflect doesn't link to any generated cpp files
-         */
-        type = get_type(type_hash);
-        if (type->kind == TypeKind::unknown)
-        {
-            log_error("Missing type: %s (0x%08x)", fully_qualified_name.c_str(), type_hash);
-            diagnostics.Report(location, clang::diag::err_field_incomplete);
-            return Field{};
-        }
-    }
-
-    field.type = type;
-    return field;
-}
-
-
-void ASTMatcher::reflect_field(const clang::FieldDecl& decl)
+void ASTMatcher::reflect_field(const clang::FieldDecl& decl, DynamicRecordType* parent)
 {
     AttributeParser attr_parser{};
 
-    if (!attr_parser.init(decl, &diagnostics))
+    const auto requires_annotation = parent == nullptr;
+
+    if (!attr_parser.init(decl, &diagnostics) && requires_annotation)
     {
         return;
     }
 
-    auto field = create_field(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), decl.getParent(), decl.getType(), decl.getTypeSpecStartLoc());
+    auto field = create_field<OrderedField>(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), parent, decl.getType(), decl.getTypeSpecStartLoc());
     if (field.type == nullptr)
     {
         return;
@@ -323,27 +429,59 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl)
         field.storage_class |= StorageClass::mutable_storage;
     }
 
-    if (current_record == nullptr)
+    if (parent == nullptr)
     {
         diagnostics.Report(decl.getLocation(), clang::diag::err_incomplete_type);
         return;
     }
 
-    DynamicArray<Attribute> attributes;
-    if (!attr_parser.parse(&attributes, allocator))
+    SerializationInfo serialization_info{};
+    if (!attr_parser.parse(&field.attributes, &serialization_info, allocator))
     {
         return;
     }
 
-    current_record->add_field(field, std::move(attributes));
+    field.version_added = serialization_info.version_added;
+    field.version_removed = serialization_info.version_removed;
+    field.order = serialization_info.id;
+    field.location = decl.getLocation();
+
+    /*
+     * Validate serialization - ensure the field has both `version_added` and `version_removed` attributes, that its
+     * parent record is marked for serialization, and that the fields type declaration is also marked for serialization
+     */
+    if (parent->serialized_version > 0 && field.version_removed < limits::max<i32>() && field.version_added <= 0)
+    {
+        diagnostics.Report(decl.getLocation(), diagnostics.err_missing_version_added);
+        return;
+    }
+
+    // Validate versioning if the parent record type is explicitly versioned
+    if (parent->has_explicit_version)
+    {
+        if (field.version_added > 0 && parent->serialized_version <= 0)
+        {
+            diagnostics.Report(decl.getLocation(), diagnostics.err_parent_not_marked_for_serialization);
+            return;
+        }
+
+        if (field.version_added > 0 && field.type->serialized_version <= 0)
+        {
+            diagnostics.Report(decl.getLocation(), diagnostics.err_field_not_marked_for_serialization);
+            return;
+        }
+    }
+
+    parent->add_field(field);
 }
 
 
-void ASTMatcher::reflect_function(const clang::FunctionDecl& decl)
+void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, DynamicRecordType* parent)
 {
     AttributeParser attr_parser{};
 
-    if (attr_parser.init(decl, &diagnostics))
+    const auto is_member_function = parent != nullptr && decl.isCXXClassMember();
+    if (attr_parser.init(decl, &diagnostics) && !is_member_function)
     {
         return;
     }
@@ -358,15 +496,19 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl)
     type->size = sizeof(void*); // functions only have size when used as function pointer
     type->alignment = alignof(void*);
     type->kind = TypeKind::function;
+    type->return_value = create_field<Field>(decl.getName(), -1, decl.getASTContext(), parent, decl.getReturnType(), decl.getTypeSpecStartLoc());
 
-    const auto is_member_function = decl.isCXXClassMember();
-    const auto parent = decl.isCXXClassMember() ? (const clang::RecordDecl*)(decl.getParent()) : nullptr;
-
-    type->return_value = create_field(decl.getName(), -1, decl.getASTContext(), parent, decl.getReturnType(), decl.getTypeSpecStartLoc());
-
-    for (auto& param : decl.parameters())
+    // If this is a method type then we need to skip the implicit `this` parameter
+    auto params_begin = decl.parameters().begin();
+    auto params_end = decl.parameters().end();
+    if (is_member_function && !decl.parameters().empty())
     {
-        auto field = create_field(param->getName(), param->getFunctionScopeIndex(), param->getASTContext(), parent, param->getType(), param->getLocation());
+        ++params_begin;
+    }
+
+    for (auto& param : clang::ArrayRef<clang::ParmVarDecl*>(params_begin, params_end))
+    {
+        auto field = create_field<Field>(param->getName(), param->getFunctionScopeIndex(), param->getASTContext(), parent, param->getType(), param->getLocation());
         field.offset = param->getFunctionScopeIndex();
         field.storage_class = get_storage_class(param->getStorageClass(), param->getStorageDuration());
         type->add_parameter(field);
@@ -375,22 +517,24 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl)
     type->storage_class = get_storage_class(decl.getStorageClass(), static_cast<clang::StorageDuration>(0));
     type->is_constexpr = decl.isConstexpr();
 
-    if (!attr_parser.parse(&type->attribute_storage, allocator))
+    SerializationInfo serialization_info{};
+    if (!attr_parser.parse(&type->attribute_storage, &serialization_info, allocator))
     {
         return;
     }
 
     type->attributes = type->attribute_storage.span();
+    type->serialized_version = serialization_info.serialized_version;
 
     if (is_member_function)
     {
-        if (current_record == nullptr)
+        if (parent == nullptr)
         {
             diagnostics.Report(decl.getLocation(), clang::diag::err_incomplete_type);
             return;
         }
 
-        current_record->add_function(type);
+        parent->add_function(type);
     }
     else
     {
@@ -430,7 +574,7 @@ const char* AttributeParser::parse_name()
 
     while (current != end)
     {
-        if (str::is_space(*current) || *current == '=' || *current == ',')
+        if (str::is_space(*current) || *current == '=' || *current == ',' || *current == ']')
         {
             return allocator->allocate_name(llvm::StringRef(begin, current - begin));
         }
@@ -438,7 +582,7 @@ const char* AttributeParser::parse_name()
         next();
     }
 
-    diagnostics->Report(location, clang::diag::err_expected_string_literal);
+    diagnostics->Report(location, diagnostics->err_invalid_attribute_name_format).AddString(llvm::StringRef(begin, current - begin));
     return nullptr;
 }
 
@@ -458,7 +602,7 @@ bool AttributeParser::parse_value(Attribute* attribute)
 
         if (*current != '\"')
         {
-            diagnostics->Report(location, clang::diag::err_expected_string_literal);
+            diagnostics->Report(location, diagnostics->err_invalid_attribute_name_format).AddString(llvm::StringRef(begin, current - begin));
             return false;
         }
 
@@ -518,7 +662,7 @@ bool AttributeParser::parse_value(Attribute* attribute)
     return false;
 }
 
-bool AttributeParser::parse_attribute()
+bool AttributeParser::parse_attribute(DynamicArray<Attribute>* dst_attributes, SerializationInfo* serialization_info)
 {
     skip_whitespace();
 
@@ -532,13 +676,16 @@ bool AttributeParser::parse_attribute()
 
     skip_whitespace();
 
-    attribute.hash = get_type_hash({ attribute.name, str::length(attribute.name) });
+    attribute.hash = get_type_hash(attribute.name);
 
-    if (*current == ',')
+    if (*current == ',' || *current == ']')
     {
         attribute.kind = AttributeKind::boolean;
         attribute.value.boolean = true;
-        next();
+        if (*current != ']')
+        {
+            next();
+        }
     }
     else
     {
@@ -562,36 +709,93 @@ bool AttributeParser::parse_attribute()
         }
     }
 
-    dst->push_back(attribute);
+    if (attribute.hash == SerializationInfo::serialized_hash)
+    {
+        serialization_info->serializable = true;
+    }
+    else if (attribute.hash == SerializationInfo::nonserialized_hash)
+    {
+        serialization_info->serializable = false;
+    }
+    else if (attribute.hash == SerializationInfo::version_hash)
+    {
+        serialization_info->serialized_version = attribute.value.integer;
+        serialization_info->using_explicit_versioning = true;
+    }
+    else if (attribute.hash == SerializationInfo::version_added_hash)
+    {
+        serialization_info->version_added = attribute.value.integer;
+    }
+    else if (attribute.hash == SerializationInfo::version_removed_hash)
+    {
+        serialization_info->version_removed = attribute.value.integer;
+    }
+    else if (attribute.hash == SerializationInfo::id_hash)
+    {
+        serialization_info->id = attribute.value.integer;
+    }
+    else
+    {
+        dst_attributes->push_back(attribute);
+    }
+
     return true;
 }
 
-bool AttributeParser::parse(DynamicArray<Attribute>* dst_attributes, ReflectionAllocator* refl_allocator)
+bool AttributeParser::parse(DynamicArray<Attribute>* dst_attributes, SerializationInfo* serialization_info, ReflectionAllocator* refl_allocator)
 {
-    dst = dst_attributes;
-    allocator = refl_allocator;
-
-    while (current != end && *current != ']')
+    if (is_field)
     {
-        if (!parse_attribute())
+        serialization_info->serializable = true;
+    }
+
+    if (!empty && current != nullptr)
+    {
+
+
+        allocator = refl_allocator;
+
+        const auto begin = current;
+
+        while (current != end && *current != ']')
         {
+            if (!parse_attribute(dst_attributes, serialization_info))
+            {
+                return false;
+            }
+        }
+
+        if (*current != ']')
+        {
+            diagnostics->Report(location, diagnostics->err_invalid_annotation_format).AddString(llvm::StringRef(begin, current - begin));
             return false;
+        }
+
+        // We want to keep the attributes sorted by hash so that they can be searched much faster with a binary search
+        if (!dst_attributes->empty())
+        {
+            std::sort(dst_attributes->begin(), dst_attributes->end(), [](const Attribute& lhs, const Attribute& rhs)
+            {
+                return lhs.hash < rhs.hash;
+            });
         }
     }
 
-    if (*current != ']')
+    if (!serialization_info->serializable)
     {
-        diagnostics->Report(location, diagnostics->err_invalid_annotation_format);
-        return false;
+        serialization_info->version_added = 0;
+        serialization_info->version_removed = limits::max<i32>();
+        return true;
     }
 
-    // We want to keep the attributes sorted by hash so that they can be searched much faster with a binary search
-    if (!dst_attributes->empty())
+    if (serialization_info->version_added <= 0)
     {
-        std::sort(dst_attributes->begin(), dst_attributes->end(), [](const Attribute& lhs, const Attribute& rhs)
-        {
-            return lhs.hash < rhs.hash;
-        });
+        serialization_info->version_added = 1;
+    }
+
+    if (serialization_info->serialized_version <= 0)
+    {
+        serialization_info->serialized_version = 1;
     }
 
     return true;
@@ -600,6 +804,9 @@ bool AttributeParser::parse(DynamicArray<Attribute>* dst_attributes, ReflectionA
 
 bool AttributeParser::init(const clang::Decl& decl, Diagnostics* new_diagnostics)
 {
+    is_field = decl.getKind() == clang::Decl::Kind::Field;
+    current = nullptr;
+
     llvm::StringRef annotation_str;
     diagnostics = new_diagnostics;
 
@@ -620,10 +827,15 @@ bool AttributeParser::init(const clang::Decl& decl, Diagnostics* new_diagnostics
         break;
     }
 
-
-    if (annotation_str.empty() || !annotation_str.startswith("bee-reflect"))
+    if (annotation_str.empty())
     {
-        diagnostics->Report(decl.getLocation(), diagnostics->err_invalid_annotation_format);
+        empty = true;
+        return false;
+    }
+
+    if (!annotation_str.startswith("bee-reflect"))
+    {
+        diagnostics->Report(decl.getLocation(), diagnostics->err_invalid_annotation_format).AddString(annotation_str);
         return false;
     }
 
@@ -631,7 +843,7 @@ bool AttributeParser::init(const clang::Decl& decl, Diagnostics* new_diagnostics
 
     if (attributes_str.first == annotation_str)
     {
-        diagnostics->Report(decl.getLocation(), diagnostics->err_invalid_annotation_format);
+        diagnostics->Report(decl.getLocation(), diagnostics->err_invalid_annotation_format).AddString(annotation_str);
         return false;
     }
 

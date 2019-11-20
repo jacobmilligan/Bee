@@ -41,6 +41,8 @@ struct RegistrationHeader
     unsigned char       magic[8];
     RegistrationVersion version { RegistrationVersion::unknown };
     i32                 type_count { 0 };
+    u32                 source_location_offset { 0 };
+    u32                 source_location_size { 0 };
     u32                 hashes_offset { 0 };
     u32                 types_offset { 0 };
     u32                 types_byte_count { 0 };
@@ -164,7 +166,7 @@ void pretty_print_types(const Span<const Type*>& types, io::StringStream* stream
 
 void generate_reflection(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream);
 
-void generate_registration(const Span<const Type*>& types, io::StringStream* stream);
+void generate_registration(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream);
 
 void link_registrations(const Span<const Path>& search_paths, io::StringStream* stream);
 

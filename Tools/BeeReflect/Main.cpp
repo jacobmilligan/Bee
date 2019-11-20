@@ -71,14 +71,28 @@ int bee_main(int argc, char** argv)
         bee::reflect::BeeReflectFrontendActionFactory factory;
 
         const auto result = tool.run(&factory);
+
         if (result != 0)
         {
             return result;
         }
 
+        // Validate id's &
+
+
         // Output a .generated.cpp file for each of the reflected headers
         for (auto& file : factory.storage.file_to_type_map)
         {
+            const auto is_external = bee::container_index_of(options_parser.getSourcePathList(), [&](const std::string& str)
+            {
+               return llvm::StringRef(str).endswith(llvm::StringRef(file.key.c_str(), file.key.size()));
+            }) < 0;
+
+            if (is_external)
+            {
+                continue;
+            }
+
             bee::String output;
             bee::io::StringStream stream(&output);
             bee::reflect::generate_reflection(file.key, file.value.span(), &stream);
@@ -94,7 +108,7 @@ int bee_main(int argc, char** argv)
 
             // Output a .registration file for looking up a type by hash
             const auto reg_path = output_dir.join(file.key.filename(), bee::temp_allocator()).set_extension("registration");
-            bee::reflect::generate_registration(file.value.span(), &stream);
+            bee::reflect::generate_registration(file.key, file.value.span(), &stream);
 
             bee::fs::write(reg_path, output.view());
         }

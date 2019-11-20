@@ -290,3 +290,93 @@ function(bee_test name)
         bee_add_sources(${cached_sources})
     endif ()
 endfunction()
+
+################################################################################
+#
+# Bee Reflect
+#
+################################################################################
+set(bee_reflect_program ${BEE_RELEASE_BINARY_DIR}/bee-reflect)
+if (WIN32)
+    set(bee_reflect_program ${bee_reflect_program}.exe)
+endif ()
+
+function(bee_reflect target)
+    cmake_parse_arguments(ARGS "INCLUDE_NON_HEADERS" "" "" ${ARGN})
+
+    set(output_dir ${PROJECT_SOURCE_DIR}/Build/DevData/Generated)
+
+    get_target_property(source_list ${target} SOURCES)
+
+    if (NOT ARGS_INCLUDE_NON_HEADERS)
+        list(FILTER source_list EXCLUDE REGEX ".*\\.(cpp|cxx|c)$")
+    endif ()
+
+    list(LENGTH source_list source_list_length)
+
+    if (${source_list_length} GREATER 0)
+        set(expected_output)
+        foreach(src ${source_list})
+            get_filename_component(filename ${src} NAME_WE)
+            list(APPEND expected_output ${output_dir}/${target}/${filename}.generated.cpp)
+        endforeach()
+
+        set(include_dirs)
+        set(system_include_dirs)
+        foreach(dir ${__bee_include_dirs})
+            if (dir MATCHES "${BEE_THIRD_PARTY}.*")
+                list(APPEND system_include_dirs -isystem${dir})
+            else()
+                list(APPEND include_dirs -I${dir})
+            endif ()
+        endforeach()
+
+        get_target_property(compile_defines ${target} COMPILE_DEFINITIONS)
+        get_directory_property(global_defines COMPILE_DEFINITIONS)
+        list(APPEND compile_defines ${global_defines})
+
+        set(defines)
+        foreach(def ${compile_defines})
+            if (NOT def MATCHES "\\$<.*")
+                list(APPEND defines -D${def})
+            endif ()
+        endforeach()
+
+        add_custom_command(
+                PRE_BUILD
+                DEPENDS ${source_list}
+                OUTPUT ${expected_output}
+                COMMAND ${bee_reflect_program} generate ${source_list} --output ${PROJECT_SOURCE_DIR}/Build/DevData/Generated/${target} -- ${defines} ${include_dirs} ${system_include_dirs}
+                USES_TERMINAL
+                COMMENT "Running bee-reflect on header files: generating ${expected_output}"
+        )
+
+        target_sources(${target} PUBLIC ${expected_output})
+    endif ()
+endfunction()
+
+function(bee_reflect_link target)
+    set(generated_root ${PROJECT_SOURCE_DIR}/Build/DevData/Generated)
+    set(output_dir ${generated_root}/${target})
+    file(GLOB_RECURSE registration_files "${output_dir}/*.registration")
+
+    get_target_property(linked_targets ${target} LINK_LIBRARIES)
+    set(linked_dirs)
+
+    foreach (dep ${linked_targets})
+        set(linked_dirs "${linked_dirs} \"${generated_root}/${dep}/*.registration\"")
+        file(GLOB_RECURSE dep_files "${generated_root}/${dep}/*.registration")
+        list(APPEND registration_files ${dep_files})
+    endforeach ()
+
+    add_custom_command(
+            PRE_BUILD
+            DEPENDS ${registration_files}
+            OUTPUT ${output_dir}/Reflection.init.cpp
+            COMMAND ${bee_reflect_program} link "${output_dir}" ${linked_dirs} --output ${output_dir}/Reflection.init.cpp --
+            USES_TERMINAL
+            COMMENT "Running the bee-reflect linker on ${target}"
+    )
+
+    target_sources(${target} PUBLIC ${output_dir}/Reflection.init.cpp)
+endfunction()

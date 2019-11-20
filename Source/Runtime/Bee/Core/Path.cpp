@@ -25,7 +25,7 @@ bool is_slash(const char* str)
         return false;
     }
 
-    return *str == Path::generic_slash_ || *str == Path::preferred_slash;
+    return *str == Path::generic_slash || *str == Path::preferred_slash;
 }
 
 i32 next_slash_pos(const StringView& string, const i32 start_index)
@@ -56,7 +56,7 @@ i32 next_slash_pos(const StringView& string, const i32 start_index)
  */
 
 #if BEE_COMPILER_MSVC == 0
-constexpr char Path::generic_slash_;
+constexpr char Path::generic_slash;
 #endif
 
 
@@ -83,7 +83,7 @@ i32 Path::get_last_slash() const
 {
     for (int c = data_.size() - 1; c >= 0; --c)
     {
-        if (data_[c] == preferred_slash || data_[c] == generic_slash_)
+        if (data_[c] == preferred_slash || data_[c] == generic_slash)
         {
             while (c > 0)
             {
@@ -105,7 +105,7 @@ i32 Path::get_first_slash() const
 {
     for (int c = 0; c < data_.size(); ++c)
     {
-        if (data_[c] == preferred_slash || data_[c] == generic_slash_)
+        if (data_[c] == preferred_slash || data_[c] == generic_slash)
         {
             return c;
         }
@@ -324,7 +324,7 @@ String Path::to_generic_string(Allocator* allocator) const
     {
         if (c == preferred_slash)
         {
-            c = generic_slash_;
+            c = generic_slash;
         }
     }
     return generic_str;
@@ -335,7 +335,7 @@ String Path::preferred_string(Allocator* allocator) const
     String preferred_str(data_.view(), allocator);
     for (auto& c : preferred_str)
     {
-        if (c == generic_slash_)
+        if (c == generic_slash)
         {
             c = preferred_slash;
         }

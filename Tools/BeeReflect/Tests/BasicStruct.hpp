@@ -25,7 +25,7 @@ enum class BEE_REFLECT() EnumClass : unsigned int
     C       = 1u << 2u
 };
 
-struct BEE_REFLECT(tag = "Special struct tag") HeaderStruct
+struct BEE_REFLECT(serialized_version = 1, tag = "Special struct tag") HeaderStruct
 {
     BEE_REFLECT()
     unsigned int int_field;
@@ -43,25 +43,22 @@ enum class MyClassVersions
 
 };
 
-class BEE_REFLECT(serialized, version = 1, test_float = 2.23945f) MyClass
+class BEE_REFLECT(serializable, test_float = 2.23945f) MyClass
 {
 public:
     explicit MyClass(const int value)
         : field(value)
     {}
 
-    BEE_REFLECT()
     constexpr int my_function(const int& x, const char* y)
     {
         return 23;
     }
 private:
-    BEE_REFLECT(version_added = 1)
     mutable int field;
 
-    BEE_DEPRECATE_FIELD(HeaderStruct s, 2, 3);
+//    BEE_D(HeaderStruct s, 2, 3);
 
-    BEE_REFLECT(version_added = 4)
     int val;
 
     const char* name;
