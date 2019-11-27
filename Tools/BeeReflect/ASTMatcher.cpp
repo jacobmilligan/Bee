@@ -21,12 +21,41 @@ namespace bee {
 namespace reflect {
 
 
-const u32 SerializationInfo::serialized_hash = get_type_hash(serialized_attr_name);
-const u32 SerializationInfo::nonserialized_hash = get_type_hash(nonserialized_attr_name);
-const u32 SerializationInfo::version_hash = get_type_hash(version_attr_name);
-const u32 SerializationInfo::version_added_hash = get_type_hash(version_added_attr_name);
-const u32 SerializationInfo::version_removed_hash = get_type_hash(version_removed_attr_name);
-const u32 SerializationInfo::id_hash = get_type_hash(id_attr_name);
+enum class BuiltinAttributeKind
+{
+    unknown,
+    serializable,
+    nonserialized,
+    serialized_version,
+    version_added,
+    version_removed,
+    id,
+    format,
+    serializer_function
+};
+
+struct BuiltinAttribute
+{
+    u32                     hash { 0 };
+    BuiltinAttributeKind    kind { BuiltinAttributeKind::unknown };
+
+    BuiltinAttribute(const char* name, const BuiltinAttributeKind attr_kind)
+        : hash(get_type_hash(name)),
+          kind(attr_kind)
+    {}
+};
+
+BuiltinAttribute g_builtin_attributes[] =
+{
+    { "serializable", BuiltinAttributeKind::serializable },
+    { "nonserialized", BuiltinAttributeKind::nonserialized },
+    { "serialized_version", BuiltinAttributeKind::serialized_version },
+    { "version_added", BuiltinAttributeKind::version_added },
+    { "version_removed", BuiltinAttributeKind::version_removed },
+    { "id", BuiltinAttributeKind::id },
+    { "format", BuiltinAttributeKind::format },
+    { "serializer_function", BuiltinAttributeKind::serializer_function }
+};
 
 
 Qualifier get_qualifier(const clang::QualType& type)
@@ -233,9 +262,14 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, DynamicRecordT
         return;
     }
 
+    type->serialization_flags = serialization_info.flags;
     type->serialized_version = serialization_info.serialized_version;
     type->has_explicit_version = serialization_info.using_explicit_versioning;
     type->attributes = type->attribute_storage.span();
+    if (serialization_info.serializer_function != nullptr)
+    {
+        type->serializer_function_name = serialization_info.serializer_function;
+    }
 
     if (parent == nullptr)
     {
@@ -392,6 +426,7 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, DynamicRecordType* pa
         return;
     }
 
+    type->serialization_flags = serialization_info.flags;
     type->attributes = type->attribute_storage.span();
     type->serialized_version = serialization_info.serialized_version;
 
@@ -481,7 +516,7 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, DynamicRecord
     AttributeParser attr_parser{};
 
     const auto is_member_function = parent != nullptr && decl.isCXXClassMember();
-    if (attr_parser.init(decl, &diagnostics) && !is_member_function)
+    if (!attr_parser.init(decl, &diagnostics))
     {
         return;
     }
@@ -497,6 +532,7 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, DynamicRecord
     type->alignment = alignof(void*);
     type->kind = TypeKind::function;
     type->return_value = create_field<Field>(decl.getName(), -1, decl.getASTContext(), parent, decl.getReturnType(), decl.getTypeSpecStartLoc());
+    type->add_invoker_type_arg(print_qualtype_name(decl.getReturnType(), decl.getASTContext()));
 
     // If this is a method type then we need to skip the implicit `this` parameter
     auto params_begin = decl.parameters().begin();
@@ -512,6 +548,7 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, DynamicRecord
         field.offset = param->getFunctionScopeIndex();
         field.storage_class = get_storage_class(param->getStorageClass(), param->getStorageDuration());
         type->add_parameter(field);
+        type->add_invoker_type_arg(print_qualtype_name(param->getType(), decl.getASTContext()));
     }
 
     type->storage_class = get_storage_class(decl.getStorageClass(), static_cast<clang::StorageDuration>(0));
@@ -523,6 +560,7 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, DynamicRecord
         return;
     }
 
+    type->serialization_flags = serialization_info.flags;
     type->attributes = type->attribute_storage.span();
     type->serialized_version = serialization_info.serialized_version;
 
@@ -568,6 +606,22 @@ void AttributeParser::skip_whitespace()
     }
 }
 
+bool AttributeParser::advance_on_char(char c)
+{
+    if (*current == c)
+    {
+        next();
+        return true;
+    }
+
+    return false;
+}
+
+bool AttributeParser::is_value_end()
+{
+    return current == end || *current == ',' || str::is_space(*current) || *current == ']';
+}
+
 const char* AttributeParser::parse_name()
 {
     const char* begin = current;
@@ -586,80 +640,138 @@ const char* AttributeParser::parse_name()
     return nullptr;
 }
 
-bool AttributeParser::parse_value(Attribute* attribute)
+bool AttributeParser::parse_string(Attribute* attribute)
 {
-    // Parse as string
-    if (*current == '\"')
+    if (!advance_on_char('\"'))
     {
-        next();
-
-        const auto begin = current;
-
-        while (current != end && *current != '\"')
-        {
-            ++current;
-        }
-
-        if (*current != '\"')
-        {
-            diagnostics->Report(location, diagnostics->err_invalid_attribute_name_format).AddString(llvm::StringRef(begin, current - begin));
-            return false;
-        }
-
-        attribute->kind = AttributeKind::string;
-        attribute->value.string = allocator->allocate_name(llvm::StringRef(begin, current - begin));
-        next();
-        return true;
+        return false;
     }
 
+    const auto begin = current;
 
-    const char* begin = current;
-
-    // Otherwise parse as unquoted value type
-    while (current != end && *current != ',' && !str::is_space(*current) && *current != ']')
+    while (current != end && *current != '\"')
     {
         ++current;
     }
 
-    llvm::StringRef ref(begin, current - begin);
+    if (!advance_on_char('\"'))
+    {
+        diagnostics->Report(location, diagnostics->err_invalid_attribute_name_format).AddString(llvm::StringRef(begin, current - begin));
+        return false;
+    }
 
-    if (ref.empty())
+    attribute->kind = AttributeKind::string;
+    attribute->value.string = allocator->allocate_name(llvm::StringRef(begin, current - 1 - begin));
+    return true;
+}
+
+bool AttributeParser::parse_number(bee::Attribute* attribute)
+{
+    const auto begin = current;
+
+    while (!is_value_end())
+    {
+        ++current;
+    }
+
+    llvm::StringRef number_str(begin, current - begin);
+
+    if (number_str.empty())
     {
         diagnostics->Report(location, clang::diag::err_attribute_unsupported);
         return false;
     }
 
-    /*
-     * Test:
-     * - bool
-     * - double
-     * - int
-     */
-    const auto is_true = ref == "true";
-    const auto is_false = ref == "false";
-    if (is_true || is_false)
-    {
-        attribute->kind = AttributeKind::boolean;
-        attribute->value.boolean = is_true;
-        return true;
-    }
-
-    if (!ref.getAsInteger(10, attribute->value.integer))
-    {
-        attribute->kind = AttributeKind::integer;
-        return true;
-    }
-
     double result = 0.0;
-    if (!ref.getAsDouble(result))
+    if (!number_str.getAsDouble(result))
     {
         attribute->kind = AttributeKind::floating_point;
         attribute->value.floating_point = static_cast<float>(result);
         return true;
     }
 
-    diagnostics->Report(location, clang::diag::err_type_unsupported);
+    if (!number_str.getAsInteger(10, attribute->value.integer))
+    {
+        attribute->kind = AttributeKind::integer;
+        return true;
+    }
+
     return false;
+}
+
+bool is_symbol_char(const char c)
+{
+    return isalnum(c) || c == '_' || c == ':' || c == '(' || c == ')' || c == '<' || c == '>';
+}
+
+bool AttributeParser::parse_symbol(bee::Attribute* attribute)
+{
+    if (!isalpha(*current) && *current != '_')
+    {
+        return false;
+    }
+
+    const auto begin = current;
+    auto colon_count = 0;
+
+    while (!is_value_end())
+    {
+        if (!is_symbol_char(*current))
+        {
+            return false;
+        }
+
+        if (*current != ':')
+        {
+            if (colon_count > 2)
+            {
+                return false;
+            }
+
+            colon_count = 0;
+        }
+        else
+        {
+            ++colon_count;
+        }
+
+        ++current;
+    }
+
+    llvm::StringRef str(begin, current - begin);
+
+    const auto is_true = str == "true";
+    const auto is_false = str == "false";
+
+    if (is_true || is_false)
+    {
+        attribute->kind = AttributeKind::boolean;
+        attribute->value.boolean = is_true;
+    }
+    else
+    {
+        attribute->kind = AttributeKind::type;
+        attribute->value.string = allocator->allocate_name(str);
+    }
+
+    return true;
+}
+
+bool AttributeParser::parse_value(Attribute* attribute)
+{
+    // Parse as string
+    if (*current == '\"')
+    {
+        return parse_string(attribute);
+    }
+
+    const auto is_number = *current >= '0' && *current <= '9';
+    if (is_number || *current == '-' || *current == '+' || *current == '.')
+    {
+        return parse_number(attribute);
+    }
+
+    return parse_symbol(attribute);
 }
 
 bool AttributeParser::parse_attribute(DynamicArray<Attribute>* dst_attributes, SerializationInfo* serialization_info)
@@ -700,6 +812,7 @@ bool AttributeParser::parse_attribute(DynamicArray<Attribute>* dst_attributes, S
 
         if (!parse_value(&attribute))
         {
+            diagnostics->Report(location, clang::diag::err_type_unsupported);
             return false;
         }
 
@@ -709,34 +822,82 @@ bool AttributeParser::parse_attribute(DynamicArray<Attribute>* dst_attributes, S
         }
     }
 
-    if (attribute.hash == SerializationInfo::serialized_hash)
+    const auto builtin_index = container_index_of(g_builtin_attributes, [&](const BuiltinAttribute& builtin)
     {
-        serialization_info->serializable = true;
-    }
-    else if (attribute.hash == SerializationInfo::nonserialized_hash)
-    {
-        serialization_info->serializable = false;
-    }
-    else if (attribute.hash == SerializationInfo::version_hash)
-    {
-        serialization_info->serialized_version = attribute.value.integer;
-        serialization_info->using_explicit_versioning = true;
-    }
-    else if (attribute.hash == SerializationInfo::version_added_hash)
-    {
-        serialization_info->version_added = attribute.value.integer;
-    }
-    else if (attribute.hash == SerializationInfo::version_removed_hash)
-    {
-        serialization_info->version_removed = attribute.value.integer;
-    }
-    else if (attribute.hash == SerializationInfo::id_hash)
-    {
-        serialization_info->id = attribute.value.integer;
-    }
-    else
+        return builtin.hash == attribute.hash;
+    });
+
+    if (builtin_index < 0)
     {
         dst_attributes->push_back(attribute);
+        return true;
+    }
+
+    switch (g_builtin_attributes[builtin_index].kind)
+    {
+        case BuiltinAttributeKind::serializable:
+        {
+            serialization_info->serializable = true;
+            break;
+        }
+        case BuiltinAttributeKind::nonserialized:
+        {
+            serialization_info->serializable = false;
+            break;
+        }
+        case BuiltinAttributeKind::serialized_version:
+        {
+            serialization_info->serialized_version = attribute.value.integer;
+            serialization_info->using_explicit_versioning = true;
+            break;
+        }
+        case BuiltinAttributeKind::version_added:
+        {
+            serialization_info->version_added = attribute.value.integer;
+            break;
+        }
+        case BuiltinAttributeKind::version_removed:
+        {
+            serialization_info->version_removed = attribute.value.integer;
+            break;
+        }
+        case BuiltinAttributeKind::id:
+        {
+            serialization_info->id = attribute.value.integer;
+            break;
+        }
+        case BuiltinAttributeKind::format:
+        {
+            if (attribute.kind != AttributeKind::type)
+            {
+                return false;
+            }
+
+            if (str::compare(attribute.value.string, "packed") == 0)
+            {
+                serialization_info->flags |= SerializationFlags::packed_format;
+                break;
+            }
+
+            if (str::compare(attribute.value.string, "table") == 0)
+            {
+                serialization_info->flags |= SerializationFlags::table_format;
+                break;
+            }
+
+            return false; // unknown format
+        }
+        case BuiltinAttributeKind::serializer_function:
+        {
+            if (attribute.kind != AttributeKind::type)
+            {
+                return false;
+            }
+
+            serialization_info->flags |= SerializationFlags::uses_builder;
+            serialization_info->serializer_function = allocator->allocate_name(attribute.value.string);
+        }
+        default: break;
     }
 
     return true;

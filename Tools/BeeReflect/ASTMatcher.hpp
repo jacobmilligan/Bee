@@ -61,26 +61,14 @@ struct Diagnostics
  */
 struct SerializationInfo
 {
-    static constexpr auto serialized_attr_name = "serializable";
-    static constexpr auto nonserialized_attr_name = "nonserialized";
-    static constexpr auto version_attr_name = "version";
-    static constexpr auto version_added_attr_name = "added";
-    static constexpr auto version_removed_attr_name = "removed";
-    static constexpr auto id_attr_name = "id";
-
-    static const u32 serialized_hash;
-    static const u32 nonserialized_hash;
-    static const u32 version_hash;
-    static const u32 version_added_hash;
-    static const u32 version_removed_hash;
-    static const u32 id_hash;
-
-    bool    serializable { false };
-    bool    using_explicit_versioning { false };
-    i32     serialized_version { 0 };
-    i32     version_added { 0 };
-    i32     version_removed { limits::max<i32>() };
-    i32     id { -1 };
+    bool                serializable { false };
+    bool                using_explicit_versioning { false };
+    i32                 serialized_version { 0 };
+    i32                 version_added { 0 };
+    i32                 version_removed { limits::max<i32>() };
+    i32                 id { -1 };
+    SerializationFlags  flags { SerializationFlags::packed_format }; // packed is implicit - table is explicitly requested
+    const char*         serializer_function { nullptr };
 };
 
 struct AttributeParser
@@ -97,15 +85,25 @@ struct AttributeParser
 
     void next();
 
+    bool advance_on_char(char c);
+
+    bool is_value_end();
+
     void skip_whitespace();
+
+    bool parse(DynamicArray<Attribute>* dst_attributes, SerializationInfo* serialization_info, ReflectionAllocator* refl_allocator);
+
+    bool parse_attribute(DynamicArray<Attribute>* dst_attributes, SerializationInfo* serialization_info);
 
     const char* parse_name();
 
     bool parse_value(Attribute* attribute);
 
-    bool parse_attribute(DynamicArray<Attribute>* dst_attributes, SerializationInfo* serialization_info);
+    bool parse_string(Attribute* attribute);
 
-    bool parse(DynamicArray<Attribute>* dst_attributes, SerializationInfo* serialization_info, ReflectionAllocator* refl_allocator);
+    bool parse_symbol(Attribute* attribute);
+
+    bool parse_number(Attribute* attribute);
 };
 
 
@@ -153,12 +151,6 @@ struct ASTMatcher final : public clang::ast_matchers::MatchFinder::MatchCallback
         field.name = allocator->allocate_name(name);
         field.offset = 0;
         field.qualifier = get_qualifier(desugared_type);
-
-        if (parent == nullptr)
-        {
-            diagnostics.Report(location, clang::diag::err_incomplete_type);
-            return FieldType{};
-        }
 
         if (parent != nullptr && index >= 0)
         {

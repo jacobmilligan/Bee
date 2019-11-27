@@ -140,7 +140,7 @@ template <typename IterableType>
 class Enumerator
 {
 public:
-    using iterator_t = decltype(begin(declval<IterableType>()));
+    using iterator_t = decltype(::bee::begin(declval<IterableType>()));
 
     explicit Enumerator(iterator_t begin)
         : iterator_(begin)

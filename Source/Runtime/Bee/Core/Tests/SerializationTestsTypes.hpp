@@ -14,8 +14,7 @@
 namespace bee {
 
 
-
-struct BEE_REFLECT(serializable) PrimitivesStruct
+struct BEE_REFLECT(serializable, format = packed) PrimitivesStruct
 {
     int       intval { -1 };
     u32       uval { 0 };
@@ -29,7 +28,7 @@ struct BEE_REFLECT(serializable) PrimitivesStruct
     i32       nonserialized_field { -1 };
 };
 
-struct BEE_REFLECT(serializable, version = 3) PrimitivesStructV2
+struct BEE_REFLECT(serializable, version = 3, format = table) PrimitivesStructV2
 {
     BEE_REFLECT(id = 0, added = 1)
     int       intval { -1 };
@@ -55,6 +54,18 @@ struct BEE_REFLECT(serializable, version = 3) PrimitivesStructV2
     i32       nonserialized_field { -1 };
 };
 
+struct BEE_REFLECT(serializable, serializer_function = bee::serialize_primitives) PrimitivesStructV3
+{
+    int       intval { -1 };
+    u32       uval { 0 };
+    char      charval { 0 };
+    bool      boolval { false };
+    u8        ubyteval { 0 };
+    bool      is_valid { false };
+    i8        ibyteval { -1 };
+    i32       nonserialized_field { -1 };
+};
+
 inline bool operator==(const PrimitivesStruct& lhs, const PrimitivesStruct& rhs)
 {
     return memcmp(&lhs, &rhs, sizeof(PrimitivesStruct)) == 0;
@@ -64,6 +75,17 @@ inline bool operator==(const PrimitivesStructV2& lhs, const PrimitivesStructV2& 
 {
     return memcmp(&lhs, &rhs, sizeof(PrimitivesStructV2)) == 0;
 }
+
+inline bool operator==(const PrimitivesStructV3& lhs, const PrimitivesStructV3& rhs)
+{
+    return memcmp(&lhs, &rhs, sizeof(PrimitivesStructV3)) == 0;
+}
+
+inline void serialize_primitives(SerializationBuilder* builder)
+{
+
+}
+
 
 struct BEE_REFLECT(serializable) Id
 {

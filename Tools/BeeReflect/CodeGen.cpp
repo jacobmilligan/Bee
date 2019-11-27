@@ -34,13 +34,14 @@ String get_name_as_ident(const Type* type, Allocator* allocator = system_allocat
 void codegen_type(const Type* type, CodeGenerator* codegen)
 {
     codegen->write(
-        "%u, %zu, %zu, %s, \"%s\", %d, ",
+        "%u, %zu, %zu, %s, \"%s\", %d, %s, ",
         type->hash,
         type->size,
         type->alignment,
         reflection_type_kind_to_string(type->kind),
         type->name,
-        type->serialized_version
+        type->serialized_version,
+        reflection_dump_flags(type->serialization_flags)
     );
 }
 
@@ -77,6 +78,11 @@ void codegen_attribute(const Attribute& attr, CodeGenerator* codegen)
             case AttributeKind::string:
             {
                 codegen->append_line("\"%s\"", attr.value.string);
+                break;
+            }
+            case AttributeKind::type:
+            {
+                codegen->append_line("get_type<%s>()", attr.value.string); // type names are stored in strings by the ASTMatcher
                 break;
             }
             default:
@@ -149,20 +155,42 @@ void codegen_function(const FunctionType* type, CodeGenerator* codegen)
     codegen->scope([&]()
     {
         codegen_type(type, codegen);
-
         codegen->append_line("%s, %s,", reflection_flag_to_string(type->storage_class), type->is_constexpr ? "true" : "false");
         codegen->newline();
 
         codegen_field(type->return_value, nullptr, codegen);
+        codegen->append_line(", // return value");
+        codegen->newline();
 
         if (!type->parameters.empty())
         {
-            codegen->append_line(", Span<Field>(%s__parameters)", function_name_as_ident.c_str());
+            codegen->write("Span<Field>(%s__parameters), ", function_name_as_ident.c_str());
         }
         else
         {
-            codegen->append_line(", {}");
+            codegen->write("{}, ");
         }
+
+        if (!type->attributes.empty())
+        {
+            codegen->append_line("Span<Attribute>(%s__attributes), ", function_name_as_ident.c_str());
+        }
+        else
+        {
+            codegen->append_line("{}, ");
+        }
+
+        const auto as_dynamic_type = reinterpret_cast<const DynamicFunctionType*>(type);
+        codegen->append_line("FunctionTypeInvoker::from<");
+        for (const auto invoker_arg : enumerate(as_dynamic_type->invoker_type_args))
+        {
+            codegen->append_line(" %s", invoker_arg.value.c_str());
+            if (invoker_arg.index < as_dynamic_type->invoker_type_args.size() - 1)
+            {
+                codegen->append_line(",");
+            }
+        }
+        codegen->append_line(">(%s)", type->name);
     }, ";");
 }
 
@@ -332,6 +360,12 @@ void codegen_record(const RecordType* type, CodeGenerator* codegen)
             {
                 codegen->append_line("{}");
             }
+
+            const auto as_dynamic_record = reinterpret_cast<const DynamicRecordType*>(type);
+            if (as_dynamic_record->serializer_function_name != nullptr)
+            {
+                codegen->append_line(", &%s", as_dynamic_record->serializer_function_name);
+            }
         }, ";\n\n");
         codegen->write_line("return &instance;");
     });
@@ -431,7 +465,17 @@ void generate_reflection(const Path& source_location, const Span<const Type*>& t
                 case TypeKind::field:
                     break;
                 case TypeKind::function:
+                {
+                    codegen.write("template <> BEE_EXPORT_SYMBOL const Type* get_type<BEE_NONMEMBER(%s)>()", type->name);
+                    codegen.scope([&]()
+                    {
+                        codegen_function(reinterpret_cast<const FunctionType*>(type), &codegen);
+                        codegen.newline();
+                        codegen.write_line("return &%s;", get_name_as_ident(type, temp_allocator()).c_str());
+                    });
+                    codegen.write_line("// get_type<%s>()\n", type->name);
                     break;
+                }
                 case TypeKind::fundamental:
                     break;
                 default: break;

@@ -329,39 +329,55 @@ const Attribute* find_attribute(const Field& field, const char* attribute_name, 
 
 const char* reflection_flag_to_string(const Qualifier qualifier)
 {
-#define QUALIFIER(x) case Qualifier::x: return "Qualifier::" #x
+#define REFL_FLAG(x) case Qualifier::x: return "Qualifier::" #x
 
     switch (qualifier)
     {
-        QUALIFIER(cv_const);
-        QUALIFIER(cv_volatile);
-        QUALIFIER(lvalue_ref);
-        QUALIFIER(rvalue_ref);
-        QUALIFIER(pointer);
+        REFL_FLAG(cv_const);
+        REFL_FLAG(cv_volatile);
+        REFL_FLAG(lvalue_ref);
+        REFL_FLAG(rvalue_ref);
+        REFL_FLAG(pointer);
         default: break;
     }
 
     return "Qualifier::none";
-#undef QUALIFIER
+#undef REFL_FLAG
 }
 
 const char* reflection_flag_to_string(const StorageClass storage_class)
 {
-#define STORAGE_CLASS(x) case StorageClass::x: return "StorageClass::" #x
+#define REFL_FLAG(x) case StorageClass::x: return "StorageClass::" #x
 
     switch (storage_class)
     {
-        STORAGE_CLASS(auto_storage);
-        STORAGE_CLASS(register_storage);
-        STORAGE_CLASS(static_storage);
-        STORAGE_CLASS(extern_storage);
-        STORAGE_CLASS(thread_local_storage);
-        STORAGE_CLASS(mutable_storage);
+        REFL_FLAG(auto_storage);
+        REFL_FLAG(register_storage);
+        REFL_FLAG(static_storage);
+        REFL_FLAG(extern_storage);
+        REFL_FLAG(thread_local_storage);
+        REFL_FLAG(mutable_storage);
         default: break;
     }
 
     return "StorageClass::none";
-#undef STORAGE_CLASS
+#undef REFL_FLAG
+}
+
+const char* reflection_flag_to_string(const SerializationFlags serialization_flags)
+{
+#define REFL_FLAG(x) case SerializationFlags::x: return "SerializationFlags::" #x
+
+    switch (serialization_flags)
+    {
+        REFL_FLAG(packed_format);
+        REFL_FLAG(table_format);
+        REFL_FLAG(uses_builder);
+        default: break;
+    }
+
+    return "SerializationFlags::none";
+#undef REFL_FLAG
 }
 
 const char* reflection_type_kind_to_string(const TypeKind type_kind)
@@ -409,6 +425,7 @@ BEE_TRANSLATION_TABLE(reflection_attribute_kind_to_string, AttributeKind, const 
     "AttributeKind::integer",           // integer
     "AttributeKind::floating_point",    // floating_point
     "AttributeKind::string",            // string
+    "AttributeKind::type",              // type
 )
 
 

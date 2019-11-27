@@ -81,6 +81,126 @@ inline bool operator!=(const FieldHeader& lhs, const FieldHeader& rhs)
     return !(lhs == rhs);
 }
 
+struct SerializationBuilder
+{
+    Serializer*   base_serializer { nullptr };
+    const Type*   serialized_type { nullptr };
+    u8*           serialized_data { nullptr };
+
+    explicit SerializationBuilder(Serializer* serializer, const Type* type, u8* data)
+        : base_serializer(serializer),
+          serialized_type(type),
+          serialized_data(data)
+    {}
+
+    SerializationBuilder& version(const i32 value)
+    {
+        if (base_serializer->mode == SerializerMode::writing)
+        {
+            base_serializer->version = value;
+        }
+
+        serialize_version(value);
+        return *this;
+    }
+
+    template <typename T, typename FieldType>
+    SerializationBuilder& add(const i32 version_added, FieldType T::* field)
+    {
+        return add(version_added, limits::max<i32>(), field);
+    }
+
+    template <typename T, typename FieldType>
+    SerializationBuilder& add(const i32 version_added, const i32 version_removed, FieldType T::* field)
+    {
+        const auto parent_type = get_type<T>();
+        const auto field_type = get_type<FieldType>();
+
+        if (BEE_FAIL_F(parent_type == serialized_type, "Tried to serialize field `%s` which belongs to type `%s` but the serializer is currently serializing type `%s`", field_type->name, parent_type->name, serialized_type->name))
+        {
+            return *this;
+        }
+
+        if (base_serializer->version < version_added || base_serializer->version >= version_removed)
+        {
+            return *this;
+        }
+
+        auto field_ptr = &(reinterpret_cast<T*>(serialized_data)->*field);
+        serialize_field(field_type, reinterpret_cast<u8*>(field_ptr));
+        return *this;
+    }
+
+//    SerializationBuilder& add_bytes(const i32 version_added, const size_t offset, const size_t size)
+//    {
+//        return add_bytes(version_added, limits::max<i32>(), offset, size);
+//    }
+//
+//    SerializationBuilder& add_bytes(const i32 version_added, const i32 version_removed, const size_t offset, const size_t size)
+//    {
+//        if (BEE_FAIL_F(offset + size <= serialized_type->size, "failed to serialize bytes because offset + size (%zu) was greater than the size of the serialized type `%s` (%zu)", offset + size, serialized_type->name, serialized_type->size))
+//        {
+//            return *this;
+//        }
+//
+//        if (base_serializer->version < version_added || base_serializer->version >= version_removed)
+//        {
+//            return *this;
+//        }
+//
+//        serialize_bytes(offset, size)
+//    }
+
+    template <typename FieldType>
+    SerializationBuilder& remove(const i32 version_added, const i32 version_removed, const FieldType& default_value)
+    {
+        const auto field_type = get_type<FieldType>();
+        if (base_serializer->version < version_added || base_serializer->version >= version_removed)
+        {
+            return *this;
+        }
+
+        FieldType removed_data;
+
+        if (base_serializer->mode == SerializerMode::writing)
+        {
+            memcpy_or_assign(&removed_data, &default_value, 1);
+        }
+
+        serialize_field(field_type, reinterpret_cast<u8*>(&removed_data));
+        return *this;
+    }
+
+    virtual void serialize_version(const i32 value) = 0;
+
+    virtual void serialize_field(const Type* type, u8* field_data) = 0;
+};
+
+
+template <typename SerializerType>
+struct SerializerWrapper final : public SerializationBuilder
+{
+    SerializerType* serializer { nullptr };
+
+    SerializerWrapper(SerializerType* new_serializer, const Type* new_type, u8* new_data)
+        : SerializationBuilder(new_serializer, new_type, new_data),
+          serializer(new_serializer)
+    {}
+
+    void serialize_version(const i32 value) override
+    {
+        static Field version_field(get_type_hash("bee::version"), 0, Qualifier::none, StorageClass::none, "bee::version", get_type<i32>(), {}, 1);
+
+        serializer->serialize_field(version_field);
+        serializer->serialize_fundamental(&serializer->version);
+    }
+
+    void serialize_field(const Type* type, u8* field_data) override
+    {
+        serialize_type(serializer, type, field_data);
+    }
+};
+
 
 using binary_serializer_constant_t = std::integral_constant<SerializerKind, SerializerKind::binary>;
 using text_serializer_constant_t = std::integral_constant<SerializerKind, SerializerKind::text>;
@@ -183,6 +303,22 @@ void serialize_type(SerializerType* serializer, const Type* type, u8* dst)
         return;
     }
 
+    // Handle custom serialization
+    if ((type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
+    {
+        SerializerWrapper<SerializerType> builder(serializer, type, dst);
+        auto attr = find_attribute(type, "serializer_function", AttributeKind::type);
+        if (attr == nullptr || attr->value.type->kind != TypeKind::function)
+        {
+            log_warning("Skipping serialization for `%s`: custom serialization function was not a valid function type", type->name);
+            return;
+        }
+
+        reinterpret_cast<const FunctionType*>(attr->value.type)->invoke<void>(&builder);
+        return;
+    }
+
+    // Otherwise handle automatic serialization
     if (serializer->mode == SerializerMode::writing)
     {
         serializer->version = type->serialized_version;
@@ -199,7 +335,6 @@ void serialize_type(SerializerType* serializer, const Type* type, u8* dst)
             serializer->begin_record(record_type);
             serializer->serialize_field(version_field);
             serializer->serialize_fundamental(&serializer->version);
-
             serialize_record(std::integral_constant<SerializerKind, SerializerType::kind>{}, serializer, record_type, dst);
             serializer->end_record();
             break;

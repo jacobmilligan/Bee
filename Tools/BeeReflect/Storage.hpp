@@ -111,6 +111,7 @@ struct DynamicRecordType final : public RecordType
     DynamicArray<Attribute>                 attribute_storage;
     DynamicArray<const EnumType*>           enum_storage;
     DynamicArray<const RecordType*>         record_storage;
+    const char*                             serializer_function_name { nullptr };
 
     DynamicRecordType() = default;
 
@@ -151,14 +152,16 @@ struct DynamicRecordType final : public RecordType
 
 struct DynamicFunctionType final : public FunctionType
 {
-    DynamicArray<Field>     parameter_storage;
-    DynamicArray<Attribute> attribute_storage;
+    DynamicArray<Field>         parameter_storage;
+    DynamicArray<Attribute>     attribute_storage;
+    DynamicArray<std::string>   invoker_type_args;
 
     DynamicFunctionType() = default;
 
     explicit DynamicFunctionType(Allocator* allocator)
         : parameter_storage(allocator),
-          attribute_storage(allocator)
+          attribute_storage(allocator),
+          invoker_type_args(allocator)
     {}
 
     void add_parameter(const Field& field)
@@ -171,6 +174,11 @@ struct DynamicFunctionType final : public FunctionType
     {
         attribute_storage.push_back(attribute);
         attributes = attribute_storage.span();
+    }
+
+    void add_invoker_type_arg(const std::string& fully_qualified_name)
+    {
+        invoker_type_args.push_back(fully_qualified_name);
     }
 };
 

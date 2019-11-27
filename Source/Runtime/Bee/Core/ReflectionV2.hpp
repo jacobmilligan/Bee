@@ -25,6 +25,8 @@ namespace bee {
     #define BEE_DEPRECATED(decl, ...)
 #endif // BEE_COMPILE_REFLECTION
 
+#define BEE_NONMEMBER(x) ::bee::NonMemberFunctionTypeTag<::bee::get_static_string_hash(#x)>
+
 /*
  * Whenever a new type is added here, BEE_SERIALIZER_INTERFACE must also be updated to match this macro
  */
@@ -86,7 +88,34 @@ enum class AttributeKind
     integer,
     floating_point,
     string,
+    type,
     invalid
+};
+
+BEE_FLAGS(SerializationFlags, u8)
+{
+    none            = 0u,
+    /**
+     * This is the most memory and CPU efficient format for serialized data because it essentially maps to the current
+     * memory layout of the struct without encoding extra information. However, this means that if a struct or classes fields
+     * are reordered, renamed, or their types are changed in this format old data becomes unreadable meaning that
+     * types serialized in packed_format are not version tolerant or backwards compatible in any way.
+     */
+    packed_format   = 1u << 0u,
+
+    /**
+     * In this format each field is stored as a key-value pair. The key contains a hash of the fields name and it's
+     * accompanying type hash. Types serialized in this format are totally version tolerant and backwards and forwards
+     * compatible - field keys are used as a lookup into the parent reflected type to find the latest offset for
+     * that unique combination of type and field name and if the field is missing, it's just skipped.
+     */
+    table_format    = 1u << 1u,
+
+    /**
+     * This indicates that the type uses a SerializationBuilder in a custom serialization function to handle
+     * adding/removing fields and implementing more complex behavior than the default serialization method allows
+     */
+    uses_builder    = 1u << 2u
 };
 
 
@@ -186,6 +215,7 @@ struct Attribute
         int         integer;
         float       floating_point;
         const char* string;
+        const Type* type;
 
         explicit Value(const bool b)
             : boolean(b)
@@ -201,6 +231,10 @@ struct Attribute
 
         explicit Value(const char* s)
             : string(s)
+        {}
+
+        explicit Value(const Type* t)
+            : type(t)
         {}
     };
 
@@ -256,15 +290,20 @@ struct Field
     {}
 };
 
+struct SerializationBuilder;
+
 
 struct Type
 {
+    using serializer_function_t = void(*)(SerializationBuilder*);
+
     u32                     hash { 0 };
     size_t                  size { 0 };
     size_t                  alignment { 0 };
     TypeKind                kind { TypeKind::unknown };
     const char*             name { nullptr };
     i32                     serialized_version { 0 };
+    SerializationFlags      serialization_flags { SerializationFlags::none };
 
     Type() = default;
 
@@ -274,13 +313,15 @@ struct Type
         const size_t new_alignment,
         const TypeKind new_kind,
         const char* new_name,
-        const i32 new_serialized_version
+        const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags
     ) : hash(new_hash),
         size(new_size),
         alignment(new_alignment),
         kind(new_kind),
         name(new_name),
-        serialized_version(new_serialized_version)
+        serialized_version(new_serialized_version),
+        serialization_flags(new_serialization_flags)
     {}
 
     template <typename T>
@@ -326,7 +367,7 @@ struct FundamentalType final : public Type
         const char* new_name,
         const i32 new_serialized_version,
         const FundamentalKind new_fundamental_kind
-    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version),
+    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, SerializationFlags::none),
         fundamental_kind(new_fundamental_kind)
     {}
 };
@@ -362,14 +403,63 @@ struct EnumType : public Type
         const TypeKind new_kind,
         const char* new_name,
         const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags,
         const bool scoped,
         const Span<EnumConstant> new_constants,
         const Span<Attribute> new_attributes
-    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version),
+    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags),
         is_scoped(scoped),
         constants(new_constants),
         attributes(new_attributes)
     {}
+};
+
+
+struct FunctionTypeInvoker
+{
+    int     signature { 0 };
+    void*   address { nullptr };
+
+    FunctionTypeInvoker() = default;
+
+    FunctionTypeInvoker(const int generated_signature, void* callable_address)
+        : signature(generated_signature),
+          address(callable_address)
+    {}
+
+    template <typename ReturnType, typename... Args>
+    ReturnType invoke(Args&&... args)
+    {
+        BEE_ASSERT_F((get_signature<ReturnType, Args...>()) == signature, "invalid `invoke` signature: ReturnType and Args must match the signature of the FunctionType exactly - including cv and reference qualifications");
+        return static_cast<ReturnType(*)(Args...)>(address)(std::forward<Args>(args)...);
+    }
+
+    template <typename ReturnType, typename... Args>
+    ReturnType invoke(Args&&... args) const
+    {
+        BEE_ASSERT_F((get_signature<ReturnType, Args...>()) == signature, "invalid `invoke` signature: ReturnType and Args must match the signature of the FunctionType exactly - including cv and reference qualifications");
+        return static_cast<ReturnType(*)(Args...)>(address)(std::forward<Args>(args)...);
+    }
+
+    template <typename ReturnType, typename... Args>
+    static int get_signature()
+    {
+        static int value = next_signature();
+        return value;
+    }
+
+    template <typename ReturnType, typename... Args>
+    static FunctionTypeInvoker from(ReturnType(*callable)(Args...))
+    {
+        return FunctionTypeInvoker(FunctionTypeInvoker::get_signature<ReturnType, Args...>(), callable);
+    }
+
+private:
+    static int next_signature() noexcept
+    {
+        static int next = 0;
+        return next++;
+    }
 };
 
 
@@ -380,6 +470,7 @@ struct FunctionType : public Type
     Field               return_value;
     Span<Field>         parameters;
     Span<Attribute>     attributes;
+    FunctionTypeInvoker invoker;
 
     using Type::Type;
 
@@ -392,23 +483,40 @@ struct FunctionType : public Type
         const TypeKind new_kind,
         const char* new_name,
         const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags,
         const StorageClass new_storage_class,
         const bool make_constexpr,
         const Field& new_return_value,
         const Span<Field> new_parameters,
-        const Span<Attribute> new_attributes
-    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version),
+        const Span<Attribute> new_attributes,
+        FunctionTypeInvoker callable_invoker
+    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags),
         storage_class(new_storage_class),
         is_constexpr(make_constexpr),
         return_value(new_return_value),
         parameters(new_parameters),
-        attributes(new_attributes)
+        attributes(new_attributes),
+        invoker(callable_invoker)
     {}
+
+    template <typename ReturnType, typename... Args>
+    ReturnType invoke(Args&&... args)
+    {
+        return invoker.invoke<ReturnType>(std::forward<Args>(args)...);
+    }
+
+    template <typename ReturnType, typename... Args>
+    ReturnType invoke(Args&&... args) const
+    {
+        return invoker.invoke<ReturnType>(std::forward<Args>(args)...);
+    }
 };
 
 
 struct RecordType : public Type
 {
+    using serializer_function_t = void(*)(SerializationBuilder*);
+
     Span<Field>                 fields;
     Span<FunctionType>          functions;
     Span<Attribute>             attributes;
@@ -416,7 +524,7 @@ struct RecordType : public Type
     Span<const RecordType*>     records;
     Span<Type*>                 template_arguments;
     bool                        is_template { false };
-
+    serializer_function_t       serializer_function { nullptr };
 
     using Type::Type;
 
@@ -429,25 +537,35 @@ struct RecordType : public Type
         const TypeKind new_kind,
         const char* new_name,
         const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags,
         const Span<Field>& new_fields,
         const Span<FunctionType> new_functions,
         const Span<Attribute> new_attributes,
         const Span<const EnumType*> nested_enums,
-        const Span<const RecordType*> nested_records
-    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version),
+        const Span<const RecordType*> nested_records,
+        serializer_function_t new_serializer_function = nullptr
+    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags),
         fields(new_fields),
         functions(new_functions),
         attributes(new_attributes),
         enums(nested_enums),
-        records(nested_records)
+        records(nested_records),
+        serializer_function(new_serializer_function)
     {}
 };
 
 struct UnknownType : public Type
 {
     UnknownType()
-        : Type(0, 0, 0, TypeKind::unknown, "bee::UnknownType", 0)
+        : Type(0, 0, 0, TypeKind::unknown, "bee::UnknownType", 0, SerializationFlags::none)
     {}
+};
+
+
+template <u32 Hash>
+struct NonMemberFunctionTypeTag
+{
+    static constexpr u32 hash = Hash;
 };
 
 
@@ -485,6 +603,8 @@ BEE_CORE_API const Attribute* find_attribute(const Field& field, const char* att
 BEE_CORE_API const char* reflection_flag_to_string(const Qualifier qualifier);
 
 BEE_CORE_API const char* reflection_flag_to_string(const StorageClass storage_class);
+
+BEE_CORE_API const char* reflection_flag_to_string(const SerializationFlags serialization_flags);
 
 BEE_CORE_API const char* reflection_type_kind_to_string(const TypeKind type_kind);
 
