@@ -49,12 +49,12 @@ BuiltinAttribute g_builtin_attributes[] =
 {
     { "serializable", BuiltinAttributeKind::serializable },
     { "nonserialized", BuiltinAttributeKind::nonserialized },
-    { "serialized_version", BuiltinAttributeKind::serialized_version },
-    { "version_added", BuiltinAttributeKind::version_added },
-    { "version_removed", BuiltinAttributeKind::version_removed },
+    { "version", BuiltinAttributeKind::serialized_version },
+    { "added", BuiltinAttributeKind::version_added },
+    { "removed", BuiltinAttributeKind::version_removed },
     { "id", BuiltinAttributeKind::id },
     { "format", BuiltinAttributeKind::format },
-    { "serializer_function", BuiltinAttributeKind::serializer_function }
+    { "serializer", BuiltinAttributeKind::serializer_function }
 };
 
 
@@ -682,17 +682,17 @@ bool AttributeParser::parse_number(bee::Attribute* attribute)
         return false;
     }
 
+    if (!number_str.getAsInteger(10, attribute->value.integer))
+    {
+        attribute->kind = AttributeKind::integer;
+        return true;
+    }
+
     double result = 0.0;
     if (!number_str.getAsDouble(result))
     {
         attribute->kind = AttributeKind::floating_point;
         attribute->value.floating_point = static_cast<float>(result);
-        return true;
-    }
-
-    if (!number_str.getAsInteger(10, attribute->value.integer))
-    {
-        attribute->kind = AttributeKind::integer;
         return true;
     }
 
@@ -905,6 +905,8 @@ bool AttributeParser::parse_attribute(DynamicArray<Attribute>* dst_attributes, S
 
 bool AttributeParser::parse(DynamicArray<Attribute>* dst_attributes, SerializationInfo* serialization_info, ReflectionAllocator* refl_allocator)
 {
+    serialization_info->flags = SerializationFlags::none;
+
     if (is_field)
     {
         serialization_info->serializable = true;
@@ -912,8 +914,6 @@ bool AttributeParser::parse(DynamicArray<Attribute>* dst_attributes, Serializati
 
     if (!empty && current != nullptr)
     {
-
-
         allocator = refl_allocator;
 
         const auto begin = current;

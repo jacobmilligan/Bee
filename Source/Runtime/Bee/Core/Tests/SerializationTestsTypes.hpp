@@ -54,7 +54,7 @@ struct BEE_REFLECT(serializable, version = 3, format = table) PrimitivesStructV2
     i32       nonserialized_field { -1 };
 };
 
-struct BEE_REFLECT(serializable, serializer_function = bee::serialize_primitives) PrimitivesStructV3
+struct BEE_REFLECT(serializable, serializer = bee::serialize_primitives) PrimitivesStructV3
 {
     int       intval { -1 };
     u32       uval { 0 };
@@ -66,24 +66,73 @@ struct BEE_REFLECT(serializable, serializer_function = bee::serialize_primitives
     i32       nonserialized_field { -1 };
 };
 
+
 inline bool operator==(const PrimitivesStruct& lhs, const PrimitivesStruct& rhs)
 {
-    return memcmp(&lhs, &rhs, sizeof(PrimitivesStruct)) == 0;
+    return lhs.intval == rhs.intval
+        && lhs.uval == rhs.uval
+        && lhs.charval == rhs.charval
+        && lhs.boolval == rhs.boolval
+        && lhs.ubyteval == rhs.ubyteval
+        && lhs.ibyteval == rhs.ibyteval
+        && lhs.is_valid == rhs.is_valid
+        && lhs.nonserialized_field == rhs.nonserialized_field;
 }
 
 inline bool operator==(const PrimitivesStructV2& lhs, const PrimitivesStructV2& rhs)
 {
-    return memcmp(&lhs, &rhs, sizeof(PrimitivesStructV2)) == 0;
+    return lhs.intval == rhs.intval
+        && lhs.uval == rhs.uval
+        && lhs.charval == rhs.charval
+        && lhs.boolval == rhs.boolval
+        && lhs.ubyteval == rhs.ubyteval
+        && lhs.ibyteval == rhs.ibyteval
+        && lhs.nonserialized_field == rhs.nonserialized_field;
 }
 
 inline bool operator==(const PrimitivesStructV3& lhs, const PrimitivesStructV3& rhs)
 {
-    return memcmp(&lhs, &rhs, sizeof(PrimitivesStructV3)) == 0;
+    return lhs.intval == rhs.intval
+        && lhs.uval == rhs.uval
+        && lhs.charval == rhs.charval
+        && lhs.boolval == rhs.boolval
+        && lhs.ubyteval == rhs.ubyteval
+        && lhs.ibyteval == rhs.ibyteval
+        && lhs.is_valid == rhs.is_valid
+        && lhs.nonserialized_field == rhs.nonserialized_field;
+}
+
+inline bool operator!=(const PrimitivesStruct& lhs, const PrimitivesStruct& rhs)
+{
+    return !(lhs == rhs);
+}
+
+inline bool operator!=(const PrimitivesStructV2& lhs, const PrimitivesStructV2& rhs)
+{
+    return !(lhs == rhs);
+}
+
+inline bool operator!=(const PrimitivesStructV3& lhs, const PrimitivesStructV3& rhs)
+{
+    return !(lhs == rhs);
 }
 
 inline void serialize_primitives(SerializationBuilder* builder)
 {
+    builder->version(1)
+        .add(1, &PrimitivesStructV3::boolval)
+        .add(1, 2, &PrimitivesStructV3::is_valid)
+        .add(1, &PrimitivesStructV3::uval)
+        .add(1, &PrimitivesStructV3::charval);
+}
 
+inline void serialize_primitives_removed(SerializationBuilder* builder)
+{
+    builder->version(3)
+           .add(1, &PrimitivesStructV3::boolval)
+           .add(1, 2, &PrimitivesStructV3::is_valid)
+           .remove<u8>(1, 2, 109)
+           .add(1, &PrimitivesStructV3::charval);
 }
 
 

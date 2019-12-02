@@ -15,9 +15,14 @@
 #include <gtest/gtest.h>
 #include <rapidjson/filereadstream.h>
 
+
 using namespace bee;
 
-
+struct RecordHeader
+{
+    i32                 version { -1 };
+    SerializationFlags  serialization_flags { SerializationFlags::none };
+};
 
 TEST(SerializationTestsV2, primitives)
 {
@@ -29,12 +34,17 @@ TEST(SerializationTestsV2, primitives)
     test_struct.ubyteval = 100;
     test_struct.ibyteval = 64;
 
-    PrimitivesStructV2 test_struct_v2 {};
+    PrimitivesStructV2 test_struct_v2{};
     test_struct_v2.intval = 23;
     test_struct_v2.uval = 100;
     test_struct_v2.charval = 'j';
     test_struct_v2.boolval = false;
-    test_struct_v2.ibyteval = 64;
+
+    PrimitivesStructV3 test_struct_v3{};
+    test_struct_v3.boolval = true;
+    test_struct_v3.is_valid = true;
+    test_struct_v3.charval = 'j';
+    test_struct_v3.ubyteval = 1;
 
     // Test writing to buffer
     DynamicArray<u8> buffer;
@@ -43,19 +53,17 @@ TEST(SerializationTestsV2, primitives)
     StreamSerializerV2 serializer(&stream);
     serialize(SerializerMode::writing, &serializer, &test_struct);
 
-    // Version 1 of the primitive struct has the `is_valid` field serialized
-    const auto sizeof_record_header = sizeof(i32) * 2;
-    const auto expected_buffer_size = sizeof_record_header + sizeof(int) + sizeof(u32) + sizeof(char) + sizeof(bool)
-                                    + sizeof(u8) + sizeof(i8) + sizeof(u32) * 2 * 6;
-    ASSERT_EQ(buffer.size(), expected_buffer_size);
+    // Version 1 of the primitive struct has the `is_valid` field serialized and is a packed format
+    const auto expected_v1_size = sizeof(int) + sizeof(std::underlying_type_t<SerializationFlags>)
+                                + sizeof(int) + sizeof(u32) + sizeof(char) + sizeof(bool)
+                                + sizeof(u8) + sizeof(i8);
+    ASSERT_EQ(buffer.size(), expected_v1_size);
+
+    RecordHeader header{};
+    PrimitivesStruct read_struct{};
 
     stream.seek(0, io::SeekOrigin::begin);
-    int version = -1;
-    int field_count = -1;
-    u64 header = 0;
-    PrimitivesStruct read_struct{};
-    stream.read(&version, sizeof(int));
-    stream.read(&field_count, sizeof(int));
+    stream.read(&header, sizeof(RecordHeader));
 
     for (const Field& field : get_type_as<PrimitivesStruct, RecordType>()->fields)
     {
@@ -63,12 +71,12 @@ TEST(SerializationTestsV2, primitives)
         {
             continue;
         }
-        stream.read(&header, sizeof(u32) * 2);
+
         stream.read(reinterpret_cast<u8*>(&read_struct) + field.offset, field.type->size);
     }
 
-    ASSERT_EQ(version, serializer.version);
-    ASSERT_EQ(field_count, 6);
+    ASSERT_EQ(header.version, get_type<PrimitivesStruct>()->serialized_version);
+    ASSERT_EQ(header.serialization_flags, SerializationFlags::packed_format);
     ASSERT_EQ(read_struct, test_struct);
 
     // Test reading from written buffer into a struct
@@ -82,28 +90,33 @@ TEST(SerializationTestsV2, primitives)
      */
     serialize(SerializerMode::writing, &serializer, &test_struct_v2);
 
-    // Version 2 is missing the ubyteval field
-    ASSERT_EQ(buffer.size(), expected_buffer_size - sizeof(u32));
+    // Version 2 is missing the ubyteval field and is a table format
+    const auto expected_v2_size = sizeof(RecordHeader) + sizeof(i32) // field count
+                                + sizeof(int) + sizeof(u32) + sizeof(char) + sizeof(bool)
+                                + sizeof(FieldHeader) * 4;
+    ASSERT_EQ(buffer.size(), expected_v2_size);
 
-    stream.seek(0, io::SeekOrigin::begin);
-    version = -1;
-    field_count = -1;
     PrimitivesStructV2 read_struct_v2{};
-    stream.read(&version, sizeof(int));
-    stream.read(&field_count, sizeof(int));
+    new (&header) RecordHeader{};
+    i32 field_count = -1;
+    stream.seek(0, io::SeekOrigin::begin);
+    stream.read(&header, sizeof(RecordHeader));
+    stream.read(&field_count, sizeof(i32));
+
+    FieldHeader field_header{};
 
     for (const Field& field : get_type_as<PrimitivesStructV2, RecordType>()->fields)
     {
-        if (field.version_added <= 0)
+        if (field.version_added > 0 && 3 >= field.version_added && 3 < field.version_removed)
         {
-            continue;
+            stream.read(&field_header, sizeof(FieldHeader));
+            stream.read(reinterpret_cast<u8*>(&read_struct_v2) + field.offset, field.type->size);
         }
-        stream.read(&header, sizeof(u32) * 2);
-        stream.read(reinterpret_cast<u8*>(&read_struct_v2) + field.offset, field.type->size);
     }
 
-    ASSERT_EQ(field_count, 5);
-    ASSERT_EQ(version, serializer.version);
+    ASSERT_EQ(field_count, 4);
+    ASSERT_EQ(header.version, get_type<PrimitivesStructV2>()->serialized_version);
+    ASSERT_EQ(header.serialization_flags, SerializationFlags::table_format);
 
     // Version 2 contains a removed field - test to check that the default value is written out to the buffer
     ASSERT_EQ(read_struct_v2, test_struct_v2);
@@ -112,6 +125,26 @@ TEST(SerializationTestsV2, primitives)
     new (&read_struct_v2) PrimitivesStructV2{};
     serialize(SerializerMode::reading, &serializer, &read_struct_v2);
     ASSERT_EQ(read_struct_v2, test_struct_v2);
+
+    constexpr auto expected_v3_v1_size = sizeof(RecordHeader) + sizeof(bool) + sizeof(bool) + sizeof(char) + sizeof(u8);
+    constexpr auto expected_v3_v3_size = expected_v3_v1_size - sizeof(bool) - sizeof(u8);
+    serialize(SerializerMode::writing, &serializer, &test_struct_v3);
+
+    // Const cast the type to test backwards compat
+    auto type = const_cast<RecordType*>(get_type_as<PrimitivesStructV3, RecordType>());
+    type->serializer_function = serialize_primitives_removed;
+
+    PrimitivesStructV3 read_struct_v3{};
+    PrimitivesStructV3 expected_read_struct_v3{};
+    expected_read_struct_v3.boolval = true;
+    expected_read_struct_v3.charval = 'j';
+    expected_read_struct_v3.uval = 109;
+    serialize(SerializerMode::reading, &serializer, &read_struct_v3);
+    ASSERT_NE(test_struct_v3, read_struct_v3);
+    ASSERT_EQ(read_struct_v3, expected_read_struct_v3);
+
+    // Fix up the serializer function so it uses the original one
+    type->serializer_function = serialize_primitives;
 }
 
 

@@ -15,14 +15,16 @@ namespace bee {
 
 
 JSONSerializerV2::JSONSerializerV2(Allocator* allocator)
-    : parse_flags_(static_cast<rapidjson::ParseFlag>(-1)),
+    : Serializer(SerializerFormat::text),
+      parse_flags_(static_cast<rapidjson::ParseFlag>(-1)),
       stack_(allocator)
 {}
 
 JSONSerializerV2::JSONSerializerV2(const char* src, const rapidjson::ParseFlag parse_flags, Allocator* allocator)
-    : src_(src),
+    : Serializer(SerializerFormat::text),
       parse_flags_(parse_flags),
-      stack_(allocator)
+      stack_(allocator),
+      src_(src)
 {
     // Remove insitu flag if the src string is read-only
     if ((parse_flags & rapidjson::ParseFlag::kParseInsituFlag) != 0)
@@ -32,9 +34,10 @@ JSONSerializerV2::JSONSerializerV2(const char* src, const rapidjson::ParseFlag p
 }
 
 JSONSerializerV2::JSONSerializerV2(char* mutable_src, const rapidjson::ParseFlag parse_flags, Allocator* allocator)
-    : src_(mutable_src),
+    : Serializer(SerializerFormat::text),
       parse_flags_(parse_flags),
-      stack_(allocator)
+      stack_(allocator),
+      src_(mutable_src)
 {}
 
 bool JSONSerializerV2::begin()
@@ -121,9 +124,14 @@ void JSONSerializerV2::serialize_field(const Field& field)
     stack_.push_back(&member->value);
 }
 
-void JSONSerializerV2::serialize_enum(const EnumType* type, u8* data)
-{
+//void JSONSerializerV2::serialize_enum(const EnumType* type, u8* data)
+//{
+//
+//}
 
+void JSONSerializerV2::serialize_bytes(void* data, const i32 size)
+{
+    BEE_UNREACHABLE("Not implemented");
 }
 
 void JSONSerializerV2::serialize_fundamental(bool* data)

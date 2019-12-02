@@ -79,7 +79,8 @@ BEE_FLAGS(TypeKind, u32)
     template_decl           = 1u << 4u,
     field                   = 1u << 5u,
     function                = 1u << 6u,
-    fundamental             = 1u << 7u
+    fundamental             = 1u << 7u,
+    record                  = class_decl | struct_decl | union_decl
 };
 
 enum class AttributeKind
@@ -92,7 +93,7 @@ enum class AttributeKind
     invalid
 };
 
-BEE_FLAGS(SerializationFlags, u8)
+BEE_FLAGS(SerializationFlags, u32)
 {
     none            = 0u,
     /**
@@ -290,7 +291,8 @@ struct Field
     {}
 };
 
-struct SerializationBuilder;
+
+class SerializationBuilder;
 
 
 struct Type
@@ -431,14 +433,14 @@ struct FunctionTypeInvoker
     ReturnType invoke(Args&&... args)
     {
         BEE_ASSERT_F((get_signature<ReturnType, Args...>()) == signature, "invalid `invoke` signature: ReturnType and Args must match the signature of the FunctionType exactly - including cv and reference qualifications");
-        return static_cast<ReturnType(*)(Args...)>(address)(std::forward<Args>(args)...);
+        return reinterpret_cast<ReturnType(*)(Args...)>(address)(std::forward<Args>(args)...);
     }
 
     template <typename ReturnType, typename... Args>
     ReturnType invoke(Args&&... args) const
     {
         BEE_ASSERT_F((get_signature<ReturnType, Args...>()) == signature, "invalid `invoke` signature: ReturnType and Args must match the signature of the FunctionType exactly - including cv and reference qualifications");
-        return static_cast<ReturnType(*)(Args...)>(address)(std::forward<Args>(args)...);
+        return reinterpret_cast<ReturnType(*)(Args...)>(address)(std::forward<Args>(args)...);
     }
 
     template <typename ReturnType, typename... Args>

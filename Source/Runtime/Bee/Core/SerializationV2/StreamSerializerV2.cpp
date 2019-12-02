@@ -36,9 +36,21 @@ void StreamSerializerV2::serialize_field(const Field& field)
     // no-op
 }
 
-void StreamSerializerV2::serialize_enum(const bee::EnumType* type, u8* data)
+//void StreamSerializerV2::serialize_enum(const bee::EnumType* type, u8* data)
+//{
+//    serialize_type(this, type->constants[0].underlying_type, data);
+//}
+
+void StreamSerializerV2::serialize_bytes(void* data, const i32 size)
 {
-    serialize_type(this, type->constants[0].underlying_type, data);
+    if (mode == SerializerMode::reading)
+    {
+        stream->read(data, size);
+    }
+    else
+    {
+        stream->write(data, size);
+    }
 }
 
 template <typename T>
@@ -72,6 +84,5 @@ IMPLEMENT_BUILTIN(i8)
 IMPLEMENT_BUILTIN(i16)
 IMPLEMENT_BUILTIN(i32)
 IMPLEMENT_BUILTIN(i64)
-
 
 } // namespace bee
