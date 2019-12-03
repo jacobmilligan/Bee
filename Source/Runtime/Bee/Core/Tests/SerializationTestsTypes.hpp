@@ -131,9 +131,10 @@ inline void serialize_primitives_removed(SerializationBuilder* builder)
     builder->version(3)
            .add(1, &PrimitivesStructV3::boolval)
            .add(1, 2, &PrimitivesStructV3::is_valid)
-           .remove<u8>(1, 2, 109)
+           .remove<u32>(1, 2, 109)
            .add(1, &PrimitivesStructV3::charval);
 }
+
 
 
 struct BEE_REFLECT(serializable) Id
@@ -153,7 +154,7 @@ struct BEE_REFLECT(serializable) Settings
     NestedType nested;
 };
 
-struct BEE_REFLECT() TestStruct
+struct BEE_REFLECT(serializable) TestStruct
 {
     int value { 0 };
 

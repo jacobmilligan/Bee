@@ -32,12 +32,14 @@ struct BEE_CORE_API Serializer
     SerializerMode          mode { SerializerMode::reading };
     const SerializerFormat  format {SerializerFormat::unknown };
 
-    Serializer(const SerializerFormat serialized_format);
+    explicit Serializer(const SerializerFormat serialized_format);
 
     virtual bool begin() = 0;
     virtual void end() = 0;
     virtual void begin_record(const RecordType* type) = 0;
     virtual void end_record() = 0;
+    virtual void begin_array(i32* count) = 0;
+    virtual void end_array() = 0;
     virtual void serialize_field(const Field& field) = 0;
     virtual void serialize_bytes(void* data, const i32 size) = 0;
     virtual void serialize_fundamental(bool* data) = 0;

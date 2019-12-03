@@ -19,6 +19,12 @@
 namespace bee {
 namespace reflect {
 
+BEE_FLAGS(CodegenTypeOptions, u32)
+{
+    none                    = 0u,
+    get_kind_from_typespec  = 1u << 0u
+};
+
 
 String get_name_as_ident(const Type* type, Allocator* allocator = system_allocator())
 {
@@ -31,18 +37,33 @@ String get_name_as_ident(const Type* type, Allocator* allocator = system_allocat
 }
 
 
-void codegen_type(const Type* type, CodeGenerator* codegen)
+void codegen_type(const CodegenTypeOptions options, const Type* type, CodeGenerator* codegen)
 {
-    codegen->write(
-        "%u, %zu, %zu, %s, \"%s\", %d, %s, ",
-        type->hash,
-        type->size,
-        type->alignment,
-        reflection_type_kind_to_string(type->kind),
-        type->name,
-        type->serialized_version,
-        reflection_dump_flags(type->serialization_flags)
-    );
+    if ((options & CodegenTypeOptions::get_kind_from_typespec) != CodegenTypeOptions::none)
+    {
+        codegen->write(
+            "%u, %zu, %zu, \"%s\", %d, %s, ",
+            type->hash,
+            type->size,
+            type->alignment,
+            type->name,
+            type->serialized_version,
+            reflection_dump_flags(type->serialization_flags)
+        );
+    }
+    else
+    {
+        codegen->write(
+            "%u, %zu, %zu, %s, \"%s\", %d, %s, ",
+            type->hash,
+            type->size,
+            type->alignment,
+            reflection_type_kind_to_string(type->kind),
+            type->name,
+            type->serialized_version,
+            reflection_dump_flags(type->serialization_flags)
+        );
+    }
 }
 
 
@@ -116,6 +137,22 @@ void codegen_field(const Field& field, const char* attributes_array_name, CodeGe
     });
 }
 
+void codegen_array_type(const ArrayType* type, CodeGenerator* codegen)
+{
+    codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>()", type->name);
+    codegen->scope([&]()
+    {
+        codegen->write("static ArrayType instance");
+        codegen->scope([&]()
+        {
+            codegen_type(CodegenTypeOptions::get_kind_from_typespec, type, codegen);
+            codegen->append_line("%d, get_type<%s>()", type->element_count, type->element_type->name);
+        }, ";\n\n");
+        codegen->write_line("return &instance;");
+    });
+    codegen->write_line("// get_type<%s>()\n", type->name);
+}
+
 
 void codegen_function(const FunctionType* type, CodeGenerator* codegen)
 {
@@ -154,7 +191,7 @@ void codegen_function(const FunctionType* type, CodeGenerator* codegen)
     codegen->write("static FunctionType %s", function_name_as_ident.c_str());
     codegen->scope([&]()
     {
-        codegen_type(type, codegen);
+        codegen_type(CodegenTypeOptions::get_kind_from_typespec, type, codegen);
         codegen->append_line("%s, %s,", reflection_flag_to_string(type->storage_class), type->is_constexpr ? "true" : "false");
         codegen->newline();
 
@@ -180,7 +217,7 @@ void codegen_function(const FunctionType* type, CodeGenerator* codegen)
             codegen->append_line("{}, ");
         }
 
-        const auto as_dynamic_type = reinterpret_cast<const DynamicFunctionType*>(type);
+        const auto as_dynamic_type = type->as<DynamicFunctionType>();
         codegen->append_line("FunctionTypeInvoker::from<");
         for (const auto invoker_arg : enumerate(as_dynamic_type->invoker_type_args))
         {
@@ -194,8 +231,73 @@ void codegen_function(const FunctionType* type, CodeGenerator* codegen)
     }, ";");
 }
 
+void codegen_enum(const EnumType* type, CodeGenerator* codegen)
+{
+    codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>()", type->name);
+    codegen->scope([&]()
+    {
+        if (!type->attributes.empty())
+        {
+            codegen->write("static Attribute attributes[] =");
+            codegen->scope([&]()
+            {
+                for (const Attribute& attr : type->attributes)
+                {
+                    codegen_attribute(attr, codegen);
+                    codegen->append_line(",\n");
+                }
+            }, ";");
+            codegen->newline();
+            codegen->newline();
+        }
+
+        codegen->write("static EnumConstant constants[] =");
+        codegen->scope([&]()
+        {
+            for (const EnumConstant& constant : type->constants)
+            {
+                codegen->write_line("EnumConstant { \"%s\", %" PRIi64 ", get_type<%s>() },", constant.name, constant.value, constant.underlying_type->name);
+            }
+        }, ";");
+        codegen->newline();
+        codegen->newline();
+        codegen->write("static EnumType instance");
+        codegen->scope([&]()
+        {
+            codegen_type(CodegenTypeOptions::get_kind_from_typespec, type, codegen);
+            codegen->append_line(
+                "%s, Span<EnumConstant>(constants), %s",
+                type->is_scoped ? "true" : "false",
+                type->attributes.empty() ? "{}" : "Span<Attribute>(attributes)"
+            );
+        }, ";");
+        codegen->newline();
+        codegen->newline();
+        codegen->write_line("return &instance;");
+    });
+    codegen->write_line("// get_type<%s>()\n", type->name);
+}
+
 void codegen_record(const RecordType* type, CodeGenerator* codegen)
 {
+    const auto as_dynamic_record = type->as<DynamicRecordType>();
+
+    // Generate all the dependent types first - including any array types declared on this record
+    for (const ArrayType* array_type : as_dynamic_record->array_type_storage)
+    {
+        codegen_array_type(array_type, codegen);
+    }
+
+    for (const EnumType* nested_enum : as_dynamic_record->enums)
+    {
+        codegen_enum(nested_enum, codegen);
+    }
+
+    for (const RecordType* nested_record : as_dynamic_record->records)
+    {
+        codegen_record(nested_record, codegen);
+    }
+
     codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>()", type->name);
     codegen->scope([&]()
     {
@@ -284,7 +386,7 @@ void codegen_record(const RecordType* type, CodeGenerator* codegen)
             {
                 for (const RecordType* record : type->records)
                 {
-                    codegen->write_line("reinterpret_cast<const RecordType*>(get_type<%s>()),", record->name);
+                    codegen->write_line("get_type_as<%s, RecordType>(),", record->name);
                 }
             }, ";");
             codegen->write_line("// %s__records[]\n", name_as_ident.c_str());
@@ -297,7 +399,7 @@ void codegen_record(const RecordType* type, CodeGenerator* codegen)
             {
                 for (const EnumType* enum_type : type->enums)
                 {
-                    codegen->write_line("reinterpret_cast<const EnumType*>(get_type<%s>()),", enum_type->name);
+                    codegen->write_line("get_type_as<%s, EnumType>(),", enum_type->name);
                 }
             }, ";");
             codegen->write_line("// %s__enums[]\n", name_as_ident.c_str());
@@ -306,7 +408,7 @@ void codegen_record(const RecordType* type, CodeGenerator* codegen)
         codegen->write("static RecordType instance");
         codegen->scope([&]()
         {
-            codegen_type(type, codegen);
+            codegen_type(CodegenTypeOptions::none, type, codegen);
 
             if (!type->fields.empty())
             {
@@ -361,60 +463,11 @@ void codegen_record(const RecordType* type, CodeGenerator* codegen)
                 codegen->append_line("{}");
             }
 
-            const auto as_dynamic_record = reinterpret_cast<const DynamicRecordType*>(type);
             if (as_dynamic_record->serializer_function_name != nullptr)
             {
                 codegen->append_line(", &%s", as_dynamic_record->serializer_function_name);
             }
         }, ";\n\n");
-        codegen->write_line("return &instance;");
-    });
-    codegen->write_line("// get_type<%s>()\n", type->name);
-}
-
-
-void codegen_enum(const EnumType* type, CodeGenerator* codegen)
-{
-    codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>()", type->name);
-    codegen->scope([&]()
-    {
-        if (!type->attributes.empty())
-        {
-            codegen->write("static Attribute attributes[] =");
-            codegen->scope([&]()
-            {
-                for (const Attribute& attr : type->attributes)
-                {
-                    codegen_attribute(attr, codegen);
-                    codegen->append_line(",\n");
-                }
-            }, ";");
-            codegen->newline();
-            codegen->newline();
-        }
-
-        codegen->write("static EnumConstant constants[] =");
-        codegen->scope([&]()
-        {
-            for (const EnumConstant& constant : type->constants)
-            {
-                codegen->write_line("EnumConstant { \"%s\", %" PRIi64 ", get_type<%s>() },", constant.name, constant.value, constant.underlying_type->name);
-            }
-        }, ";");
-        codegen->newline();
-        codegen->newline();
-        codegen->write("static EnumType instance");
-        codegen->scope([&]()
-        {
-            codegen_type(type, codegen);
-            codegen->append_line(
-                "%s, Span<EnumConstant>(constants), %s",
-                type->is_scoped ? "true" : "false",
-                type->attributes.empty() ? "{}" : "Span<Attribute>(attributes)"
-            );
-        }, ";");
-        codegen->newline();
-        codegen->newline();
         codegen->write_line("return &instance;");
     });
     codegen->write_line("// get_type<%s>()\n", type->name);
@@ -431,7 +484,8 @@ void generate_reflection(const Path& source_location, const Span<const Type*>& t
     codegen.newline();
 
     codegen.write("namespace bee ");
-    codegen.scope([&]() {
+    codegen.scope([&]()
+    {
         for (const Type* type : types)
         {
             switch (type->kind)
@@ -440,24 +494,13 @@ void generate_reflection(const Path& source_location, const Span<const Type*>& t
                 case TypeKind::struct_decl:
                 case TypeKind::union_decl:
                 {
-                    const auto as_record = reinterpret_cast<const RecordType*>(type);
-
-                    for (const EnumType* nested_enum : as_record->enums)
-                    {
-                        codegen_enum(nested_enum, &codegen);
-                    }
-
-                    for (const RecordType* nested_record : as_record->records)
-                    {
-                        codegen_record(nested_record, &codegen);
-                    }
-
+                    const auto as_record = type->as<RecordType>();
                     codegen_record(as_record, &codegen);
                     break;
                 }
                 case TypeKind::enum_decl:
                 {
-                    codegen_enum(reinterpret_cast<const EnumType*>(type), &codegen);
+                    codegen_enum(type->as<EnumType>(), &codegen);
                     break;
                 }
                 case TypeKind::template_decl:
@@ -469,7 +512,7 @@ void generate_reflection(const Path& source_location, const Span<const Type*>& t
                     codegen.write("template <> BEE_EXPORT_SYMBOL const Type* get_type<BEE_NONMEMBER(%s)>()", type->name);
                     codegen.scope([&]()
                     {
-                        codegen_function(reinterpret_cast<const FunctionType*>(type), &codegen);
+                        codegen_function(type->as<FunctionType>(), &codegen);
                         codegen.newline();
                         codegen.write_line("return &%s;", get_name_as_ident(type, temp_allocator()).c_str());
                     });
@@ -478,6 +521,11 @@ void generate_reflection(const Path& source_location, const Span<const Type*>& t
                 }
                 case TypeKind::fundamental:
                     break;
+                case TypeKind::array:
+                {
+                    codegen_array_type(type->as<ArrayType>(), &codegen);
+                    break;
+                }
                 default: break;
             }
         }
@@ -502,7 +550,7 @@ void generate_registration(const Path& source_location, const Span<const Type*>&
     u32 offset = 0;
     for (const Type* type : types)
     {
-        if (type->kind == TypeKind::enum_decl && !reinterpret_cast<const EnumType*>(type)->is_scoped)
+        if (type->kind == TypeKind::enum_decl && !type->as<EnumType>()->is_scoped)
         {
             log_warning("bee-reflect: skipping dynamic reflection for unscoped `enum %s`. Consider converting to scoped `enum class` to enable dynamic reflection.", type->name);
             continue;
@@ -530,7 +578,7 @@ void generate_registration(const Path& source_location, const Span<const Type*>&
     // Write out all the type macros
     for (const auto type : enumerate(types))
     {
-        if (type.value->kind == TypeKind::enum_decl && !reinterpret_cast<const EnumType*>(type.value)->is_scoped)
+        if (type.value->kind == TypeKind::enum_decl && !type.value->as<EnumType>()->is_scoped)
         {
             continue;
         }

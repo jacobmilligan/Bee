@@ -30,6 +30,7 @@ SerializationBuilder& SerializationBuilder::version(const i32 value)
 {
     version_ = value;
     serialize_version(serializer_, &version_);
+    BEE_ASSERT_F(version_ <= value, "serialization error for type `%s`: SerializationBuilder functions are not forward-compatible with versions from the future", serialized_type_->name);
     return *this;
 }
 
@@ -41,10 +42,16 @@ void serialize_version(Serializer* serializer, i32* version)
     serializer->serialize_fundamental(version);
 }
 
+void serialize_element_count(Serializer* serializer, i32* count)
+{
+    static Field element_count_field(get_type_hash("bee::element_count"), 0, Qualifier::none, StorageClass::none, "bee::element_count", get_type<i32>(), {}, 1);
+    serializer->serialize_field(element_count_field);
+    serializer->serialize_fundamental(count);
+}
 
 void serialize_serialization_flags(Serializer* serializer, SerializationFlags* flags)
 {
-    static Field flags_field(get_type_hash("bee::serialization_flags"), 0, Qualifier::none, StorageClass::none, "bee::version", get_type<std::underlying_type_t<SerializationFlags>>(), {}, 1);
+    static Field flags_field(get_type_hash("bee::flags"), 0, Qualifier::none, StorageClass::none, "bee::flags", get_type<std::underlying_type_t<SerializationFlags>>(), {}, 1);
 
     serializer->serialize_field(flags_field);
 
@@ -134,7 +141,7 @@ void serialize_type(const i32 serialized_version, Serializer* serializer, const 
 {
     if (type->serialized_version <= 0)
     {
-        log_error("Skipping serialization for `%s`: type is not marked for serialization using the `serialized_version` attribute", type->name);
+        log_error("Skipping serialization for `%s`: type is not marked for serialization using the `serializable` attribute", type->name);
         return;
     }
 
@@ -143,7 +150,7 @@ void serialize_type(const i32 serialized_version, Serializer* serializer, const 
     {
         BEE_ASSERT_F((type->kind & TypeKind::record) != TypeKind::unknown, "Custom serializer functions must only be used with record types");
 
-        const auto record_type = reinterpret_cast<const RecordType*>(type);
+        const auto record_type = type->as<RecordType>();
 
         BEE_ASSERT_F(record_type->serializer_function != nullptr, "Missing serializer function for type %s", type->name);
 
@@ -160,7 +167,7 @@ void serialize_type(const i32 serialized_version, Serializer* serializer, const 
         case TypeKind::struct_decl:
         case TypeKind::union_decl:
         {
-            const auto record_type = reinterpret_cast<const RecordType*>(type);
+            auto record_type = type->as<RecordType>();
             auto serialization_flags = type->serialization_flags;
 
             serializer->begin_record(record_type);
@@ -172,6 +179,7 @@ void serialize_type(const i32 serialized_version, Serializer* serializer, const 
 
             if (serializer->format == SerializerFormat::text || (serialization_flags & SerializationFlags::packed_format) == SerializationFlags::packed_format)
             {
+                BEE_ASSERT_F(version <= serialized_version, "serialization error for type `%s`: structures serialized using `packed_format` are not forward-compatible with versions from the future", type->name);
                 serialize_packed_record(version, serializer, record_type, data);
             }
 
@@ -184,9 +192,25 @@ void serialize_type(const i32 serialized_version, Serializer* serializer, const 
 
             break;
         }
+        case TypeKind::array:
+        {
+            auto array_type = type->as<ArrayType>();
+            auto element_type = array_type->element_type;
+
+            i32 element_count = array_type->element_count;
+            serializer->begin_array(&element_count);
+
+            for (int element = 0; element < element_count; ++element)
+            {
+                serialize_type(element_type->serialized_version, serializer, element_type, data + element_type->size * element);
+            }
+
+            serializer->end_array();
+            break;
+        }
         case TypeKind::fundamental:
         {
-            const auto fundamental_type = reinterpret_cast<const FundamentalType*>(type);
+            const auto fundamental_type = type->as<FundamentalType>();
 
 #define BEE_SERIALIZE_FUNDAMENTAL(kind_name, serialized_type) case FundamentalKind::kind_name: { serializer->serialize_fundamental(reinterpret_cast<serialized_type*>(data)); break; }
             switch (fundamental_type->fundamental_kind)

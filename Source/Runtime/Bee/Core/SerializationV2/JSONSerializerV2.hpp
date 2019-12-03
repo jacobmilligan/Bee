@@ -37,6 +37,8 @@ public:
     void end() override;
     void begin_record(const RecordType* type) override;
     void end_record() override;
+    void begin_array(i32* count) override;
+    void end_array() override;
     void serialize_field(const Field& field) override;
     void serialize_bytes(void* data, const i32 size) override;
     void serialize_fundamental(bool* data) override;
@@ -58,7 +60,23 @@ private:
     rapidjson::ParseFlag                                parse_flags_;
     rapidjson::Document                                 reader_doc_;
     DynamicArray<rapidjson::Value*>                     stack_;
+    i32                                                 current_element_ { 0 };
     const char*                                         src_ { nullptr };
+
+    inline void next_element_if_array()
+    {
+        if (!stack_.empty() && stack_.back()->IsArray())
+        {
+            ++current_element_;
+        }
+    }
+
+    inline void end_read_scope()
+    {
+        BEE_ASSERT(!stack_.empty());
+        stack_.pop_back();
+        next_element_if_array();
+    }
 };
 
 

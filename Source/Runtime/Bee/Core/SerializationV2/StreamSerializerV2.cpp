@@ -31,6 +31,23 @@ void StreamSerializerV2::end_record()
     // no-op
 }
 
+void StreamSerializerV2::begin_array(i32* count)
+{
+    if (mode == SerializerMode::writing)
+    {
+        stream->write(count, sizeof(i32));
+    }
+    else
+    {
+        stream->read(count, sizeof(i32));
+    }
+}
+
+void StreamSerializerV2::end_array()
+{
+    // no-op
+}
+
 void StreamSerializerV2::serialize_field(const Field& field)
 {
     // no-op

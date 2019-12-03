@@ -80,6 +80,7 @@ BEE_FLAGS(TypeKind, u32)
     field                   = 1u << 5u,
     function                = 1u << 6u,
     fundamental             = 1u << 7u,
+    array                   = 1u << 8u,
     record                  = class_decl | struct_decl | union_decl
 };
 
@@ -330,6 +331,7 @@ struct Type
     inline const T* as() const
     {
         static_assert(std::is_base_of_v<Type, T>, "`T` must derive from bee::Type");
+        BEE_ASSERT_F((T::static_kind & kind) != TypeKind::unknown, "Invalid type cast");
         return reinterpret_cast<const T*>(this);
     }
 
@@ -355,7 +357,60 @@ struct Type
 };
 
 
-struct FundamentalType final : public Type
+template <TypeKind Kind>
+struct TypeSpec : public Type
+{
+    static constexpr TypeKind static_kind = Kind;
+
+    TypeSpec() = default;
+
+    TypeSpec(
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const char* new_name,
+        const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags
+    ) : Type(new_hash, new_size, new_alignment, Kind, new_name, new_serialized_version, new_serialization_flags)
+    {}
+
+    TypeSpec(
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const TypeKind specialized_kind,
+        const char* new_name,
+        const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags
+    ) : Type(new_hash, new_size, new_alignment, specialized_kind, new_name, new_serialized_version, new_serialization_flags)
+    {}
+};
+
+
+struct ArrayType final : public TypeSpec<TypeKind::array>
+{
+    i32         element_count { 0 };
+    const Type* element_type { nullptr };
+
+    ArrayType() = default;
+
+    ArrayType(
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const char* new_name,
+        const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags,
+        const i32 count,
+        const Type* type
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags),
+        element_count(count),
+        element_type(type)
+    {}
+};
+
+
+struct FundamentalType final : public TypeSpec<TypeKind::fundamental>
 {
     FundamentalKind fundamental_kind { FundamentalKind::count };
 
@@ -365,14 +420,14 @@ struct FundamentalType final : public Type
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
-        const TypeKind new_kind,
         const char* new_name,
         const i32 new_serialized_version,
         const FundamentalKind new_fundamental_kind
-    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, SerializationFlags::none),
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, SerializationFlags::none),
         fundamental_kind(new_fundamental_kind)
     {}
 };
+
 
 
 struct EnumConstant
@@ -390,7 +445,7 @@ struct EnumConstant
     {}
 };
 
-struct EnumType : public Type
+struct EnumType : public TypeSpec<TypeKind::enum_decl>
 {
     bool                is_scoped { false };
     Span<EnumConstant>  constants;
@@ -402,14 +457,13 @@ struct EnumType : public Type
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
-        const TypeKind new_kind,
         const char* new_name,
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
         const bool scoped,
         const Span<EnumConstant> new_constants,
         const Span<Attribute> new_attributes
-    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags),
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags),
         is_scoped(scoped),
         constants(new_constants),
         attributes(new_attributes)
@@ -465,7 +519,7 @@ private:
 };
 
 
-struct FunctionType : public Type
+struct FunctionType : public TypeSpec<TypeKind::function>
 {
     StorageClass        storage_class { StorageClass::none };
     bool                is_constexpr { false };
@@ -474,7 +528,7 @@ struct FunctionType : public Type
     Span<Attribute>     attributes;
     FunctionTypeInvoker invoker;
 
-    using Type::Type;
+    using TypeSpec::TypeSpec;
 
     FunctionType() = default;
 
@@ -482,7 +536,6 @@ struct FunctionType : public Type
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
-        const TypeKind new_kind,
         const char* new_name,
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
@@ -492,7 +545,7 @@ struct FunctionType : public Type
         const Span<Field> new_parameters,
         const Span<Attribute> new_attributes,
         FunctionTypeInvoker callable_invoker
-    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags),
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags),
         storage_class(new_storage_class),
         is_constexpr(make_constexpr),
         return_value(new_return_value),
@@ -515,7 +568,7 @@ struct FunctionType : public Type
 };
 
 
-struct RecordType : public Type
+struct RecordType : public TypeSpec<TypeKind::record>
 {
     using serializer_function_t = void(*)(SerializationBuilder*);
 
@@ -528,7 +581,7 @@ struct RecordType : public Type
     bool                        is_template { false };
     serializer_function_t       serializer_function { nullptr };
 
-    using Type::Type;
+    using TypeSpec::TypeSpec;
 
     RecordType() = default;
 
@@ -546,7 +599,7 @@ struct RecordType : public Type
         const Span<const EnumType*> nested_enums,
         const Span<const RecordType*> nested_records,
         serializer_function_t new_serializer_function = nullptr
-    ) : Type(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags),
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags),
         fields(new_fields),
         functions(new_functions),
         attributes(new_attributes),
@@ -556,10 +609,10 @@ struct RecordType : public Type
     {}
 };
 
-struct UnknownType : public Type
+struct UnknownType final : public TypeSpec<TypeKind::unknown>
 {
     UnknownType()
-        : Type(0, 0, 0, TypeKind::unknown, "bee::UnknownType", 0, SerializationFlags::none)
+        : TypeSpec(0, 0, 0, "bee::UnknownType", 0, SerializationFlags::none)
     {}
 };
 

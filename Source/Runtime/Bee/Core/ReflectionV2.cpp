@@ -49,7 +49,6 @@ constexpr size_t sizeof_helper<void>()
             get_type_hash(#builtin_type),                               \
             sizeof_helper<builtin_type>(),                              \
             alignof_helper<builtin_type>(),                             \
-            TypeKind::fundamental,                                      \
             #builtin_type,                                              \
             1,                                                          \
             FundamentalKind::function_name##_kind                       \
@@ -333,15 +332,17 @@ const char* reflection_flag_to_string(const Qualifier qualifier)
 
     switch (qualifier)
     {
+        REFL_FLAG(none);
         REFL_FLAG(cv_const);
         REFL_FLAG(cv_volatile);
         REFL_FLAG(lvalue_ref);
         REFL_FLAG(rvalue_ref);
         REFL_FLAG(pointer);
-        default: break;
+        default:
+        {
+            BEE_UNREACHABLE("Missing Qualifier string representation");
+        }
     }
-
-    return "Qualifier::none";
 #undef REFL_FLAG
 }
 
@@ -351,16 +352,18 @@ const char* reflection_flag_to_string(const StorageClass storage_class)
 
     switch (storage_class)
     {
+        REFL_FLAG(none);
         REFL_FLAG(auto_storage);
         REFL_FLAG(register_storage);
         REFL_FLAG(static_storage);
         REFL_FLAG(extern_storage);
         REFL_FLAG(thread_local_storage);
         REFL_FLAG(mutable_storage);
-        default: break;
+        default:
+        {
+            BEE_UNREACHABLE("Missing StorageClass string representation");
+        }
     }
-
-    return "StorageClass::none";
 #undef REFL_FLAG
 }
 
@@ -370,13 +373,15 @@ const char* reflection_flag_to_string(const SerializationFlags serialization_fla
 
     switch (serialization_flags)
     {
+        REFL_FLAG(none);
         REFL_FLAG(packed_format);
         REFL_FLAG(table_format);
         REFL_FLAG(uses_builder);
-        default: break;
+        default:
+        {
+            BEE_UNREACHABLE("Missing SerializationFlags string representation");
+        }
     }
-
-    return "SerializationFlags::none";
 #undef REFL_FLAG
 }
 
@@ -386,6 +391,7 @@ const char* reflection_type_kind_to_string(const TypeKind type_kind)
 
     switch (type_kind)
     {
+        TYPE_KIND(unknown);
         TYPE_KIND(class_decl);
         TYPE_KIND(struct_decl);
         TYPE_KIND(enum_decl);
@@ -394,10 +400,12 @@ const char* reflection_type_kind_to_string(const TypeKind type_kind)
         TYPE_KIND(field);
         TYPE_KIND(function);
         TYPE_KIND(fundamental);
-        default: break;
+        TYPE_KIND(array);
+        default:
+        {
+            BEE_UNREACHABLE("Missing TypeKind string representation");
+        }
     }
-
-    return "TypeKind::unknown";
 #undef TYPE_KIND
 }
 

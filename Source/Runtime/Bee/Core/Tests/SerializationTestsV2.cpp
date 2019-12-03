@@ -130,58 +130,74 @@ TEST(SerializationTestsV2, primitives)
     constexpr auto expected_v3_v3_size = expected_v3_v1_size - sizeof(bool) - sizeof(u8);
     serialize(SerializerMode::writing, &serializer, &test_struct_v3);
 
-    // Const cast the type to test backwards compat
+    // The serialized test struct shouldn't have the ubyteval member
+    auto expected_read_struct_v3 = test_struct_v3;
+    expected_read_struct_v3.ubyteval = 0;
+
+    PrimitivesStructV3 read_struct_v3{};
+    serialize(SerializerMode::reading, &serializer, &read_struct_v3);
+    ASSERT_EQ(expected_read_struct_v3, read_struct_v3);
+
+    // Const cast the type to test backwards compat using a function with version set to 3 and a few removed fields
     auto type = const_cast<RecordType*>(get_type_as<PrimitivesStructV3, RecordType>());
     type->serializer_function = serialize_primitives_removed;
 
-    PrimitivesStructV3 read_struct_v3{};
-    PrimitivesStructV3 expected_read_struct_v3{};
-    expected_read_struct_v3.boolval = true;
-    expected_read_struct_v3.charval = 'j';
-    expected_read_struct_v3.uval = 109;
+    new (&read_struct_v3) PrimitivesStructV3{};
     serialize(SerializerMode::reading, &serializer, &read_struct_v3);
     ASSERT_NE(test_struct_v3, read_struct_v3);
     ASSERT_EQ(read_struct_v3, expected_read_struct_v3);
+    
+    serialize(SerializerMode::writing, &serializer, &test_struct_v3);
 
-    // Fix up the serializer function so it uses the original one
+    // Fix up the serializer function so it uses the original one and we can test forward compat
     type->serializer_function = serialize_primitives;
+
+    // Should fail on serializing data from the future
+    new (&read_struct_v3) PrimitivesStructV3{};
+    ASSERT_DEATH(serialize(SerializerMode::reading, &serializer, &read_struct_v3), ".*forward-compatible.*");
 }
 
 
 TEST(SerializationTestsV2, complex_type)
 {
     char json_buffer[] = R"({
-    {
+    "bee::version": 1,
+    "bee::flags": 0,
+    "value": 25,
+    "settings": {
         "bee::version": 1,
-        "value": 25,
-        {
+        "bee::flags": 0,
+        "is_active": true,
+        "nested": {
             "bee::version": 1,
-            "is_active": true,
-            {
-                "bee::version": 1,
-                "id_values": [
-                    {
-                        "bee::version": 1,
-                        "value": 0
-                    },
-                    {
-                        "bee::version": 1,
-                        "value": 1
-                    },
-                    {
-                        "bee::version": 1,
-                        "value": 2
-                    },
-                    {
-                        "bee::version": 1,
-                        "value": 3
-                    },
-                    {
-                        "bee::version": 1,
-                        "value": 4
-                    }
-                ]
-            }
+            "bee::flags": 0,
+            "id_values": [
+                {
+                    "bee::version": 1,
+                    "bee::flags": 0,
+                    "value": 0
+                },
+                {
+                    "bee::version": 1,
+                    "bee::flags": 0,
+                    "value": 1
+                },
+                {
+                    "bee::version": 1,
+                    "bee::flags": 0,
+                    "value": 2
+                },
+                {
+                    "bee::version": 1,
+                    "bee::flags": 0,
+                    "value": 3
+                },
+                {
+                    "bee::version": 1,
+                    "bee::flags": 0,
+                    "value": 4
+                }
+            ]
         }
     }
 })";

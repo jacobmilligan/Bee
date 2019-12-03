@@ -26,6 +26,8 @@ struct BEE_CORE_API StreamSerializerV2 final : public Serializer
     void end() override;
     void begin_record(const RecordType* type) override;
     void end_record() override;
+    void begin_array(i32* count) override;
+    void end_array() override;
     void serialize_field(const Field& field) override;
     void serialize_bytes(void* data, const i32 size) override;
     void serialize_fundamental(bool* data) override;

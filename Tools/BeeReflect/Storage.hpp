@@ -111,6 +111,7 @@ struct DynamicRecordType final : public RecordType
     DynamicArray<Attribute>                 attribute_storage;
     DynamicArray<const EnumType*>           enum_storage;
     DynamicArray<const RecordType*>         record_storage;
+    DynamicArray<const ArrayType*>          array_type_storage;
     const char*                             serializer_function_name { nullptr };
 
     DynamicRecordType() = default;
@@ -121,7 +122,8 @@ struct DynamicRecordType final : public RecordType
           function_storage(allocator),
           attribute_storage(allocator),
           enum_storage(allocator),
-          record_storage(allocator)
+          record_storage(allocator),
+          array_type_storage(allocator)
     {}
 
     void add_field(const OrderedField& field)
@@ -147,6 +149,11 @@ struct DynamicRecordType final : public RecordType
     {
         enum_storage.push_back(enum_type);
         enums = enum_storage.span();
+    }
+
+    void add_array_type(const ArrayType* array_type)
+    {
+        array_type_storage.push_back(array_type);
     }
 };
 

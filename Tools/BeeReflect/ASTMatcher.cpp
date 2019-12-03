@@ -453,6 +453,53 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, DynamicRecordType* 
         return;
     }
 
+    auto qualtype = decl.getType();
+    if (qualtype->isConstantArrayType())
+    {
+        const auto array_type_name = print_qualtype_name(qualtype, decl.getASTContext());
+        const auto hash = get_type_hash({ array_type_name.data(), static_cast<i32>(array_type_name.size()) });
+        if (storage->find_type(hash) == nullptr)
+        {
+            auto clang_type = llvm::dyn_cast<clang::ConstantArrayType>(qualtype);
+            auto new_array_type = allocator->allocate_type<ArrayType>();
+            const auto element_type = clang_type->getElementType();
+
+            new_array_type->hash = hash;
+            new_array_type->name = allocator->allocate_name(array_type_name);
+            new_array_type->kind = TypeKind::array;
+            new_array_type->element_count = sign_cast<i32>(*clang_type->getSize().getRawData());
+            new_array_type->size = 0; // functions only have size when used as function pointer
+            new_array_type->alignment = 0;
+            new_array_type->serialized_version = 1;
+
+            const auto element_type_name = print_qualtype_name(element_type, decl.getASTContext());
+            const auto element_type_hash = get_type_hash(element_type_name.c_str());
+            new_array_type->element_type = storage->find_type(element_type_hash);
+
+            if (new_array_type->element_type != nullptr)
+            {
+                new_array_type->size = new_array_type->element_type->size * new_array_type->element_count; // functions only have size when used as function pointer
+                new_array_type->alignment = new_array_type->element_type->alignment;
+            }
+            else
+            {
+                diagnostics.Report(decl.getLocation(), diagnostics.warn_unknown_field_type).AddString(element_type_name);
+            }
+
+            if (parent == nullptr)
+            {
+                storage->add_type(new_array_type, decl);
+            }
+            else
+            {
+                if (storage->try_map_type(new_array_type))
+                {
+                    parent->add_array_type(new_array_type);
+                }
+            }
+        }
+    }
+
     auto field = create_field<OrderedField>(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), parent, decl.getType(), decl.getTypeSpecStartLoc());
     if (field.type == nullptr)
     {

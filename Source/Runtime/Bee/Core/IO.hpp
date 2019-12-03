@@ -157,7 +157,7 @@ public:
 
     virtual ~Stream() = default;
 
-    virtual i32 write(const void* dst_buffer, i32 dst_buffer_size)
+    virtual i32 write(const void* src_buffer, i32 src_buffer_size)
     {
         // no-op
         return 0;

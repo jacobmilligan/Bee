@@ -45,7 +45,6 @@ bool JSONSerializerV2::begin()
     if (mode == SerializerMode::reading)
     {
         stack_.clear();
-        reader_doc_.Clear();
 
         if ((parse_flags_ & rapidjson::ParseFlag::kParseInsituFlag) != 0)
         {
@@ -67,14 +66,11 @@ bool JSONSerializerV2::begin()
             log_error("JSONSerializer: expected object as root element");
             return false;
         }
-
-        stack_.push_back(&reader_doc_);
     }
     else
     {
         string_buffer_.Clear();
         writer_.Reset(string_buffer_);
-        writer_.StartObject();
     }
 
     return true;
@@ -82,10 +78,7 @@ bool JSONSerializerV2::begin()
 
 void JSONSerializerV2::end()
 {
-    if (mode == SerializerMode::writing)
-    {
-        writer_.EndObject();
-    }
+    // no-op
 }
 
 void JSONSerializerV2::begin_record(const RecordType* type)
@@ -93,12 +86,60 @@ void JSONSerializerV2::begin_record(const RecordType* type)
     if (mode == SerializerMode::writing)
     {
         writer_.StartObject();
+        return;
+    }
+
+    if (stack_.empty())
+    {
+        stack_.push_back(&reader_doc_);
+        return;
+    }
+
+    if (stack_.back()->IsArray())
+    {
+        auto element = &stack_.back()->GetArray()[current_element_];
+        BEE_ASSERT_F(element->IsObject(), "Invalid type: %d", element->GetType());
+        stack_.push_back(element);
     }
 }
 
 void JSONSerializerV2::end_record()
 {
-    writer_.EndObject();
+    if (mode == SerializerMode::writing)
+    {
+        writer_.EndObject();
+    }
+    else
+    {
+        BEE_ASSERT_F(stack_.back()->IsObject(), "Invalid type: %d", stack_.back()->GetType());
+        end_read_scope();
+    }
+}
+
+void JSONSerializerV2::begin_array(i32* count)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.StartArray();
+        return;
+    }
+
+    BEE_ASSERT_F(stack_.back()->IsArray(), "Invalid type: %d", stack_.back()->GetType());
+    *count = static_cast<i32>(stack_.back()->GetArray().Size());
+    current_element_ = 0;
+}
+
+void JSONSerializerV2::end_array()
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.EndArray();
+    }
+    else
+    {
+        BEE_ASSERT_F(stack_.back()->IsArray(), "Invalid type: %d", stack_.back()->GetType());
+        end_read_scope();
+    }
 }
 
 void JSONSerializerV2::serialize_field(const Field& field)
@@ -108,9 +149,9 @@ void JSONSerializerV2::serialize_field(const Field& field)
         writer_.Key(field.name);
         return;
     }
-
+    
     // If current element is not an object then we can't serialize a field
-    if (BEE_FAIL_F(stack_.back()->IsObject(), "JSONSerializer: parent element is not an object type"))
+    if (BEE_FAIL_F(stack_.back()->IsObject(), "JSONSerializer: expected object type but got: %d", stack_.back()->GetType()))
     {
         return;
     }
@@ -145,6 +186,7 @@ void JSONSerializerV2::serialize_fundamental(bool* data)
     if (BEE_CHECK_F(stack_.back()->IsBool(), "JSONSerializer: current field is not a boolean type"))
     {
         *data = stack_.back()->GetBool();
+        end_read_scope();
     }
 }
 
@@ -159,6 +201,7 @@ void JSONSerializerV2::serialize_fundamental(i8* data)
     if (BEE_CHECK_F(stack_.back()->IsInt(), "JSONSerializer: current field is not an integer type"))
     {
         *data = sign_cast<i8>(stack_.back()->GetInt());
+        end_read_scope();
     }
 }
 
@@ -173,6 +216,7 @@ void JSONSerializerV2::serialize_fundamental(i16* data)
     if (BEE_CHECK_F(stack_.back()->IsInt(), "JSONSerializer: current field is not an integer type"))
     {
         *data = sign_cast<i16>(stack_.back()->GetInt());
+        end_read_scope();
     }
 }
 
@@ -187,6 +231,7 @@ void JSONSerializerV2::serialize_fundamental(i32* data)
     if (BEE_CHECK_F(stack_.back()->IsInt(), "JSONSerializer: current field is not an integer type"))
     {
         *data = stack_.back()->GetInt();
+        end_read_scope();
     }
 }
 
@@ -201,6 +246,7 @@ void JSONSerializerV2::serialize_fundamental(i64* data)
     if (BEE_CHECK_F(stack_.back()->IsInt64(), "JSONSerializer: current field is not a 64-bit integer type"))
     {
         *data = stack_.back()->GetInt64();
+        end_read_scope();
     }
 }
 
@@ -215,6 +261,7 @@ void JSONSerializerV2::serialize_fundamental(u8* data)
     if (BEE_CHECK_F(stack_.back()->IsUint(), "JSONSerializer: current field is not an unsigned integer type"))
     {
         *data = sign_cast<u8>(stack_.back()->GetUint());
+        end_read_scope();
     }
 }
 
@@ -229,6 +276,7 @@ void JSONSerializerV2::serialize_fundamental(u16* data)
     if (BEE_CHECK_F(stack_.back()->IsUint(), "JSONSerializer: current field is not an unsigned integer type"))
     {
         *data = sign_cast<u16>(stack_.back()->GetUint());
+        end_read_scope();
     }
 }
 
@@ -243,6 +291,7 @@ void JSONSerializerV2::serialize_fundamental(u32* data)
     if (BEE_CHECK_F(stack_.back()->IsUint(), "JSONSerializer: current field is not an unsigned integer type"))
     {
         *data = stack_.back()->GetUint();
+        end_read_scope();
     }
 }
 
@@ -257,6 +306,7 @@ void JSONSerializerV2::serialize_fundamental(u64* data)
     if (BEE_CHECK_F(stack_.back()->IsUint64(), "JSONSerializer: current field is not a 64-bit unsigned integer type"))
     {
         *data = stack_.back()->GetUint64();
+        end_read_scope();
     }
 }
 
@@ -271,6 +321,7 @@ void JSONSerializerV2::serialize_fundamental(char* data)
     if (BEE_CHECK_F(stack_.back()->IsString(), "JSONSerializer: current field is not a char type"))
     {
         memcpy(data, stack_.back()->GetString(), math::min(stack_.back()->GetStringLength(), 1u));
+        end_read_scope();
     }
 }
 
@@ -285,6 +336,7 @@ void JSONSerializerV2::serialize_fundamental(float* data)
     if (BEE_CHECK_F(stack_.back()->IsDouble(), "JSONSerializer: current field is not a floating point type"))
     {
         *data = sign_cast<float>(stack_.back()->GetDouble());
+        end_read_scope();
     }
 }
 
@@ -299,6 +351,7 @@ void JSONSerializerV2::serialize_fundamental(double* data)
     if (BEE_CHECK_F(stack_.back()->IsDouble(), "JSONSerializer: current field is not a floating point type"))
     {
         *data = stack_.back()->GetDouble();
+        end_read_scope();
     }
 }
 
