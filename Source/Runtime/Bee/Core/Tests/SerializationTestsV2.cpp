@@ -10,7 +10,9 @@
 #include <Bee/Core/SerializationV2/Serialization.hpp>
 #include <Bee/Core/SerializationV2/JSONSerializerV2.hpp>
 #include <Bee/Core/SerializationV2/StreamSerializerV2.hpp>
+#include <Bee/Core/SerializationV2/BinarySerializer.hpp>
 #include <Bee/Core/IO.hpp>
+#include <Bee/Core/Containers/HashMap.hpp>
 
 #include <gtest/gtest.h>
 #include <rapidjson/filereadstream.h>
@@ -264,77 +266,78 @@ void assert_serialized_datav2(u8* data_begin, const Array<T, Mode>& expected, i3
     *serialized_size = sizeof(i32) + cursor;
 }
 
-//TEST(SerializationTestsV2, core_types)
-//{
-//    bee::MemorySerializer::buffer_t buffer;
-//    bee::MemorySerializer serializer(&buffer);
-//
-//    String str = "Jacob";
-//    DynamicArray<String> string_array = { "Jacob", "Is", "Cool" };
-//    FixedArray<FixedArray<int>> int_2d = { { 1, 2, 3}, { 4, 5, 6 }, { 7, 8, 9 } };
-//
-//    // Test String for read/write
-//    serialize(SerializerMode::writing, &serializer, &str);
-//    i32 serialized_size = 0;
-//    assert_serialized_datav2(buffer.data(), str, &serialized_size);
-//
-//    String deserialized_string;
-//    serialize(SerializerMode::reading, &serializer, &deserialized_string);
-//
-//    ASSERT_EQ(deserialized_string, str);
-//
-//    // Test dynamic array of strings for read/write
-//    serialize(SerializerMode::writing, &serializer, &string_array);
-//    assert_serialized_datav2(buffer.begin(), string_array, &serialized_size);
-//
-//    DynamicArray<String> deserialized_string_array;
-//    serialize(SerializerMode::reading, &serializer, &deserialized_string_array);
-//
-//    ASSERT_EQ(deserialized_string_array.size(), string_array.size());
-//    for (int str_idx = 0; str_idx < string_array.size(); ++str_idx)
-//    {
-//        ASSERT_EQ(deserialized_string_array[str_idx], string_array[str_idx]);
-//    }
-//
-//    // Test multi-dimensional fixed array of fixed arrays of ints for read/write
-//    serialize(SerializerMode::writing, &serializer, &int_2d);
-//    assert_serialized_datav2(buffer.begin(), int_2d, &serialized_size);
-//
-//    FixedArray<FixedArray<int>> deserialized_int_2d;
-//    serialize(SerializerMode::reading, &serializer, &deserialized_int_2d);
-//    ASSERT_EQ(deserialized_int_2d.size(), int_2d.size());
-//    for (int array_idx = 0; array_idx < int_2d.size(); ++array_idx)
-//    {
-//        ASSERT_EQ(deserialized_int_2d[array_idx].size(), int_2d[array_idx].size());
-//        for (int int_idx = 0; int_idx < int_2d[array_idx].size(); ++int_idx)
-//        {
-//            ASSERT_EQ(deserialized_int_2d[array_idx][int_idx], int_2d[array_idx][int_idx]);
-//        }
-//    }
-//
-//    // Test paths
-//    auto test_path = Path::executable_path();
-//    serialize(SerializerMode::writing, &serializer, &test_path);
-//    assert_serialized_datav2(buffer.begin(), test_path, &serialized_size);
-//
-//    // Test hashmaps
-//    DynamicHashMap<String, int> expected_map;
-//    expected_map.insert("one", 1);
-//    expected_map.insert("two", 2);
-//    expected_map.insert("three", 3);
-//    expected_map.insert("four", 4);
-//    expected_map.insert("five", 5);
-//    serialize(SerializerMode::writing, &serializer, &expected_map);
-//
-//    DynamicHashMap<String, int> actual_map;
-//    serialize(SerializerMode::reading, &serializer, &actual_map);
-//
-//    ASSERT_EQ(actual_map.size(), expected_map.size());
-//    for (auto& val : expected_map)
-//    {
-//        const auto found = actual_map.find(val.key);
-//        ASSERT_NE(found, nullptr);
-//        ASSERT_EQ(val.key, found->key);
-//        ASSERT_EQ(val.value, found->value);
-//    }
-//}
+TEST(SerializationTestsV2, core_types)
+{
+    bee::DynamicArray<u8> buffer;
+    bee::BinarySerializer serializer(&buffer);
+
+    String str = "Jacob";
+    DynamicArray<String> string_array = { "Jacob", "Is", "Cool" };
+    FixedArray<FixedArray<int>> int_2d = { { 1, 2, 3}, { 4, 5, 6 }, { 7, 8, 9 } };
+
+    // Test String for read/write
+    serialize(SerializerMode::writing, &serializer, &str);
+    i32 serialized_size = 0;
+    assert_serialized_datav2(buffer.data(), str, &serialized_size);
+
+    String deserialized_string;
+    serialize(SerializerMode::reading, &serializer, &deserialized_string);
+
+    ASSERT_EQ(deserialized_string, str);
+
+    // Test dynamic array of strings for read/write
+    serialize(SerializerMode::writing, &serializer, &string_array);
+    assert_serialized_datav2(buffer.begin(), string_array, &serialized_size);
+
+    DynamicArray<String> deserialized_string_array;
+    serialize(SerializerMode::reading, &serializer, &deserialized_string_array);
+
+    ASSERT_EQ(deserialized_string_array.size(), string_array.size());
+    for (int str_idx = 0; str_idx < string_array.size(); ++str_idx)
+    {
+        ASSERT_EQ(deserialized_string_array[str_idx], string_array[str_idx]);
+    }
+
+    // Test multi-dimensional fixed array of fixed arrays of ints for read/write
+    serialize(SerializerMode::writing, &serializer, &int_2d);
+    assert_serialized_datav2(buffer.begin(), int_2d, &serialized_size);
+
+    FixedArray<FixedArray<int>> deserialized_int_2d;
+    serialize(SerializerMode::reading, &serializer, &deserialized_int_2d);
+    ASSERT_EQ(deserialized_int_2d.size(), int_2d.size());
+    for (int array_idx = 0; array_idx < int_2d.size(); ++array_idx)
+    {
+        ASSERT_EQ(deserialized_int_2d[array_idx].size(), int_2d[array_idx].size());
+        for (int int_idx = 0; int_idx < int_2d[array_idx].size(); ++int_idx)
+        {
+            ASSERT_EQ(deserialized_int_2d[array_idx][int_idx], int_2d[array_idx][int_idx]);
+        }
+    }
+
+    // Test paths
+    auto test_path = Path::executable_path();
+    serialize(SerializerMode::writing, &serializer, &test_path);
+    assert_serialized_datav2(buffer.begin(), test_path, &serialized_size);
+
+    // Test hashmaps
+    bee::DynamicHashMap<String, int> expected_map;
+    expected_map.insert("one", 1);
+    expected_map.insert("two", 2);
+    expected_map.insert("three", 3);
+    expected_map.insert("four", 4);
+    expected_map.insert("five", 5);
+    serialize(SerializerMode::writing, &serializer, &expected_map);
+
+    bee::DynamicHashMap<String, int> actual_map;
+    serialize(SerializerMode::reading, &serializer, &actual_map);
+
+    ASSERT_EQ(actual_map.size(), expected_map.size());
+
+    for (auto& val : expected_map)
+    {
+        const auto found = actual_map.find(val.key);
+        ASSERT_NE(found, nullptr);
+        ASSERT_EQ(val.key, found->key);
+        ASSERT_EQ(val.value, found->value);
+    }
+}

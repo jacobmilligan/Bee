@@ -326,6 +326,22 @@ const Attribute* find_attribute(const Field& field, const char* attribute_name, 
     return find_attribute(field.attributes, attribute_name, kind);
 }
 
+const Field* find_field(const Span<Field>& fields, const char* name)
+{
+    const auto hash = get_type_hash(name);
+
+    for (const Field& field : fields)
+    {
+        if (field.hash == hash)
+        {
+            return &field;
+        }
+    }
+
+    return nullptr;
+}
+
+
 const char* reflection_flag_to_string(const Qualifier qualifier)
 {
 #define REFL_FLAG(x) case Qualifier::x: return "Qualifier::" #x
@@ -385,7 +401,7 @@ const char* reflection_flag_to_string(const SerializationFlags serialization_fla
 #undef REFL_FLAG
 }
 
-const char* reflection_type_kind_to_string(const TypeKind type_kind)
+const char* reflection_flag_to_string(const TypeKind type_kind)
 {
 #define TYPE_KIND(x) case TypeKind::x: return "TypeKind::" #x
 
@@ -401,6 +417,7 @@ const char* reflection_type_kind_to_string(const TypeKind type_kind)
         TYPE_KIND(function);
         TYPE_KIND(fundamental);
         TYPE_KIND(array);
+        TYPE_KIND(template_parameter);
         default:
         {
             BEE_UNREACHABLE("Missing TypeKind string representation");
@@ -412,16 +429,12 @@ const char* reflection_type_kind_to_string(const TypeKind type_kind)
 
 const char* reflection_type_kind_to_code_string(const TypeKind type_kind)
 {
-#define TYPE_KIND(x, str) case TypeKind::x: return str
+#define TYPE_KIND(x, str) if ((type_kind & TypeKind::x) != TypeKind::unknown) return str
 
-    switch (type_kind)
-    {
-        TYPE_KIND(class_decl, "class");
-        TYPE_KIND(struct_decl, "struct");
-        TYPE_KIND(enum_decl, "enum class");
-        TYPE_KIND(union_decl, "union");
-        default: break;
-    }
+    TYPE_KIND(class_decl, "class");
+    TYPE_KIND(struct_decl, "struct");
+    TYPE_KIND(enum_decl, "enum class");
+    TYPE_KIND(union_decl, "union");
 
     return "";
 #undef TYPE_KIND

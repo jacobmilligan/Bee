@@ -22,6 +22,9 @@ static constexpr unsigned char bee_reflect_magic[] = { 0x7C, 0xDD, 0x93, 0xB4 };
 static constexpr i32 bee_reflect_magic_size = sizeof(unsigned char) * static_array_length(bee_reflect_magic);
 
 
+struct ReflectedFile;
+
+
 enum class RegistrationVersion
 {
     unknown = 0,
@@ -164,7 +167,7 @@ private:
 
 void pretty_print_types(const Span<const Type*>& types, io::StringStream* stream);
 
-void generate_reflection(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream);
+void generate_reflection(const ReflectedFile& file, io::StringStream* stream);
 
 void generate_registration(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream);
 

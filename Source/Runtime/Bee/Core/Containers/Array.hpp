@@ -16,8 +16,11 @@
 namespace bee {
 
 
+class SerializationBuilder;
+
+
 template <typename T, ContainerMode Mode>
-class Array
+class BEE_REFLECT(serializable, serializer = bee::serialize_array) Array
 {
 public:
     static constexpr ContainerMode mode = Mode;
@@ -110,8 +113,6 @@ public:
     void resize_no_raii(const i32 new_size);
 
     void append(i32 count, const T& value);
-
-    void append(const Array& other);
 
     void append(Span<T>& other);
 
@@ -350,6 +351,11 @@ void Array<T, Mode>::destroy()
 template <typename T, ContainerMode Mode>
 void Array<T, Mode>::copy_construct(const Array<T, Mode>& other)
 {
+    if (this == &other)
+    {
+        return;
+    }
+
     destroy();
     size_ = other.size_;
     capacity_ = other.capacity_;
@@ -516,12 +522,6 @@ void Array<T, Mode>::append(const i32 count, const T& value)
 }
 
 template <typename T, ContainerMode Mode>
-void Array<T, Mode>::append(const Array<T, Mode>& other)
-{
-    append(other.const_span());
-}
-
-template <typename T, ContainerMode Mode>
 void Array<T, Mode>::append(Span<T>& other)
 {
     const auto const_other = make_const_span(other.data(), other.size());
@@ -547,7 +547,7 @@ void Array<T, Mode>::append(const Span<const T>& other)
 
     // Change size here so that fill_range works without asserting size too small
     size_ = new_size;
-    copy(old_size, other.begin(), other.end());
+    ::bee::copy_uninitialized(data_ + old_size, other.begin(), static_cast<i32>(other.end() - other.begin()));
 }
 
 template <typename T, ContainerMode Mode>
@@ -669,10 +669,7 @@ void Array<T, Mode>::copy(const i32 offset, const T* data_begin, const T* data_e
         "Attempted to assign to a buffer with a range and offset larger than the buffer"
     );
 
-    for (int elem_idx = offset; elem_idx < offset + count; ++elem_idx)
-    {
-        data_[elem_idx] = data_begin[elem_idx - offset];
-    }
+    ::bee::copy(data_ + offset, data_begin, count);
 }
 
 template <typename T, ContainerMode Mode>
@@ -786,6 +783,16 @@ bool Array<T, Mode>::ensure_capacity(const fixed_container_mode_t& fixed_contain
 {
     return BEE_CHECK_F(new_capacity <= capacity_, "FixedArray<T>: new_capacity exceeded the fixed capacity of the array");
 }
+
+
+/*
+ **********************
+ *
+ * Array serialization
+ *
+ **********************
+ */
+void serialize_array(SerializationBuilder* builder);
 
 
 } // namespace bee

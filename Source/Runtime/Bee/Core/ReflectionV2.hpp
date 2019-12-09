@@ -17,15 +17,24 @@
 namespace bee {
 
 
-#ifdef BEE_COMPILE_REFLECTION
-    #define BEE_REFLECT(...) __attribute__((annotate("bee-reflect[" #__VA_ARGS__ "]")))
-    #define BEE_DEPRECATED(decl, ...) BEE_REFLECT(deprecated, __VA_ARGS__) decl
-#else
-    #define BEE_REFLECT(...)
-    #define BEE_DEPRECATED(decl, ...)
-#endif // BEE_COMPILE_REFLECTION
+/*
+ * # Reflection macros
+ *
+ * These are also defined in Config.hpp so that reflection can be annotated without having to
+ * #include Reflection.hpp and all of its dependencies
+ */
+#ifndef BEE_REFLECT
+    #ifdef BEE_COMPILE_REFLECTION
+        #define BEE_REFLECT(...) __attribute__((annotate("bee-reflect[" #__VA_ARGS__ "]")))
+        #define BEE_DEPRECATED(decl, ...) BEE_REFLECT(deprecated, __VA_ARGS__) decl
+    #else
+        #define BEE_REFLECT(...)
+        #define BEE_DEPRECATED(decl, ...)
+    #endif // BEE_COMPILE_REFLECTION
 
-#define BEE_NONMEMBER(x) ::bee::NonMemberFunctionTypeTag<::bee::get_static_string_hash(#x)>
+    #define BEE_NONMEMBER(x) ::bee::ComplexTypeTag<::bee::get_static_string_hash(#x)>
+    #define BEE_TEMPLATED(x) ::bee::ComplexTypeTag<::bee::get_static_string_hash(#x)>
+#endif // BEE_REFLECT
 
 /*
  * Whenever a new type is added here, BEE_SERIALIZER_INTERFACE must also be updated to match this macro
@@ -81,6 +90,7 @@ BEE_FLAGS(TypeKind, u32)
     function                = 1u << 6u,
     fundamental             = 1u << 7u,
     array                   = 1u << 8u,
+    template_parameter      = 1u << 9u,
     record                  = class_decl | struct_decl | union_decl
 };
 
@@ -256,17 +266,33 @@ struct Attribute
 };
 
 
+struct TemplateParameter
+{
+    u32         hash { 0 };
+    const char* name { nullptr };
+
+    TemplateParameter() = default;
+
+    TemplateParameter(const u32 arg_name_hash, const char* arg_name)
+        : hash(arg_name_hash),
+          name(arg_name)
+    {}
+};
+
+
 struct Field
 {
-    u32             hash { 0 };
-    size_t          offset { 0 };
-    Qualifier       qualifier { Qualifier::none };
-    StorageClass    storage_class { StorageClass::none };
-    const char*     name { nullptr };
-    const Type*     type { nullptr };
-    Span<Attribute> attributes;
-    i32             version_added { 0 };
-    i32             version_removed { limits::max<i32>() };
+    u32                 hash { 0 };
+    size_t              offset { 0 };
+    Qualifier           qualifier { Qualifier::none };
+    StorageClass        storage_class { StorageClass::none };
+    const char*         name { nullptr };
+    const Type*         type { nullptr };
+    Span<const Type*>   template_arguments;
+    Span<Attribute>     attributes;
+    i32                 version_added { 0 };
+    i32                 version_removed { limits::max<i32>() };
+    i32                 template_argument_in_parent { -1 };
 
     Field() = default;
 
@@ -277,18 +303,22 @@ struct Field
         const StorageClass new_storage_class,
         const char* new_name,
         const Type* new_type,
+        const Span<const Type*> new_template_args,
         const Span<Attribute> new_attributes,
         const i32 new_version_added = 0,
-        const i32 new_version_removed = limits::max<i32>()
+        const i32 new_version_removed = limits::max<i32>(),
+        const i32 template_arg_index = -1
     ) : hash(new_hash),
         offset(new_offset),
         qualifier(new_qualifier),
         storage_class(new_storage_class),
         name(new_name),
         type(new_type),
+        template_arguments(new_template_args),
         attributes(new_attributes),
         version_added(new_version_added),
-        version_removed(new_version_removed)
+        version_removed(new_version_removed),
+        template_argument_in_parent(template_arg_index)
     {}
 };
 
@@ -307,6 +337,7 @@ struct Type
     const char*             name { nullptr };
     i32                     serialized_version { 0 };
     SerializationFlags      serialization_flags { SerializationFlags::none };
+    Span<TemplateParameter> template_parameters;
 
     Type() = default;
 
@@ -326,6 +357,31 @@ struct Type
         serialized_version(new_serialized_version),
         serialization_flags(new_serialization_flags)
     {}
+
+    Type(
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const TypeKind new_kind,
+        const char* new_name,
+        const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags,
+        const Span<TemplateParameter> new_template_parameters
+    ) : hash(new_hash),
+        size(new_size),
+        alignment(new_alignment),
+        kind(new_kind),
+        name(new_name),
+        serialized_version(new_serialized_version),
+        serialization_flags(new_serialization_flags),
+        template_parameters(new_template_parameters)
+    {}
+
+    template <TypeKind Flag>
+    inline bool is() const
+    {
+        return (kind & Flag) != TypeKind::unknown;
+    }
 
     template <typename T>
     inline const T* as() const
@@ -383,6 +439,31 @@ struct TypeSpec : public Type
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags
     ) : Type(new_hash, new_size, new_alignment, specialized_kind, new_name, new_serialized_version, new_serialization_flags)
+    {}
+
+    TypeSpec(
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const TypeKind specialized_kind,
+        const char* new_name,
+        const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags,
+        const Span<TemplateParameter> new_template_parameters
+    ) : Type(new_hash, new_size, new_alignment, Kind | TypeKind::template_decl, new_name, new_serialized_version, new_serialization_flags, new_template_parameters)
+    {
+        BEE_ASSERT(!new_template_parameters.empty());
+    }
+
+    TypeSpec(
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const char* new_name,
+        const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags,
+        const Span<TemplateParameter> new_template_parameters
+    ) : TypeSpec(new_hash, new_size, new_alignment, Kind, new_name, new_serialized_version, new_serialization_flags, new_template_parameters)
     {}
 };
 
@@ -445,7 +526,7 @@ struct EnumConstant
     {}
 };
 
-struct EnumType : public TypeSpec<TypeKind::enum_decl>
+struct EnumType final : public TypeSpec<TypeKind::enum_decl>
 {
     bool                is_scoped { false };
     Span<EnumConstant>  constants;
@@ -519,7 +600,7 @@ private:
 };
 
 
-struct FunctionType : public TypeSpec<TypeKind::function>
+struct FunctionType final : public TypeSpec<TypeKind::function>
 {
     StorageClass        storage_class { StorageClass::none };
     bool                is_constexpr { false };
@@ -554,6 +635,29 @@ struct FunctionType : public TypeSpec<TypeKind::function>
         invoker(callable_invoker)
     {}
 
+    FunctionType(
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const char* new_name,
+        const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags,
+        const Span<TemplateParameter> new_template_parameters,
+        const StorageClass new_storage_class,
+        const bool make_constexpr,
+        const Field& new_return_value,
+        const Span<Field> new_parameters,
+        const Span<Attribute> new_attributes,
+        FunctionTypeInvoker callable_invoker
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags, new_template_parameters),
+        storage_class(new_storage_class),
+        is_constexpr(make_constexpr),
+        return_value(new_return_value),
+        parameters(new_parameters),
+        attributes(new_attributes),
+        invoker(callable_invoker)
+    {}
+
     template <typename ReturnType, typename... Args>
     ReturnType invoke(Args&&... args)
     {
@@ -568,7 +672,7 @@ struct FunctionType : public TypeSpec<TypeKind::function>
 };
 
 
-struct RecordType : public TypeSpec<TypeKind::record>
+struct RecordType final : public TypeSpec<TypeKind::record>
 {
     using serializer_function_t = void(*)(SerializationBuilder*);
 
@@ -607,6 +711,30 @@ struct RecordType : public TypeSpec<TypeKind::record>
         records(nested_records),
         serializer_function(new_serializer_function)
     {}
+
+    RecordType(
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const TypeKind new_kind,
+        const char* new_name,
+        const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags,
+        const Span<TemplateParameter> new_template_parameters,
+        const Span<Field>& new_fields,
+        const Span<FunctionType> new_functions,
+        const Span<Attribute> new_attributes,
+        const Span<const EnumType*> nested_enums,
+        const Span<const RecordType*> nested_records,
+        serializer_function_t new_serializer_function = nullptr
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags, new_template_parameters),
+        fields(new_fields),
+        functions(new_functions),
+        attributes(new_attributes),
+        enums(nested_enums),
+        records(nested_records),
+        serializer_function(new_serializer_function)
+    {}
 };
 
 struct UnknownType final : public TypeSpec<TypeKind::unknown>
@@ -618,7 +746,7 @@ struct UnknownType final : public TypeSpec<TypeKind::unknown>
 
 
 template <u32 Hash>
-struct NonMemberFunctionTypeTag
+struct ComplexTypeTag
 {
     static constexpr u32 hash = Hash;
 };
@@ -655,13 +783,15 @@ BEE_CORE_API const Attribute* find_attribute(const Type* type, const char* attri
 
 BEE_CORE_API const Attribute* find_attribute(const Field& field, const char* attribute_name, const AttributeKind kind, const Attribute::Value& value);
 
+BEE_CORE_API const Field* find_field(const Span<Field>& fields, const char* name);
+
 BEE_CORE_API const char* reflection_flag_to_string(const Qualifier qualifier);
 
 BEE_CORE_API const char* reflection_flag_to_string(const StorageClass storage_class);
 
 BEE_CORE_API const char* reflection_flag_to_string(const SerializationFlags serialization_flags);
 
-BEE_CORE_API const char* reflection_type_kind_to_string(const TypeKind type_kind);
+BEE_CORE_API const char* reflection_flag_to_string(const TypeKind type_kind);
 
 BEE_CORE_API const char* reflection_type_kind_to_code_string(const TypeKind type_kind);
 

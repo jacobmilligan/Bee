@@ -167,8 +167,8 @@ void Diagnostics::init(clang::DiagnosticsEngine* diag_engine)
  *
  *************************************
  */
-ASTMatcher::ASTMatcher(TypeStorage* type_storage, ReflectionAllocator* allocator_ptr)
-    : storage(type_storage),
+ASTMatcher::ASTMatcher(TypeMap* type_map_to_use, ReflectionAllocator* allocator_ptr)
+    : type_map(type_map_to_use),
       allocator(allocator_ptr)
 {}
 
@@ -212,7 +212,7 @@ std::string ASTMatcher::print_qualtype_name(const clang::QualType& type, const c
 }
 
 
-void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, DynamicRecordType* parent)
+void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStorage* parent)
 {
     AttributeParser attr_parser{};
 
@@ -223,7 +223,8 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, DynamicRecordT
 
     const auto name = print_name(decl);
     auto& layout = decl.getASTContext().getASTRecordLayout(&decl);
-    auto type = allocator->allocate_type<DynamicRecordType>(&decl);
+    auto storage = allocator->allocate_storage<RecordTypeStorage>(&decl);
+    auto type = &storage->type;
     type->size = layout.getSize().getQuantity();
     type->alignment = layout.getAlignment().getQuantity();
     type->name = allocator->allocate_name(name);
@@ -251,38 +252,42 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, DynamicRecordT
         return;
     }
 
-    if (decl.isTemplateDecl())
+    // Gather template parameters
+    auto class_template = decl.getDescribedClassTemplate();
+    if (class_template != nullptr)
     {
         type->kind |= TypeKind::template_decl;
+
+        for (const auto clang_param : *class_template->getTemplateParameters())
+        {
+            TemplateParameter param{};
+            param.name = allocator->allocate_name(clang_param->getName());
+            param.hash = get_type_hash(param.name);
+            storage->add_template_parameter(param);
+        }
     }
 
     SerializationInfo serialization_info{};
-    if (!attr_parser.parse(&type->attribute_storage, &serialization_info, allocator))
+    if (!attr_parser.parse(&storage->attributes, &serialization_info, allocator))
     {
         return;
     }
 
     type->serialization_flags = serialization_info.flags;
     type->serialized_version = serialization_info.serialized_version;
-    type->has_explicit_version = serialization_info.using_explicit_versioning;
-    type->attributes = type->attribute_storage.span();
+    storage->has_explicit_version = serialization_info.using_explicit_versioning;
     if (serialization_info.serializer_function != nullptr)
     {
-        type->serializer_function_name = serialization_info.serializer_function;
+        storage->serializer_function_name = serialization_info.serializer_function;
     }
 
     if (parent == nullptr)
     {
-        storage->add_type(type, decl);
+        type_map->add_record(storage, decl);
     }
     else
     {
-        if (!storage->try_map_type(type))
-        {
-            return;
-        }
-
-        parent->add_record(type);
+        parent->add_record(storage);
     }
 
     bool requires_field_order_validation = false;
@@ -292,8 +297,14 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, DynamicRecordT
         const auto kind = child->getKind();
         const auto is_enum_or_record = kind == clang::Decl::Kind::CXXRecord || kind == clang::Decl::Kind::Enum;
 
-        // Skip nested type decls that don't have the annotate attribute - we only automatically reflect fields
+        // skip nested type decls that don't have the annotate attribute - we only automatically reflect fields
         if (is_enum_or_record && !child->hasAttr<clang::AnnotateAttr>())
+        {
+            continue;
+        }
+
+        // ensure that private/protected children only get reflected if they're explicitly annotated
+        if (child->getAccess() != clang::AccessSpecifier::AS_public && !child->hasAttr<clang::AnnotateAttr>())
         {
             continue;
         }
@@ -305,7 +316,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, DynamicRecordT
                 const auto child_record = llvm::dyn_cast<clang::CXXRecordDecl>(child);
                 if (child_record != nullptr)
                 {
-                    reflect_record(*child_record, type);
+                    reflect_record(*child_record, storage);
                 }
                 break;
             }
@@ -314,23 +325,23 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, DynamicRecordT
                 const auto child_enum = llvm::dyn_cast<clang::EnumDecl>(child);
                 if (child_enum != nullptr)
                 {
-                    reflect_enum(*child_enum, type);
+                    reflect_enum(*child_enum, storage);
                 }
                 break;
             }
             case clang::Decl::Kind::Field:
             {
-                const auto old_field_count = type->field_storage.size();
+                const auto old_field_count = storage->fields.size();
                 const auto child_field = llvm::dyn_cast<clang::FieldDecl>(child);
 
                 if (child_field != nullptr)
                 {
-                    reflect_field(*child_field, type);
+                    reflect_field(*child_field, storage);
                 }
 
-                if (type->field_storage.size() > old_field_count && !requires_field_order_validation)
+                if (storage->fields.size() > old_field_count && !requires_field_order_validation)
                 {
-                    requires_field_order_validation = type->field_storage.back().order >= 0;
+                    requires_field_order_validation = storage->fields.back().order >= 0;
                 }
                 break;
             }
@@ -340,7 +351,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, DynamicRecordT
                 const auto child_method = llvm::dyn_cast<clang::FunctionDecl>(child);
                 if (child_method != nullptr)
                 {
-                    reflect_function(*child_method, type);
+                    reflect_function(*child_method, storage);
                 }
                 break;
             }
@@ -355,11 +366,11 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, DynamicRecordT
     }
 
     // Sort and ensure id's are unique and increasing - skip the first field
-    std::sort(type->field_storage.begin(), type->field_storage.end());
+    std::sort(storage->fields.begin(), storage->fields.end());
 
-    for (int f = 0; f < type->field_storage.size(); ++f)
+    for (int f = 0; f < storage->fields.size(); ++f)
     {
-        auto& field = type->field_storage[f];
+        auto& field = storage->fields[f];
         // Ensure each field has the `id` attribute
         if (field.order < 0)
         {
@@ -367,18 +378,16 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, DynamicRecordT
             return;
         }
 
-        if (f >= 1 && field.order == type->field_storage[f - 1].order)
+        if (f >= 1 && field.order == storage->fields[f - 1].order)
         {
             diagnostics.Report(field.location, diagnostics.err_id_is_not_unique);
             return;
         }
     }
-
-    type->fields = Span<Field>(type->field_storage.data(), type->field_storage.size());
 }
 
 
-void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, DynamicRecordType* parent)
+void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* parent)
 {
     auto& ast_context = decl.getASTContext();
     AttributeParser attr_parser{};
@@ -403,7 +412,8 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, DynamicRecordType* pa
     }
 
     const auto name = print_name(decl);
-    auto type = allocator->allocate_type<DynamicEnumType>();
+    auto storage = allocator->allocate_storage<EnumTypeStorage>();
+    auto type = &storage->type;
     type->kind = TypeKind::enum_decl;
     type->size = ast_context.getTypeSize(underlying) / 8;
     type->alignment = ast_context.getTypeAlign(underlying) / 8;
@@ -417,32 +427,29 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, DynamicRecordType* pa
         constant.name = allocator->allocate_name(ast_constant->getName());
         constant.value = ast_constant->getInitVal().getRawData()[0];
         constant.underlying_type = underlying_type;
-        type->add_constant(constant);
+        storage->add_constant(constant);
     }
 
     SerializationInfo serialization_info{};
-    if (!attr_parser.parse(&type->attribute_storage, &serialization_info, allocator))
+    if (!attr_parser.parse(&storage->attributes, &serialization_info, allocator))
     {
         return;
     }
 
     type->serialization_flags = serialization_info.flags;
-    type->attributes = type->attribute_storage.span();
     type->serialized_version = serialization_info.serialized_version;
 
     if (parent == nullptr)
     {
-        storage->add_type(type, decl);
-        return;
+        type_map->add_enum(storage, decl);
     }
-
-    if (storage->try_map_type(type))
+    else
     {
-        parent->add_enum(type);
+        parent->add_enum(storage);
     }
 }
 
-void ASTMatcher::reflect_field(const clang::FieldDecl& decl, DynamicRecordType* parent)
+void ASTMatcher::reflect_field(const clang::FieldDecl& decl, RecordTypeStorage* parent)
 {
     AttributeParser attr_parser{};
 
@@ -458,10 +465,10 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, DynamicRecordType* 
     {
         const auto array_type_name = print_qualtype_name(qualtype, decl.getASTContext());
         const auto hash = get_type_hash({ array_type_name.data(), static_cast<i32>(array_type_name.size()) });
-        if (storage->find_type(hash) == nullptr)
+        if (type_map->find_type(hash) == nullptr)
         {
             auto clang_type = llvm::dyn_cast<clang::ConstantArrayType>(qualtype);
-            auto new_array_type = allocator->allocate_type<ArrayType>();
+            auto new_array_type = allocator->allocate_storage<ArrayType>();
             const auto element_type = clang_type->getElementType();
 
             new_array_type->hash = hash;
@@ -474,7 +481,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, DynamicRecordType* 
 
             const auto element_type_name = print_qualtype_name(element_type, decl.getASTContext());
             const auto element_type_hash = get_type_hash(element_type_name.c_str());
-            new_array_type->element_type = storage->find_type(element_type_hash);
+            new_array_type->element_type = type_map->find_type(element_type_hash);
 
             if (new_array_type->element_type != nullptr)
             {
@@ -488,22 +495,39 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, DynamicRecordType* 
 
             if (parent == nullptr)
             {
-                storage->add_type(new_array_type, decl);
+                type_map->add_array(new_array_type, decl);
             }
             else
             {
-                if (storage->try_map_type(new_array_type))
-                {
-                    parent->add_array_type(new_array_type);
-                }
+                parent->add_array_type(new_array_type);
             }
         }
     }
 
-    auto field = create_field<OrderedField>(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), parent, decl.getType(), decl.getTypeSpecStartLoc());
+    auto storage = create_field(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), parent, decl.getType(), decl.getTypeSpecStartLoc());
+    auto& field = storage.field;
+
     if (field.type == nullptr)
     {
         return;
+    }
+
+    if (decl.isTemplateParameter())
+    {
+        const auto template_param_name = print_qualtype_name(decl.getType(), decl.getASTContext());
+        const auto template_param_hash = get_type_hash(template_param_name.c_str());
+        const auto param_idx = container_index_of(parent->template_parameters, [&](const TemplateParameter& param)
+        {
+            return param.hash == template_param_hash;
+        });
+
+        if (param_idx < 0)
+        {
+            diagnostics.Report(decl.getLocation(), clang::diag::err_template_param_different_kind);
+            return;
+        }
+
+        field.template_argument_in_parent = param_idx;
     }
 
     if (decl.isMutable())
@@ -518,21 +542,21 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, DynamicRecordType* 
     }
 
     SerializationInfo serialization_info{};
-    if (!attr_parser.parse(&field.attributes, &serialization_info, allocator))
+    if (!attr_parser.parse(&storage.attributes, &serialization_info, allocator))
     {
         return;
     }
 
     field.version_added = serialization_info.version_added;
     field.version_removed = serialization_info.version_removed;
-    field.order = serialization_info.id;
-    field.location = decl.getLocation();
+    storage.order = serialization_info.id;
+    storage.location = decl.getLocation();
 
     /*
      * Validate serialization - ensure the field has both `version_added` and `version_removed` attributes, that its
      * parent record is marked for serialization, and that the fields type declaration is also marked for serialization
      */
-    if (parent->serialized_version > 0 && field.version_removed < limits::max<i32>() && field.version_added <= 0)
+    if (parent->type.serialized_version > 0 && field.version_removed < limits::max<i32>() && field.version_added <= 0)
     {
         diagnostics.Report(decl.getLocation(), diagnostics.err_missing_version_added);
         return;
@@ -541,7 +565,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, DynamicRecordType* 
     // Validate versioning if the parent record type is explicitly versioned
     if (parent->has_explicit_version)
     {
-        if (field.version_added > 0 && parent->serialized_version <= 0)
+        if (field.version_added > 0 && parent->type.serialized_version <= 0)
         {
             diagnostics.Report(decl.getLocation(), diagnostics.err_parent_not_marked_for_serialization);
             return;
@@ -554,11 +578,11 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, DynamicRecordType* 
         }
     }
 
-    parent->add_field(field);
+    parent->add_field(storage);
 }
 
 
-void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, DynamicRecordType* parent)
+void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, RecordTypeStorage* parent)
 {
     AttributeParser attr_parser{};
 
@@ -572,14 +596,15 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, DynamicRecord
     llvm::raw_svector_ostream type_name_stream(type_name);
     decl.printQualifiedName(type_name_stream);
 
-    auto type = allocator->allocate_type<DynamicFunctionType>();
+    auto storage = allocator->allocate_storage<FunctionTypeStorage>();
+    auto type = &storage->type;
     type->hash = get_type_hash({ type_name.data(), static_cast<i32>(type_name.size()) });
     type->name = allocator->allocate_name(type_name);
     type->size = sizeof(void*); // functions only have size when used as function pointer
     type->alignment = alignof(void*);
     type->kind = TypeKind::function;
-    type->return_value = create_field<Field>(decl.getName(), -1, decl.getASTContext(), parent, decl.getReturnType(), decl.getTypeSpecStartLoc());
-    type->add_invoker_type_arg(print_qualtype_name(decl.getReturnType(), decl.getASTContext()));
+    storage->return_field = create_field(decl.getName(), -1, decl.getASTContext(), parent, decl.getReturnType(), decl.getTypeSpecStartLoc());
+    storage->add_invoker_type_arg(print_qualtype_name(decl.getReturnType(), decl.getASTContext()));
 
     // If this is a method type then we need to skip the implicit `this` parameter
     auto params_begin = decl.parameters().begin();
@@ -591,24 +616,24 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, DynamicRecord
 
     for (auto& param : clang::ArrayRef<clang::ParmVarDecl*>(params_begin, params_end))
     {
-        auto field = create_field<Field>(param->getName(), param->getFunctionScopeIndex(), param->getASTContext(), parent, param->getType(), param->getLocation());
+        auto param_storage = create_field(param->getName(), param->getFunctionScopeIndex(), param->getASTContext(), parent, param->getType(), param->getLocation());
+        auto& field = param_storage.field;
         field.offset = param->getFunctionScopeIndex();
         field.storage_class = get_storage_class(param->getStorageClass(), param->getStorageDuration());
-        type->add_parameter(field);
-        type->add_invoker_type_arg(print_qualtype_name(param->getType(), decl.getASTContext()));
+        storage->add_parameter(param_storage);
+        storage->add_invoker_type_arg(print_qualtype_name(param->getType(), decl.getASTContext()));
     }
 
     type->storage_class = get_storage_class(decl.getStorageClass(), static_cast<clang::StorageDuration>(0));
     type->is_constexpr = decl.isConstexpr();
 
     SerializationInfo serialization_info{};
-    if (!attr_parser.parse(&type->attribute_storage, &serialization_info, allocator))
+    if (!attr_parser.parse(&storage->attributes, &serialization_info, allocator))
     {
         return;
     }
 
     type->serialization_flags = serialization_info.flags;
-    type->attributes = type->attribute_storage.span();
     type->serialized_version = serialization_info.serialized_version;
 
     if (is_member_function)
@@ -619,14 +644,119 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, DynamicRecord
             return;
         }
 
-        parent->add_function(type);
+        parent->add_function(storage);
     }
     else
     {
-        storage->add_type(type, decl);
+        type_map->add_function(storage, decl);
     }
 }
 
+FieldStorage ASTMatcher::create_field(const llvm::StringRef & name, const bee::i32 index, const clang::ASTContext & ast_context, const struct bee::reflect::RecordTypeStorage* parent, const clang::QualType& qual_type, const clang::SourceLocation& location)
+{
+    /*
+    * Get the layout of the parent record this field is in and also get pointers to the desugared type so that
+    * i.e. u8 becomes unsigned char
+    */
+    auto desugared_type = qual_type.getDesugaredType(ast_context);
+
+    FieldStorage storage{};
+    auto& field = storage.field;
+    field.name = allocator->allocate_name(name);
+    field.offset = 0;
+    field.qualifier = get_qualifier(desugared_type);
+
+    if (parent != nullptr && index >= 0)
+    {
+        field.offset = ast_context.getASTRecordLayout(parent->decl).getFieldOffset(static_cast<u32>(index)) / 8;
+    }
+
+    clang::QualType original_type;
+    auto type_ptr = desugared_type.getTypePtrOrNull();
+
+    // Check if reference or pointer and get the pointee and const-qualified info before removing qualifications
+    if (type_ptr != nullptr && (type_ptr->isPointerType() || type_ptr->isLValueReferenceType()))
+    {
+        const auto pointee = type_ptr->getPointeeType();
+
+        if (pointee.isConstQualified())
+        {
+            field.qualifier |= Qualifier::cv_const;
+        }
+
+        original_type = pointee.getUnqualifiedType();
+    }
+    else
+    {
+        original_type = desugared_type.getUnqualifiedType();
+    }
+
+    // Get the associated types hash so we can look it up later
+    if (original_type->isRecordType())
+    {
+        auto as_cxx_record_decl = qual_type->getAsCXXRecordDecl();
+        if (as_cxx_record_decl->getTemplateSpecializationKind() != clang::TSK_Undeclared)
+        {
+            const auto specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(as_cxx_record_decl);
+            BEE_ASSERT(specialization != nullptr);
+
+            for (const clang::TemplateArgument& arg : specialization->getTemplateArgs().asArray())
+            {
+                if (arg.getKind() != clang::TemplateArgument::Type)
+                {
+                    storage.template_arguments.push_back(get_type<UnknownType>());
+                    continue;
+                }
+
+                const auto templ_type_name = print_qualtype_name(arg.getAsType(), specialization->getASTContext());
+                const auto type_hash = get_type_hash(templ_type_name.c_str());
+                auto arg_type = type_map->find_type(type_hash);
+
+                if (arg_type == nullptr)
+                {
+                    arg_type = get_type(type_hash);
+                }
+
+                if (arg_type->is<TypeKind::unknown>())
+                {
+                    diagnostics.Report(location, diagnostics.warn_unknown_field_type).AddString(templ_type_name);
+                }
+
+                storage.template_arguments.push_back(arg_type);
+            }
+
+            original_type = original_type.getCanonicalType();
+        }
+    }
+
+    auto fully_qualified_name = print_qualtype_name(original_type, ast_context);
+    const auto angle_bracket_idx = fully_qualified_name.find('<');
+
+    if (angle_bracket_idx != fully_qualified_name.npos)
+    {
+        fully_qualified_name.erase(angle_bracket_idx);
+    }
+
+    const auto type_hash = get_type_hash({ fully_qualified_name.data(), static_cast<i32>(fully_qualified_name.size()) });
+
+    auto type = type_map->find_type(type_hash);
+    if (type == nullptr)
+    {
+        /*
+         * If the type is missing it might be a core builtin type which can be accessed by bee-reflect via
+         * get_type. This is safe to do here as bee-reflect doesn't link to any generated cpp files
+         */
+        type = get_type(type_hash);
+        if (type->kind == TypeKind::unknown && !original_type->isTemplateTypeParmType())
+        {
+            diagnostics.Report(location, diagnostics.warn_unknown_field_type).AddString(fully_qualified_name);
+        }
+    }
+
+    field.hash = get_type_hash(field.name);
+    field.type = type;
+    return storage;
+}
 
 /*
  *************************************

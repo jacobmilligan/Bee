@@ -339,7 +339,7 @@ Type get_type() noexcept
 }
 
 
-#define BEE_REFLECT(type) static const TypeRegistration<type> BeeTypeRegistration_##type;
+#define BEE_RUNTIME_REFLECT(type) static const TypeRegistration<type> BeeTypeRegistration_##type;
 
 
 } // namespace bee

@@ -59,6 +59,8 @@ struct BEE_CORE_API Serializer
 
 BEE_CORE_API void serialize_type(const i32 serialized_version, Serializer* serializer, const Type* type, u8* data);
 
+BEE_CORE_API void serialize_type(const i32 serialized_version, Serializer* serializer, const Type* type, u8* data, const Span<const Type*>& template_type_arguments);
+
 
 struct FieldHeader
 {
@@ -117,25 +119,26 @@ public:
         return *this;
     }
 
-//    SerializationBuilder& add_bytes(const i32 version_added, const size_t offset, const size_t size)
-//    {
-//        return add_bytes(version_added, limits::max<i32>(), offset, size);
-//    }
-//
-//    SerializationBuilder& add_bytes(const i32 version_added, const i32 version_removed, const size_t offset, const size_t size)
-//    {
-//        if (BEE_FAIL_F(offset + size <= serialized_type->size, "failed to serialize bytes because offset + size (%zu) was greater than the size of the serialized type `%s` (%zu)", offset + size, serialized_type->name, serialized_type->size))
-//        {
-//            return *this;
-//        }
-//
-//        if (base_serializer->version < version_added || base_serializer->version >= version_removed)
-//        {
-//            return *this;
-//        }
-//
-//        serialize_bytes(offset, size)
-//    }
+    SerializationBuilder& add_bytes(const i32 version_added, const size_t offset, const size_t size)
+    {
+        return add_bytes(version_added, limits::max<i32>(), offset, size);
+    }
+
+    SerializationBuilder& add_bytes(const i32 version_added, const i32 version_removed, const size_t offset, const size_t size)
+    {
+        if (BEE_FAIL_F(offset + size <= serialized_type_->size, "failed to serialize bytes because offset + size (%zu) was greater than the size of the serialized type `%s` (%zu)", offset + size, serialized_type_->name, serialized_type_->size))
+        {
+            return *this;
+        }
+
+        if (version_ < version_added || version_ >= version_removed)
+        {
+            return *this;
+        }
+
+        serializer_->serialize_bytes(serialized_data_ + offset, size);
+        return *this;
+    }
 
     template <typename FieldType>
     SerializationBuilder& remove(const i32 version_added, const i32 version_removed, const FieldType& default_value)
@@ -150,11 +153,39 @@ public:
 
         if (serializer_->mode == SerializerMode::writing)
         {
-            memcpy_or_assign(&removed_data, &default_value, 1);
+            copy(&removed_data, &default_value, 1);
         }
 
         serialize_type(version_, serializer_, field_type, reinterpret_cast<u8*>(&removed_data));
         return *this;
+    }
+
+    template <typename T>
+    T* as()
+    {
+        BEE_ASSERT_F(get_type<T>() == serialized_type_, "invalid cast of serialized data to %s (expected %s)", get_type<T>()->name, serialized_type_->name);
+        return reinterpret_cast<T*>(serialized_data_);
+    }
+
+    template <typename T>
+    T* get_field_data(const char* name)
+    {
+        BEE_ASSERT_F(serialized_type_->is<TypeKind::record>(), "invalid cast: serialized type is not a record type");
+
+        auto as_record = serialized_type_->as<RecordType>();
+        const auto field = find_field(as_record->fields, name);
+
+        BEE_ASSERT_F(field != nullptr, "cannot find field %s", name);
+        BEE_ASSERT_F(field->type == get_type<T>(), "invalid cast: requested field type (%s) doesn't match the serialized field type (%s)", field->type->name, get_type<T>()->name);
+
+        return reinterpret_cast<T*>(serialized_data_ + field->offset);
+    }
+
+
+
+    inline const Type* type()
+    {
+        return serialized_type_;
     }
 
 private:

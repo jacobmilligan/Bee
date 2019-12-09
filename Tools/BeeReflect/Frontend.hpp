@@ -20,7 +20,7 @@ namespace reflect {
 class BeeReflectFrontendAction final : public clang::ASTFrontendAction
 {
 public:
-    explicit BeeReflectFrontendAction(TypeStorage* storage, ReflectionAllocator* allocator);
+    explicit BeeReflectFrontendAction(TypeMap* storage, ReflectionAllocator* allocator);
 protected:
     std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance& CI, llvm::StringRef InFile) override;
 
@@ -34,7 +34,7 @@ private:
 struct BeeReflectFrontendActionFactory : public clang::tooling::FrontendActionFactory
 {
     ReflectionAllocator     allocator;
-    TypeStorage             storage;
+    TypeMap             storage;
 
     BeeReflectFrontendActionFactory();
 

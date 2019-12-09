@@ -41,24 +41,54 @@ using dynamic_container_mode_t = container_mode_constant<ContainerMode::dynamic_
  * # copy
  */
 template <typename T>
-inline void memcpy_or_assign_chooser(T* dst, const T* src, const i32 count, const std::true_type& /* true_type */)
+inline void memcpy_or_assign(T* dst, const T* src, const i32 count, const std::true_type& /* true_type */)
 {
     memcpy(dst, src, sizeof(T) * count);
 }
 
 template <typename T>
-inline void memcpy_or_assign_chooser(T* dst, const T* src, const i32 count, const std::false_type& /* false_type */)
+inline void memcpy_or_assign(T* dst, const T* src, const i32 count, const std::false_type& /* false_type */)
 {
-    for (int item = 0; item < count; ++item)
+    for (int index = 0; index < count; ++index)
     {
-        dst[item] = src[item];
+        dst[index] = src[index];
     }
 }
 
 template <typename T>
-inline void memcpy_or_assign(T* dst, const T* src, const i32 count)
+inline void memcpy_or_construct(T* dst, const T* src, const i32 count, const std::true_type& /* true_type */)
 {
-    memcpy_or_assign_chooser(dst, src, count, std::is_trivially_copyable<T>{});
+    memcpy(dst, src, sizeof(T) * count);
+}
+
+template <typename T>
+inline void memcpy_or_construct(T* dst, const T* src, const i32 count, const std::false_type& /* false_type */)
+{
+    for (int index = 0; index < count; ++index)
+    {
+        new (dst + index) T(src[index]);
+    }
+}
+
+
+/**
+ * Copies the `src` range into `dst`. If `T` is trivially-copyable memcpy is used, otherwise the copy-assign operator
+ * for`T` is used.
+ */
+template <typename T>
+inline void copy(T* dst, const T* src, const i32 count)
+{
+    memcpy_or_assign(dst, src, count, std::is_trivially_copyable<T>{});
+}
+
+/**
+ * Copies the `src` range into `dst` which MUST be uninitialized memory. Similar to `bee::copy` but uses placement-new
+ * and the copy constructor of `T` instead of copy-assign.
+ */
+template <typename T>
+inline void copy_uninitialized(T* dst, const T* src, const i32 count)
+{
+    memcpy_or_construct(dst, src, count, std::is_trivially_copyable<T>{});
 }
 
 

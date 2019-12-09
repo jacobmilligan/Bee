@@ -310,6 +310,24 @@ namespace bee {
     #define BEE_CONFIG_METAL_BACKEND 0
 #endif // BEE_CONFIG_METAL_BACKEND
 
+/*
+ * # Reflection Macros
+ *
+ * These are defined here as well as in Reflection.hpp so that code can annotate reflection without having
+ * to #include the reflection headers
+ */
+#ifndef BEE_REFLECT
+    #ifdef BEE_COMPILE_REFLECTION
+        #define BEE_REFLECT(...) __attribute__((annotate("bee-reflect[" #__VA_ARGS__ "]")))
+        #define BEE_DEPRECATED(decl, ...) BEE_REFLECT(deprecated, __VA_ARGS__) decl
+    #else
+        #define BEE_REFLECT(...)
+        #define BEE_DEPRECATED(decl, ...)
+    #endif // BEE_COMPILE_REFLECTION
+
+    #define BEE_NONMEMBER(x) ::bee::ComplexTypeTag<::bee::get_static_string_hash(#x)>
+    #define BEE_TEMPLATED(x) ::bee::ComplexTypeTag<::bee::get_static_string_hash(#x)>
+#endif // BEE_REFLECT
 
 template <typename T, int Size>
 inline constexpr int static_array_length(T(&)[Size])

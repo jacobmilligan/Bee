@@ -36,33 +36,43 @@ const char* ReflectionAllocator::allocate_name(const llvm::StringRef& src)
 }
 
 
-bool TypeStorage::try_map_type(Type* type)
+bool ReflectedFile::try_insert_type(const Type* type)
 {
-    if (hash_to_type_map.find(type->hash) != nullptr)
+    BEE_ASSERT(parent_map != nullptr);
+
+    if (parent_map->find_type(type->hash) != nullptr)
     {
         return false;
     }
 
-    return hash_to_type_map.insert(type->hash, type) != nullptr;
+    TypeMap::MappedType mapped_type{};
+    mapped_type.owning_file_hash = hash;
+    mapped_type.type = type;
+    return parent_map->type_lookup.insert(type->hash, mapped_type) != nullptr;
 }
 
 
-Type* TypeStorage::add_type(Type* type, const clang::Decl& decl)
+bool TypeMap::try_add_type(const Type* type, const clang::Decl& decl, ReflectedFile** reflected_file)
 {
+    BEE_ASSERT(reflected_file != nullptr);
+
+    auto existing_type = type_lookup.find(type->hash);
+    if (existing_type != nullptr)
+    {
+        *reflected_file = &reflected_files.find(existing_type->value.owning_file_hash)->value;
+        return false;
+    }
+
     auto& src_manager = decl.getASTContext().getSourceManager();
     const auto file = src_manager.getFileEntryForID(src_manager.getFileID(decl.getLocation()));
     const auto filename_ref = file->getName();
     String filepath(StringView(filename_ref.data(), filename_ref.size()), temp_allocator());
-
-    if (hash_to_type_map.find(type->hash) != nullptr)
-    {
-        return nullptr;
-    }
+    str::replace(&filepath, Path::preferred_slash, Path::generic_slash); // normalize the slashes
 
     for (const auto& include_dir : include_dirs)
     {
         // Make the filepath relative to the discovered include dir if available
-        if (filename_ref.startswith(include_dir.c_str()))
+        if (str::first_index_of(filepath.view(), include_dir.view()) == 0)
         {
             auto length = include_dir.size();
             if (filepath[include_dir.size()] == Path::preferred_slash || filepath[include_dir.size()] == Path::generic_slash)
@@ -71,38 +81,150 @@ Type* TypeStorage::add_type(Type* type, const clang::Decl& decl)
             }
 
             filepath.remove(0, length);
-            // Make generic path format
-            str::replace(&filepath, '\\', '/');
             break;
         }
     }
 
-    types.emplace_back(type);
+    MappedType mapped_type{};
+    mapped_type.type = type;
+    mapped_type.owning_file_hash = get_hash(filepath);
+    type_lookup.insert(type->hash, mapped_type);
 
-    hash_to_type_map.insert(type->hash, type);
+    auto file_keyval = reflected_files.find(mapped_type.owning_file_hash);
 
-    auto mapped_file = file_to_type_map.find(filepath.view());
-
-    if (mapped_file == nullptr)
+    if (file_keyval == nullptr)
     {
-        mapped_file = file_to_type_map.insert(Path(filepath.view()), DynamicArray<const Type*>());
+        file_keyval = reflected_files.insert(
+            mapped_type.owning_file_hash,
+            ReflectedFile(mapped_type.owning_file_hash, filepath.view(), this)
+        );
     }
 
-    mapped_file->value.push_back(type);
-
-    return types.back();
-
-}
-
-const Type* TypeStorage::find_type(const u32 hash)
-{
-    auto type = hash_to_type_map.find(hash);
-    return type == nullptr ? nullptr : type->value;
-}
-
-bool TypeStorage::validate_and_reorder()
-{
+    file_keyval->value.all_types.push_back(type);
+    *reflected_file = &file_keyval->value;
     return true;
+}
+
+void TypeMap::add_array(ArrayType* array, const clang::Decl& decl)
+{
+    ReflectedFile* location = nullptr;
+    if (!try_add_type(array, decl, &location))
+    {
+        return;
+    }
+    location->arrays.push_back(array);
+}
+
+void TypeMap::add_record(RecordTypeStorage* record, const clang::Decl& decl)
+{
+    if (!try_add_type(&record->type, decl, &record->location))
+    {
+        return;
+    }
+    record->location->records.push_back(record);
+}
+
+void TypeMap::add_function(FunctionTypeStorage* function, const clang::Decl& decl)
+{
+    if (!try_add_type(&function->type, decl, &function->location))
+    {
+        return;
+    }
+    function->location->functions.push_back(function);
+}
+
+void TypeMap::add_enum(EnumTypeStorage* enum_storage, const clang::Decl& decl)
+{
+    if (!try_add_type(&enum_storage->type, decl, &enum_storage->location))
+    {
+        return;
+    }
+    enum_storage->location->enums.push_back(enum_storage);
+}
+
+const Type* TypeMap::find_type(const u32 hash)
+{
+    auto type = type_lookup.find(hash);
+    return type == nullptr ? nullptr : type->value.type;
+}
+
+
+void RecordTypeStorage::add_field(const FieldStorage& field)
+{
+    fields.push_back(field);
+}
+
+void RecordTypeStorage::add_function(FunctionTypeStorage* storage)
+{
+    if (!location->try_insert_type(&storage->type))
+    {
+        return;
+    }
+
+    storage->location = location;
+    functions.push_back(storage);
+}
+
+void RecordTypeStorage::add_record(RecordTypeStorage* storage)
+{
+    if (!location->try_insert_type(&storage->type))
+    {
+        return;
+    }
+
+    storage->location = location;
+    nested_records.push_back(storage);
+}
+
+void RecordTypeStorage::add_enum(EnumTypeStorage* storage)
+{
+    if (!location->try_insert_type(&storage->type))
+    {
+        return;
+    }
+
+    storage->location = location;
+    enums.push_back(storage);
+}
+
+void RecordTypeStorage::add_array_type(ArrayType* array_type)
+{
+    if (!location->try_insert_type(array_type))
+    {
+        return;
+    }
+
+    field_array_types.push_back(array_type);
+}
+
+void RecordTypeStorage::add_template_parameter(const TemplateParameter& param)
+{
+    template_parameters.push_back(param);
+}
+
+void FunctionTypeStorage::add_parameter(const FieldStorage& field)
+{
+    parameters.push_back(field);
+}
+
+void FunctionTypeStorage::add_attribute(const Attribute& attribute)
+{
+    attributes.push_back(attribute);
+}
+
+void FunctionTypeStorage::add_invoker_type_arg(const std::string& fully_qualified_name)
+{
+    invoker_type_args.push_back(fully_qualified_name);
+}
+
+void EnumTypeStorage::add_constant(const EnumConstant& constant)
+{
+    constants.push_back(constant);
+}
+
+void EnumTypeStorage::add_attribute(const Attribute& attribute)
+{
+    attributes.push_back(attribute);
 }
 
 

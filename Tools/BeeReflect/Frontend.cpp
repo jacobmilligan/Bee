@@ -32,7 +32,7 @@ std::unique_ptr<clang::FrontendAction> BeeReflectFrontendActionFactory::create()
 }
 
 
-BeeReflectFrontendAction::BeeReflectFrontendAction(TypeStorage* storage, ReflectionAllocator* allocator)
+BeeReflectFrontendAction::BeeReflectFrontendAction(TypeMap* storage, ReflectionAllocator* allocator)
     : matcher_(storage, allocator)
 {
     /*
@@ -68,7 +68,7 @@ std::unique_ptr<clang::ASTConsumer> BeeReflectFrontendAction::CreateASTConsumer(
     {
         if (path.Group == clang::frontend::IncludeDirGroup::Quoted || path.Group == clang::frontend::IncludeDirGroup::Angled)
         {
-            matcher_.storage->include_dirs.push_back(Path(path.Path.c_str()).normalize());
+            matcher_.type_map->include_dirs.push_back(Path(path.Path.c_str()).normalize());
         }
     }
     return finder_.newASTConsumer();

@@ -14,6 +14,11 @@
 namespace bee {
 
 
+struct BEE_REFLECT() ContainersStruct
+{
+    DynamicArray<int> int_array;
+};
+
 struct BEE_REFLECT(serializable, format = packed) PrimitivesStruct
 {
     int       intval { -1 };
@@ -158,6 +163,7 @@ struct BEE_REFLECT(serializable) TestStruct
 {
     int value { 0 };
 
+    DynamicArray<int> array;
     Settings settings;
 
     enum class BEE_REFLECT(serializable) TestEnum
