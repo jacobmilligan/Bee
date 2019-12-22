@@ -15,10 +15,11 @@
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Application/Main.hpp"
 
-
 #include <llvm/Support/CommandLine.h>
 #include <clang/Tooling/CommonOptionsParser.h>
 #include <clang/Tooling/Tooling.h>
+
+#include <unordered_set>
 
 
 int bee_main(int argc, char** argv)
@@ -63,9 +64,16 @@ int bee_main(int argc, char** argv)
         clang::tooling::ClangTool tool(options_parser.getCompilations(), options_parser.getSourcePathList());
 
         const auto output_dir = bee::Path(output_dir_opt.c_str());
+        const auto generated_inl_dir = output_dir.join("ReflectedTemplates");
+
         if (!output_dir.exists())
         {
             bee::fs::mkdir(output_dir);
+        }
+
+        if (!generated_inl_dir.exists())
+        {
+            bee::fs::mkdir(generated_inl_dir);
         }
 
         bee::reflect::BeeReflectFrontendActionFactory factory;
@@ -91,16 +99,22 @@ int bee_main(int argc, char** argv)
                 continue;
             }
 
+            // Generate all non-templated types into a generated.cpp file
             bee::String output;
             bee::io::StringStream stream(&output);
-            bee::reflect::generate_reflection(file.value, &stream);
+            if (bee::reflect::generate_reflection(file.value, &stream, bee::reflect::CodegenMode::skip_templates) <= 0)
+            {
+                // If there's only template types in a generated file, this should be re-written as a empty file
+                output.clear();
+                stream.seek(0, bee::io::SeekOrigin::begin);
+                bee::reflect::generate_empty_reflection(file.value.location.c_str(), &stream);
+            }
 
             auto output_path = output_dir.join(file.value.location.filename(), bee::temp_allocator())
                                          .set_extension("generated")
                                          .append_extension("cpp");
             bee::fs::write(output_path, output.view());
 
-            output_path.set_extension("hpp");
             output.clear();
             stream.seek(0, bee::io::SeekOrigin::begin);
 
@@ -109,6 +123,35 @@ int bee_main(int argc, char** argv)
             bee::reflect::generate_registration(file.value.location, file.value.all_types.span(), &stream);
 
             bee::fs::write(reg_path, output.view());
+
+            // Output a generated.inl file if required - a type in the file is templated and requires a `get_type` specialization
+            output.clear();
+            stream.seek(0, bee::io::SeekOrigin::begin);
+            if (bee::reflect::generate_reflection(file.value, &stream, bee::reflect::CodegenMode::templates_only) > 0)
+            {
+                const auto inl_path = generated_inl_dir.join(file.value.location.filename(), bee::temp_allocator())
+                    .set_extension("generated")
+                    .append_extension("inl");
+
+                bee::fs::write(inl_path, output.view());
+            }
+        }
+
+        bee::String header_comment(bee::temp_allocator());
+        bee::io::StringStream stream(&header_comment);
+
+        for (const std::string& compilation : options_parser.getSourcePathList())
+        {
+            const auto filename = bee::Path(compilation.c_str(), bee::temp_allocator()).filename();
+            const auto path = output_dir.join(filename, bee::temp_allocator()).set_extension("generated").append_extension("cpp");
+
+            if (!path.exists())
+            {
+                bee::reflect::generate_empty_reflection(compilation.c_str(), &stream);
+                bee::fs::write(path, header_comment.view());
+                stream.seek(0, bee::io::SeekOrigin::begin);
+                header_comment.clear();
+            }
         }
 
         return EXIT_SUCCESS;

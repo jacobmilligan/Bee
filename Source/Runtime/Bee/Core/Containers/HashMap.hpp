@@ -53,7 +53,7 @@ template <
     typename        Hasher = Hash<KeyType>,
     typename        KeyEqual = EqualTo<KeyType>
 >
-class HashMap : public Noncopyable
+class BEE_REFLECT(serializable) HashMap : public Noncopyable
 {
 public:
     /*
@@ -810,3 +810,5 @@ constexpr bool HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::implicit_gro
 }
 
 } // namespace bee
+
+#include "ReflectedTemplates/HashMap.generated.inl"

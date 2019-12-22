@@ -21,6 +21,7 @@ bee_test(Bee.Tests.Core
         SerializationTestsTypes.hpp
         SerializationTestsV2.cpp
         ReflectionTests.cpp
+        ReflectionTestsV2.cpp
         PathTests.cpp
         HandleTableTests.cpp
         SoATests.cpp

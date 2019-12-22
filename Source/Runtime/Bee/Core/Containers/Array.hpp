@@ -16,11 +16,8 @@
 namespace bee {
 
 
-class SerializationBuilder;
-
-
 template <typename T, ContainerMode Mode>
-class BEE_REFLECT(serializable, serializer = bee::serialize_array) Array
+class BEE_REFLECT(serializable) Array
 {
 public:
     static constexpr ContainerMode mode = Mode;
@@ -783,16 +780,6 @@ bool Array<T, Mode>::ensure_capacity(const fixed_container_mode_t& fixed_contain
 {
     return BEE_CHECK_F(new_capacity <= capacity_, "FixedArray<T>: new_capacity exceeded the fixed capacity of the array");
 }
-
-
-/*
- **********************
- *
- * Array serialization
- *
- **********************
- */
-void serialize_array(SerializationBuilder* builder);
 
 
 } // namespace bee

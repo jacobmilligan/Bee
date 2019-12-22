@@ -32,6 +32,13 @@ enum class RegistrationVersion
     current = init
 };
 
+enum class CodegenMode
+{
+    all,
+    skip_templates,
+    templates_only
+};
+
 /*
  * .registration files are defined in memory as:
  *
@@ -66,6 +73,12 @@ public:
         : stream_(stream),
           indent_size_(indent_size)
     {}
+
+    void reset(io::StringStream* new_stream)
+    {
+        stream_ = new_stream;
+        indent_ = 0;
+    }
 
     void indent()
     {
@@ -163,11 +176,11 @@ private:
     i32               indent_ { 0 };
 };
 
-
-
 void pretty_print_types(const Span<const Type*>& types, io::StringStream* stream);
 
-void generate_reflection(const ReflectedFile& file, io::StringStream* stream);
+void generate_empty_reflection(const char* location, io::StringStream* stream);
+
+i32 generate_reflection(const ReflectedFile& file, io::StringStream* stream, CodegenMode mode);
 
 void generate_registration(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream);
 

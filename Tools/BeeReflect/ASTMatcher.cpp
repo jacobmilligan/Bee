@@ -7,6 +7,7 @@
 
 
 #include "ASTMatcher.hpp"
+#include "Bee/Core/IO.hpp"
 
 #include <clang/Lex/PreprocessorOptions.h>
 #include <clang/ASTMatchers/ASTMatchFinder.h>
@@ -14,7 +15,6 @@
 #include <clang/AST/RecordLayout.h>
 #include <clang/AST/QualTypeNames.h>
 #include <clang/Basic/DiagnosticSema.h>
-
 
 
 namespace bee {
@@ -31,7 +31,8 @@ enum class BuiltinAttributeKind
     version_removed,
     id,
     format,
-    serializer_function
+    serializer_function,
+    use_builder
 };
 
 struct BuiltinAttribute
@@ -54,7 +55,8 @@ BuiltinAttribute g_builtin_attributes[] =
     { "removed", BuiltinAttributeKind::version_removed },
     { "id", BuiltinAttributeKind::id },
     { "format", BuiltinAttributeKind::format },
-    { "serializer", BuiltinAttributeKind::serializer_function }
+    { "serializer", BuiltinAttributeKind::serializer_function },
+    { "use_builder", BuiltinAttributeKind::use_builder }
 };
 
 
@@ -214,6 +216,11 @@ std::string ASTMatcher::print_qualtype_name(const clang::QualType& type, const c
 
 void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStorage* parent)
 {
+    if (!decl.isThisDeclarationADefinition() || decl.isInvalidDecl())
+    {
+        return;
+    }
+
     AttributeParser attr_parser{};
 
     if (!attr_parser.init(decl, &diagnostics))
@@ -222,13 +229,15 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
     }
 
     const auto name = print_name(decl);
-    auto& layout = decl.getASTContext().getASTRecordLayout(&decl);
     auto storage = allocator->allocate_storage<RecordTypeStorage>(&decl);
     auto type = &storage->type;
-    type->size = layout.getSize().getQuantity();
-    type->alignment = layout.getAlignment().getQuantity();
-    type->name = allocator->allocate_name(name);
-    type->hash = get_type_hash({ name.data(), static_cast<i32>(name.size()) });
+
+    if (!decl.isDependentType())
+    {
+        auto& layout = decl.getASTContext().getASTRecordLayout(&decl);
+        type->size = layout.getSize().getQuantity();
+        type->alignment = layout.getAlignment().getQuantity();
+    }
 
     if (decl.isStruct())
     {
@@ -252,20 +261,63 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
         return;
     }
 
+    // Name will be valid here even for templated classes because it doesn't contain the template parameters.
+    // `name` will get overwritten below if it's a template type so don't move this line of code
+    type->hash = get_type_hash({ name.data(), static_cast<i32>(name.size()) });
+
     // Gather template parameters
     auto class_template = decl.getDescribedClassTemplate();
     if (class_template != nullptr)
     {
         type->kind |= TypeKind::template_decl;
 
+        String template_name(temp_allocator());
+        io::StringStream stream(&template_name);
+        stream.write_fmt("%" BEE_PRIsv "<", BEE_FMT_SV(name));
+
+        int param_index = 0;
+        const auto param_count = static_cast<int>(class_template->getTemplateParameters()->size());
         for (const auto clang_param : *class_template->getTemplateParameters())
         {
             TemplateParameter param{};
             param.name = allocator->allocate_name(clang_param->getName());
+            param.type_name = param.name;
             param.hash = get_type_hash(param.name);
+
+            // Default template args need to be removed so we can specialize `get_type` properly
+            if (auto ttp = llvm::dyn_cast<clang::TemplateTypeParmDecl>(clang_param))
+            {
+                ttp->removeDefaultArgument();
+            }
+            else if (auto nttp = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(clang_param))
+            {
+                param.type_name = allocator->allocate_name(print_qualtype_name(nttp->getType(), decl.getASTContext()));
+                nttp->removeDefaultArgument();
+            }
+
             storage->add_template_parameter(param);
+
+            stream.write_fmt("%s", param.name);
+            if (param_index < param_count - 1)
+            {
+                stream.write(", ");
+            }
+            ++param_index;
         }
+
+        stream.write(">");
+
+        type_name.clear();
+        llvm::raw_svector_ostream type_name_stream(type_name);
+        class_template->getTemplateParameters()->print(type_name_stream, decl.getASTContext(), decl.getASTContext().getPrintingPolicy());
+        storage->template_decl_string = allocator->allocate_name(type_name);
+        type->name = allocator->allocate_name(template_name.c_str());
     }
+    else
+    {
+        type->name = allocator->allocate_name(name);
+    }
+
 
     SerializationInfo serialization_info{};
     if (!attr_parser.parse(&storage->attributes, &serialization_info, allocator))
@@ -276,10 +328,6 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
     type->serialization_flags = serialization_info.flags;
     type->serialized_version = serialization_info.serialized_version;
     storage->has_explicit_version = serialization_info.using_explicit_versioning;
-    if (serialization_info.serializer_function != nullptr)
-    {
-        storage->serializer_function_name = serialization_info.serializer_function;
-    }
 
     if (parent == nullptr)
     {
@@ -652,7 +700,7 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, RecordTypeSto
     }
 }
 
-FieldStorage ASTMatcher::create_field(const llvm::StringRef & name, const bee::i32 index, const clang::ASTContext & ast_context, const struct bee::reflect::RecordTypeStorage* parent, const clang::QualType& qual_type, const clang::SourceLocation& location)
+FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i32 index, const clang::ASTContext & ast_context, const struct bee::reflect::RecordTypeStorage* parent, const clang::QualType& qual_type, const clang::SourceLocation& location)
 {
     /*
     * Get the layout of the parent record this field is in and also get pointers to the desugared type so that
@@ -692,6 +740,10 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef & name, const bee::i
     }
 
     // Get the associated types hash so we can look it up later
+    auto fully_qualified_name = print_qualtype_name(original_type, ast_context);
+    auto type_hash = get_type_hash({ fully_qualified_name.data(), static_cast<i32>(fully_qualified_name.size()) });
+    storage.specialized_type = allocator->allocate_name(fully_qualified_name);
+
     if (original_type->isRecordType())
     {
         auto as_cxx_record_decl = qual_type->getAsCXXRecordDecl();
@@ -709,15 +761,15 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef & name, const bee::i
                 }
 
                 const auto templ_type_name = print_qualtype_name(arg.getAsType(), specialization->getASTContext());
-                const auto type_hash = get_type_hash(templ_type_name.c_str());
-                auto arg_type = type_map->find_type(type_hash);
+                const auto arg_type_hash = get_type_hash(templ_type_name.c_str());
+                auto arg_type = type_map->find_type(arg_type_hash);
 
                 if (arg_type == nullptr)
                 {
-                    arg_type = get_type(type_hash);
+                    arg_type = get_type(arg_type_hash);
                 }
 
-                if (arg_type->is<TypeKind::unknown>())
+                if (arg_type->is(TypeKind::unknown))
                 {
                     diagnostics.Report(location, diagnostics.warn_unknown_field_type).AddString(templ_type_name);
                 }
@@ -726,22 +778,20 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef & name, const bee::i
             }
 
             original_type = original_type.getCanonicalType();
+
+            // We want to lookup the type using the unspecialized type name from the template decl
+            const auto template_decl = specialization->getInstantiatedFrom().dyn_cast<clang::ClassTemplateDecl*>();
+
+            BEE_ASSERT(template_decl != nullptr);
+
+            const auto unspecialized_type_name = template_decl->getQualifiedNameAsString();
+            type_hash = get_type_hash({ unspecialized_type_name.data(), static_cast<i32>(unspecialized_type_name.size()) });
         }
     }
 
-    auto fully_qualified_name = print_qualtype_name(original_type, ast_context);
-    const auto angle_bracket_idx = fully_qualified_name.find('<');
-
-    if (angle_bracket_idx != fully_qualified_name.npos)
-    {
-        fully_qualified_name.erase(angle_bracket_idx);
-    }
-
-    const auto type_hash = get_type_hash({ fully_qualified_name.data(), static_cast<i32>(fully_qualified_name.size()) });
-
     auto type = type_map->find_type(type_hash);
     if (type == nullptr)
-    {
+    { 
         /*
          * If the type is missing it might be a core builtin type which can be accessed by bee-reflect via
          * get_type. This is safe to do here as bee-reflect doesn't link to any generated cpp files
@@ -749,7 +799,7 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef & name, const bee::i
         type = get_type(type_hash);
         if (type->kind == TypeKind::unknown && !original_type->isTemplateTypeParmType())
         {
-            diagnostics.Report(location, diagnostics.warn_unknown_field_type).AddString(fully_qualified_name);
+            diagnostics.Report(location, diagnostics.warn_unknown_field_type).AddString(storage.specialized_type);
         }
     }
 
@@ -865,6 +915,7 @@ bool AttributeParser::parse_number(bee::Attribute* attribute)
         return true;
     }
 
+    number_str = number_str.rtrim('f');
     double result = 0.0;
     if (!number_str.getAsDouble(result))
     {
@@ -1073,6 +1124,12 @@ bool AttributeParser::parse_attribute(DynamicArray<Attribute>* dst_attributes, S
 
             serialization_info->flags |= SerializationFlags::uses_builder;
             serialization_info->serializer_function = allocator->allocate_name(attribute.value.string);
+            break;
+        }
+        case BuiltinAttributeKind::use_builder:
+        {
+            serialization_info->flags |= SerializationFlags::uses_builder;
+            break;
         }
         default: break;
     }

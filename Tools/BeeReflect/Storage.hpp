@@ -26,6 +26,7 @@ struct FieldStorage
     clang::SourceLocation       location;
     DynamicArray<Attribute>     attributes;
     DynamicArray<const Type*>   template_arguments;
+    const char*                 specialized_type {nullptr };
 };
 
 inline bool operator==(const FieldStorage& lhs, const FieldStorage& rhs)
@@ -66,18 +67,18 @@ struct ReflectedFile;
 
 struct RecordTypeStorage
 {
-    ReflectedFile*                      location { nullptr };
-    const clang::CXXRecordDecl*         decl { nullptr };
-    bool                                has_explicit_version { false };
-    RecordType                          type;
-    DynamicArray<FieldStorage>          fields;
-    DynamicArray<Attribute>             attributes;
-    DynamicArray<FunctionTypeStorage*>  functions;
-    DynamicArray<EnumTypeStorage*>      enums;
-    DynamicArray<RecordTypeStorage*>    nested_records;
-    DynamicArray<ArrayType*>            field_array_types;
-    DynamicArray<TemplateParameter>     template_parameters;
-    const char*                         serializer_function_name { nullptr };
+    ReflectedFile*                          location { nullptr };
+    const clang::CXXRecordDecl*             decl { nullptr };
+    bool                                    has_explicit_version { false };
+    RecordType                              type;
+    DynamicArray<FieldStorage>              fields;
+    DynamicArray<Attribute>                 attributes;
+    DynamicArray<FunctionTypeStorage*>      functions;
+    DynamicArray<EnumTypeStorage*>          enums;
+    DynamicArray<RecordTypeStorage*>        nested_records;
+    DynamicArray<ArrayType*>                field_array_types;
+    DynamicArray<TemplateParameter>         template_parameters;
+    const char*                             template_decl_string { nullptr };
 
     RecordTypeStorage() = default;
 

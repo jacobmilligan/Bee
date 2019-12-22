@@ -19,6 +19,13 @@
 namespace bee {
 
 
+struct BEE_CORE_API SerializedContainerIterator
+{
+    virtual u8* current() = 0;
+    virtual void next() = 0;
+};
+
+
 class BEE_CORE_API JSONSerializerV2 final : public Serializer
 {
 public:
@@ -37,9 +44,12 @@ public:
     void end() override;
     void begin_record(const RecordType* type) override;
     void end_record() override;
+    void begin_object(i32* member_count) override;
+    void end_object() override;
     void begin_array(i32* count) override;
     void end_array() override;
-    void serialize_field(const Field& field) override;
+    void serialize_field(const char* name) override;
+    void serialize_key(String* key) override;
     void serialize_bytes(void* data, const i32 size) override;
     void serialize_fundamental(bool* data) override;
     void serialize_fundamental(char* data) override;
@@ -60,6 +70,7 @@ private:
     rapidjson::ParseFlag                                parse_flags_;
     rapidjson::Document                                 reader_doc_;
     DynamicArray<rapidjson::Value*>                     stack_;
+    rapidjson::Value::MemberIterator                    current_member_iter_;
     i32                                                 current_element_ { 0 };
     const char*                                         src_ { nullptr };
 

@@ -7,6 +7,7 @@
 
 
 #include "Bee/Core/Math/Math.hpp"
+#include "Bee/Core/IO.hpp"
 
 #define BEE_RAPIDJSON_ERROR_H
 #include "Bee/Core/SerializationV2/JSONSerializerV2.hpp"
@@ -81,7 +82,7 @@ void JSONSerializerV2::end()
     // no-op
 }
 
-void JSONSerializerV2::begin_record(const RecordType* type)
+void JSONSerializerV2::begin_record(const RecordType* /* type */)
 {
     if (mode == SerializerMode::writing)
     {
@@ -98,9 +99,10 @@ void JSONSerializerV2::begin_record(const RecordType* type)
     if (stack_.back()->IsArray())
     {
         auto element = &stack_.back()->GetArray()[current_element_];
-        BEE_ASSERT_F(element->IsObject(), "Invalid type: %d", element->GetType());
         stack_.push_back(element);
     }
+
+    BEE_ASSERT_F(stack_.back()->IsObject(), "Invalid type: %d", stack_.back()->GetType());
 }
 
 void JSONSerializerV2::end_record()
@@ -114,6 +116,22 @@ void JSONSerializerV2::end_record()
         BEE_ASSERT_F(stack_.back()->IsObject(), "Invalid type: %d", stack_.back()->GetType());
         end_read_scope();
     }
+}
+
+void JSONSerializerV2::begin_object(i32* member_count)
+{
+    begin_record(nullptr);
+    if (mode == SerializerMode::reading)
+    {
+        *member_count = static_cast<i32>(stack_.back()->MemberCount());
+    }
+
+    current_member_iter_ = stack_.back()->MemberBegin();
+}
+
+void JSONSerializerV2::end_object()
+{
+    end_record();
 }
 
 void JSONSerializerV2::begin_array(i32* count)
@@ -142,11 +160,11 @@ void JSONSerializerV2::end_array()
     }
 }
 
-void JSONSerializerV2::serialize_field(const Field& field)
+void JSONSerializerV2::serialize_field(const char* name)
 {
     if (mode == SerializerMode::writing)
     {
-        writer_.Key(field.name);
+        writer_.Key(name);
         return;
     }
     
@@ -156,8 +174,8 @@ void JSONSerializerV2::serialize_field(const Field& field)
         return;
     }
 
-    const auto member = stack_.back()->FindMember(field.name);
-    if (BEE_FAIL_F(member != reader_doc_.MemberEnd(), "JSONSerializer: missing field \"%s\"", field.name))
+    const auto member = stack_.back()->FindMember(name);
+    if (BEE_FAIL_F(member != reader_doc_.MemberEnd(), "JSONSerializer: missing field \"%s\"", name))
     {
         return;
     }
@@ -165,10 +183,29 @@ void JSONSerializerV2::serialize_field(const Field& field)
     stack_.push_back(&member->value);
 }
 
+void JSONSerializerV2::serialize_key(String* key)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.Key(key->c_str(), key->size());
+        return;
+    }
+
+    // If current element is not an object then we can't serialize a key
+    if (BEE_FAIL_F(stack_.back()->IsObject(), "JSONSerializer: expected object type but got: %d", stack_.back()->GetType()))
+    {
+        return;
+    }
+
+    str::replace_range(key, 0, key->size(), current_member_iter_->name.GetString(), current_member_iter_->name.GetStringLength());
+    ++current_member_iter_;
+}
+
 //void JSONSerializerV2::serialize_enum(const EnumType* type, u8* data)
 //{
 //
 //}
+
 
 void JSONSerializerV2::serialize_bytes(void* data, const i32 size)
 {

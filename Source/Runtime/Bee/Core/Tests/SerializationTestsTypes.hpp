@@ -122,23 +122,24 @@ inline bool operator!=(const PrimitivesStructV3& lhs, const PrimitivesStructV3& 
     return !(lhs == rhs);
 }
 
-inline void serialize_primitives(SerializationBuilder* builder)
+template <>
+inline void serialize_type(SerializationBuilder* builder, PrimitivesStructV3* data)
 {
-    builder->version(1)
-        .add(1, &PrimitivesStructV3::boolval)
-        .add(1, 2, &PrimitivesStructV3::is_valid)
-        .add(1, &PrimitivesStructV3::uval)
-        .add(1, &PrimitivesStructV3::charval);
+    builder->structure(1)
+        .add_field(1, &data->boolval, "boolval")
+        .add_field(1, 2, &data->is_valid, "is_valid")
+        .add_field(1, &data->uval, "uval")
+        .add_field(1, &data->charval, "charval");
 }
 
-inline void serialize_primitives_removed(SerializationBuilder* builder)
-{
-    builder->version(3)
-           .add(1, &PrimitivesStructV3::boolval)
-           .add(1, 2, &PrimitivesStructV3::is_valid)
-           .remove<u32>(1, 2, 109)
-           .add(1, &PrimitivesStructV3::charval);
-}
+//inline void serialize_type(SerializationBuilder* builder, PrimitivesStructV3* data)
+//{
+//    builder->structure(3)
+//           .add_field(1, &data->boolval, "boolval")
+//           .add_field(1, 2, &data->is_valid, "is_valid")
+//           .remove_field<u32>(1, 2, 109, "uval")
+//           .add_field(1, &data->charval, "charval");
+//}
 
 
 

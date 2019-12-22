@@ -41,6 +41,7 @@ BeeReflectFrontendAction::BeeReflectFrontendAction(TypeMap* storage, ReflectionA
      */
     auto decl_matcher = clang::ast_matchers::cxxRecordDecl(
         clang::ast_matchers::unless(clang::ast_matchers::hasAncestor(clang::ast_matchers::recordDecl())),
+        clang::ast_matchers::unless(clang::ast_matchers::classTemplateSpecializationDecl()),
         clang::ast_matchers::hasAttr(clang::attr::Annotate)
     ).bind("id");
     auto enum_matcher = clang::ast_matchers::enumDecl(
@@ -56,6 +57,7 @@ BeeReflectFrontendAction::BeeReflectFrontendAction(TypeMap* storage, ReflectionA
     finder_.addMatcher(enum_matcher, &matcher_);
     finder_.addMatcher(function_matcher, &matcher_);
 }
+
 
 std::unique_ptr<clang::ASTConsumer> BeeReflectFrontendAction::CreateASTConsumer(clang::CompilerInstance& CI, llvm::StringRef InFile)
 {

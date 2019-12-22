@@ -136,7 +136,7 @@ private:
  * so are very cheap and can be copied around without worrying about overhead - in this case, COW would a large impact
  * on what could be very cheap operations.
  */
-class BEE_CORE_API String
+class BEE_REFLECT(serializable, use_builder) BEE_CORE_API String
 {
 public:
     explicit String(Allocator* allocator = system_allocator());
@@ -185,6 +185,10 @@ public:
     String& remove(i32 index, i32 count);
 
     String& remove(i32 index);
+
+    void resize(i32 size);
+
+    void resize(i32 size, char c);
 
     void clear();
 

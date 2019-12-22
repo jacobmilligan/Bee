@@ -19,41 +19,74 @@ Serializer::Serializer(const bee::SerializerFormat serialized_format)
 {}
 
 
-SerializationBuilder::SerializationBuilder(bee::Serializer* new_serializer, const bee::Type* type, bee::u8* data)
-    : version_(1),
-      serializer_(new_serializer),
-      serialized_type_(type),
-      serialized_data_(data)
+SerializationBuilder::SerializationBuilder(Serializer* new_serializer)
+    : serializer_(new_serializer)
 {}
 
-SerializationBuilder& SerializationBuilder::version(const i32 value)
+SerializationBuilder& SerializationBuilder::structure(const i32 serialized_version)
 {
-    version_ = value;
+    if (BEE_FAIL_F(version_ <= 0, "serialized version has already been set"))
+    {
+        return *this;
+    }
+
+    version_ = serialized_version;
     serialize_version(serializer_, &version_);
-    BEE_ASSERT_F(version_ <= value, "serialization error for type `%s`: SerializationBuilder functions are not forward-compatible with versions from the future", serialized_type_->name);
+    return *this;
+}
+
+SerializationBuilder& SerializationBuilder::container(const SerializedContainerKind kind, const i32 serialized_version, i32 * size)
+{
+    if (BEE_FAIL_F(version_ <= 0, "serialized version has already been set"))
+    {
+        return *this;
+    }
+
+    is_container_ = true;
+    version_ = serialized_version;
+    serialize_version(serializer_, &version_);
+
+    serializer_->serialize_field("bee::size");
+    serializer_->serialize_fundamental(size);
+
+    switch (kind)
+    {
+        case SerializedContainerKind::sequential:
+        {
+            serializer_->begin_array(size);
+            break;
+        }
+        case SerializedContainerKind::key_value:
+        {
+            serializer_->begin_object(size);
+            break;
+        }
+        default:
+        {
+            BEE_UNREACHABLE("Invalid container type");
+        }
+    }
+
+    return *this;
+}
+
+SerializationBuilder& SerializationBuilder::key(String* data)
+{
+    BEE_ASSERT_F(is_container_, "serialization builder is not configured to build a container type");
+    serializer_->serialize_key(data);
     return *this;
 }
 
 
 void serialize_version(Serializer* serializer, i32* version)
 {
-    static Field version_field(get_type_hash("bee::version"), 0, Qualifier::none, StorageClass::none, "bee::version", get_type<i32>(), {}, {}, 1);
-    serializer->serialize_field(version_field);
+    serializer->serialize_field("bee::version");
     serializer->serialize_fundamental(version);
-}
-
-void serialize_element_count(Serializer* serializer, i32* count)
-{
-    static Field element_count_field(get_type_hash("bee::element_count"), 0, Qualifier::none, StorageClass::none, "bee::element_count", get_type<i32>(), {}, {}, 1);
-    serializer->serialize_field(element_count_field);
-    serializer->serialize_fundamental(count);
 }
 
 void serialize_serialization_flags(Serializer* serializer, SerializationFlags* flags)
 {
-    static Field flags_field(get_type_hash("bee::flags"), 0, Qualifier::none, StorageClass::none, "bee::flags", get_type<std::underlying_type_t<SerializationFlags>>(), {}, {}, 1);
-
-    serializer->serialize_field(flags_field);
+    serializer->serialize_field("bee::flags");
 
     auto integral = underlying_flag_t(*flags);
     serializer->serialize_fundamental(&integral);
@@ -73,14 +106,14 @@ void serialize_packed_record(const i32 version, Serializer* serializer, const Re
 
         if (field.version_added > 0 && version >= field.version_added && version < field.version_removed)
         {
-            serializer->serialize_field(field);
+            serializer->serialize_field(field.name);
 
             if (field.template_argument_in_parent >= 0)
             {
                 serialized_type = template_args[field.template_argument_in_parent];
             }
 
-            serialize_type(serialized_type->serialized_version, serializer, serialized_type, data + field.offset);
+            serialize_type(serializer, serialized_type, field.serializer_function, data + field.offset);
         }
     }
 }
@@ -124,14 +157,14 @@ void serialize_table_record(const i32 version, Serializer* serializer, const Rec
             auto& field = type->fields[field_index];
             if (field.version_added > 0 && version >= field.version_added && version < field.version_removed)
             {
-                serializer->serialize_field(field);
+                serializer->serialize_field(field.name);
                 if (field.template_argument_in_parent < 0)
                 {
-                    serialize_type(field.type->serialized_version, serializer, field.type, data + field.offset);
+                    serialize_type(serializer, field.type, field.serializer_function, data + field.offset);
                 }
                 else
                 {
-                    serialize_type(template_args[field.template_argument_in_parent]->serialized_version, serializer, template_args[field.template_argument_in_parent], data + field.offset);
+                    serialize_type(serializer, template_args[field.template_argument_in_parent], field.serializer_function, data + field.offset);
                 }
             }
         }
@@ -145,22 +178,22 @@ void serialize_table_record(const i32 version, Serializer* serializer, const Rec
             {
                 FieldHeader header(field);
                 serializer->serialize_bytes(&header, sizeof(FieldHeader));
-                serializer->serialize_field(field);
+                serializer->serialize_field(field.name);
 
                 if (field.template_argument_in_parent < 0)
                 {
-                    serialize_type(field.type->serialized_version, serializer, field.type, data + field.offset);
+                    serialize_type(serializer, field.type, field.serializer_function, data + field.offset);
                 }
                 else
                 {
-                    serialize_type(template_args[field.template_argument_in_parent]->serialized_version, serializer, template_args[field.template_argument_in_parent], data + field.offset);
+                    serialize_type(serializer, template_args[field.template_argument_in_parent], field.serializer_function, data + field.offset);
                 }
             }
         }
     }
 }
 
-BEE_CORE_API void serialize_type(const i32 serialized_version, Serializer* serializer, const Type* type, u8* data, const Span<const Type*>& template_type_arguments)
+BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, SerializationFunction* serialization_function, u8* data, const Span<const Type*>& template_type_arguments)
 {
     if (type->serialized_version <= 0)
     {
@@ -169,36 +202,30 @@ BEE_CORE_API void serialize_type(const i32 serialized_version, Serializer* seria
     }
 
     // Handle custom serialization
-    if ((type->serialization_flags & SerializationFlags::uses_builder) == SerializationFlags::uses_builder)
+    if (serialization_function != nullptr)
     {
         BEE_ASSERT_F((type->kind & TypeKind::record) != TypeKind::unknown, "Custom serializer functions must only be used with record types");
-
-        const auto record_type = type->as<RecordType>();
-
-        BEE_ASSERT_F(record_type->serializer_function != nullptr, "Missing serializer function for type %s", type->name);
-
-        SerializationBuilder builder(serializer, type, data);
-        record_type->serializer_function(&builder);
-
+        SerializationBuilder builder(serializer);
+        serialization_function->serialize(&builder, data);
         return;
     }
 
     // Handle as automatically serialized
-    if (type->is<TypeKind::record>())
+    if (type->is(TypeKind::record))
     {
         auto record_type = type->as<RecordType>();
         auto serialization_flags = type->serialization_flags;
 
         serializer->begin_record(record_type);
 
-        i32 version = serialized_version;
+        i32 version = type->serialized_version;
         serialize_version(serializer, &version);
 
         serialize_serialization_flags(serializer, &serialization_flags);
 
         if (serializer->format == SerializerFormat::text || (serialization_flags & SerializationFlags::packed_format) == SerializationFlags::packed_format)
         {
-            BEE_ASSERT_F(version <= serialized_version, "serialization error for type `%s`: structures serialized using `packed_format` are not forward-compatible with versions from the future", type->name);
+            BEE_ASSERT_F(version <= type->serialized_version, "serialization error for type `%s`: structures serialized using `packed_format` are not forward-compatible with versions from the future", type->name);
             serialize_packed_record(version, serializer, record_type, data, template_type_arguments);
         }
 
@@ -210,7 +237,7 @@ BEE_CORE_API void serialize_type(const i32 serialized_version, Serializer* seria
         serializer->end_record();
     }
 
-    if (type->is<TypeKind::array>())
+    if (type->is(TypeKind::array))
     {
         auto array_type = type->as<ArrayType>();
         auto element_type = array_type->element_type;
@@ -220,13 +247,13 @@ BEE_CORE_API void serialize_type(const i32 serialized_version, Serializer* seria
 
         for (int element = 0; element < element_count; ++element)
         {
-            serialize_type(element_type->serialized_version, serializer, element_type, data + element_type->size * element);
+            serialize_type(serializer, element_type, nullptr, data + element_type->size * element);
         }
 
         serializer->end_array();
     }
 
-    if (type->is<TypeKind::fundamental>())
+    if (type->is(TypeKind::fundamental))
     {
         const auto fundamental_type = type->as<FundamentalType>();
 
@@ -262,9 +289,9 @@ BEE_CORE_API void serialize_type(const i32 serialized_version, Serializer* seria
     }
 }
 
-BEE_CORE_API void serialize_type(const i32 serialized_version, Serializer* serializer, const Type* type, u8* data)
+BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, SerializationFunction* serialization_function, u8* data)
 {
-    return serialize_type(serialized_version, serializer, type, data, {});
+    return serialize_type(serializer, type, serialization_function, data, {});
 }
 
 

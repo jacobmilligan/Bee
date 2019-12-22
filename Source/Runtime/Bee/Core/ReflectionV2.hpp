@@ -8,10 +8,8 @@
 #pragma once
 
 #include "Bee/Core/Enum.hpp"
-#include "Bee/Core/Containers/Array.hpp"
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/Logger.hpp"
-#include "Bee/Core/Hash.hpp"
 
 
 namespace bee {
@@ -90,7 +88,6 @@ BEE_FLAGS(TypeKind, u32)
     function                = 1u << 6u,
     fundamental             = 1u << 7u,
     array                   = 1u << 8u,
-    template_parameter      = 1u << 9u,
     record                  = class_decl | struct_decl | union_decl
 };
 
@@ -141,6 +138,7 @@ enum class FundamentalKind
 
 
 struct Type;
+struct SerializationFunction;
 
 
 class BEE_CORE_API namespace_iterator
@@ -270,29 +268,32 @@ struct TemplateParameter
 {
     u32         hash { 0 };
     const char* name { nullptr };
+    const char* type_name { nullptr };
 
     TemplateParameter() = default;
 
-    TemplateParameter(const u32 arg_name_hash, const char* arg_name)
+    TemplateParameter(const u32 arg_name_hash, const char* arg_name, const char* arg_type_name)
         : hash(arg_name_hash),
-          name(arg_name)
+          name(arg_name),
+          type_name(arg_type_name)
     {}
 };
 
 
 struct Field
 {
-    u32                 hash { 0 };
-    size_t              offset { 0 };
-    Qualifier           qualifier { Qualifier::none };
-    StorageClass        storage_class { StorageClass::none };
-    const char*         name { nullptr };
-    const Type*         type { nullptr };
-    Span<const Type*>   template_arguments;
-    Span<Attribute>     attributes;
-    i32                 version_added { 0 };
-    i32                 version_removed { limits::max<i32>() };
-    i32                 template_argument_in_parent { -1 };
+    u32                     hash { 0 };
+    size_t                  offset { 0 };
+    Qualifier               qualifier { Qualifier::none };
+    StorageClass            storage_class { StorageClass::none };
+    const char*             name { nullptr };
+    const Type*             type { nullptr };
+    Span<const Type*>       template_arguments;
+    Span<Attribute>         attributes;
+    SerializationFunction*  serializer_function { nullptr };
+    i32                     version_added { 0 };
+    i32                     version_removed { limits::max<i32>() };
+    i32                     template_argument_in_parent { -1 };
 
     Field() = default;
 
@@ -305,6 +306,7 @@ struct Field
         const Type* new_type,
         const Span<const Type*> new_template_args,
         const Span<Attribute> new_attributes,
+        SerializationFunction* new_serializer_function,
         const i32 new_version_added = 0,
         const i32 new_version_removed = limits::max<i32>(),
         const i32 template_arg_index = -1
@@ -316,6 +318,7 @@ struct Field
         type(new_type),
         template_arguments(new_template_args),
         attributes(new_attributes),
+        serializer_function(new_serializer_function),
         version_added(new_version_added),
         version_removed(new_version_removed),
         template_argument_in_parent(template_arg_index)
@@ -323,13 +326,8 @@ struct Field
 };
 
 
-class SerializationBuilder;
-
-
 struct Type
 {
-    using serializer_function_t = void(*)(SerializationBuilder*);
-
     u32                     hash { 0 };
     size_t                  size { 0 };
     size_t                  alignment { 0 };
@@ -377,10 +375,9 @@ struct Type
         template_parameters(new_template_parameters)
     {}
 
-    template <TypeKind Flag>
-    inline bool is() const
+    inline bool is(const TypeKind flag) const
     {
-        return (kind & Flag) != TypeKind::unknown;
+        return (kind & flag) != TypeKind::unknown;
     }
 
     template <typename T>
@@ -674,16 +671,11 @@ struct FunctionType final : public TypeSpec<TypeKind::function>
 
 struct RecordType final : public TypeSpec<TypeKind::record>
 {
-    using serializer_function_t = void(*)(SerializationBuilder*);
-
     Span<Field>                 fields;
     Span<FunctionType>          functions;
     Span<Attribute>             attributes;
     Span<const EnumType*>       enums;
     Span<const RecordType*>     records;
-    Span<Type*>                 template_arguments;
-    bool                        is_template { false };
-    serializer_function_t       serializer_function { nullptr };
 
     using TypeSpec::TypeSpec;
 
@@ -701,15 +693,13 @@ struct RecordType final : public TypeSpec<TypeKind::record>
         const Span<FunctionType> new_functions,
         const Span<Attribute> new_attributes,
         const Span<const EnumType*> nested_enums,
-        const Span<const RecordType*> nested_records,
-        serializer_function_t new_serializer_function = nullptr
+        const Span<const RecordType*> nested_records
     ) : TypeSpec(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags),
         fields(new_fields),
         functions(new_functions),
         attributes(new_attributes),
         enums(nested_enums),
-        records(nested_records),
-        serializer_function(new_serializer_function)
+        records(nested_records)
     {}
 
     RecordType(
@@ -725,15 +715,13 @@ struct RecordType final : public TypeSpec<TypeKind::record>
         const Span<FunctionType> new_functions,
         const Span<Attribute> new_attributes,
         const Span<const EnumType*> nested_enums,
-        const Span<const RecordType*> nested_records,
-        serializer_function_t new_serializer_function = nullptr
+        const Span<const RecordType*> nested_records
     ) : TypeSpec(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags, new_template_parameters),
         fields(new_fields),
         functions(new_functions),
         attributes(new_attributes),
         enums(nested_enums),
-        records(nested_records),
-        serializer_function(new_serializer_function)
+        records(nested_records)
     {}
 };
 
@@ -751,11 +739,23 @@ struct ComplexTypeTag
     static constexpr u32 hash = Hash;
 };
 
+template <typename T>
+struct TypeTag
+{
+    using type = T;
+};
+
 
 extern void reflection_init();
 
 template <typename T>
-const Type* get_type();
+const Type* get_type(const TypeTag<T>& tag);
+
+template <typename T>
+inline const Type* get_type()
+{
+    return get_type(TypeTag<T>{});
+}
 
 BEE_CORE_API u32 get_type_hash(const StringView& type_name);
 
@@ -826,3 +826,5 @@ const char* reflection_dump_flags(const FlagType flag)
 
 
 } // namespace bee
+
+#include "ReflectedTemplates/Array.generated.inl"

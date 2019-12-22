@@ -21,7 +21,7 @@ class Path;
 
 /// @brief The path class is a lightweight path utility class for navigating the platforms
 /// filesystem
-class BEE_CORE_API Path
+class BEE_REFLECT(serializable) BEE_CORE_API Path
 {
 public:
 #if BEE_OS_WINDOWS == 1

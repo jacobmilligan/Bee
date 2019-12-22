@@ -50,8 +50,10 @@ void codegen_template_parameters(const Span<const TemplateParameter>& parameters
         for (const TemplateParameter& param : parameters)
         {
             codegen->write_line(
-                "TemplateParameter { %u, \"%s\" },",
-                param.hash, param.name
+                "TemplateParameter { %u, \"%s\", \"%s\" },",
+                param.hash,
+                param.name,
+                param.type_name
             );
         }
     }, ";");
@@ -62,10 +64,10 @@ void codegen_template_parameters(const Span<const TemplateParameter>& parameters
 void codegen_type(const CodegenTypeOptions options, const Type& type, CodeGenerator* codegen)
 {
     codegen->write(
-        "%u, %zu, %zu, ",
+        "%u, sizeof(%s), alignof(%s), ",
         type.hash,
-        type.size,
-        type.alignment
+        type.name,
+        type.name
     );
 
     if ((options & CodegenTypeOptions::use_explicit_kind_flags) != CodegenTypeOptions::none)
@@ -80,7 +82,7 @@ void codegen_type(const CodegenTypeOptions options, const Type& type, CodeGenera
         reflection_dump_flags(type.serialization_flags)
     );
 
-    if (!type.template_parameters.empty())
+    if (type.is(TypeKind::template_decl))
     {
         codegen->append_line("Span<TemplateParameter>(template_parameters), ");
     }
@@ -136,51 +138,79 @@ void codegen_attribute(const Attribute& attr, CodeGenerator* codegen)
     });
 }
 
-void codegen_field_template_args(const FieldStorage& storage, CodeGenerator* codegen)
+bool has_serializer_function(const FieldStorage& storage)
 {
     auto& field = storage.field;
-    if (!field.type->is<TypeKind::template_decl>())
+    const auto uses_builder = (field.type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none;
+    const auto is_templated_and_serialized = !storage.template_arguments.empty() && field.type->serialized_version > 0;
+    return uses_builder || is_templated_and_serialized;
+}
+
+void codegen_field_extra_info(const FieldStorage& storage, CodeGenerator* codegen)
+{
+    auto& field = storage.field;
+    if (field.type->is(TypeKind::template_decl))
     {
-        return;
+        codegen->write("static const Type* %s__template_args[] =", field.name);
+        codegen->scope([&]()
+        {
+            codegen->indent();
+            for (const Type* template_arg : storage.template_arguments)
+            {
+                codegen->append_line("get_type<%s>(), ", template_arg->name);
+            }
+        }, ";");
+
+        codegen->newline();
+        codegen->newline();
     }
 
-    codegen->write("static const Type* %s__template_args[] =", field.name);
-    codegen->scope([&]()
+
+    if (has_serializer_function(storage))
     {
-        codegen->indent();
-        for (const Type* template_arg : storage.template_arguments)
-        {
-            codegen->append_line("get_type<%s>(), ", template_arg->name);
-        }
-    }, ";");
-    codegen->newline();
-    codegen->newline();
+        codegen->write("static TypedSerializationFunction<%s> %s__serializer_function{};", storage.specialized_type, field.name);
+        codegen->newline();
+        codegen->newline();
+    }
+
 }
 
 void codegen_field(const FieldStorage& storage, const char* attributes_array_name, CodeGenerator* codegen)
 {
-    String template_args_array_name;
+    String template_args_array_name(temp_allocator());
+    String serializer_function_name(temp_allocator());
+
     auto& field = storage.field;
-    if (field.type->is<TypeKind::template_decl>())
+    if (field.type->is(TypeKind::template_decl))
     {
         template_args_array_name = str::format(temp_allocator(), "%s__template_args", field.name);
+    }
+
+    if (has_serializer_function(storage))
+    {
+        serializer_function_name = str::format(temp_allocator(), "&%s__serializer_function", field.name);
+    }
+    else
+    {
+        serializer_function_name.append("nullptr");
     }
 
     codegen->write("Field");
     codegen->scope([&]()
     {
-        if (field.type->is<TypeKind::template_decl>())
+        if (field.type->is(TypeKind::template_decl))
         {
             codegen->write(
-                "%u, %zu, %s, %s, \"%s\", get_type<BEE_TEMPLATED(%s)>(), Span<const Type*>(%s), %s, %d, %d, %d",
+                "%u, %zu, %s, %s, \"%s\", get_type<%s>(), Span<const Type*>(%s), %s, %s, %d, %d, %d",
                 field.hash,
                 field.offset,
                 reflection_dump_flags(field.qualifier),
                 reflection_dump_flags(field.storage_class),
                 field.name,
-                field.type->name,
+                storage.specialized_type,
                 template_args_array_name.empty() ? "" : template_args_array_name.c_str(),
                 attributes_array_name == nullptr ? "{}" : attributes_array_name,
+                serializer_function_name.c_str(),
                 field.version_added,
                 field.version_removed,
                 field.template_argument_in_parent
@@ -189,7 +219,7 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
         else
         {
             codegen->write(
-                "%u, %zu, %s, %s, \"%s\", get_type<%s>(), Span<const Type*>(%s), %s, %d, %d, %d",
+                "%u, %zu, %s, %s, \"%s\", get_type<%s>(), Span<const Type*>(%s), %s, %s, %d, %d, %d",
                 field.hash,
                 field.offset,
                 reflection_dump_flags(field.qualifier),
@@ -198,6 +228,7 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
                 field.type->name,
                 template_args_array_name.empty() ? "" : template_args_array_name.c_str(),
                 attributes_array_name == nullptr ? "{}" : attributes_array_name,
+                serializer_function_name.c_str(),
                 field.version_added,
                 field.version_removed,
                 field.template_argument_in_parent
@@ -208,7 +239,7 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
 
 void codegen_array_type(const ArrayType* type, CodeGenerator* codegen)
 {
-    codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>()", type->name);
+    codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>(const TypeTag<%s>& tag)", type->name, type->name);
     codegen->scope([&]()
     {
         codegen->write("static ArrayType instance");
@@ -247,7 +278,7 @@ void codegen_function(const FunctionTypeStorage* storage, CodeGenerator* codegen
         // Generate all the template type arguments for each of the parameters if needed
         for (const FieldStorage& field : storage->parameters)
         {
-            codegen_field_template_args(field, codegen);
+            codegen_field_extra_info(field, codegen);
         }
 
         codegen->write("static Field %s__parameters[] =", function_name_as_ident.c_str());
@@ -263,7 +294,7 @@ void codegen_function(const FunctionTypeStorage* storage, CodeGenerator* codegen
         codegen->newline();
     }
 
-    codegen_field_template_args(storage->return_field, codegen); // generate return value template args if needed
+    codegen_field_extra_info(storage->return_field, codegen); // generate return value template args if needed
 
     codegen->write("static FunctionType %s", function_name_as_ident.c_str());
     codegen->scope([&]()
@@ -309,7 +340,7 @@ void codegen_function(const FunctionTypeStorage* storage, CodeGenerator* codegen
 
 void codegen_enum(const EnumTypeStorage* storage, CodeGenerator* codegen)
 {
-    codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>()", storage->type.name);
+    codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>(const TypeTag<%s>& tag)", storage->type.name, storage->type.name);
     codegen->scope([&]()
     {
         if (!storage->attributes.empty())
@@ -354,7 +385,7 @@ void codegen_enum(const EnumTypeStorage* storage, CodeGenerator* codegen)
     codegen->write_line("// get_type<%s>()\n", storage->type.name);
 }
 
-void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
+void codegen_record(const CodegenMode mode, const RecordTypeStorage* storage, CodeGenerator* codegen)
 {
     // Generate all the dependent types first - including any array types declared on this record
     for (const ArrayType* array_type : storage->field_array_types)
@@ -369,16 +400,17 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
 
     for (const RecordTypeStorage* nested_record : storage->nested_records)
     {
-        codegen_record(nested_record, codegen);
+        codegen_record(mode, nested_record, codegen);
     }
 
-    if (storage->type.is<TypeKind::template_decl>())
+    if (storage->type.is(TypeKind::template_decl))
     {
-        codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<BEE_TEMPLATED(%s)>()", storage->type.name);
+        codegen->write_line("%s", storage->template_decl_string);
+        codegen->write("BEE_EXPORT_SYMBOL const Type* get_type(const TypeTag<%s>& tag)", storage->type.name);
     }
     else
     {
-        codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>()", storage->type.name);
+        codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>(const TypeTag<%s>& tag)", storage->type.name, storage->type.name);
     }
     codegen->scope([&]()
     {
@@ -407,7 +439,7 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
             {
                 auto& field = field_storage.field;
 
-                codegen_field_template_args(field_storage, codegen);
+                codegen_field_extra_info(field_storage, codegen);
 
                 if (field_storage.attributes.empty())
                 {
@@ -551,10 +583,6 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
                 codegen->append_line("{}");
             }
 
-            if (storage->serializer_function_name != nullptr)
-            {
-                codegen->append_line(", &%s", storage->serializer_function_name);
-            }
         }, ";\n\n");
         codegen->write_line("return &instance;");
     });
@@ -562,32 +590,85 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
 }
 
 
-void generate_reflection(const ReflectedFile& file, io::StringStream* stream)
+bool should_generate(const Type& type, const CodegenMode mode)
 {
-    CodeGenerator codegen(stream, 4);
+    if (mode == CodegenMode::skip_templates)
+    {
+        return !type.is(TypeKind::template_decl);
+    }
 
+    if (mode == CodegenMode::templates_only)
+    {
+        return type.is(TypeKind::template_decl);
+    }
+
+    return true;
+}
+
+
+void generate_empty_reflection(const char* location, io::StringStream* stream)
+{
+    CodeGenerator codegen(stream);
+    codegen.write_header_comment(location);
+    codegen.write_line("// THIS FILE IS INTENTIONALLY EMPTY - NO REFLECTION DATA WAS GENERATED");
+}
+
+
+i32 generate_reflection(const ReflectedFile& file, io::StringStream* src_stream, const CodegenMode mode)
+{
+    CodeGenerator codegen(src_stream);
+
+    int types_generated = 0;
     codegen.write_header_comment(file.location);
     codegen.newline();
-    codegen.write_line("#include \"%s\"", file.location.to_generic_string(temp_allocator()).c_str());
-    codegen.write_line("#include <Bee/Core/ReflectionV2.hpp>");
-    codegen.newline();
+
+    if (mode != CodegenMode::templates_only)
+    {
+        codegen.write_line("#include \"%s\"", file.location.to_generic_string(temp_allocator()).c_str());
+        codegen.write_line("#include <Bee/Core/ReflectionV2.hpp>");
+        codegen.newline();
+    }
 
     codegen.write("namespace bee ");
     codegen.scope([&]()
     {
+        if (mode == CodegenMode::templates_only)
+        {
+            codegen.write_line("struct Type;");
+            codegen.write_line("template <typename T> struct TypeTag;");
+            codegen.newline();
+        }
+
         for (const ArrayType* type : file.arrays)
         {
+            if (!should_generate(*type, mode))
+            {
+                continue;
+            }
+
             codegen_array_type(type, &codegen);
+            ++types_generated;
         }
 
         for (const RecordTypeStorage* type : file.records)
         {
-            codegen_record(type, &codegen);
+            if (!should_generate(type->type, mode))
+            {
+                continue;
+            }
+
+            codegen_record(mode, type, &codegen);
+            ++types_generated;
         }
 
         for (const FunctionTypeStorage* function : file.functions)
         {
-            codegen.write("template <> BEE_EXPORT_SYMBOL const Type* get_type<BEE_NONMEMBER(%s)>()", function->type.name);
+            if (!should_generate(function->type, mode))
+            {
+                continue;
+            }
+
+            codegen.write("template <> BEE_EXPORT_SYMBOL const Type* get_type<BEE_NONMEMBER(%s)>(const TypeTag<BEE_NONMEMBER(%s)>& tag)", function->type.name, function->type.name);
             codegen.scope([&]()
             {
                 codegen_function(function, &codegen);
@@ -596,14 +677,23 @@ void generate_reflection(const ReflectedFile& file, io::StringStream* stream)
             });
             codegen.write_line("// get_type<%s>()\n", function->type.name);
             codegen_function(function, &codegen);
+            ++types_generated;
         }
 
         for (const EnumTypeStorage* type : file.enums)
         {
+            if (!should_generate(type->type, mode))
+            {
+                continue;
+            }
+
             codegen_enum(type, &codegen);
+            ++types_generated;
         }
     }, " // namespace bee\n");
     codegen.newline();
+
+    return types_generated;
 }
 
 
@@ -623,13 +713,13 @@ void generate_registration(const Path& source_location, const Span<const Type*>&
     u32 offset = 0;
     for (const Type* type : types)
     {
-        if (type->is<TypeKind::enum_decl>() && !type->as<EnumType>()->is_scoped)
+        if (type->is(TypeKind::enum_decl) && !type->as<EnumType>()->is_scoped)
         {
             log_warning("bee-reflect: skipping dynamic reflection for unscoped `enum %s`. Consider converting to scoped `enum class` to enable dynamic reflection.", type->name);
             continue;
         }
 
-        const auto size = str::length(type->name)
+        auto size = str::length(type->name)
             + str::length(reflection_type_kind_to_code_string(type->kind))
             + sizeof("BEE_REGISTER_TYPE(,)");
 
@@ -651,12 +741,17 @@ void generate_registration(const Path& source_location, const Span<const Type*>&
     // Write out all the type macros
     for (const auto type : enumerate(types))
     {
-        if (type.value->is<TypeKind::enum_decl>() && !type.value->as<EnumType>()->is_scoped)
+        if (type.value->is(TypeKind::enum_decl) && !type.value->as<EnumType>()->is_scoped)
         {
             continue;
         }
 
-        stream->write_fmt("BEE_REGISTER_TYPE(%s,%s)", reflection_type_kind_to_code_string(type.value->kind), type.value->name);
+        stream->write_fmt(
+            "BEE_REGISTER_TYPE(%s,%s)",
+            reflection_type_kind_to_code_string(type.value->kind),
+            type.value->name
+        );
+
         stream->write('\0');
     }
 

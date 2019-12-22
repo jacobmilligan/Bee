@@ -21,14 +21,16 @@ void StreamSerializerV2::end()
     // no-op
 }
 
-void StreamSerializerV2::begin_record(const RecordType* type)
+void StreamSerializerV2::begin_object(i32* member_count)
 {
-    // no-op
-}
-
-void StreamSerializerV2::end_record()
-{
-    // no-op
+    if (mode == SerializerMode::writing)
+    {
+        stream->write(member_count, sizeof(i32));
+    }
+    else
+    {
+        stream->read(member_count, sizeof(i32));
+    }
 }
 
 void StreamSerializerV2::begin_array(i32* count)
@@ -43,14 +45,25 @@ void StreamSerializerV2::begin_array(i32* count)
     }
 }
 
-void StreamSerializerV2::end_array()
+void StreamSerializerV2::serialize_field(const char* name)
 {
-    // no-op
+
 }
 
-void StreamSerializerV2::serialize_field(const Field& field)
+void StreamSerializerV2::serialize_key(String* key)
 {
-    // no-op
+    int size = key->size();
+    serialize_fundamental(&size);
+
+    if (mode == SerializerMode::writing)
+    {
+        stream->write(key->data(), sizeof(char) * size);
+    }
+    else
+    {
+        key->resize(size);
+        stream->read(key->data(), sizeof(char) * size);
+    }
 }
 
 //void StreamSerializerV2::serialize_enum(const bee::EnumType* type, u8* data)
@@ -101,5 +114,6 @@ IMPLEMENT_BUILTIN(i8)
 IMPLEMENT_BUILTIN(i16)
 IMPLEMENT_BUILTIN(i32)
 IMPLEMENT_BUILTIN(i64)
+
 
 } // namespace bee

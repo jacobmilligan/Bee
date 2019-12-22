@@ -141,8 +141,7 @@ TEST(SerializationTestsV2, primitives)
     ASSERT_EQ(expected_read_struct_v3, read_struct_v3);
 
     // Const cast the type to test backwards compat using a function with version set to 3 and a few removed fields
-    auto type = const_cast<RecordType*>(get_type_as<PrimitivesStructV3, RecordType>());
-    type->serializer_function = serialize_primitives_removed;
+    //auto type = const_cast<RecordType*>(get_type_as<PrimitivesStructV3, RecordType>());
 
     new (&read_struct_v3) PrimitivesStructV3{};
     serialize(SerializerMode::reading, &serializer, &read_struct_v3);
@@ -152,7 +151,6 @@ TEST(SerializationTestsV2, primitives)
     serialize(SerializerMode::writing, &serializer, &test_struct_v3);
 
     // Fix up the serializer function so it uses the original one and we can test forward compat
-    type->serializer_function = serialize_primitives;
 
     // Should fail on serializing data from the future
     new (&read_struct_v3) PrimitivesStructV3{};

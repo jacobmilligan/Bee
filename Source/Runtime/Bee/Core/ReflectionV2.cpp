@@ -42,7 +42,7 @@ constexpr size_t sizeof_helper<void>()
  * Register all builtin fundamentals - these are registered as regular types
  */
 #define BEE_BUILTIN_TYPE(builtin_type, function_name)                   \
-    template <> BEE_CORE_API  const Type* get_type<builtin_type>()      \
+    template <> BEE_CORE_API  const Type* get_type<builtin_type>(const TypeTag<builtin_type>& tag)      \
     {                                                                   \
         static FundamentalType instance                                 \
         {                                                               \
@@ -61,7 +61,7 @@ BEE_BUILTIN_TYPES
 #undef BEE_BUILTIN_TYPE
 
 
-template <> BEE_CORE_API const Type* get_type<bee::UnknownType>()
+template <> BEE_CORE_API const Type* get_type<UnknownType>(const TypeTag<UnknownType>& tag)
 {
     static UnknownType instance{};
     return &instance;
@@ -417,7 +417,6 @@ const char* reflection_flag_to_string(const TypeKind type_kind)
         TYPE_KIND(function);
         TYPE_KIND(fundamental);
         TYPE_KIND(array);
-        TYPE_KIND(template_parameter);
         default:
         {
             BEE_UNREACHABLE("Missing TypeKind string representation");

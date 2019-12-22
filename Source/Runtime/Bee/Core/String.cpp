@@ -299,6 +299,31 @@ String& String::remove(const i32 index)
     return remove(index, size_ - index);
 }
 
+void String::resize(const i32 size)
+{
+    resize(size, '\0');
+}
+
+void String::resize(const i32 size, const char c)
+{
+    if (size == size_)
+    {
+        return;
+    }
+
+    if (size > size_)
+    {
+        const auto old_size = size_;
+        grow(size);
+        memset(data_ + old_size, '\0', size - old_size);
+    }
+    else
+    {
+        size_ = size;
+        data_[size] = '\0';
+    }
+}
+
 void String::clear()
 {
     memset(data_, 0, sizeof(char) * capacity_);

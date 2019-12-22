@@ -54,6 +54,29 @@ endif ()
 bee_library(Bee.Core SHARED LINK_LIBRARIES ${core_link_libraries})
 
 target_compile_definitions(Bee.Core PRIVATE BEE_BUILD_CORE_EXPORT_LIBRARY)
+bee_reflect(
+    Bee.Core
+
+    EXCLUDE
+
+    Serialization
+    SerializationV2
+    Win32
+    macOS
+    Memory
+    Jobs
+    Config.hpp
+    AtomicCounter.hpp
+    Thread.hpp
+    Process.hpp
+    Plugin.hpp
+    IO.hpp
+    Meta.hpp
+    DynamicLibrary.hpp
+    declval.hpp
+    Error.hpp
+    Bitset.hpp
+)
 
 # Tests
 add_subdirectory(Tests)

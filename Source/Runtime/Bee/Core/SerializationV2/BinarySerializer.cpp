@@ -24,12 +24,12 @@ void BinarySerializer::end()
     // no-op
 }
 
-void BinarySerializer::begin_record(const RecordType* /* type */)
+void BinarySerializer::begin_object(i32* member_count)
 {
-    // no-op
+    serialize_bytes(member_count, sizeof(i32));
 }
 
-void BinarySerializer::end_record()
+void BinarySerializer::end_object()
 {
     // no-op
 }
@@ -44,9 +44,17 @@ void BinarySerializer::end_array()
     // no-op
 }
 
-void BinarySerializer::serialize_field(const Field& field)
+void BinarySerializer::serialize_key(String* key)
 {
-    // no-op
+    int size = key->size();
+    serialize_fundamental(&size);
+
+    if (mode == SerializerMode::reading)
+    {
+        key->resize(size);
+    }
+
+    serialize_bytes(key->data(), sizeof(char) * key->size());
 }
 
 //void BinarySerializer::serialize_enum(const EnumType* type, u8* data)

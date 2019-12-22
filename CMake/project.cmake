@@ -302,57 +302,95 @@ if (WIN32)
 endif ()
 
 function(bee_reflect target)
-    cmake_parse_arguments(ARGS "INCLUDE_NON_HEADERS" "" "" ${ARGN})
+    cmake_parse_arguments(ARGS "INCLUDE_NON_HEADERS" "" "EXCLUDE" ${ARGN})
 
     set(output_dir ${PROJECT_SOURCE_DIR}/Build/DevData/Generated)
 
     get_target_property(source_list ${target} SOURCES)
 
     if (NOT ARGS_INCLUDE_NON_HEADERS)
-        list(FILTER source_list EXCLUDE REGEX ".*\\.(cpp|cxx|c)$")
+        list(FILTER source_list EXCLUDE REGEX ".*\\.(cpp|cxx|c|inl)$")
     endif ()
+
+    set(excluded_files)
+    # Excluded argument contains both files and directories - we only want files, so glob all the headers
+    # in any subdirectories of any directories given to EXCLUDED
+    foreach(excluded ${ARGS_EXCLUDE})
+        # Glob subdirs
+        if (IS_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/${excluded})
+            file(GLOB_RECURSE headers "${CMAKE_CURRENT_LIST_DIR}/${excluded}/*.h" "${CMAKE_CURRENT_LIST_DIR}/${excluded}/*.hpp")
+            foreach(hdr ${headers})
+                # Get the relative source path to the current dir so we can parse it correctly in the next step
+                file(RELATIVE_PATH relative_src ${CMAKE_CURRENT_LIST_DIR} ${hdr})
+                list(APPEND excluded_files ${relative_src})
+            endforeach()
+        else()
+            list(APPEND excluded_files ${excluded})
+        endif ()
+    endforeach()
 
     list(LENGTH source_list source_list_length)
 
-    if (${source_list_length} GREATER 0)
-        set(expected_output)
-        foreach(src ${source_list})
-            get_filename_component(filename ${src} NAME_WE)
-            list(APPEND expected_output ${output_dir}/${target}/${filename}.generated.cpp)
-        endforeach()
+    if (${source_list_length} LESS_EQUAL 0)
+        return()
+    endif()
 
-        set(include_dirs)
-        set(system_include_dirs)
-        foreach(dir ${__bee_include_dirs})
-            if (dir MATCHES "${BEE_THIRD_PARTY}.*")
-                list(APPEND system_include_dirs -isystem${dir})
-            else()
-                list(APPEND include_dirs -I${dir})
+    set(reflected_sources)
+    set(expected_output)
+    foreach(src ${source_list})
+        # Check if the relative path from the current dir to the file is excluded
+        file(RELATIVE_PATH relative_src ${CMAKE_CURRENT_LIST_DIR} ${src})
+        if (NOT "${relative_src}" IN_LIST excluded_files)
+            # Then, as a real quick way of seeing if the file will output reflection data, check if there's
+            # any presences of the BEE_REFLECT macro - this will slurp up #defines etc. as well which is
+            # okay because bee-reflect will just output stubs for any files that don't generate reflection
+            file(READ ${src} contents)
+            string(FIND "${contents}" "BEE_REFLECT(" position)
+
+            if (position GREATER_EQUAL 0)
+                # All good - we can include this file in the reflection generation
+                get_filename_component(filename ${src} NAME_WE)
+                list(APPEND expected_output ${output_dir}/${target}/${filename}.generated.cpp)
+                list(APPEND reflected_sources ${src})
             endif ()
-        endforeach()
+        endif ()
+    endforeach()
 
-        get_target_property(compile_defines ${target} COMPILE_DEFINITIONS)
-        get_directory_property(global_defines COMPILE_DEFINITIONS)
-        list(APPEND compile_defines ${global_defines})
+    # Now we build the bee-reflect command.
+    # Add all the system and regular include dirs
+    set(include_dirs)
+    set(system_include_dirs)
+    foreach(dir ${__bee_include_dirs})
+        if (dir MATCHES "${BEE_THIRD_PARTY}.*")
+            list(APPEND system_include_dirs -isystem${dir})
+        else()
+            list(APPEND include_dirs -I${dir})
+        endif ()
+    endforeach()
 
-        set(defines)
-        foreach(def ${compile_defines})
-            if (NOT def MATCHES "\\$<.*")
-                list(APPEND defines -D${def})
-            endif ()
-        endforeach()
+    # Get all the compiler flags
+    get_target_property(compile_defines ${target} COMPILE_DEFINITIONS)
+    get_directory_property(global_defines COMPILE_DEFINITIONS)
+    list(APPEND compile_defines ${global_defines})
 
-        add_custom_command(
-                PRE_BUILD
-                DEPENDS ${source_list}
-                OUTPUT ${expected_output}
-                COMMAND ${bee_reflect_program} generate ${source_list} --output ${PROJECT_SOURCE_DIR}/Build/DevData/Generated/${target} -- ${defines} ${include_dirs} ${system_include_dirs}
-                USES_TERMINAL
-                COMMENT "Running bee-reflect on header files: generating ${expected_output}"
-        )
+    set(defines)
+    foreach(def ${compile_defines})
+        # Ignore generator expressions
+        if (NOT def MATCHES "\\$<.*")
+            list(APPEND defines -D${def})
+        endif ()
+    endforeach()
 
-        target_sources(${target} PUBLIC ${expected_output})
-    endif ()
+    add_custom_command(
+            DEPENDS ${reflected_sources}
+            OUTPUT ${expected_output}
+            COMMAND ${bee_reflect_program} generate ${reflected_sources} --output ${PROJECT_SOURCE_DIR}/Build/DevData/Generated/${target} -- ${defines} ${include_dirs} ${system_include_dirs}
+            USES_TERMINAL
+            COMMENT "Running bee-reflect on header files: generating ${expected_output}"
+    )
+
+    target_sources(${target} PUBLIC ${expected_output})
+    target_include_directories(${target} PUBLIC ${output_dir}/${target})
 endfunction()
 
 function(bee_reflect_link target)
