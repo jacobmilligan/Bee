@@ -35,6 +35,10 @@ public:
 
     explicit JSONSerializerV2(char* mutable_src, const rapidjson::ParseFlag parse_flags, Allocator* allocator = system_allocator());
 
+    void reset(const char* src, const rapidjson::ParseFlag parse_flags);
+
+    void reset(char* mutable_src, const rapidjson::ParseFlag parse_flags);
+
     inline const char* c_str() const
     {
         return string_buffer_.GetString();
@@ -50,6 +54,7 @@ public:
     void end_array() override;
     void serialize_field(const char* name) override;
     void serialize_key(String* key) override;
+    void serialize_string(io::StringStream* stream) override;
     void serialize_bytes(void* data, const i32 size) override;
     void serialize_fundamental(bool* data) override;
     void serialize_fundamental(char* data) override;

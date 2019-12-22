@@ -6,6 +6,7 @@
  */
 
 #include "Bee/Core/SerializationV2/BinarySerializer.hpp"
+#include "Bee/Core/IO.hpp"
 
 namespace bee {
 
@@ -57,6 +58,22 @@ void BinarySerializer::serialize_key(String* key)
     serialize_bytes(key->data(), sizeof(char) * key->size());
 }
 
+void BinarySerializer::serialize_string(io::StringStream* stream)
+{
+    int size = stream->size();
+    serialize_fundamental(&size);
+
+    if (mode == SerializerMode::writing)
+    {
+        array->append({reinterpret_cast<const u8*>(stream->c_str()), stream->size() });
+    }
+    else
+    {
+        stream->read(array->data() + read_offset, size);
+        read_offset = math::min(read_offset + size, array->size());
+    }
+}
+
 //void BinarySerializer::serialize_enum(const EnumType* type, u8* data)
 //{
 //    serialize_type(this, type->constants[0].underlying_type, data);
@@ -71,7 +88,7 @@ void BinarySerializer::serialize_bytes(void* data, const i32 size)
     else
     {
         memcpy(data, array->data() + read_offset, size);
-        read_offset += size;
+        read_offset = math::min(read_offset + size, array->size());
     }
 }
 

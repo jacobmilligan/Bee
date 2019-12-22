@@ -162,6 +162,11 @@ void Diagnostics::init(clang::DiagnosticsEngine* diag_engine)
     );
 }
 
+clang::DiagnosticBuilder Diagnostics::Report(clang::SourceLocation location, unsigned diag_id)
+{
+    return engine->Report(location, diag_id);
+}
+
 /*
  *************************************
  *
@@ -270,6 +275,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
     if (class_template != nullptr)
     {
         type->kind |= TypeKind::template_decl;
+        type->serialization_flags |= SerializationFlags::uses_builder;
 
         String template_name(temp_allocator());
         io::StringStream stream(&template_name);
@@ -325,7 +331,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
         return;
     }
 
-    type->serialization_flags = serialization_info.flags;
+    type->serialization_flags |= serialization_info.flags;
     type->serialized_version = serialization_info.serialized_version;
     storage->has_explicit_version = serialization_info.using_explicit_versioning;
 

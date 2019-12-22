@@ -46,7 +46,6 @@ TEST(SerializationTestsV2, primitives)
     test_struct_v3.boolval = true;
     test_struct_v3.is_valid = true;
     test_struct_v3.charval = 'j';
-    test_struct_v3.ubyteval = 1;
 
     // Test writing to buffer
     DynamicArray<u8> buffer;
@@ -134,27 +133,12 @@ TEST(SerializationTestsV2, primitives)
 
     // The serialized test struct shouldn't have the ubyteval member
     auto expected_read_struct_v3 = test_struct_v3;
-    expected_read_struct_v3.ubyteval = 0;
+    expected_read_struct_v3.is_valid = false; // non-serialized in version 3, but not removed yet
 
     PrimitivesStructV3 read_struct_v3{};
     serialize(SerializerMode::reading, &serializer, &read_struct_v3);
     ASSERT_EQ(expected_read_struct_v3, read_struct_v3);
-
-    // Const cast the type to test backwards compat using a function with version set to 3 and a few removed fields
-    //auto type = const_cast<RecordType*>(get_type_as<PrimitivesStructV3, RecordType>());
-
-    new (&read_struct_v3) PrimitivesStructV3{};
-    serialize(SerializerMode::reading, &serializer, &read_struct_v3);
     ASSERT_NE(test_struct_v3, read_struct_v3);
-    ASSERT_EQ(read_struct_v3, expected_read_struct_v3);
-    
-    serialize(SerializerMode::writing, &serializer, &test_struct_v3);
-
-    // Fix up the serializer function so it uses the original one and we can test forward compat
-
-    // Should fail on serializing data from the future
-    new (&read_struct_v3) PrimitivesStructV3{};
-    ASSERT_DEATH(serialize(SerializerMode::reading, &serializer, &read_struct_v3), ".*forward-compatible.*");
 }
 
 
@@ -164,6 +148,10 @@ TEST(SerializationTestsV2, complex_type)
     "bee::version": 1,
     "bee::flags": 0,
     "value": 25,
+    "array": {
+        "bee::version": 1,
+        "bee::elements": []
+    },
     "settings": {
         "bee::version": 1,
         "bee::flags": 0,
@@ -212,6 +200,8 @@ TEST(SerializationTestsV2, complex_type)
         ASSERT_EQ(test.settings.nested.id_values[i].value, i);
     }
 
+    json_str = json_buffer;
+    serializer.reset(json_str.data(), rapidjson::ParseFlag::kParseInsituFlag);
     serialize(SerializerMode::writing, &serializer, &test);
     ASSERT_STREQ(serializer.c_str(), json_buffer);
 }

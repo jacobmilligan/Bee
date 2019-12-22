@@ -66,6 +66,21 @@ void StreamSerializerV2::serialize_key(String* key)
     }
 }
 
+void StreamSerializerV2::serialize_string(io::StringStream* string_stream)
+{
+    int size = string_stream->size();
+    serialize_fundamental(&size);
+
+    if (mode == SerializerMode::writing)
+    {
+        stream->write(string_stream->c_str(), string_stream->size());
+    }
+    else
+    {
+        string_stream->read_from(stream);
+    }
+}
+
 //void StreamSerializerV2::serialize_enum(const bee::EnumType* type, u8* data)
 //{
 //    serialize_type(this, type->constants[0].underlying_type, data);

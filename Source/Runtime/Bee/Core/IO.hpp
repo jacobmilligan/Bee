@@ -353,6 +353,8 @@ public:
 
     i32 read(String* dst_string);
 
+    i32 read_from(Stream* other);
+
     i32 write(const void* src_buffer, i32 src_buffer_size) override;
 
     i32 write(const char src);

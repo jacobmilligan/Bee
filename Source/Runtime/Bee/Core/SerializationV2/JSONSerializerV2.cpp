@@ -24,26 +24,39 @@ JSONSerializerV2::JSONSerializerV2(Allocator* allocator)
 JSONSerializerV2::JSONSerializerV2(const char* src, const rapidjson::ParseFlag parse_flags, Allocator* allocator)
     : Serializer(SerializerFormat::text),
       parse_flags_(parse_flags),
-      stack_(allocator),
-      src_(src)
+      stack_(allocator)
 {
     // Remove insitu flag if the src string is read-only
-    if ((parse_flags & rapidjson::ParseFlag::kParseInsituFlag) != 0)
-    {
-        parse_flags_ = static_cast<rapidjson::ParseFlag>(parse_flags_ & ~rapidjson::ParseFlag::kParseInsituFlag);
-    }
+    reset(src, parse_flags);
 }
 
 JSONSerializerV2::JSONSerializerV2(char* mutable_src, const rapidjson::ParseFlag parse_flags, Allocator* allocator)
     : Serializer(SerializerFormat::text),
       parse_flags_(parse_flags),
-      stack_(allocator),
-      src_(mutable_src)
-{}
+      stack_(allocator)
+{
+    reset(mutable_src, parse_flags);
+}
+
+void JSONSerializerV2::reset(const char* src, const rapidjson::ParseFlag parse_flags)
+{
+    src_ = src;
+    parse_flags_ = static_cast<rapidjson::ParseFlag>(parse_flags & ~rapidjson::ParseFlag::kParseInsituFlag);
+}
+
+void JSONSerializerV2::reset(char* mutable_src, const rapidjson::ParseFlag parse_flags)
+{
+    src_ = mutable_src;
+    parse_flags_ = parse_flags;
+}
 
 bool JSONSerializerV2::begin()
 {
+    current_member_iter_ = rapidjson::Value::MemberIterator{};
+    current_element_ = 0;
+
     if (mode == SerializerMode::reading)
+
     {
         stack_.clear();
 
@@ -152,12 +165,11 @@ void JSONSerializerV2::end_array()
     if (mode == SerializerMode::writing)
     {
         writer_.EndArray();
+        return;
     }
-    else
-    {
-        BEE_ASSERT_F(stack_.back()->IsArray(), "Invalid type: %d", stack_.back()->GetType());
-        end_read_scope();
-    }
+
+    BEE_ASSERT_F(stack_.back()->IsArray(), "Invalid type: %d", stack_.back()->GetType());
+    end_read_scope();
 }
 
 void JSONSerializerV2::serialize_field(const char* name)
@@ -175,6 +187,7 @@ void JSONSerializerV2::serialize_field(const char* name)
     }
 
     const auto member = stack_.back()->FindMember(name);
+
     if (BEE_FAIL_F(member != reader_doc_.MemberEnd(), "JSONSerializer: missing field \"%s\"", name))
     {
         return;
@@ -199,6 +212,18 @@ void JSONSerializerV2::serialize_key(String* key)
 
     str::replace_range(key, 0, key->size(), current_member_iter_->name.GetString(), current_member_iter_->name.GetStringLength());
     ++current_member_iter_;
+}
+
+void JSONSerializerV2::serialize_string(io::StringStream* stream)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.String(stream->c_str(), stream->size(), true);
+        return;
+    }
+
+    BEE_ASSERT_F(stack_.back()->IsString(), "JSONSerializer: expected string type but got: %d", stack_.back()->GetType());
+    stream->write(StringView { stack_.back()->GetString(), static_cast<i32>(stack_.back()->GetStringLength()) });
 }
 
 //void JSONSerializerV2::serialize_enum(const EnumType* type, u8* data)

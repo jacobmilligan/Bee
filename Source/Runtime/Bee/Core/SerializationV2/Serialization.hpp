@@ -32,7 +32,8 @@ enum class SerializedContainerKind
 {
     none,
     sequential,
-    key_value
+    key_value,
+    string
 };
 
 class SerializationBuilder;
@@ -69,6 +70,7 @@ struct BEE_CORE_API Serializer
     virtual void end_array() = 0;
     virtual void serialize_field(const char* name) = 0;
     virtual void serialize_key(String* key) = 0;
+    virtual void serialize_string(io::StringStream* stream) = 0;
     virtual void serialize_bytes(void* data, const i32 size) = 0;
     virtual void serialize_fundamental(bool* data) = 0;
     virtual void serialize_fundamental(char* data) = 0;
@@ -118,7 +120,9 @@ inline bool operator!=(const FieldHeader& lhs, const FieldHeader& rhs)
 class BEE_CORE_API SerializationBuilder
 {
 public:
-    explicit SerializationBuilder(Serializer* new_serializer);
+    explicit SerializationBuilder(Serializer* new_serializer, const RecordType* type);
+
+    ~SerializationBuilder();
 
     template <typename FieldType>
     SerializationBuilder& add_field(const i32 version_added, FieldType* field, const char* field_name)
@@ -129,6 +133,8 @@ public:
     template <typename FieldType>
     SerializationBuilder& add_field(const i32 version_added, const i32 version_removed, FieldType* field, const char* field_name)
     {
+        BEE_ASSERT_F(container_kind_ == SerializedContainerKind::none, "serialization builder is not configured to build a structure - cannot add fields to non-structure types");
+
         const auto field_type = get_type<FieldType>();
 
         if (version_ < version_added || version_ >= version_removed)
@@ -138,9 +144,9 @@ public:
 
         serializer_->serialize_field(field_name);
 
-        if (field_type->is(TypeKind::template_decl))
+        if ((field_type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
         {
-            SerializationBuilder builder(serializer_);
+            SerializationBuilder builder(serializer_, field_type->as<RecordType>());
             serialize_type(&builder, field);
         }
         else
@@ -153,6 +159,8 @@ public:
     template <typename FieldType>
     SerializationBuilder& remove_field(const i32 version_added, const i32 version_removed, const FieldType& default_value, const char* field_name)
     {
+        BEE_ASSERT_F(container_kind_ == SerializedContainerKind::none, "serialization builder is not configured to build a structure - cannot remove fields from non-structure types");
+
         const auto field_type = get_type<FieldType>();
         if (version_ < version_added || version_ >= version_removed)
         {
@@ -168,9 +176,9 @@ public:
 
         serializer_->serialize_field(field_name);
 
-        if (field_type->is(TypeKind::template_decl))
+        if ((field_type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
         {
-            SerializationBuilder builder(serializer_);
+            SerializationBuilder builder(serializer_, field_type->as<RecordType>());
             serialize_type(&builder, &removed_data);
         }
         else
@@ -190,12 +198,13 @@ public:
     template <typename T>
     SerializationBuilder& element(T* data)
     {
-        BEE_ASSERT_F(is_container_, "serialization builder is not configured to build a container type");
+        BEE_ASSERT_F(container_kind_ != SerializedContainerKind::none, "serialization builder is not configured to build a container type");
+
         auto type = get_type<T>();
 
-        if (type->is(TypeKind::template_decl))
+        if ((type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
         {
-            SerializationBuilder builder(serializer_);
+            SerializationBuilder builder(serializer_, type->as<RecordType>());
             serialize_type(&builder, data);
         }
         else
@@ -212,9 +221,9 @@ public:
     }
 
 private:
-    bool        is_container_ { false };
-    Serializer* serializer_ { nullptr };
-    i32         version_ { -1 };
+    Serializer*             serializer_ { nullptr };
+    SerializedContainerKind container_kind_ { SerializedContainerKind::none };
+    i32                     version_ { -1 };
 };
 
 
@@ -236,9 +245,9 @@ inline void serialize(const SerializerMode mode, Serializer* serializer, DataTyp
         return;
     }
 
-    if (!type->is(TypeKind::template_decl))
+    if ((type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
     {
-        SerializationBuilder builder(serializer);
+        SerializationBuilder builder(serializer, type->as<RecordType>());
         serialize_type(&builder, data);
     }
     else
@@ -310,6 +319,8 @@ inline void serialize_type(SerializationBuilder* builder, String* string)
     {
         string->resize(size);
     }
+
+    builder->
 
 //    for (auto& element : *array)
 //    {

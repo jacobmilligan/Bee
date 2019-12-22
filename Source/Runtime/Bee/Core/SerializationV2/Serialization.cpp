@@ -19,9 +19,28 @@ Serializer::Serializer(const bee::SerializerFormat serialized_format)
 {}
 
 
-SerializationBuilder::SerializationBuilder(Serializer* new_serializer)
+SerializationBuilder::SerializationBuilder(Serializer* new_serializer, const RecordType* type)
     : serializer_(new_serializer)
-{}
+{
+    serializer_->begin_record(type);
+}
+
+SerializationBuilder::~SerializationBuilder()
+{
+    if (container_kind_ != SerializedContainerKind::none)
+    {
+        if (container_kind_ == SerializedContainerKind::key_value)
+        {
+            serializer_->end_object();
+        }
+        else
+        {
+            serializer_->end_array();
+        }
+    }
+
+    serializer_->end_record();
+}
 
 SerializationBuilder& SerializationBuilder::structure(const i32 serialized_version)
 {
@@ -42,24 +61,27 @@ SerializationBuilder& SerializationBuilder::container(const SerializedContainerK
         return *this;
     }
 
-    is_container_ = true;
+    container_kind_ = kind;
     version_ = serialized_version;
     serialize_version(serializer_, &version_);
 
-    serializer_->serialize_field("bee::size");
-    serializer_->serialize_fundamental(size);
-
-    switch (kind)
+    switch (container_kind_)
     {
         case SerializedContainerKind::sequential:
         {
+            serializer_->serialize_field("bee::elements");
             serializer_->begin_array(size);
             break;
         }
         case SerializedContainerKind::key_value:
         {
+            serializer_->serialize_field("bee::elements");
             serializer_->begin_object(size);
             break;
+        }
+        case SerializedContainerKind::string:
+        {
+            serializer
         }
         default:
         {
@@ -72,7 +94,7 @@ SerializationBuilder& SerializationBuilder::container(const SerializedContainerK
 
 SerializationBuilder& SerializationBuilder::key(String* data)
 {
-    BEE_ASSERT_F(is_container_, "serialization builder is not configured to build a container type");
+    BEE_ASSERT_F(container_kind_ == SerializedContainerKind::key_value, "serialization builder is not configured to build a container type");
     serializer_->serialize_key(data);
     return *this;
 }
@@ -205,7 +227,8 @@ BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Seria
     if (serialization_function != nullptr)
     {
         BEE_ASSERT_F((type->kind & TypeKind::record) != TypeKind::unknown, "Custom serializer functions must only be used with record types");
-        SerializationBuilder builder(serializer);
+
+        SerializationBuilder builder(serializer, type->as<RecordType>());
         serialization_function->serialize(&builder, data);
         return;
     }
@@ -236,8 +259,7 @@ BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Seria
 
         serializer->end_record();
     }
-
-    if (type->is(TypeKind::array))
+    else if (type->is(TypeKind::array))
     {
         auto array_type = type->as<ArrayType>();
         auto element_type = array_type->element_type;
@@ -252,8 +274,7 @@ BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Seria
 
         serializer->end_array();
     }
-
-    if (type->is(TypeKind::fundamental))
+    else if (type->is(TypeKind::fundamental))
     {
         const auto fundamental_type = type->as<FundamentalType>();
 

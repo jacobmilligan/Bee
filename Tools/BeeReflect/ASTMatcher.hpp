@@ -45,10 +45,7 @@ struct Diagnostics
 
     void init(clang::DiagnosticsEngine* diag_engine);
 
-    inline clang::DiagnosticBuilder Report(clang::SourceLocation location, unsigned diag_id)
-    {
-        return engine->Report(location, diag_id);
-    }
+    clang::DiagnosticBuilder Report(clang::SourceLocation location, unsigned diag_id);
 };
 
 

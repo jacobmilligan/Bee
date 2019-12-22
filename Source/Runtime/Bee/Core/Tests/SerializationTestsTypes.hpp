@@ -59,13 +59,13 @@ struct BEE_REFLECT(serializable, version = 3, format = table) PrimitivesStructV2
     i32       nonserialized_field { -1 };
 };
 
+// Removed `ubyteval`
 struct BEE_REFLECT(serializable, serializer = bee::serialize_primitives) PrimitivesStructV3
 {
     int       intval { -1 };
     u32       uval { 0 };
     char      charval { 0 };
     bool      boolval { false };
-    u8        ubyteval { 0 };
     bool      is_valid { false };
     i8        ibyteval { -1 };
     i32       nonserialized_field { -1 };
@@ -101,11 +101,11 @@ inline bool operator==(const PrimitivesStructV3& lhs, const PrimitivesStructV3& 
         && lhs.uval == rhs.uval
         && lhs.charval == rhs.charval
         && lhs.boolval == rhs.boolval
-        && lhs.ubyteval == rhs.ubyteval
         && lhs.ibyteval == rhs.ibyteval
         && lhs.is_valid == rhs.is_valid
         && lhs.nonserialized_field == rhs.nonserialized_field;
 }
+
 
 inline bool operator!=(const PrimitivesStruct& lhs, const PrimitivesStruct& rhs)
 {
@@ -125,22 +125,15 @@ inline bool operator!=(const PrimitivesStructV3& lhs, const PrimitivesStructV3& 
 template <>
 inline void serialize_type(SerializationBuilder* builder, PrimitivesStructV3* data)
 {
-    builder->structure(1)
-        .add_field(1, &data->boolval, "boolval")
-        .add_field(1, 2, &data->is_valid, "is_valid")
+    builder->structure(3)
+        .add_field(1, &data->intval, "intval")
         .add_field(1, &data->uval, "uval")
-        .add_field(1, &data->charval, "charval");
+        .add_field(1, &data->charval, "charval")
+        .add_field(1, &data->boolval, "boolval")
+        .remove_field<u8>(1, 2, 0, "ubyteval")
+        .add_field(1, 2, &data->is_valid, "is_valid")
+        .add_field(1, 3, &data->ibyteval, "ibyteval");
 }
-
-//inline void serialize_type(SerializationBuilder* builder, PrimitivesStructV3* data)
-//{
-//    builder->structure(3)
-//           .add_field(1, &data->boolval, "boolval")
-//           .add_field(1, 2, &data->is_valid, "is_valid")
-//           .remove_field<u32>(1, 2, 109, "uval")
-//           .add_field(1, &data->charval, "charval");
-//}
-
 
 
 struct BEE_REFLECT(serializable) Id
