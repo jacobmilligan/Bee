@@ -134,6 +134,7 @@ void JSONSerializerV2::end_record()
 void JSONSerializerV2::begin_object(i32* member_count)
 {
     begin_record(nullptr);
+
     if (mode == SerializerMode::reading)
     {
         *member_count = static_cast<i32>(stack_.back()->MemberCount());
@@ -214,16 +215,28 @@ void JSONSerializerV2::serialize_key(String* key)
     ++current_member_iter_;
 }
 
-void JSONSerializerV2::serialize_string(io::StringStream* stream)
+void JSONSerializerV2::begin_text(i32* length)
 {
     if (mode == SerializerMode::writing)
     {
-        writer_.String(stream->c_str(), stream->size(), true);
+        // JSON doesn't need an explicit length value serialized
         return;
     }
 
     BEE_ASSERT_F(stack_.back()->IsString(), "JSONSerializer: expected string type but got: %d", stack_.back()->GetType());
-    stream->write(StringView { stack_.back()->GetString(), static_cast<i32>(stack_.back()->GetStringLength()) });
+    *length = static_cast<i32>(stack_.back()->GetStringLength());
+}
+
+void JSONSerializerV2::end_text(char* buffer, const i32 size, const i32 capacity)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.String(buffer, size);
+        return;
+    }
+
+    BEE_ASSERT_F(stack_.back()->IsString(), "JSONSerializer: expected string type but got: %d", stack_.back()->GetType());
+    str::copy(buffer, capacity, stack_.back()->GetString(), static_cast<i32>(stack_.back()->GetStringLength()));
 }
 
 //void JSONSerializerV2::serialize_enum(const EnumType* type, u8* data)

@@ -33,7 +33,7 @@ enum class SerializedContainerKind
     none,
     sequential,
     key_value,
-    string
+    text
 };
 
 class SerializationBuilder;
@@ -68,9 +68,10 @@ struct BEE_CORE_API Serializer
     virtual void end_object() = 0;
     virtual void begin_array(i32* count) = 0;
     virtual void end_array() = 0;
+    virtual void begin_text(i32* length) = 0;
+    virtual void end_text(char* buffer, const i32 size, const i32 capacity) = 0;
     virtual void serialize_field(const char* name) = 0;
     virtual void serialize_key(String* key) = 0;
-    virtual void serialize_string(io::StringStream* stream) = 0;
     virtual void serialize_bytes(void* data, const i32 size) = 0;
     virtual void serialize_fundamental(bool* data) = 0;
     virtual void serialize_fundamental(char* data) = 0;
@@ -189,9 +190,11 @@ public:
         return *this;
     }
 
-    SerializationBuilder& structure(i32 serialized_version);
+    SerializationBuilder& structure(const i32 serialized_version);
 
-    SerializationBuilder& container(const SerializedContainerKind kind, i32 serialized_version, i32* size);
+    SerializationBuilder& container(const SerializedContainerKind kind, i32* size);
+
+    SerializationBuilder& text(char* buffer, const i32 size, const i32 capacity);
 
     SerializationBuilder& key(String* data);
 
@@ -222,6 +225,7 @@ public:
 
 private:
     Serializer*             serializer_ { nullptr };
+    const RecordType*       type_ { nullptr };
     SerializedContainerKind container_kind_ { SerializedContainerKind::none };
     i32                     version_ { -1 };
 };
@@ -270,7 +274,7 @@ template <typename T, ContainerMode Mode>
 inline void serialize_type(SerializationBuilder* builder, Array<T, Mode>* array)
 {
     int size = array->size();
-    builder->container(SerializedContainerKind::sequential, 1, &size);
+    builder->container(SerializedContainerKind::sequential, &size);
 
     if (builder->mode() == SerializerMode::reading)
     {
@@ -295,12 +299,33 @@ template <
     typename        KeyType,
     typename        ValueType,
     ContainerMode   Mode,
-    typename        Hasher = Hash<KeyType>,
-    typename        KeyEqual = EqualTo<KeyType>
+    typename        Hasher,
+    typename        KeyEqual
 >
 inline void serialize_type(SerializationBuilder* builder, HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>* map)
 {
+    int size = map->size();
+    builder->container(SerializedContainerKind::key_value, &size);
 
+    if (builder->mode() == SerializerMode::reading)
+    {
+        KeyValuePair<KeyType, ValueType> key_val{};
+
+        for (int i = 0; i < size; ++i)
+        {
+            builder->key(&key_val.key);
+            builder->element(&key_val.value);
+            map->insert(key_val);
+        }
+    }
+    else
+    {
+        for (KeyValuePair<KeyType, ValueType>& elem : *map)
+        {
+            builder->key(&elem.key);
+            builder->element(&elem.value);
+        }
+    }
 }
 
 /*
@@ -313,32 +338,35 @@ inline void serialize_type(SerializationBuilder* builder, HashMap<KeyType, Value
 inline void serialize_type(SerializationBuilder* builder, String* string)
 {
     int size = string->size();
-    builder->container(SerializedContainerKind::sequential, 1, &size);
+    builder->container(SerializedContainerKind::text, &size);
 
     if (builder->mode() == SerializerMode::reading)
     {
         string->resize(size);
     }
 
-    builder->
-
-//    for (auto& element : *array)
-//    {
-//        builder->element(&element);
-//    }
+    builder->text(string->data(), string->size(), string->capacity());
 }
 
 
 /*
  **********************
  *
- * String serialization
+ * Path serialization
  *
  **********************
  */
 inline void serialize_type(SerializationBuilder* builder, Path* path)
 {
+    int size = path->size();
+    builder->container(SerializedContainerKind::text, &size);
 
+    if (builder->mode() == SerializerMode::reading)
+    {
+        path->data_.resize(size);
+    }
+
+    builder->text(path->data_.data(), path->data_.size(), path->data_.capacity());
 }
 
 

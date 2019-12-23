@@ -412,21 +412,6 @@ i32 StringStream::read(String* dst_string)
     return read(dst_string, 0, size());
 }
 
-i32 StringStream::read_from(Stream* other)
-{
-    if (BEE_FAIL(can_read()))
-    {
-        return 0;
-    }
-
-    if (offset() >= size())
-    {
-        return 0;
-    }
-
-    
-}
-
 i32 StringStream::write(const void* src_buffer, i32 src_buffer_size)
 {
     int write_size = 0;

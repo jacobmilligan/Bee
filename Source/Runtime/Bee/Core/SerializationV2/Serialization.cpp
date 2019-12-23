@@ -20,26 +20,25 @@ Serializer::Serializer(const bee::SerializerFormat serialized_format)
 
 
 SerializationBuilder::SerializationBuilder(Serializer* new_serializer, const RecordType* type)
-    : serializer_(new_serializer)
-{
-    serializer_->begin_record(type);
-}
+    : serializer_(new_serializer),
+      type_(type)
+{}
 
 SerializationBuilder::~SerializationBuilder()
 {
-    if (container_kind_ != SerializedContainerKind::none)
+    if (container_kind_ == SerializedContainerKind::none || container_kind_ == SerializedContainerKind::text)
     {
-        if (container_kind_ == SerializedContainerKind::key_value)
-        {
-            serializer_->end_object();
-        }
-        else
-        {
-            serializer_->end_array();
-        }
+        return;
     }
 
-    serializer_->end_record();
+    if (container_kind_ == SerializedContainerKind::key_value)
+    {
+        serializer_->end_object();
+    }
+    else
+    {
+        serializer_->end_array();
+    }
 }
 
 SerializationBuilder& SerializationBuilder::structure(const i32 serialized_version)
@@ -54,34 +53,32 @@ SerializationBuilder& SerializationBuilder::structure(const i32 serialized_versi
     return *this;
 }
 
-SerializationBuilder& SerializationBuilder::container(const SerializedContainerKind kind, const i32 serialized_version, i32 * size)
+SerializationBuilder& SerializationBuilder::container(const SerializedContainerKind kind, i32* size)
 {
     if (BEE_FAIL_F(version_ <= 0, "serialized version has already been set"))
     {
         return *this;
     }
 
+    version_ = 1;
     container_kind_ = kind;
-    version_ = serialized_version;
-    serialize_version(serializer_, &version_);
 
     switch (container_kind_)
     {
         case SerializedContainerKind::sequential:
         {
-            serializer_->serialize_field("bee::elements");
             serializer_->begin_array(size);
             break;
         }
         case SerializedContainerKind::key_value:
         {
-            serializer_->serialize_field("bee::elements");
             serializer_->begin_object(size);
             break;
         }
-        case SerializedContainerKind::string:
+        case SerializedContainerKind::text:
         {
-            serializer
+            serializer_->begin_text(size);
+            break;
         }
         default:
         {
@@ -89,6 +86,17 @@ SerializationBuilder& SerializationBuilder::container(const SerializedContainerK
         }
     }
 
+    return *this;
+}
+
+SerializationBuilder& SerializationBuilder::text(char* buffer, const i32 size, const i32 capacity)
+{
+    if (BEE_FAIL_F(container_kind_ == SerializedContainerKind::text, "serialization builder is not configured to serialize a text container"))
+    {
+        return *this;
+    }
+
+    serializer_->end_text(buffer, size, capacity);
     return *this;
 }
 

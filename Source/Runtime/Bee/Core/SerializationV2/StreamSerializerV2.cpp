@@ -23,26 +23,12 @@ void StreamSerializerV2::end()
 
 void StreamSerializerV2::begin_object(i32* member_count)
 {
-    if (mode == SerializerMode::writing)
-    {
-        stream->write(member_count, sizeof(i32));
-    }
-    else
-    {
-        stream->read(member_count, sizeof(i32));
-    }
+    serialize_fundamental(member_count);
 }
 
 void StreamSerializerV2::begin_array(i32* count)
 {
-    if (mode == SerializerMode::writing)
-    {
-        stream->write(count, sizeof(i32));
-    }
-    else
-    {
-        stream->read(count, sizeof(i32));
-    }
+    serialize_fundamental(count);
 }
 
 void StreamSerializerV2::serialize_field(const char* name)
@@ -66,18 +52,20 @@ void StreamSerializerV2::serialize_key(String* key)
     }
 }
 
-void StreamSerializerV2::serialize_string(io::StringStream* string_stream)
+void StreamSerializerV2::begin_text(i32* length)
 {
-    int size = string_stream->size();
-    serialize_fundamental(&size);
+    serialize_fundamental(length);
+}
 
+void StreamSerializerV2::end_text(char* buffer, const i32 size, const i32 capacity)
+{
     if (mode == SerializerMode::writing)
     {
-        stream->write(string_stream->c_str(), string_stream->size());
+        stream->write(buffer, size);
     }
     else
     {
-        string_stream->read_from(stream);
+        stream->read(buffer, math::min(size, capacity));
     }
 }
 

@@ -148,10 +148,7 @@ TEST(SerializationTestsV2, complex_type)
     "bee::version": 1,
     "bee::flags": 0,
     "value": 25,
-    "array": {
-        "bee::version": 1,
-        "bee::elements": []
-    },
+    "array": [],
     "settings": {
         "bee::version": 1,
         "bee::flags": 0,

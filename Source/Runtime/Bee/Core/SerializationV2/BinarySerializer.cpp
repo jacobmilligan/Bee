@@ -6,7 +6,6 @@
  */
 
 #include "Bee/Core/SerializationV2/BinarySerializer.hpp"
-#include "Bee/Core/IO.hpp"
 
 namespace bee {
 
@@ -17,6 +16,11 @@ bool BinarySerializer::begin()
     {
         read_offset = 0;
     }
+    else
+    {
+        array->clear();
+    }
+
     return true;
 }
 
@@ -27,7 +31,7 @@ void BinarySerializer::end()
 
 void BinarySerializer::begin_object(i32* member_count)
 {
-    serialize_bytes(member_count, sizeof(i32));
+    serialize_fundamental(member_count);
 }
 
 void BinarySerializer::end_object()
@@ -37,7 +41,7 @@ void BinarySerializer::end_object()
 
 void BinarySerializer::begin_array(i32* count)
 {
-    serialize_bytes(count, sizeof(i32));
+    serialize_fundamental(count);
 }
 
 void BinarySerializer::end_array()
@@ -58,18 +62,23 @@ void BinarySerializer::serialize_key(String* key)
     serialize_bytes(key->data(), sizeof(char) * key->size());
 }
 
-void BinarySerializer::serialize_string(io::StringStream* stream)
+void BinarySerializer::begin_text(i32* length)
 {
-    int size = stream->size();
-    serialize_fundamental(&size);
+    serialize_fundamental(length);
+}
 
+void BinarySerializer::end_text(char* buffer, const i32 size, const i32 capacity)
+{
     if (mode == SerializerMode::writing)
     {
-        array->append({reinterpret_cast<const u8*>(stream->c_str()), stream->size() });
+        array->append({ reinterpret_cast<const u8*>(buffer), size });
     }
     else
     {
-        stream->read(array->data() + read_offset, size);
+        // Only read what the buffer can store, but still increment read offset by the serialized size to avoid
+        // messing up the data
+        BEE_ASSERT(array->size() - read_offset >= size);
+        str::copy(buffer, capacity, reinterpret_cast<const char*>(array->data() + read_offset), size);
         read_offset = math::min(read_offset + size, array->size());
     }
 }

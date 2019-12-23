@@ -18,10 +18,12 @@ class PathIterator;
 
 class Path;
 
+class SerializationBuilder;
+
 
 /// @brief The path class is a lightweight path utility class for navigating the platforms
 /// filesystem
-class BEE_REFLECT(serializable) BEE_CORE_API Path
+class BEE_REFLECT(serializable, use_builder) BEE_CORE_API Path
 {
 public:
 #if BEE_OS_WINDOWS == 1
@@ -157,7 +159,14 @@ public:
     {
         data_.clear();
     }
+
+    inline Allocator* allocator()
+    {
+        return data_.allocator();
+    }
 private:
+    friend void serialize_type(SerializationBuilder* builder, Path* path);
+
     String data_;
 
     bool is_absolute(const StringView& path) const;

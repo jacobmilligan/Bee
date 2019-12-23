@@ -30,9 +30,10 @@ struct BEE_CORE_API BinarySerializer final : public Serializer
     void end_object() override;
     void begin_array(i32* count) override;
     void end_array() override;
+    void begin_text(i32* length) override;
+    void end_text(char* buffer, const i32 size, const i32 capacity) override;
     void serialize_field(const char* name) override {}
     void serialize_key(String* key) override;
-    void serialize_string(io::StringStream* stream) override;
     void serialize_bytes(void* data, const i32 size) override;
     void serialize_fundamental(bool* data) override;
     void serialize_fundamental(char* data) override;
