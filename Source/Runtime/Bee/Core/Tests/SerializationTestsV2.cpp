@@ -149,6 +149,9 @@ TEST(SerializationTestsV2, complex_type)
     "bee::flags": 0,
     "value": 25,
     "array": [],
+    "map": {
+        "thing1": 1
+    },
     "settings": {
         "bee::version": 1,
         "bee::flags": 0,

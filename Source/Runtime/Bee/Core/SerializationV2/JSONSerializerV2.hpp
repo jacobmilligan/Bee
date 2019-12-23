@@ -76,15 +76,16 @@ private:
     rapidjson::ParseFlag                                parse_flags_;
     rapidjson::Document                                 reader_doc_;
     DynamicArray<rapidjson::Value*>                     stack_;
-    rapidjson::Value::MemberIterator                    current_member_iter_;
-    i32                                                 current_element_ { 0 };
+    DynamicArray<rapidjson::Value::MemberIterator>      member_iter_stack_;
+    DynamicArray<i32>                                   element_iter_stack_;
     const char*                                         src_ { nullptr };
 
     inline void next_element_if_array()
     {
         if (!stack_.empty() && stack_.back()->IsArray())
         {
-            ++current_element_;
+            BEE_ASSERT(!element_iter_stack_.empty());
+            ++element_iter_stack_.back();
         }
     }
 
@@ -93,6 +94,16 @@ private:
         BEE_ASSERT(!stack_.empty());
         stack_.pop_back();
         next_element_if_array();
+    }
+
+    inline rapidjson::Value::MemberIterator& current_member_iter()
+    {
+        return member_iter_stack_.back();
+    }
+
+    inline i32 current_element()
+    {
+        return element_iter_stack_.back();
     }
 };
 

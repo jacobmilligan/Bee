@@ -15,6 +15,28 @@
 namespace bee {
 
 
+BEE_TRANSLATION_TABLE(rapidjson_type_to_string, rapidjson::Type, const char*, rapidjson::Type::kNumberType + 1,
+    "null",
+    "false",
+    "true",
+    "object",
+    "array",
+    "string",
+    "number"
+)
+
+template <typename T>
+BEE_FORCE_INLINE bool json_validate_type(const rapidjson::Value* value)
+{
+    return BEE_CHECK_F(value->Is<T>(), "JSONSerializer: expected %s type but got %s", get_type<T>()->name, rapidjson_type_to_string(value->GetType()));
+}
+
+BEE_FORCE_INLINE bool json_validate_type(const rapidjson::Type type, const rapidjson::Value* value)
+{
+    return BEE_CHECK_F(type == value->GetType(), "JSONSerializer: expected %s type but got %s", rapidjson_type_to_string(type), rapidjson_type_to_string(value->GetType()));
+}
+
+
 JSONSerializerV2::JSONSerializerV2(Allocator* allocator)
     : Serializer(SerializerFormat::text),
       parse_flags_(static_cast<rapidjson::ParseFlag>(-1)),
@@ -52,11 +74,7 @@ void JSONSerializerV2::reset(char* mutable_src, const rapidjson::ParseFlag parse
 
 bool JSONSerializerV2::begin()
 {
-    current_member_iter_ = rapidjson::Value::MemberIterator{};
-    current_element_ = 0;
-
     if (mode == SerializerMode::reading)
-
     {
         stack_.clear();
 
@@ -111,11 +129,11 @@ void JSONSerializerV2::begin_record(const RecordType* /* type */)
 
     if (stack_.back()->IsArray())
     {
-        auto element = &stack_.back()->GetArray()[current_element_];
+        auto element = &stack_.back()->GetArray()[current_element()];
         stack_.push_back(element);
     }
 
-    BEE_ASSERT_F(stack_.back()->IsObject(), "Invalid type: %d", stack_.back()->GetType());
+    json_validate_type(rapidjson::Type::kObjectType, stack_.back());
 }
 
 void JSONSerializerV2::end_record()
@@ -126,7 +144,7 @@ void JSONSerializerV2::end_record()
     }
     else
     {
-        BEE_ASSERT_F(stack_.back()->IsObject(), "Invalid type: %d", stack_.back()->GetType());
+        json_validate_type(rapidjson::kObjectType, stack_.back());
         end_read_scope();
     }
 }
@@ -135,17 +153,23 @@ void JSONSerializerV2::begin_object(i32* member_count)
 {
     begin_record(nullptr);
 
-    if (mode == SerializerMode::reading)
+    if (mode == SerializerMode::writing)
     {
-        *member_count = static_cast<i32>(stack_.back()->MemberCount());
+        return;
     }
 
-    current_member_iter_ = stack_.back()->MemberBegin();
+    *member_count = static_cast<i32>(stack_.back()->MemberCount());
+    member_iter_stack_.push_back(stack_.back()->MemberBegin());
 }
 
 void JSONSerializerV2::end_object()
 {
     end_record();
+
+    if (mode == SerializerMode::reading)
+    {
+        member_iter_stack_.pop_back();
+    }
 }
 
 void JSONSerializerV2::begin_array(i32* count)
@@ -156,9 +180,9 @@ void JSONSerializerV2::begin_array(i32* count)
         return;
     }
 
-    BEE_ASSERT_F(stack_.back()->IsArray(), "Invalid type: %d", stack_.back()->GetType());
+    json_validate_type(rapidjson::kArrayType, stack_.back());
     *count = static_cast<i32>(stack_.back()->GetArray().Size());
-    current_element_ = 0;
+    element_iter_stack_.push_back(0);
 }
 
 void JSONSerializerV2::end_array()
@@ -169,8 +193,9 @@ void JSONSerializerV2::end_array()
         return;
     }
 
-    BEE_ASSERT_F(stack_.back()->IsArray(), "Invalid type: %d", stack_.back()->GetType());
+    json_validate_type(rapidjson::kArrayType, stack_.back());
     end_read_scope();
+    element_iter_stack_.pop_back();
 }
 
 void JSONSerializerV2::serialize_field(const char* name)
@@ -182,7 +207,7 @@ void JSONSerializerV2::serialize_field(const char* name)
     }
     
     // If current element is not an object then we can't serialize a field
-    if (BEE_FAIL_F(stack_.back()->IsObject(), "JSONSerializer: expected object type but got: %d", stack_.back()->GetType()))
+    if (!json_validate_type(rapidjson::kObjectType, stack_.back()))
     {
         return;
     }
@@ -206,13 +231,14 @@ void JSONSerializerV2::serialize_key(String* key)
     }
 
     // If current element is not an object then we can't serialize a key
-    if (BEE_FAIL_F(stack_.back()->IsObject(), "JSONSerializer: expected object type but got: %d", stack_.back()->GetType()))
+    if (!json_validate_type(rapidjson::kObjectType, stack_.back()))
     {
         return;
     }
 
-    str::replace_range(key, 0, key->size(), current_member_iter_->name.GetString(), current_member_iter_->name.GetStringLength());
-    ++current_member_iter_;
+    key->append({ current_member_iter()->name.GetString(), static_cast<i32>(current_member_iter()->name.GetStringLength()) });
+    stack_.push_back(&current_member_iter()->value);
+    ++current_member_iter();
 }
 
 void JSONSerializerV2::begin_text(i32* length)
@@ -223,7 +249,7 @@ void JSONSerializerV2::begin_text(i32* length)
         return;
     }
 
-    BEE_ASSERT_F(stack_.back()->IsString(), "JSONSerializer: expected string type but got: %d", stack_.back()->GetType());
+    json_validate_type(rapidjson::kStringType, stack_.back());
     *length = static_cast<i32>(stack_.back()->GetStringLength());
 }
 
@@ -235,7 +261,7 @@ void JSONSerializerV2::end_text(char* buffer, const i32 size, const i32 capacity
         return;
     }
 
-    BEE_ASSERT_F(stack_.back()->IsString(), "JSONSerializer: expected string type but got: %d", stack_.back()->GetType());
+    json_validate_type(rapidjson::kStringType, stack_.back());
     str::copy(buffer, capacity, stack_.back()->GetString(), static_cast<i32>(stack_.back()->GetStringLength()));
 }
 
@@ -258,7 +284,7 @@ void JSONSerializerV2::serialize_fundamental(bool* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsBool(), "JSONSerializer: current field is not a boolean type"))
+    if (json_validate_type<bool>(stack_.back()))
     {
         *data = stack_.back()->GetBool();
         end_read_scope();
@@ -273,7 +299,7 @@ void JSONSerializerV2::serialize_fundamental(i8* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsInt(), "JSONSerializer: current field is not an integer type"))
+    if (json_validate_type<int>(stack_.back()))
     {
         *data = sign_cast<i8>(stack_.back()->GetInt());
         end_read_scope();
@@ -288,7 +314,7 @@ void JSONSerializerV2::serialize_fundamental(i16* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsInt(), "JSONSerializer: current field is not an integer type"))
+    if (json_validate_type<int>(stack_.back()))
     {
         *data = sign_cast<i16>(stack_.back()->GetInt());
         end_read_scope();
@@ -303,7 +329,7 @@ void JSONSerializerV2::serialize_fundamental(i32* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsInt(), "JSONSerializer: current field is not an integer type"))
+    if (json_validate_type<int>(stack_.back()))
     {
         *data = stack_.back()->GetInt();
         end_read_scope();
@@ -318,7 +344,7 @@ void JSONSerializerV2::serialize_fundamental(i64* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsInt64(), "JSONSerializer: current field is not a 64-bit integer type"))
+    if (json_validate_type<int64_t>(stack_.back()))
     {
         *data = stack_.back()->GetInt64();
         end_read_scope();
@@ -333,7 +359,7 @@ void JSONSerializerV2::serialize_fundamental(u8* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsUint(), "JSONSerializer: current field is not an unsigned integer type"))
+    if (json_validate_type<unsigned>(stack_.back()))
     {
         *data = sign_cast<u8>(stack_.back()->GetUint());
         end_read_scope();
@@ -348,7 +374,7 @@ void JSONSerializerV2::serialize_fundamental(u16* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsUint(), "JSONSerializer: current field is not an unsigned integer type"))
+    if (json_validate_type<unsigned>(stack_.back()))
     {
         *data = sign_cast<u16>(stack_.back()->GetUint());
         end_read_scope();
@@ -363,7 +389,7 @@ void JSONSerializerV2::serialize_fundamental(u32* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsUint(), "JSONSerializer: current field is not an unsigned integer type"))
+    if (json_validate_type<uint32_t>(stack_.back()))
     {
         *data = stack_.back()->GetUint();
         end_read_scope();
@@ -378,7 +404,7 @@ void JSONSerializerV2::serialize_fundamental(u64* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsUint64(), "JSONSerializer: current field is not a 64-bit unsigned integer type"))
+    if (json_validate_type<uint64_t>(stack_.back()))
     {
         *data = stack_.back()->GetUint64();
         end_read_scope();
@@ -393,7 +419,7 @@ void JSONSerializerV2::serialize_fundamental(char* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsString(), "JSONSerializer: current field is not a char type"))
+    if (json_validate_type(rapidjson::kStringType, stack_.back()))
     {
         memcpy(data, stack_.back()->GetString(), math::min(stack_.back()->GetStringLength(), 1u));
         end_read_scope();
@@ -408,7 +434,7 @@ void JSONSerializerV2::serialize_fundamental(float* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsDouble(), "JSONSerializer: current field is not a floating point type"))
+    if (json_validate_type<float>(stack_.back()))
     {
         *data = sign_cast<float>(stack_.back()->GetDouble());
         end_read_scope();
@@ -423,7 +449,7 @@ void JSONSerializerV2::serialize_fundamental(double* data)
         return;
     }
 
-    if (BEE_CHECK_F(stack_.back()->IsDouble(), "JSONSerializer: current field is not a floating point type"))
+    if (json_validate_type<double>(stack_.back()))
     {
         *data = stack_.back()->GetDouble();
         end_read_scope();

@@ -155,10 +155,10 @@ struct BEE_REFLECT(serializable) Settings
 
 struct BEE_REFLECT(serializable) TestStruct
 {
-    int value { 0 };
-
-    DynamicArray<int> array;
-    Settings settings;
+    int                         value { 0 };
+    DynamicArray<int>           array;
+    DynamicHashMap<String, int> map;
+    Settings                    settings;
 
     enum class BEE_REFLECT(serializable) TestEnum
     {
