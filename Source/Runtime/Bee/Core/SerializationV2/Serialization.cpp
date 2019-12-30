@@ -19,9 +19,8 @@ Serializer::Serializer(const bee::SerializerFormat serialized_format)
 {}
 
 
-SerializationBuilder::SerializationBuilder(Serializer* new_serializer, const RecordType* type)
-    : serializer_(new_serializer),
-      type_(type)
+SerializationBuilder::SerializationBuilder(Serializer* new_serializer)
+    : serializer_(new_serializer)
 {}
 
 SerializationBuilder::~SerializationBuilder()
@@ -236,7 +235,7 @@ BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Seria
     {
         BEE_ASSERT_F((type->kind & TypeKind::record) != TypeKind::unknown, "Custom serializer functions must only be used with record types");
 
-        SerializationBuilder builder(serializer, type->as<RecordType>());
+        SerializationBuilder builder(serializer);
         serialization_function->serialize(&builder, data);
         return;
     }

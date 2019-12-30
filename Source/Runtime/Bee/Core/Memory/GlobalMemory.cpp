@@ -112,8 +112,8 @@ void reset_temp_allocator() noexcept
 
 #if BEE_OS_WINDOWS == 0
 
-constexpr isize Allocator::uninitialized_alloc_pattern;
-constexpr isize Allocator::deallocated_memory_pattern;
+constexpr size_t Allocator::uninitialized_alloc_pattern;
+constexpr size_t Allocator::deallocated_memory_pattern;
 
 #endif // BEE_OS_WINDOWS
 

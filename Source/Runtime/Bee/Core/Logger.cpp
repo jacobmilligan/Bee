@@ -166,6 +166,7 @@ void default_logger_callback(const LogVerbosity verbosity, const char* fmt, va_l
     stream.write("\n");
     win32_write_console(verbosity, stream.c_str(), stream.size());
 #else
+    auto file = verbosity == LogVerbosity::error ? stderr : stdout;
     vfprintf(file, fmt, va_args);
 #endif // BEE_OS_WINDOWS == 1
 }

@@ -17,12 +17,22 @@
 
 namespace bee {
 
+constexpr auto g_build_dirname = "Build";
+constexpr auto g_binaries_path = "ThirdParty/Binaries";
+
+#if BEE_OS_WINDOWS == 1
+    constexpr auto g_cmake_path = "cmake/bin/cmake.exe";
+#elif BEE_OS_MACOS == 1
+    constexpr auto g_cmake_path = "CMake.app/Contents/bin/cmake";
+#else
+    #error Platform unsupported
+#endif // BEE_OS_*
+
 
 struct BuildInfo
 {
     Path project_root;
     Path build_dir;
-    Path install_dir;
     Path cmake_path;
 
 #if BEE_OS_WINDOWS == 1
@@ -47,12 +57,11 @@ const BuildInfo& get_build_info()
     if (info.project_root.empty())
     {
         info.project_root = Path::executable_path().parent().parent().parent();
-        info.build_dir = info.project_root.join("Build");
+        info.build_dir = info.project_root.join(g_build_dirname);
 
-        const auto bin_root = info.project_root.join("ThirdParty/Binaries");
+        const auto bin_root = info.project_root.join(g_binaries_path);
+        info.cmake_path = bin_root.join(g_cmake_path).normalize();
 #if BEE_OS_WINDOWS == 1
-        info.cmake_path = bin_root.join("cmake/bin/cmake.exe").normalize();
-
         // Get the path to vcvarsall - this is a complicated process so buckle up...
 
         // Run cmake in a shell with vcvarsall if the CLion generator is used otherwise NMake won't know where to find VS
@@ -93,8 +102,6 @@ const BuildInfo& get_build_info()
                 info.vcvarsall_path.normalize();
             }
         }
-#else
-        #error Platform not supported
 #endif // BEE_OS_WINDOWS == 1
     }
 
@@ -115,11 +122,13 @@ bool configure(const ConfigureInfo& config_info)
     String cmd;
     io::StringStream stream(&cmd);
 
+#if BEE_OS_WINDOWS == 1
     if (str::compare(config_info.bb_generator, "CLion") == 0)
     {
         // Call vcvarsall before running cmake for clion builds
         stream.write_fmt(R"("%s" x64 && )", build_info.vcvarsall_path.c_str());
     }
+#endif // BEE_OS_WINDOWS == 1
 
     stream.write_fmt(
         R"("%s" "%s" -G "%s" -B )",

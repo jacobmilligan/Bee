@@ -39,7 +39,7 @@ BEE_TRANSLATION_TABLE(translate_thread_priority, ThreadPriority, int, ThreadPrio
 namespace current_thread {
 
 
-uint64_t id()
+uint64_t id() noexcept
 {
     return GetCurrentThreadId();
 }

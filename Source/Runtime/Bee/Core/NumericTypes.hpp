@@ -152,6 +152,20 @@ inline constexpr u64 min()
     return 0;
 }
 
+// size_t
+template <>
+inline constexpr size_t max()
+{
+    return SIZE_MAX;
+}
+
+template <>
+inline constexpr size_t min()
+{
+    return 0;
+}
+
+
 /*
  * floating point types - signed/unsigned
  */

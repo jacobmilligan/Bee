@@ -84,7 +84,7 @@ i32 guid_to_string(const GUID& guid, GUIDFormat format, const Span<char>& dst)
     writer.write_fmt("%04x", *reinterpret_cast<const u16*>(guid.data + 8));
     write_dash_if_needed(&writer, format);
 
-    u64 last_group = 0;
+    size_t last_group = 0;
     memcpy(&last_group, guid.data + 10, 6);
     writer.write_fmt("%012zx", last_group);
 
@@ -142,7 +142,7 @@ String guid_to_string(const GUID& guid, const GUIDFormat format, Allocator* allo
     io::write_fmt(&result, "%04x", *reinterpret_cast<const u16*>(guid.data + 8));
     write_dash_if_needed(&result, format);
 
-    u64 last_group = 0;
+    size_t last_group = 0;
     memcpy(&last_group, guid.data + 10, 6);
     io::write_fmt(&result, "%012zx", last_group);
 

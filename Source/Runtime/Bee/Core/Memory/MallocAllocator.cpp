@@ -10,6 +10,7 @@
 
 #if BEE_OS_MACOS == 1
     #include <malloc/malloc.h>
+    #include <string.h> // for memcpy
 #elif BEE_OS_WINDOWS == 1
     #include <malloc.h>
 #else
@@ -82,15 +83,17 @@ void* MallocAllocator::reallocate(void* ptr, const size_t old_size, const size_t
 
 #if BEE_OS_UNIX == 1
     auto original_allocation_size = ptr != nullptr ? old_size : 0;
-    BEE_ASSERT(ptr == nullptr || original_allocation_size == data_size(ptr));
+    BEE_ASSERT(ptr == nullptr || original_allocation_size == allocation_size(ptr));
 
     const auto adjusted_alignment = math::max(sizeof(void*), alignment);
     const auto result = posix_memalign(&new_allocation, adjusted_alignment, new_size);
-    if (!BEE_CHECK(result == 0)) {
+    if (!BEE_CHECK(result == 0))
+    {
         return ptr;
     }
 
-    if (ptr != nullptr) {
+    if (ptr != nullptr)
+    {
         const auto memcpy_len = math::min(new_size, original_allocation_size);
         memcpy(new_allocation, ptr, memcpy_len);
     }

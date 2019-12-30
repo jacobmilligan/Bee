@@ -47,7 +47,7 @@ namespace current_thread {
 
 BEE_CORE_API void sleep(u64 ticks_to_sleep);
 
-BEE_CORE_API u64 id();
+BEE_CORE_API u64 id() noexcept;
 
 BEE_CORE_API void set_affinity(i32 cpu);
 
@@ -160,10 +160,12 @@ private:
 
     struct ExecuteParams
     {
-        void(*invoker)(void*, void*);
-        void(*destructor)(void*, void*);
+        void(*invoker)(void*, void*) { nullptr };
+        void(*destructor)(void*, void*) { nullptr };
         void* function { nullptr };
         void* arg { nullptr };
+        const char* name { nullptr };
+        bool initialized { false };
     };
 
     char                name_[max_name_length]{};

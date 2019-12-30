@@ -12,6 +12,8 @@
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Span.hpp"
 
+#include <stdarg.h>
+
 
 namespace bee {
 

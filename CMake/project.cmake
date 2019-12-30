@@ -302,6 +302,10 @@ if (WIN32)
 endif ()
 
 function(bee_reflect target)
+    if (NOT ENABLE_REFLECTION)
+        return()
+    endif ()
+
     cmake_parse_arguments(ARGS "INCLUDE_NON_HEADERS" "" "EXCLUDE" ${ARGN})
 
     set(output_dir ${PROJECT_SOURCE_DIR}/Build/DevData/Generated)
@@ -394,6 +398,10 @@ function(bee_reflect target)
 endfunction()
 
 function(bee_reflect_link target)
+    if (NOT ENABLE_REFLECTION)
+        return()
+    endif ()
+
     set(generated_root ${PROJECT_SOURCE_DIR}/Build/DevData/Generated)
     set(output_dir ${generated_root}/${target})
     file(GLOB_RECURSE registration_files "${output_dir}/*.registration")

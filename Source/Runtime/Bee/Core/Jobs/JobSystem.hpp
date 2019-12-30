@@ -10,6 +10,8 @@
 
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Jobs/JobTypes.hpp"
+#include "Bee/Core/Memory/Allocator.hpp"
+#include "Bee/Core/Math/Math.hpp"
 
 #include <atomic>
 

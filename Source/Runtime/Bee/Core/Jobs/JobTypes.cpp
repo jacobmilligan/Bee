@@ -64,10 +64,10 @@ Job& Job::operator=(bee::Job&& other) noexcept
 
 void Job::move_construct(Job& other) noexcept
 {
-    parent_.store(other.parent_, std::memory_order_acq_rel);
+    parent_.store(other.parent_, std::memory_order_seq_cst);
     owning_worker_ = other.owning_worker_;
 
-    other.parent_.store(nullptr, std::memory_order_acq_rel);
+    other.parent_.store(nullptr, std::memory_order_seq_cst);
     other.owning_worker_ = -1;
 }
 

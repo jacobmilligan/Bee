@@ -24,8 +24,7 @@ class BEE_CORE_API JSONWriter : public Serializer, public Noncopyable
 {
 public:
     explicit JSONWriter(Allocator* allocator = system_allocator())
-        : allocator_(allocator),
-          stack_(allocator)
+        : stack_(allocator)
     {}
 
     JSONWriter(JSONWriter&& other) noexcept;
@@ -55,7 +54,7 @@ public:
     void convert(const char** str);
 
     template <typename T>
-    inline std::enable_if_t<std::is_enum_v<T>> convert(T* value)
+    inline std::enable_if_t<std::is_enum<T>::value> convert(T* value)
     {
         convert(reinterpret_cast<std::underlying_type_t<T>*>(value));
     }
@@ -134,7 +133,6 @@ public:
     }
 
 private:
-    Allocator*                                          allocator_ { nullptr };
     DynamicArray<rapidjson::Type>                       stack_;
     rapidjson::StringBuffer                             string_buffer_;
     rapidjson::PrettyWriter<rapidjson::StringBuffer>    writer_;

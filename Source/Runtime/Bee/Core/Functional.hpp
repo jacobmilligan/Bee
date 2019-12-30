@@ -22,7 +22,7 @@ namespace bee {
 template <typename CallableType, typename ClassType, typename... Args>
 constexpr auto invoke(CallableType&& callable, ClassType&& class_instance, Args&&... args) noexcept ->
 typename std::enable_if_t<
-    std::is_member_function_pointer_v<typename std::decay_t<CallableType>>, // is a member function pointer
+    std::is_member_function_pointer<typename std::decay_t<CallableType>>::value, // is a member function pointer
     decltype(((std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...))
 >
 {
@@ -33,7 +33,7 @@ typename std::enable_if_t<
 template <typename CallableType, typename ClassType, typename... Args>
 constexpr auto invoke(CallableType&& callable, ClassType&& class_instance, Args&&... args) noexcept ->
 typename std::enable_if_t<
-    std::is_member_function_pointer_v<typename std::decay_t<CallableType>>, // is a member function pointer
+    std::is_member_function_pointer<typename std::decay_t<CallableType>>::value, // is a member function pointer
     decltype(((*std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...))
 >
 {
@@ -44,7 +44,7 @@ typename std::enable_if_t<
 template <typename CallableType, typename... Args>
 constexpr auto invoke(CallableType&& callable, Args&&... args) noexcept ->
 typename std::enable_if_t<
-    !std::is_member_pointer_v<typename std::decay_t<CallableType>>,
+    !std::is_member_pointer<typename std::decay_t<CallableType>>::value,
     decltype(std::forward<CallableType>(callable)(std::forward<Args>(args)...))
 >
 {
@@ -145,7 +145,7 @@ private:
     using this_t = Function<ReturnType(Args...), BufferSize, Alignment>;
 
     template <typename CallableType>
-    using enable_if_callable_t = std::enable_if_t<!std::is_same_v<std::decay_t<CallableType>, this_t>>;
+    using enable_if_callable_t = std::enable_if_t<!std::is_same<std::decay_t<CallableType>, this_t>::value_type>;
 public:
     Function() noexcept = default;
 
@@ -155,8 +155,8 @@ public:
         using decayed_callable_t = std::decay_t<CallableType>;
 
         static_assert(sizeof(decayed_callable_t) <= BufferSize, "bee::Function: callable size was too large for the internal buffer");
-        static_assert(!std::is_same_v<decayed_callable_t, Function>, "bee::Function: Cannot assign a bee::Function object to another bee::Function");
-        static_assert(std::is_convertible_v<decayed_callable_t, Function>, "bee::Function: Callable parameter must be convertible to a bee::Function");
+        static_assert(!std::is_same<decayed_callable_t, Function>::value, "bee::Function: Cannot assign a bee::Function object to another bee::Function");
+        static_assert(std::is_convertible<decayed_callable_t, Function>::value, "bee::Function: Callable parameter must be convertible to a bee::Function");
         static_assert(is_invocable_r<ReturnType, decayed_callable_t, Args...>::value, "bee::Function: Callable parameter must be invocable with the given return type and arguments");
 
         destructor_ = [](storage_t& storage)

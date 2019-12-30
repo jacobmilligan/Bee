@@ -13,7 +13,7 @@
 #if BEE_OS_WINDOWS == 1
     #include "Bee/Core/Win32/Win32Concurrency.hpp"
 #else
-    #error Platform not supported
+    #include "Bee/Core/Unix/PosixThread.hpp"
 #endif // BEE_OS_WINDOWS == 1
 
 #include <atomic>

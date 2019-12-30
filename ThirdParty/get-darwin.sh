@@ -1,27 +1,29 @@
 #!/usr/bin/env bash
 
-if ![ -f ".\Binaries" ]; then
-    mkdir .\Binaries
+CMAKE_VER=3.15.4
+CMAKE_FILENAME=cmake-$CMAKE_VER-Darwin-x86_64
+CMAKE_URL=https://github.com/Kitware/CMake/releases/download/v$CMAKE_VER/$CMAKE_FILENAME.tar.gz
+CMAKE=./Binaries/CMake.app
+CMAKE_TARBALL=./Binaries/cmake.tar.gz
+
+mkdir -p ./Binaries
+
+if [ ! -d $CMAKE ]; then
+    echo bb: downloading required dependency cmake
+    echo     from $CMAKE_URL
+    echo
+    curl -L $CMAKE_URL --output $CMAKE_TARBALL
+    # extract cmake.app and move it into the root ./Binaries directory
+    tar -xvzf $CMAKE_TARBALL -C ./Binaries
+    mv ./Binaries/$CMAKE_FILENAME/CMake.app $CMAKE
+    rm -r ./Binaries/$CMAKE_FILENAME
+    rm $CMAKE_TARBALL
 fi
 
-set CMAKE_VER=3.15.4
-set CMAKE_FILENAME=cmake-%CMAKE_VER%-macos-x64
-set CMAKE_URL=https://github.com/Kitware/CMake/releases/download/v%CMAKE_VER%/%CMAKE_FILENAME%.zip
-set CMAKE=.\Binaries\cmake
+DXC=./Binaries/DirectXShaderCompiler
 
-if ![ -f $CMAKE ]; then
-    echo.
-    echo bb: downloading required dependency "cmake"
-    echo     from %CMAKE_URL%
-    echo.
-    %CURL% -L %CMAKE_URL% --output %CMAKE%.zip
-    %SEVENZIP% x %CMAKE%.zip -o.\Binaries
-    ren .\Binaries\%CMAKE_FILENAME% cmake
-    del %CMAKE%.zip
+if [ ! -d $DXC ]; then
+    echo bb: extracting Direct X Shader Compiler
+    tar -xvzf ./dxc-macos.tar.gz -C ./Binaries
+    mv ./Binaries/dxc-macos $DXC
 fi
-
-set DXC=.\Binaries\DirectXShaderCompiler
-
-if NOT EXIST %DXC% (
-    %SEVENZIP% x .\dxc-win64.7z -o%DXC%
-)

@@ -531,7 +531,7 @@ void PathIterator::next()
 #if BEE_OS_WINDOWS == 1
         const auto is_separator = is_slash(component_end) || (component_end > path_ && *(component_end - 1) == Path::colon);
 #else
-        const auto is_separator = is_slash(path_ + current);
+        const auto is_separator = is_slash(component_end);
 #endif // BEE_OS_WINDOWS == 1
 
         if (is_separator)

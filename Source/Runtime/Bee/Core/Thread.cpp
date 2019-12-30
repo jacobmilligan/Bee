@@ -53,6 +53,7 @@ void Thread::init(const ThreadCreateInfo& create_info, ExecuteParams* params)
     {
         str::copy(name_, max_name_length, "Bee.Thread");
     }
+    params->name = name_;
     create_native_thread(params);
 }
 

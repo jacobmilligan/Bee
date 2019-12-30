@@ -149,26 +149,30 @@ struct KeyValueIterItem
     ValueHandle value;
 };
 
+namespace {
+
+template <bool IsConstIterator>
+struct ConstHelper;
+
+template <>
+struct ConstHelper<true>
+{
+    using allocator_t = const ValueAllocator;
+};
+
+template <>
+struct ConstHelper<false>
+{
+    using allocator_t = ValueAllocator;
+};
+
+}
+
 template <bool IsConst>
 class MaybeConstObjectIterator
 {
 private:
     static constexpr i32 value_size_ = static_cast<i32>(sizeof(ValueData));
-
-    template <bool IsConstIterator>
-    struct ConstHelper;
-
-    template <>
-    struct ConstHelper<true>
-    {
-        using allocator_t = const ValueAllocator;
-    };
-
-    template <>
-    struct ConstHelper<false>
-    {
-        using allocator_t = ValueAllocator;
-    };
 public:
     using value_type = KeyValueIterItem;
     using pointer = value_type*;

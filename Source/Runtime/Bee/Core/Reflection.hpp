@@ -13,6 +13,30 @@
 namespace bee {
 
 
+template <typename T>
+inline size_t alignof_helper()
+{
+    return alignof(T);
+}
+
+template <>
+inline size_t alignof_helper<void>()
+{
+    return 0;
+}
+
+template <typename T>
+constexpr inline size_t sizeof_helper()
+{
+    return sizeof(T);
+}
+
+template <>
+constexpr inline size_t sizeof_helper<void>()
+{
+    return 0;
+}
+
 /*
  **************************************************************************************************************
  *
@@ -107,18 +131,6 @@ private:
         return name_str;
     }
 
-    template <typename U>
-    static constexpr size_t sizeof_helper()
-    {
-        return sizeof(U);
-    }
-
-    template <>
-    static constexpr size_t sizeof_helper<void>()
-    {
-        return 0;
-    }
-
 public:
     /**
      * A hash of the types fully-qualified name that uniquely identifies this type. Evaluated at compile-time
@@ -180,30 +192,6 @@ const char* static_type<T>::fully_qualified_name = get_fully_qualified_name();
 
 template <typename T>
 const char* static_type<T>::name = get_name();
-
-template <typename T>
-inline size_t alignof_helper()
-{
-    return alignof(T);
-}
-
-template <>
-inline size_t alignof_helper<void>()
-{
-    return 0;
-}
-
-template <typename T>
-inline size_t sizeof_helper()
-{
-    return sizeof(T);
-}
-
-template <>
-inline size_t sizeof_helper<void>()
-{
-    return 0;
-}
 
 
 /*

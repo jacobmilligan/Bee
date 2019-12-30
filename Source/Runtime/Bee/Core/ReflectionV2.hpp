@@ -10,6 +10,7 @@
 #include "Bee/Core/Enum.hpp"
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/Logger.hpp"
+#include "Bee/Core/IO.hpp"
 
 
 namespace bee {
@@ -191,7 +192,7 @@ struct BEE_CORE_API NamespaceRangeAdapter
 
 struct NamespaceRangeFromNameAdapter
 {
-    const StringView& fully_qualified_name { nullptr };
+    const StringView& fully_qualified_name;
 
     namespace_iterator begin() const
     {
@@ -383,7 +384,7 @@ struct Type
     template <typename T>
     inline const T* as() const
     {
-        static_assert(std::is_base_of_v<Type, T>, "`T` must derive from bee::Type");
+        static_assert(std::is_base_of<Type, T>::value, "`T` must derive from bee::Type");
         BEE_ASSERT_F((T::static_kind & kind) != TypeKind::unknown, "Invalid type cast");
         return reinterpret_cast<const T*>(this);
     }
@@ -408,6 +409,14 @@ struct Type
         return name + str::last_index_of(name, ':') + 1;
     }
 };
+
+template <typename T>
+inline const T* typekind_cast(const Type* type)
+{
+    static_assert(std::is_base_of<Type, T>::value, "`T` must derive from bee::Type");
+    BEE_ASSERT_F((T::static_kind & type->kind) != TypeKind::unknown, "Invalid type cast");
+    return reinterpret_cast<const T*>(type);
+}
 
 
 template <TypeKind Kind>
@@ -764,7 +773,7 @@ BEE_CORE_API const Type* get_type(const u32 hash);
 template <typename ReflectedType, typename T>
 inline const T* get_type_as()
 {
-    return get_type<ReflectedType>()->as<T>();
+    return get_type<ReflectedType>()->template as<T>();
 }
 
 BEE_CORE_API void reflection_register_builtin_types();
@@ -827,4 +836,6 @@ const char* reflection_dump_flags(const FlagType flag)
 
 } // namespace bee
 
+#if BEE_CONFIG_ENABLE_REFLECTION == 1
 #include "ReflectedTemplates/Array.generated.inl"
+#endif // BEE_CONFIG_ENABLE_REFLECTION

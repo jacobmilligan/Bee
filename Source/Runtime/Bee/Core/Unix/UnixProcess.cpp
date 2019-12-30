@@ -5,7 +5,7 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Platform/Process.hpp"
+#include "Bee/Core/Process.hpp"
 
 #include <unistd.h>
 #include <sys/errno.h>

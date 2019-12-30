@@ -1,4 +1,4 @@
 bee_add_sources(
         UnixProcess.cpp
-        PosixThread.cpp
+        PosixThread.hpp PosixThread.cpp
 )

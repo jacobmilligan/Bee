@@ -121,7 +121,7 @@ inline bool operator!=(const FieldHeader& lhs, const FieldHeader& rhs)
 class BEE_CORE_API SerializationBuilder
 {
 public:
-    explicit SerializationBuilder(Serializer* new_serializer, const RecordType* type);
+    explicit SerializationBuilder(Serializer* new_serializer);
 
     ~SerializationBuilder();
 
@@ -147,7 +147,7 @@ public:
 
         if ((field_type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
         {
-            SerializationBuilder builder(serializer_, field_type->as<RecordType>());
+            SerializationBuilder builder(serializer_);
             serialize_type(&builder, field);
         }
         else
@@ -179,7 +179,7 @@ public:
 
         if ((field_type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
         {
-            SerializationBuilder builder(serializer_, field_type->as<RecordType>());
+            SerializationBuilder builder(serializer_);
             serialize_type(&builder, &removed_data);
         }
         else
@@ -207,7 +207,7 @@ public:
 
         if ((type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
         {
-            SerializationBuilder builder(serializer_, type->as<RecordType>());
+            SerializationBuilder builder(serializer_);
             serialize_type(&builder, data);
         }
         else
@@ -225,7 +225,6 @@ public:
 
 private:
     Serializer*             serializer_ { nullptr };
-    const RecordType*       type_ { nullptr };
     SerializedContainerKind container_kind_ { SerializedContainerKind::none };
     i32                     version_ { -1 };
 };
@@ -251,7 +250,7 @@ inline void serialize(const SerializerMode mode, Serializer* serializer, DataTyp
 
     if ((type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
     {
-        SerializationBuilder builder(serializer, type->as<RecordType>());
+        SerializationBuilder builder(serializer);
         serialize_type(&builder, data);
     }
     else
