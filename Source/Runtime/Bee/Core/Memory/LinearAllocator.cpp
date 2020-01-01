@@ -75,7 +75,7 @@ void LinearAllocator::destroy()
 bool LinearAllocator::is_overflow_memory(void* ptr)
 {
     const auto as_bytes = static_cast<u8*>(ptr);
-    return as_bytes < memory_ || as_bytes >= (memory_ + capacity_);
+    return as_bytes < memory_ || as_bytes > (memory_ + capacity_);
 }
 
 void* LinearAllocator::allocate(const size_t size, const size_t alignment)
@@ -84,21 +84,18 @@ void* LinearAllocator::allocate(const size_t size, const size_t alignment)
 
     constexpr auto header_size = sizeof(size_t);
     const auto new_offset = round_up(offset_ + header_size, alignment);
-    const auto reached_capacity = new_offset + size >= capacity_;
+    const auto reached_capacity = new_offset + size > capacity_;
     u8* new_memory = nullptr;
 
     if (reached_capacity)
     {
-        if (overflow_ != nullptr)
+        if (BEE_FAIL_F(overflow_ != nullptr, "Linear allocator has reached capacity (%zu >= %zu)", new_offset + size, capacity_))
         {
-            new_memory = static_cast<u8*>(BEE_MALLOC_ALIGNED(overflow_, size + header_size, alignment));
-            allocated_overflow_ += size;
-        }
-        else
-        {
-            log_error("Linear allocator has reached capacity (%zu >= %zu)", new_offset + size, capacity_);
             return nullptr;
         }
+
+        new_memory = static_cast<u8*>(BEE_MALLOC_ALIGNED(overflow_, size + header_size, alignment));
+        allocated_overflow_ += size;
     }
     else
     {

@@ -86,6 +86,12 @@ inline u32 runtime_fnv1a(const char* string, const i32 string_length, const u32 
     return hash;
 }
 
+template <i32 Size>
+inline u32 runtime_fnv1a(const char(&data)[Size], const u32 seed = static_string_hash_seed_default)
+{
+    return runtime_fnv1a(data, Size - 1, seed);
+}
+
 } // namespace detail
 
 
@@ -98,7 +104,7 @@ inline constexpr u32 get_static_string_hash(const char(&input)[Size], const u32 
     static_assert(Size >= 2, "Only null-terminated, non-empty strings can be statically hashed");
     /*
      * Given Size = length + 1 for null terminator, the hashing should start at the the strings last index
-     * which is: Size - 2 = (length + 1) - 2 = length - 1
+     * which is: Size - 2 = (length + 1) - 2 = length - 1 - null terminator
      */
     return detail::fnv1a<Size - 2>(input, seed);
 }

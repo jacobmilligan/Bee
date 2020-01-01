@@ -33,6 +33,6 @@ BEE_POP_WARNING
 TEST(HashTests, compile_time_string_hashing)
 {
     const auto compile_time_hash = bee::get_static_string_hash("Hashing a string for unit testing");
-    const auto runtime_hash = get_runtime_string_hash_for_testing("Hashing a string for unit testing");
+    const auto runtime_hash = bee::detail::runtime_fnv1a("Hashing a string for unit testing");
     ASSERT_EQ(compile_time_hash, runtime_hash);
 }

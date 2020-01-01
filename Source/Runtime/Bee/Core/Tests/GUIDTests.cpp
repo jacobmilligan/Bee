@@ -7,7 +7,7 @@
 
 #include "Bee/Core/GUID.hpp"
 #include "Bee/Core/IO.hpp"
-#include "Bee/Core/Serialization/StreamSerializer.hpp"
+#include "Bee/Core/Serialization/BinarySerializer.hpp"
 
 #include <gtest/gtest.h>
 
@@ -81,9 +81,11 @@ TEST(GUIDTests, guid_serialization)
     const auto guid_type = bee::get_type_as<bee::GUID, bee::RecordType>();
     ASSERT_EQ(offset, guid_type->fields[0].offset);
 
-    bee::io::StringStream stream(stringbuf, 33, 0);
-    bee::StreamSerializer serializer(&stream);
+    bee::DynamicArray<bee::u8> stream;
+    bee::BinarySerializer serializer(&stream);
     bee::serialize(bee::SerializerMode::writing, &serializer, &guid);
+    ASSERT_EQ(stream.size(), bee::static_array_length(stringbuf) + sizeof(bee::i32));
+    memcpy(stringbuf, stream.data() + sizeof(bee::i32), bee::static_array_length(stringbuf));
     ASSERT_STREQ(stringbuf, string.c_str());
 
     bee::GUID read_guid{};

@@ -146,7 +146,7 @@ TEST(SerializationTestsV2, complex_type)
 {
     char json_buffer[] = R"({
     "bee::version": 1,
-    "bee::flags": 0,
+    "bee::flags": 1,
     "value": 25,
     "array": [],
     "map": {
@@ -154,35 +154,35 @@ TEST(SerializationTestsV2, complex_type)
     },
     "settings": {
         "bee::version": 1,
-        "bee::flags": 0,
+        "bee::flags": 1,
         "is_active": true,
         "nested": {
             "bee::version": 1,
-            "bee::flags": 0,
+            "bee::flags": 1,
             "id_values": [
                 {
                     "bee::version": 1,
-                    "bee::flags": 0,
+                    "bee::flags": 1,
                     "value": 0
                 },
                 {
                     "bee::version": 1,
-                    "bee::flags": 0,
+                    "bee::flags": 1,
                     "value": 1
                 },
                 {
                     "bee::version": 1,
-                    "bee::flags": 0,
+                    "bee::flags": 1,
                     "value": 2
                 },
                 {
                     "bee::version": 1,
-                    "bee::flags": 0,
+                    "bee::flags": 1,
                     "value": 3
                 },
                 {
                     "bee::version": 1,
-                    "bee::flags": 0,
+                    "bee::flags": 1,
                     "value": 4
                 }
             ]
