@@ -1,237 +1,197 @@
 /*
- *  SerializationTests.cpp
+ *  SerializationTestsV2.cpp
  *  Bee
  *
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
+#include "Bee/Core/Tests/SerializationTestsTypes.hpp"
+
 #include <Bee/Core/Serialization/Serialization.hpp>
 #include <Bee/Core/Serialization/JSONSerializer.hpp>
-#include <Bee/Core/Serialization/MemorySerializer.hpp>
+#include <Bee/Core/Serialization/StreamSerializer.hpp>
+#include <Bee/Core/Serialization/BinarySerializer.hpp>
 #include <Bee/Core/IO.hpp>
+#include <Bee/Core/Containers/HashMap.hpp>
 
 #include <gtest/gtest.h>
 #include <rapidjson/filereadstream.h>
 
+
 using namespace bee;
 
-struct PrimitivesStruct
+struct RecordHeader
 {
-    static int current_version;
-
-    int     intval { -1 };
-    u32     uval { 0 };
-    char    charval { 0 };
-    bool    boolval { false };
-    u8      ubyteval { 0 };
-    i8      ibyteval { -1 };
-    int     removed { -1 };
+    i32                 version { -1 };
+    SerializationFlags  serialization_flags { SerializationFlags::none };
 };
 
-int PrimitivesStruct::current_version = 1;
-
-
-BEE_SERIALIZE(PrimitivesStruct::current_version, PrimitivesStruct)
-{
-    BEE_ADD_FIELD(1, intval);
-    BEE_ADD_FIELD(1, charval);
-    BEE_ADD_FIELD(1, boolval);
-    BEE_ADD_FIELD(1, uval);
-    BEE_ADD_INTEGRITY_CHECK(2);
-    BEE_ADD_FIELD(2, ubyteval);
-    BEE_ADD_FIELD(2, ibyteval);
-    BEE_ADD_INTEGRITY_CHECK(3);
-    BEE_REMOVE_FIELD(2, 3, int, removed, 123);
-}
-
-struct TestSerializer : public Serializer
-{
-    i32                 cursor { 0 };
-    DynamicArray<u8>    buffer;
-
-    bool begin()
-    {
-        cursor = 0;
-        if (mode() == SerializerMode::writing)
-        {
-            buffer.clear();
-        }
-        return true;
-    }
-
-    void end()
-    {
-        // no-op
-    }
-
-    void convert_begin_type(const char* type_name) {}
-
-    void convert_end_type() {}
-
-    template <typename T>
-    void convert_cbuffer(T* array, const i32 size, const char* name)
-    {
-
-    }
-
-    template <typename T>
-    void convert(T* value, const char* name)
-    {
-        if (mode() == SerializerMode::reading)
-        {
-            memcpy(value, buffer.data() + cursor, sizeof(T));
-        }
-        else
-        {
-            io::write(&buffer, *value);
-        }
-
-        cursor += sizeof(T);
-    }
-};
-
-
-TEST(SerializationTests, primitives)
+TEST(SerializationTestsV2, primitives)
 {
     PrimitivesStruct test_struct{};
     test_struct.intval = 23;
+    test_struct.uval = 100;
     test_struct.charval = 'j';
     test_struct.boolval = false;
-    test_struct.uval = 100;
     test_struct.ubyteval = 100;
     test_struct.ibyteval = 64;
 
+    PrimitivesStructV2 test_struct_v2{};
+    test_struct_v2.intval = 23;
+    test_struct_v2.uval = 100;
+    test_struct_v2.charval = 'j';
+    test_struct_v2.boolval = false;
+
+    PrimitivesStructV3 test_struct_v3{};
+    test_struct_v3.boolval = true;
+    test_struct_v3.is_valid = true;
+    test_struct_v3.charval = 'j';
+
     // Test writing to buffer
-    TestSerializer serializer{};
+    DynamicArray<u8> buffer;
+    io::MemoryStream stream(&buffer);
+
+    StreamSerializer serializer(&stream);
     serialize(SerializerMode::writing, &serializer, &test_struct);
 
-    ASSERT_EQ(serializer.buffer.size(), 14);
+    // Version 1 of the primitive struct has the `is_valid` field serialized and is a packed format
+    const auto expected_v1_size = sizeof(int) + sizeof(std::underlying_type_t<SerializationFlags>)
+                                + sizeof(int) + sizeof(u32) + sizeof(char) + sizeof(bool)
+                                + sizeof(u8) + sizeof(i8);
+    ASSERT_EQ(buffer.size(), expected_v1_size);
 
-    auto buffer_ptr = serializer.buffer.begin();
-    ASSERT_EQ(*reinterpret_cast<int*>(buffer_ptr), serializer.version);
-    buffer_ptr += sizeof(i32);
-    ASSERT_EQ(*reinterpret_cast<int*>(buffer_ptr), test_struct.intval);
-    buffer_ptr += sizeof(int);
-    ASSERT_EQ(*reinterpret_cast<char*>(buffer_ptr), test_struct.charval);
-    buffer_ptr += sizeof(char);
-    ASSERT_EQ(*reinterpret_cast<bool*>(buffer_ptr), test_struct.boolval);
-    buffer_ptr += sizeof(bool);
-    ASSERT_EQ(*reinterpret_cast<u32*>(buffer_ptr), test_struct.uval);
+    RecordHeader header{};
+    PrimitivesStruct read_struct{};
+
+    stream.seek(0, io::SeekOrigin::begin);
+    stream.read(&header, sizeof(RecordHeader));
+
+    for (const Field& field : get_type_as<PrimitivesStruct, RecordType>()->fields)
+    {
+        if (field.version_added <= 0)
+        {
+            continue;
+        }
+
+        stream.read(reinterpret_cast<u8*>(&read_struct) + field.offset, field.type->size);
+    }
+
+    ASSERT_EQ(header.version, get_type<PrimitivesStruct>()->serialized_version);
+    ASSERT_EQ(header.serialization_flags, SerializationFlags::packed_format);
+    ASSERT_EQ(read_struct, test_struct);
 
     // Test reading from written buffer into a struct
-    PrimitivesStruct read_struct{};
+    new (&read_struct) PrimitivesStruct{};
     serialize(SerializerMode::reading, &serializer, &read_struct);
-    ASSERT_EQ(read_struct.intval, test_struct.intval);
-    ASSERT_EQ(read_struct.charval, test_struct.charval);
-    ASSERT_EQ(read_struct.boolval, test_struct.boolval);
-    ASSERT_EQ(read_struct.uval, test_struct.uval);
+    ASSERT_EQ(read_struct, test_struct);
 
-    // Write out the test struct again but this time with a different revision
-    PrimitivesStruct::current_version = 2;
-    ASSERT_NO_FATAL_FAILURE(serialize(SerializerMode::writing, &serializer, &test_struct));
+    /*
+     * Write out the test struct again but this time with a different revision - do this by calling
+     * serialize_type directly with a modified type struct
+     */
+    serialize(SerializerMode::writing, &serializer, &test_struct_v2);
+
+    // Version 2 is missing the ubyteval field and is a table format
+    const auto expected_v2_size = sizeof(RecordHeader) + sizeof(i32) // field count
+                                + sizeof(int) + sizeof(u32) + sizeof(char) + sizeof(bool)
+                                + sizeof(FieldHeader) * 4;
+    ASSERT_EQ(buffer.size(), expected_v2_size);
+
+    PrimitivesStructV2 read_struct_v2{};
+    new (&header) RecordHeader{};
+    i32 field_count = -1;
+    stream.seek(0, io::SeekOrigin::begin);
+    stream.read(&header, sizeof(RecordHeader));
+    stream.read(&field_count, sizeof(i32));
+
+    FieldHeader field_header{};
+
+    for (const Field& field : get_type_as<PrimitivesStructV2, RecordType>()->fields)
+    {
+        if (field.version_added > 0 && 3 >= field.version_added && 3 < field.version_removed)
+        {
+            stream.read(&field_header, sizeof(FieldHeader));
+            stream.read(reinterpret_cast<u8*>(&read_struct_v2) + field.offset, field.type->size);
+        }
+    }
+
+    ASSERT_EQ(field_count, 4);
+    ASSERT_EQ(header.version, get_type<PrimitivesStructV2>()->serialized_version);
+    ASSERT_EQ(header.serialization_flags, SerializationFlags::table_format);
 
     // Version 2 contains a removed field - test to check that the default value is written out to the buffer
-    ASSERT_EQ(*reinterpret_cast<int*>(serializer.buffer.data() + 20), 123);
+    ASSERT_EQ(read_struct_v2, test_struct_v2);
 
     // Read the revision back into the read struct and test all values
-    ASSERT_NO_FATAL_FAILURE(serialize(SerializerMode::reading, &serializer, &read_struct));
-    ASSERT_EQ(read_struct.intval, test_struct.intval);
-    ASSERT_EQ(read_struct.charval, test_struct.charval);
-    ASSERT_EQ(read_struct.boolval, test_struct.boolval);
-    ASSERT_EQ(read_struct.uval, test_struct.uval);
-    ASSERT_EQ(read_struct.ubyteval, test_struct.ubyteval);
-    ASSERT_EQ(read_struct.ibyteval, test_struct.ibyteval);
+    new (&read_struct_v2) PrimitivesStructV2{};
+    serialize(SerializerMode::reading, &serializer, &read_struct_v2);
+    ASSERT_EQ(read_struct_v2, test_struct_v2);
 
-    // Read the removed value before it's been removed and replaced with a default
-    ASSERT_NO_FATAL_FAILURE(serialize(SerializerMode::reading, &serializer, &read_struct));
-    ASSERT_EQ(read_struct.removed, -1);
+    constexpr auto expected_v3_v1_size = sizeof(RecordHeader) + sizeof(bool) + sizeof(bool) + sizeof(char) + sizeof(u8);
+    constexpr auto expected_v3_v3_size = expected_v3_v1_size - sizeof(bool) - sizeof(u8);
+    serialize(SerializerMode::writing, &serializer, &test_struct_v3);
+
+    // The serialized test struct shouldn't have the ubyteval member
+    auto expected_read_struct_v3 = test_struct_v3;
+    expected_read_struct_v3.is_valid = false; // non-serialized in version 3, but not removed yet
+
+    PrimitivesStructV3 read_struct_v3{};
+    serialize(SerializerMode::reading, &serializer, &read_struct_v3);
+    ASSERT_EQ(expected_read_struct_v3, read_struct_v3);
+    ASSERT_NE(test_struct_v3, read_struct_v3);
 }
 
-struct Id
-{
-    u32 value { 0 };
-};
 
-BEE_SERIALIZE(1, Id)
-{
-    BEE_ADD_FIELD(1, value);
-}
-
-struct Settings
-{
-    bool is_active { false };
-
-    struct NestedType
-    {
-        Id id_values[5] = { { 0 }, { 1 }, { 2 }, { 3 }, { 4 } };
-    };
-
-    NestedType nested;
-};
-
-BEE_SERIALIZE(1, Settings::NestedType)
-{
-    BEE_ADD_FIELD(1, id_values);
-}
-
-BEE_SERIALIZE(1, Settings)
-{
-    BEE_ADD_FIELD(1, is_active);
-    BEE_ADD_FIELD(1, nested);
-}
-
-struct TestStruct
-{
-    int value { 0 };
-    Settings settings;
-};
-
-BEE_SERIALIZE(1, TestStruct)
-{
-    BEE_ADD_FIELD(1, value);
-    BEE_ADD_FIELD(1, settings);
-}
-
-TEST(SerializationTests, complex_type)
+TEST(SerializationTestsV2, complex_type)
 {
     char json_buffer[] = R"({
-    "TestStruct": {
+    "bee::version": 1,
+    "bee::flags": 0,
+    "value": 25,
+    "array": [],
+    "map": {
+        "thing1": 1
+    },
+    "settings": {
         "bee::version": 1,
-        "value": 25,
-        "Settings": {
+        "bee::flags": 0,
+        "is_active": true,
+        "nested": {
             "bee::version": 1,
-            "is_active": true,
-            "Settings::NestedType": {
-                "bee::version": 1,
-                "id_values": [
-                    {
-                        "bee::version": 1,
-                        "value": 0
-                    },
-                    {
-                        "bee::version": 1,
-                        "value": 1
-                    },
-                    {
-                        "bee::version": 1,
-                        "value": 2
-                    },
-                    {
-                        "bee::version": 1,
-                        "value": 3
-                    },
-                    {
-                        "bee::version": 1,
-                        "value": 4
-                    }
-                ]
-            }
+            "bee::flags": 0,
+            "id_values": [
+                {
+                    "bee::version": 1,
+                    "bee::flags": 0,
+                    "value": 0
+                },
+                {
+                    "bee::version": 1,
+                    "bee::flags": 0,
+                    "value": 1
+                },
+                {
+                    "bee::version": 1,
+                    "bee::flags": 0,
+                    "value": 2
+                },
+                {
+                    "bee::version": 1,
+                    "bee::flags": 0,
+                    "value": 3
+                },
+                {
+                    "bee::version": 1,
+                    "bee::flags": 0,
+                    "value": 4
+                }
+            ]
         }
     }
 })";
     String json_str(json_buffer);
-    bee::JSONReader serializer(&json_str);
-    TestStruct test{};
+    bee::JSONSerializer serializer(json_str.data(), rapidjson::ParseFlag::kParseInsituFlag);
+    TestStruct test;
     serialize(SerializerMode::reading, &serializer, &test);
     ASSERT_EQ(test.value, 25);
     ASSERT_TRUE(test.settings.is_active);
@@ -240,19 +200,20 @@ TEST(SerializationTests, complex_type)
         ASSERT_EQ(test.settings.nested.id_values[i].value, i);
     }
 
-    bee::JSONWriter writer_ {};
-    serialize(SerializerMode::writing, &writer_, &test);
-    ASSERT_STREQ(writer_.c_str(), json_buffer);
+    json_str = json_buffer;
+    serializer.reset(json_str.data(), rapidjson::ParseFlag::kParseInsituFlag);
+    serialize(SerializerMode::writing, &serializer, &test);
+    ASSERT_STREQ(serializer.c_str(), json_buffer);
 }
 
 template <typename T>
-void assert_serialized_data(u8* data_begin, const T& expected, i32* serialized_size)
+void assert_serialized_datav2(u8* data_begin, const T& expected, i32* serialized_size)
 {
     ASSERT_EQ(*reinterpret_cast<T*>(data_begin), expected);
     *serialized_size = sizeof(T);
 }
 
-void assert_serialized_data(u8* data_begin, const Path& expected, i32* serialized_size)
+void assert_serialized_datav2(u8* data_begin, const Path& expected, i32* serialized_size)
 {
     // size
     ASSERT_EQ(*reinterpret_cast<i32*>(data_begin), expected.size());
@@ -263,7 +224,7 @@ void assert_serialized_data(u8* data_begin, const Path& expected, i32* serialize
     *serialized_size = sizeof(i32) + serialized_string.size();
 }
 
-void assert_serialized_data(u8* data_begin, const String& expected, i32* serialized_size)
+void assert_serialized_datav2(u8* data_begin, const String& expected, i32* serialized_size)
 {
     // size
     ASSERT_EQ(*reinterpret_cast<i32*>(data_begin), expected.size());
@@ -275,7 +236,7 @@ void assert_serialized_data(u8* data_begin, const String& expected, i32* seriali
 }
 
 template <typename T, ContainerMode Mode>
-void assert_serialized_data(u8* data_begin, const Array<T, Mode>& expected, i32* serialized_size)
+void assert_serialized_datav2(u8* data_begin, const Array<T, Mode>& expected, i32* serialized_size)
 {
     // size
     ASSERT_EQ(*reinterpret_cast<i32*>(data_begin), expected.size());
@@ -286,17 +247,17 @@ void assert_serialized_data(u8* data_begin, const Array<T, Mode>& expected, i32*
     for (int elem_idx = 0; elem_idx < expected.size(); ++elem_idx)
     {
         i32 element_size = 0;
-        assert_serialized_data(data_ptr + cursor, expected[elem_idx], &element_size);
+        assert_serialized_datav2(data_ptr + cursor, expected[elem_idx], &element_size);
         cursor += element_size;
     }
 
     *serialized_size = sizeof(i32) + cursor;
 }
 
-TEST(SerializationTests, core_types)
+TEST(SerializationTestsV2, core_types)
 {
-    bee::MemorySerializer::buffer_t buffer;
-    bee::MemorySerializer serializer(&buffer);
+    bee::DynamicArray<u8> buffer;
+    bee::BinarySerializer serializer(&buffer);
 
     String str = "Jacob";
     DynamicArray<String> string_array = { "Jacob", "Is", "Cool" };
@@ -305,7 +266,7 @@ TEST(SerializationTests, core_types)
     // Test String for read/write
     serialize(SerializerMode::writing, &serializer, &str);
     i32 serialized_size = 0;
-    assert_serialized_data(buffer.data(), str, &serialized_size);
+    assert_serialized_datav2(buffer.data(), str, &serialized_size);
 
     String deserialized_string;
     serialize(SerializerMode::reading, &serializer, &deserialized_string);
@@ -314,7 +275,7 @@ TEST(SerializationTests, core_types)
 
     // Test dynamic array of strings for read/write
     serialize(SerializerMode::writing, &serializer, &string_array);
-    assert_serialized_data(buffer.begin(), string_array, &serialized_size);
+    assert_serialized_datav2(buffer.begin(), string_array, &serialized_size);
 
     DynamicArray<String> deserialized_string_array;
     serialize(SerializerMode::reading, &serializer, &deserialized_string_array);
@@ -327,7 +288,7 @@ TEST(SerializationTests, core_types)
 
     // Test multi-dimensional fixed array of fixed arrays of ints for read/write
     serialize(SerializerMode::writing, &serializer, &int_2d);
-    assert_serialized_data(buffer.begin(), int_2d, &serialized_size);
+    assert_serialized_datav2(buffer.begin(), int_2d, &serialized_size);
 
     FixedArray<FixedArray<int>> deserialized_int_2d;
     serialize(SerializerMode::reading, &serializer, &deserialized_int_2d);
@@ -344,10 +305,10 @@ TEST(SerializationTests, core_types)
     // Test paths
     auto test_path = Path::executable_path();
     serialize(SerializerMode::writing, &serializer, &test_path);
-    assert_serialized_data(buffer.begin(), test_path, &serialized_size);
+    assert_serialized_datav2(buffer.begin(), test_path, &serialized_size);
 
     // Test hashmaps
-    DynamicHashMap<String, int> expected_map;
+    bee::DynamicHashMap<String, int> expected_map;
     expected_map.insert("one", 1);
     expected_map.insert("two", 2);
     expected_map.insert("three", 3);
@@ -355,10 +316,11 @@ TEST(SerializationTests, core_types)
     expected_map.insert("five", 5);
     serialize(SerializerMode::writing, &serializer, &expected_map);
 
-    DynamicHashMap<String, int> actual_map;
+    bee::DynamicHashMap<String, int> actual_map;
     serialize(SerializerMode::reading, &serializer, &actual_map);
 
     ASSERT_EQ(actual_map.size(), expected_map.size());
+
     for (auto& val : expected_map)
     {
         const auto found = actual_map.find(val.key);

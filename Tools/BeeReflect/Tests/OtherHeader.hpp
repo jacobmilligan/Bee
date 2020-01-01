@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "Bee/Core/ReflectionV2.hpp"
+#include "Bee/Core/Reflection.hpp"
 
 struct BEE_REFLECT() BaseClass
 {

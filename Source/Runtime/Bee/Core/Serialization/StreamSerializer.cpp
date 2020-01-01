@@ -10,71 +10,113 @@
 namespace bee {
 
 
-StreamSerializer::StreamSerializer(io::Stream* stream)
-    : stream_(stream)
-{}
-
 bool StreamSerializer::begin()
 {
-    stream_->seek(0, io::SeekOrigin::begin);
+    stream->seek(0, io::SeekOrigin::begin);
     return true;
 }
 
 void StreamSerializer::end()
 {
-    // no-op - stream should handle this outside the serializer
+    // no-op
 }
 
-void StreamSerializer::convert_begin_type(const char* /* type_name */)
+void StreamSerializer::begin_object(i32* member_count)
 {
-    // no-op - binary files don't need to scope types and arrays
+    serialize_fundamental(member_count);
 }
 
-void StreamSerializer::convert_end_type()
+void StreamSerializer::begin_array(i32* count)
 {
-    // no-op - binary files don't need to scope types and arrays
+    serialize_fundamental(count);
 }
 
-// Convert a String container
-void StreamSerializer::convert(bee::String* string, const char* name)
+void StreamSerializer::serialize_field(const char* name)
 {
-    auto size = string->size();
-    serialize_type(this, &size, "string_size");
-    if (mode() == SerializerMode::reading)
+
+}
+
+void StreamSerializer::serialize_key(String* key)
+{
+    int size = key->size();
+    serialize_fundamental(&size);
+
+    if (mode == SerializerMode::writing)
     {
-        string->clear();
-        string->insert(0, size, '\0');
-    }
-    convert_cstr(string->data(), size, name);
-}
-
-// Convert a Path container
-void StreamSerializer::convert(Path* path, const char* name)
-{
-    auto size = path->size();
-    serialize_type(this, &size, "path_size");
-    auto temp_string = path->to_string();
-    if (mode() == SerializerMode::reading)
-    {
-        temp_string.clear();
-        temp_string.insert(0, size, '\0');
-    }
-    convert_cstr(temp_string.data(), temp_string.size(), name);
-    path->clear();
-    path->append(temp_string.view());
-}
-
-void StreamSerializer::convert_cstr(char* string, i32 size, const char* /* name */)
-{
-    if (mode() == SerializerMode::reading)
-    {
-        stream_->read(string, sizeof(char) * size);
+        stream->write(key->data(), sizeof(char) * size);
     }
     else
     {
-        stream_->write(string, sizeof(char) * size);
+        key->resize(size);
+        stream->read(key->data(), sizeof(char) * size);
     }
 }
+
+void StreamSerializer::begin_text(i32* length)
+{
+    serialize_fundamental(length);
+}
+
+void StreamSerializer::end_text(char* buffer, const i32 size, const i32 capacity)
+{
+    if (mode == SerializerMode::writing)
+    {
+        stream->write(buffer, size);
+    }
+    else
+    {
+        stream->read(buffer, math::min(size, capacity));
+    }
+}
+
+//void StreamSerializer::serialize_enum(const bee::EnumType* type, u8* data)
+//{
+//    serialize_type(this, type->constants[0].underlying_type, data);
+//}
+
+void StreamSerializer::serialize_bytes(void* data, const i32 size)
+{
+    if (mode == SerializerMode::reading)
+    {
+        stream->read(data, size);
+    }
+    else
+    {
+        stream->write(data, size);
+    }
+}
+
+template <typename T>
+void stream_serialize_fundamental(const SerializerMode mode, io::Stream* stream, T* data)
+{
+    if (mode == SerializerMode::reading)
+    {
+        stream->read(data, sizeof(T));
+    }
+    else
+    {
+        stream->write(data, sizeof(T));
+    }
+}
+
+
+#define IMPLEMENT_BUILTIN(type) void StreamSerializer::serialize_fundamental(type* data)  \
+    {                                                                                       \
+        stream_serialize_fundamental(mode, stream, data);                                   \
+    }
+
+IMPLEMENT_BUILTIN(bool)
+IMPLEMENT_BUILTIN(char)
+IMPLEMENT_BUILTIN(float)
+IMPLEMENT_BUILTIN(double)
+IMPLEMENT_BUILTIN(u8)
+IMPLEMENT_BUILTIN(u16)
+IMPLEMENT_BUILTIN(u32)
+IMPLEMENT_BUILTIN(u64)
+IMPLEMENT_BUILTIN(i8)
+IMPLEMENT_BUILTIN(i16)
+IMPLEMENT_BUILTIN(i32)
+IMPLEMENT_BUILTIN(i64)
 
 
 } // namespace bee

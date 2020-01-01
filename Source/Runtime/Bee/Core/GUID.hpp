@@ -49,7 +49,7 @@ enum class GUIDFormat
  *
  ************************************************************************************************************
  */
-struct GUID
+struct BEE_REFLECT(serializable, use_builder) GUID
 {
     static constexpr size_t sizeof_data = 16 * sizeof(u8);
 
@@ -186,6 +186,31 @@ inline void serialize_type(SerializerType* serializer, GUID* guid, const char* n
         *guid = guid_from_string(string_buffer);
 #if BEE_DEBUG
         memcpy(guid->debug_string, string_buffer, string_buffer_size * sizeof(char));
+#endif // BEE_DEBUG
+    }
+}
+
+inline void serialize_type(SerializationBuilder* builder, GUID* guid)
+{
+    static constexpr auto guid_as_digits_size = 33;
+    static thread_local char string_buffer[guid_as_digits_size];
+
+    if (builder->mode() == SerializerMode::writing)
+    {
+        guid_to_string(*guid, GUIDFormat::digits, string_buffer, guid_as_digits_size);
+    }
+
+    int size = guid_as_digits_size;
+    builder->container(SerializedContainerKind::text, &size)
+        .text(string_buffer, guid_as_digits_size, guid_as_digits_size);
+
+    BEE_ASSERT(size == guid_as_digits_size);
+
+    if (builder->mode() == SerializerMode::reading)
+    {
+        *guid = guid_from_string(string_buffer);
+#if BEE_DEBUG
+        memcpy(guid->debug_string, string_buffer, guid_as_digits_size);
 #endif // BEE_DEBUG
     }
 }

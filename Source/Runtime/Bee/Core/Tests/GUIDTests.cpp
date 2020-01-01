@@ -77,6 +77,10 @@ TEST(GUIDTests, guid_serialization)
     auto string = bee::guid_to_string(guid, bee::GUIDFormat::digits); // for comparison
     char stringbuf[33];
 
+    const auto offset = offsetof(bee::GUID, data);
+    const auto guid_type = bee::get_type_as<bee::GUID, bee::RecordType>();
+    ASSERT_EQ(offset, guid_type->fields[0].offset);
+
     bee::io::StringStream stream(stringbuf, 33, 0);
     bee::StreamSerializer serializer(&stream);
     bee::serialize(bee::SerializerMode::writing, &serializer, &guid);

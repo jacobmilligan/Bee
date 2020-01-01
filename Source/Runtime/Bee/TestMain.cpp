@@ -10,7 +10,7 @@
 //
 
 #include <Bee/Core/Logger.hpp>
-#include <Bee/Core/ReflectionV2.hpp>
+#include <Bee/Core/Reflection.hpp>
 
 #include <gtest/gtest.h>
 

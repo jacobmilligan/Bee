@@ -26,4 +26,8 @@ CMakeFiles/
 # Generated reflection data
 *.generated.cpp
 
+# Deprecated files
+*-[dD]eprecated/
+*-[dD]eprecated.*
+
 !/tstfile

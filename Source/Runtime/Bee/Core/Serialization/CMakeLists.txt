@@ -1,6 +1,6 @@
 bee_add_sources(
-        Serialization.hpp       Serialization.cpp
-        JSONSerializer.hpp      JSONSerializer.cpp
-        StreamSerializer.hpp StreamSerializer.cpp
-        MemorySerializer.hpp    MemorySerializer.cpp
+    Serialization.hpp       Serialization.cpp
+    BinarySerializer.hpp    BinarySerializer.cpp
+    StreamSerializer.hpp    StreamSerializer.cpp
+    JSONSerializer.hpp      JSONSerializer.cpp
 )

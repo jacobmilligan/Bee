@@ -17,11 +17,11 @@ bee_test(Bee.Tests.Core
         FunctionalTests.cpp
         HashTests.cpp
         GUIDTests.cpp
-        SerializationTests.cpp
+#        SerializationTests.cpp
         SerializationTestsTypes.hpp
-        SerializationTestsV2.cpp
+        SerializationTests.cpp
+#        ReflectionTests.cpp
         ReflectionTests.cpp
-        ReflectionTestsV2.cpp
         PathTests.cpp
         HandleTableTests.cpp
         SoATests.cpp

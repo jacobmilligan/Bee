@@ -25,7 +25,6 @@ bee_add_sources(
         Process.hpp
         Random.hpp          Random.cpp
         Reflection.hpp      Reflection.cpp
-        ReflectionV2.hpp    ReflectionV2.cpp
         Span.hpp
         Socket.hpp
         String.hpp          String.cpp
@@ -38,7 +37,6 @@ add_subdirectory(Memory)
 add_subdirectory(Math)
 add_subdirectory(JSON)
 add_subdirectory(Serialization)
-add_subdirectory(SerializationV2)
 add_subdirectory(Jobs)
 
 if (WIN32)
@@ -60,7 +58,6 @@ bee_reflect(
     EXCLUDE
 
     Serialization
-    SerializationV2
     Win32
     macOS
     Memory

@@ -5,296 +5,455 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Core/Math/Math.hpp"
-#include "Bee/Core/Meta.hpp"
 
-#define BEE_RAPIDJSON_RAPIDJSON_H
+#include "Bee/Core/Math/Math.hpp"
+#include "Bee/Core/IO.hpp"
+
 #define BEE_RAPIDJSON_ERROR_H
 #include "Bee/Core/Serialization/JSONSerializer.hpp"
-
 
 namespace bee {
 
 
-JSONWriter::JSONWriter(JSONWriter&& other) noexcept
+BEE_TRANSLATION_TABLE(rapidjson_type_to_string, rapidjson::Type, const char*, rapidjson::Type::kNumberType + 1,
+    "null",
+    "false",
+    "true",
+    "object",
+    "array",
+    "string",
+    "number"
+)
+
+template <typename T>
+BEE_FORCE_INLINE bool json_validate_type(const rapidjson::Value* value)
 {
-    move_construct(std::forward<JSONWriter>(other));
+    return BEE_CHECK_F(value->Is<T>(), "JSONSerializer: expected %s type but got %s", get_type<T>()->name, rapidjson_type_to_string(value->GetType()));
 }
 
-JSONWriter& JSONWriter::operator=(JSONWriter&& other) noexcept
+BEE_FORCE_INLINE bool json_validate_type(const rapidjson::Type type, const rapidjson::Value* value)
 {
-    move_construct(std::forward<JSONWriter>(other));
-    return *this;
+    return BEE_CHECK_F(type == value->GetType(), "JSONSerializer: expected %s type but got %s", rapidjson_type_to_string(type), rapidjson_type_to_string(value->GetType()));
 }
 
-void JSONWriter::move_construct(JSONWriter&& other) noexcept
+
+JSONSerializer::JSONSerializer(Allocator* allocator)
+    : Serializer(SerializerFormat::text),
+      parse_flags_(static_cast<rapidjson::ParseFlag>(-1)),
+      stack_(allocator)
+{}
+
+JSONSerializer::JSONSerializer(const char* src, const rapidjson::ParseFlag parse_flags, Allocator* allocator)
+    : Serializer(SerializerFormat::text),
+      parse_flags_(parse_flags),
+      stack_(allocator)
 {
-    string_buffer_ = std::move(other.string_buffer_);
-    writer_.Reset(string_buffer_);
+    // Remove insitu flag if the src string is read-only
+    reset(src, parse_flags);
 }
 
-bool JSONWriter::begin()
+JSONSerializer::JSONSerializer(char* mutable_src, const rapidjson::ParseFlag parse_flags, Allocator* allocator)
+    : Serializer(SerializerFormat::text),
+      parse_flags_(parse_flags),
+      stack_(allocator)
 {
-    if (BEE_FAIL_F(mode() == SerializerMode::writing, "JSONWriter cannot serialize in `reading` mode"))
+    reset(mutable_src, parse_flags);
+}
+
+void JSONSerializer::reset(const char* src, const rapidjson::ParseFlag parse_flags)
+{
+    src_ = src;
+    parse_flags_ = static_cast<rapidjson::ParseFlag>(parse_flags & ~rapidjson::ParseFlag::kParseInsituFlag);
+}
+
+void JSONSerializer::reset(char* mutable_src, const rapidjson::ParseFlag parse_flags)
+{
+    src_ = mutable_src;
+    parse_flags_ = parse_flags;
+}
+
+bool JSONSerializer::begin()
+{
+    if (mode == SerializerMode::reading)
     {
-        return false;
+        stack_.clear();
+
+        if ((parse_flags_ & rapidjson::ParseFlag::kParseInsituFlag) != 0)
+        {
+            reader_doc_.ParseInsitu(const_cast<char*>(src_));
+        }
+        else
+        {
+            reader_doc_.Parse(src_);
+        }
+
+        if (reader_doc_.HasParseError())
+        {
+            log_error("JSONSerializer parse error: %s", rapidjson::GetParseError_En(reader_doc_.GetParseError()));
+            return false;
+        }
+
+        if (!reader_doc_.IsObject())
+        {
+            log_error("JSONSerializer: expected object as root element");
+            return false;
+        }
+    }
+    else
+    {
+        string_buffer_.Clear();
+        writer_.Reset(string_buffer_);
     }
 
-    string_buffer_.Clear();
-    writer_.Reset(string_buffer_);
-    writer_.StartObject();
-    stack_.push_back(rapidjson::Type::kObjectType);
     return true;
 }
 
-void JSONWriter::end()
+void JSONSerializer::end()
 {
-    BEE_ASSERT_F(stack_.size() == 1, "Parsing incomplete: source data was possibly corrupt");
-    stack_.pop_back();
-    writer_.EndObject();
+    // no-op
 }
 
-void JSONWriter::array_begin(const char* name)
+void JSONSerializer::begin_record(const RecordType* /* type */)
 {
-    if (stack_.back() == rapidjson::Type::kObjectType)
+    if (mode == SerializerMode::writing)
+    {
+        writer_.StartObject();
+        return;
+    }
+
+    if (stack_.empty())
+    {
+        stack_.push_back(&reader_doc_);
+        return;
+    }
+
+    if (stack_.back()->IsArray())
+    {
+        auto element = &stack_.back()->GetArray()[current_element()];
+        stack_.push_back(element);
+    }
+
+    json_validate_type(rapidjson::Type::kObjectType, stack_.back());
+}
+
+void JSONSerializer::end_record()
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.EndObject();
+    }
+    else
+    {
+        json_validate_type(rapidjson::kObjectType, stack_.back());
+        end_read_scope();
+    }
+}
+
+void JSONSerializer::begin_object(i32* member_count)
+{
+    begin_record(nullptr);
+
+    if (mode == SerializerMode::writing)
+    {
+        return;
+    }
+
+    *member_count = static_cast<i32>(stack_.back()->MemberCount());
+    member_iter_stack_.push_back(stack_.back()->MemberBegin());
+}
+
+void JSONSerializer::end_object()
+{
+    end_record();
+
+    if (mode == SerializerMode::reading)
+    {
+        member_iter_stack_.pop_back();
+    }
+}
+
+void JSONSerializer::begin_array(i32* count)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.StartArray();
+        return;
+    }
+
+    json_validate_type(rapidjson::kArrayType, stack_.back());
+    *count = static_cast<i32>(stack_.back()->GetArray().Size());
+    element_iter_stack_.push_back(0);
+}
+
+void JSONSerializer::end_array()
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.EndArray();
+        return;
+    }
+
+    json_validate_type(rapidjson::kArrayType, stack_.back());
+    end_read_scope();
+    element_iter_stack_.pop_back();
+}
+
+void JSONSerializer::serialize_field(const char* name)
+{
+    if (mode == SerializerMode::writing)
     {
         writer_.Key(name);
-    }
-
-    writer_.StartArray();
-    stack_.push_back(rapidjson::Type::kArrayType);
-}
-
-void JSONWriter::array_end()
-{
-    stack_.pop_back();
-    writer_.EndArray();
-}
-
-void JSONWriter::convert_begin_type(const char* type_name)
-{
-    if (stack_.back() != rapidjson::Type::kArrayType)
-    {
-        writer_.Key(type_name);
-    }
-    writer_.StartObject();
-    stack_.push_back(rapidjson::Type::kObjectType);
-}
-
-void JSONWriter::convert_end_type()
-{
-    if (BEE_FAIL_F(!stack_.empty() && stack_.back() == rapidjson::Type::kObjectType, "Mismatched JSON scopes"))
-    {
-        return;
-    }
-
-    writer_.EndObject();
-    stack_.pop_back();
-}
-
-void JSONWriter::convert(String* value, const char* name)
-{
-    convert_cstr(value->data(), value->size(), name);
-}
-
-void JSONWriter::convert(Path* path, const char* name)
-{
-    auto generic_string = path->to_generic_string();
-    convert_cstr(generic_string.data(), generic_string.size(), name);
-}
-
-void JSONWriter::convert_cstr(char* string, const i32 size, const char* name)
-{
-    if (stack_.back() != rapidjson::Type::kArrayType)
-    {
-        writer_.Key(name);
-    }
-
-    if (string == nullptr && size == 0)
-    {
-        writer_.String("");
-        return;
-    }
-
-    writer_.String(string, size);
-}
-
-void JSONWriter::convert(bool* b)
-{
-    writer_.Bool(*b);
-}
-
-void JSONWriter::convert(int* i)
-{
-    writer_.Int(*i);
-}
-
-void JSONWriter::convert(unsigned int* i)
-{
-    writer_.Uint(*i);
-}
-
-void JSONWriter::convert(int64_t* i)
-{
-    writer_.Int64(*i);
-}
-
-void JSONWriter::convert(uint64_t* i)
-{
-    writer_.Uint64(*i);
-}
-
-void JSONWriter::convert(double* d)
-{
-    writer_.Double(*d);
-}
-
-void JSONWriter::convert(const char** str)
-{
-    writer_.String(*str);
-}
-
-/*
- * JSONReader
- */
-void JSONReader::reset_source(bee::String* source)
-{
-    source_ = source;
-}
-
-bool JSONReader::begin()
-{
-    if (BEE_FAIL_F(mode() == SerializerMode::reading, "JSONReader cannot serialize in `writing` mode"))
-    {
-        return false;
-    }
-
-    document_.ParseInsitu(source_->data());
-    if (BEE_FAIL_F(!document_.HasParseError(), "JSONReader: unable to parse JSON source: %s", rapidjson::GetParseError_En(document_.GetParseError())))
-    {
-        return false;
-    }
-
-    if (BEE_FAIL_F(document_.IsObject(), "JSONReader: expected object as root element"))
-    {
-        return false;
-    }
-
-    stack_.push_back({ &document_, &document_ });
-    return true;
-}
-
-void JSONReader::end()
-{
-    BEE_ASSERT(stack_.empty() || (stack_.size() == 1 && stack_.back().value->IsObject()));
-    stack_.pop_back();
-}
-
-void JSONReader::convert_begin_type(const char* type_name)
-{
-    // If the current top of the scope stack isn't an object it should be an array element and we already have it
-    if (stack_.back().parent->IsArray() && stack_.back().value->IsObject())
-    {
-        return;
-    }
-
-    auto member = stack_.back().value->FindMember(type_name);
-    if (BEE_FAIL_F(member != document_.MemberEnd(), "JSONReader: couldn't find object member with name: %s", type_name))
-    {
-        return;
-    }
-
-    if (BEE_FAIL_F(str::compare(member->name.GetString(), type_name) == 0, "JSONReader: couldn't find object member with name: %s", type_name))
-    {
         return;
     }
     
-    if (BEE_FAIL_F(member->value.IsObject(), "JSONReader: invalid JSON - expected object"))
+    // If current element is not an object then we can't serialize a field
+    if (!json_validate_type(rapidjson::kObjectType, stack_.back()))
     {
         return;
     }
 
-    // Create a new object scope for the serialized type
-    stack_.push_back({ stack_.back().value, &member->value });
+    const auto member = stack_.back()->FindMember(name);
+
+    if (BEE_FAIL_F(member != reader_doc_.MemberEnd(), "JSONSerializer: missing field \"%s\"", name))
+    {
+        return;
+    }
+
+    stack_.push_back(&member->value);
 }
 
-void JSONReader::convert_end_type()
+void JSONSerializer::serialize_key(String* key)
 {
-    // expect end object or array
-    BEE_ASSERT(stack_.back().value->IsObject());
-    // We need to pop an object scope if the type serialized was parented to an object and not an array
-    if (stack_.back().parent->IsObject())
+    if (mode == SerializerMode::writing)
     {
-        stack_.pop_back();
+        writer_.Key(key->c_str(), key->size());
+        return;
+    }
+
+    // If current element is not an object then we can't serialize a key
+    if (!json_validate_type(rapidjson::kObjectType, stack_.back()))
+    {
+        return;
+    }
+
+    key->append({ current_member_iter()->name.GetString(), static_cast<i32>(current_member_iter()->name.GetStringLength()) });
+    stack_.push_back(&current_member_iter()->value);
+    ++current_member_iter();
+}
+
+void JSONSerializer::begin_text(i32* length)
+{
+    if (mode == SerializerMode::writing)
+    {
+        // JSON doesn't need an explicit length value serialized
+        return;
+    }
+
+    json_validate_type(rapidjson::kStringType, stack_.back());
+    *length = static_cast<i32>(stack_.back()->GetStringLength());
+}
+
+void JSONSerializer::end_text(char* buffer, const i32 size, const i32 capacity)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.String(buffer, size);
+        return;
+    }
+
+    json_validate_type(rapidjson::kStringType, stack_.back());
+    str::copy(buffer, capacity, stack_.back()->GetString(), static_cast<i32>(stack_.back()->GetStringLength()));
+}
+
+//void JSONSerializer::serialize_enum(const EnumType* type, u8* data)
+//{
+//
+//}
+
+
+void JSONSerializer::serialize_bytes(void* data, const i32 size)
+{
+    BEE_UNREACHABLE("Not implemented");
+}
+
+void JSONSerializer::serialize_fundamental(bool* data)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.Bool(*data);
+        return;
+    }
+
+    if (json_validate_type<bool>(stack_.back()))
+    {
+        *data = stack_.back()->GetBool();
+        end_read_scope();
     }
 }
 
-void JSONReader::convert(bee::String* string, const char* name)
+void JSONSerializer::serialize_fundamental(i8* data)
 {
-    auto json_value = find_json_value(name);
-    if (json_value == nullptr)
+    if (mode == SerializerMode::writing)
     {
+        writer_.Int(*data);
         return;
     }
 
-    if (BEE_FAIL_F(json_value->IsString(), "%s is not a valid string key in the JSON source", name))
+    if (json_validate_type<int>(stack_.back()))
     {
-        return;
+        *data = sign_cast<i8>(stack_.back()->GetInt());
+        end_read_scope();
     }
-
-    StringView view(json_value->GetString(), json_value->GetStringLength());
-    string->clear();
-    string->append(view);
 }
 
-void JSONReader::convert(Path* path, const char* name)
+void JSONSerializer::serialize_fundamental(i16* data)
 {
-    auto json_value = find_json_value(name);
-    if (json_value == nullptr)
+    if (mode == SerializerMode::writing)
     {
+        writer_.Int(*data);
         return;
     }
 
-    if (BEE_FAIL_F(json_value->IsString(), "%s is not a valid string key in the JSON source", name))
+    if (json_validate_type<int>(stack_.back()))
     {
-        return;
+        *data = sign_cast<i16>(stack_.back()->GetInt());
+        end_read_scope();
     }
-
-    StringView appended(json_value->GetString(), json_value->GetStringLength());
-    path->clear();
-    path->append(appended);
 }
 
-void JSONReader::convert_cstr(char* string, const i32 size, const char* name)
+void JSONSerializer::serialize_fundamental(i32* data)
 {
-    auto json_value = find_json_value(name);
-    if (json_value == nullptr)
+    if (mode == SerializerMode::writing)
     {
+        writer_.Int(*data);
         return;
     }
 
-    if (BEE_FAIL_F(json_value->IsString(), "%s is not a valid string key in the JSON source", name))
+    if (json_validate_type<int>(stack_.back()))
     {
-        return;
+        *data = stack_.back()->GetInt();
+        end_read_scope();
     }
-
-    str::copy(string, size, json_value->GetString(), json_value->GetStringLength());
 }
 
-rapidjson::Value* JSONReader::find_json_value(const char* name)
+void JSONSerializer::serialize_fundamental(i64* data)
 {
-    if (stack_.back().value->IsObject())
+    if (mode == SerializerMode::writing)
     {
-        const auto member = stack_.back().value->FindMember(name);
-        if (BEE_FAIL_F(member != document_.MemberEnd(), "JSONReader: couldn't find member '%s' in object", name))
-        {
-            return nullptr;
-        }
-        return &member->value;
+        writer_.Int64(*data);
+        return;
     }
 
-    // Otherwise it's an array element
-    return stack_.back().value;
+    if (json_validate_type<int64_t>(stack_.back()))
+    {
+        *data = stack_.back()->GetInt64();
+        end_read_scope();
+    }
+}
+
+void JSONSerializer::serialize_fundamental(u8* data)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.Uint(*data);
+        return;
+    }
+
+    if (json_validate_type<unsigned>(stack_.back()))
+    {
+        *data = sign_cast<u8>(stack_.back()->GetUint());
+        end_read_scope();
+    }
+}
+
+void JSONSerializer::serialize_fundamental(u16* data)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.Uint(*data);
+        return;
+    }
+
+    if (json_validate_type<unsigned>(stack_.back()))
+    {
+        *data = sign_cast<u16>(stack_.back()->GetUint());
+        end_read_scope();
+    }
+}
+
+void JSONSerializer::serialize_fundamental(u32* data)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.Uint(*data);
+        return;
+    }
+
+    if (json_validate_type<uint32_t>(stack_.back()))
+    {
+        *data = stack_.back()->GetUint();
+        end_read_scope();
+    }
+}
+
+void JSONSerializer::serialize_fundamental(u64* data)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.Uint64(*data);
+        return;
+    }
+
+    if (json_validate_type<uint64_t>(stack_.back()))
+    {
+        *data = stack_.back()->GetUint64();
+        end_read_scope();
+    }
+}
+
+void JSONSerializer::serialize_fundamental(char* data)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.String(data, 1, true);
+        return;
+    }
+
+    if (json_validate_type(rapidjson::kStringType, stack_.back()))
+    {
+        memcpy(data, stack_.back()->GetString(), math::min(stack_.back()->GetStringLength(), 1u));
+        end_read_scope();
+    }
+}
+
+void JSONSerializer::serialize_fundamental(float* data)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.Double(*data);
+        return;
+    }
+
+    if (json_validate_type<float>(stack_.back()))
+    {
+        *data = sign_cast<float>(stack_.back()->GetDouble());
+        end_read_scope();
+    }
+}
+
+void JSONSerializer::serialize_fundamental(double* data)
+{
+    if (mode == SerializerMode::writing)
+    {
+        writer_.Double(*data);
+        return;
+    }
+
+    if (json_validate_type<double>(stack_.back()))
+    {
+        *data = stack_.back()->GetDouble();
+        end_read_scope();
+    }
 }
 
 

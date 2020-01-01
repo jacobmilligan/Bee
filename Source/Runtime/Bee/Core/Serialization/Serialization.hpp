@@ -7,93 +7,13 @@
 
 #pragma once
 
-#include "Bee/Core/Containers/Array.hpp"
-#include "Bee/Core/Path.hpp"
+#include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Reflection.hpp"
-#include "Bee/Core/String.hpp"
-
+#include "Bee/Core/Path.hpp"
+#include "Bee/Core/Containers/HashMap.hpp"
 
 namespace bee {
 
-
-/*
- ***************************
- *
- * Serialization
- *
- ***************************
- */
-#define BEE_DEFINE_SERIALIZE_TYPE(current_version, type, type_name)                                 \
-    template <typename SerializerType>                                                              \
-    inline void serialize_convert(SerializerType* serializer, type* data, const char* name);        \
-                                                                                                    \
-    template <typename SerializerType>                                                              \
-    inline void serialize_type(SerializerType* serializer, type* data, const char* name)            \
-    {                                                                                               \
-        if (serializer->mode() == bee::SerializerMode::writing)                                     \
-        {                                                                                           \
-            serializer->version = current_version;                                                  \
-        }                                                                                           \
-        serializer->convert_begin_type(type_name);                                                  \
-        serialize_type(serializer, &serializer->version, "bee::version");                           \
-        serialize_convert(serializer, data, name);                                                  \
-        serializer->convert_end_type();                                                             \
-    }                                                                                               \
-                                                                                                    \
-    template <typename SerializerType>                                                              \
-    inline void serialize_convert(SerializerType* serializer, type* data, const char* name)
-
-#define BEE_SERIALIZE(current_version, type) BEE_DEFINE_SERIALIZE_TYPE(current_version, type, #type)
-
-/**
- * Adds a class/struct field to be serialized alongside a version number specifying which version of the structure
- * the field was added in. For primitive types or types stored on the stack, call `serialize` directly
- */
-#define BEE_ADD_FIELD(version_added, field)                     \
-    BEE_BEGIN_MACRO_BLOCK                                       \
-        if (serializer->version >= (version_added))             \
-        {                                                       \
-            serialize_type(serializer, &(data->field), #field); \
-        }                                                       \
-    BEE_END_MACRO_BLOCK
-
-/**
- * Marks a field with type `field_type` as removed from a serialized structure. The version that the field was added
- * and removed in must be specified alongside a default value to write/read if a version with the removed field is
- * being serialized
- */
-#define BEE_REMOVE_FIELD(version_added, version_removed, field_type, field_name, default_value_if_present)      \
-    BEE_BEGIN_MACRO_BLOCK                                                                                       \
-        field_type bee_removed_field = default_value_if_present;                                                \
-        if (serializer->version >= (version_added) && serializer->version < (version_removed))                  \
-        {                                                                                                       \
-            serialize_type(serializer, &(bee_removed_field), #field_name);                                      \
-        }                                                                                                       \
-    BEE_END_MACRO_BLOCK
-
-/**
- * Adds a serialized integer that ensures integrity between versions by asserting if the value read/written
- * is different to the serializers current `check_integrity_counter` value. Integrity checks should be used liberally
- * to guard against programmer error and always at least added before data for a new version is added, i.e.
- * `BEE_ADD_INTEGRITY_CHECK(NEW_REVISION)`
- */
-#define BEE_ADD_INTEGRITY_CHECK(version_added)                                          \
-    BEE_BEGIN_MACRO_BLOCK                                                               \
-        if (serializer->version >= (version_added))                                     \
-        {                                                                               \
-            auto check_counter = serializer->check_integrity_counter;                   \
-            serialize_type(serializer, &check_counter, "check_integrity_counter");      \
-            BEE_ASSERT_F(                                                               \
-                check_counter == serializer->check_integrity_counter,                   \
-                "serialization integrity check failed (%d != %d). This can  happen if " \
-                "the serializer_ is using a different version than the data being "      \
-                "read/written or `serializer_->check_integrity_counter` was corrupted "  \
-                "or modified incorrectly",                                              \
-                check_counter, serializer->check_integrity_counter                      \
-            );                                                                          \
-            ++serializer->check_integrity_counter;                                      \
-        }                                                                               \
-    BEE_END_MACRO_BLOCK
 
 enum class SerializerMode
 {
@@ -101,194 +21,354 @@ enum class SerializerMode
     writing
 };
 
+enum class SerializerFormat
+{
+    unknown,
+    binary,
+    text
+};
 
-/**
- * # Serializer
- *
- * For a class to be compatible with the BEE_SERIALIZE API it must derive from `Serializer` and
- * implement the following interface with all of the functions present:
- *
- * ```
-     interface Serializer
-     {
-         // called by the API when beginning serialization of an object
-         bool begin();
+enum class SerializedContainerKind
+{
+    none,
+    sequential,
+    key_value,
+    text
+};
 
-         // called by the API when ending serialization of an object
-         void end();
+class SerializationBuilder;
 
-         // Called when beginning serialization of an object that has defined a custom BEE_SERIALIZE. This
-         // function is mostly useful for serializers reading/writing to text formats like JSON where it's
-         // important to know when an object should begin and end. `type_name` is the name of the associated
-         // struct or class
-         void convert_begin_type(const char* type_name);
+struct SerializationFunction
+{
+    virtual void serialize(SerializationBuilder* builder, void* data) = 0;
+};
 
-         // Called when ending the serialization of an object with a custom BEE_SERIALIZE defined.
-         void convert_end_type();
+template <typename T>
+struct TypedSerializationFunction final : public SerializationFunction
+{
+    void serialize(SerializationBuilder* builder, void* data) override
+    {
+        serialize_type(builder, static_cast<T*>(data));
+    }
+};
 
-         // Called each time a value is serialized - this is where most of the work is done and can
-         // be specialized for different types. `name` is the value's variable name in the C++ code
-         template <typename T>
-         void convert(T* value, const char* name);
 
-         // Called when serializing a c-style array or a buffer with a constant size
-         template <typename T>
-         void convert_cbuffer(T* array, const i32 size, const char* name);
-
-         // Called when converting a c-style string of characters
-         void convert_cstr(char* string, i32 size, const char* name);
-     }
- * ```
- *
- * Commonly a serializer specializes the convert<T> function for a few of the core Container types such as:
- *
- * ```
-    // Convert either a fixed or dynamic array (using the resize() function if in reading mode)
-    template <typename T, ContainerMode Mode>
-    void convert(Array<T, Mode>* array, const char* name);
-
-    // Convert a hash map
-    template <
-      typename        KeyType,
-      typename        ValueType,
-      ContainerMode   Mode,
-      typename        Hasher,
-      typename        KeyEqual
-    >
-    void convert(HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>* map, const char* name);
-
-    // Convert a String container
-    void convert(String* string, const char* name);
-
-    // Convert a Path container
-    void convert(Path* path, const char* name);
- *  ```
- *
- *  The three serializer classes provided under `Bee/Core/Serialization/` all provide these specializations
- *  so it's usually enough for a custom serializer to use one of these as a backing serializer or base class
- */
 struct BEE_CORE_API Serializer
 {
-    i32             version { 0 };
-    i32             check_integrity_counter { 0 };
+    SerializerMode          mode { SerializerMode::reading };
+    const SerializerFormat  format {SerializerFormat::unknown };
 
-    void reset(const SerializerMode new_mode)
+    explicit Serializer(const SerializerFormat serialized_format);
+
+    virtual bool begin() = 0;
+    virtual void end() = 0;
+    virtual void begin_record(const RecordType* type) = 0;
+    virtual void end_record() = 0;
+    virtual void begin_object(i32* member_count) = 0;
+    virtual void end_object() = 0;
+    virtual void begin_array(i32* count) = 0;
+    virtual void end_array() = 0;
+    virtual void begin_text(i32* length) = 0;
+    virtual void end_text(char* buffer, const i32 size, const i32 capacity) = 0;
+    virtual void serialize_field(const char* name) = 0;
+    virtual void serialize_key(String* key) = 0;
+    virtual void serialize_bytes(void* data, const i32 size) = 0;
+    virtual void serialize_fundamental(bool* data) = 0;
+    virtual void serialize_fundamental(char* data) = 0;
+    virtual void serialize_fundamental(float* data) = 0;
+    virtual void serialize_fundamental(double* data) = 0;
+    virtual void serialize_fundamental(u8* data) = 0;
+    virtual void serialize_fundamental(u16* data) = 0;
+    virtual void serialize_fundamental(u32* data) = 0;
+    virtual void serialize_fundamental(u64* data) = 0;
+    virtual void serialize_fundamental(i8* data) = 0;
+    virtual void serialize_fundamental(i16* data) = 0;
+    virtual void serialize_fundamental(i32* data) = 0;
+    virtual void serialize_fundamental(i64* data) = 0;
+};
+
+
+BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, SerializationFunction* serialization_function, u8* data);
+BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, SerializationFunction* serialization_function, u8* data, const Span<const Type*>& template_type_arguments);
+
+template <typename T>
+void serialize_type(SerializationBuilder* builder, T* data) {}
+
+
+struct FieldHeader
+{
+    u32 type_hash { 0 };
+    u32 field_hash { 0 };
+
+    FieldHeader() = default;
+
+    explicit FieldHeader(const Field& field)
+        : type_hash(field.type->hash),
+          field_hash(field.hash)
+    {}
+};
+
+inline bool operator==(const FieldHeader& lhs, const FieldHeader& rhs)
+{
+    return lhs.type_hash == rhs.type_hash && lhs.field_hash == rhs.field_hash;
+}
+
+inline bool operator!=(const FieldHeader& lhs, const FieldHeader& rhs)
+{
+    return !(lhs == rhs);
+}
+
+class BEE_CORE_API SerializationBuilder
+{
+public:
+    explicit SerializationBuilder(Serializer* new_serializer, const RecordType* type);
+
+    ~SerializationBuilder();
+
+    template <typename FieldType>
+    SerializationBuilder& add_field(const i32 version_added, FieldType* field, const char* field_name)
     {
-        version = 0;
-        check_integrity_counter = 0;
-        mode_ = new_mode;
+        return add_field(version_added, limits::max<i32>(), field, field_name);
+    }
+
+    template <typename FieldType>
+    SerializationBuilder& add_field(const i32 version_added, const i32 version_removed, FieldType* field, const char* field_name)
+    {
+        BEE_ASSERT_F(container_kind_ == SerializedContainerKind::none, "serialization builder is not configured to build a structure - cannot add fields to non-structure types");
+
+        const auto field_type = get_type<FieldType>();
+
+        if (version_ < version_added || version_ >= version_removed)
+        {
+            return *this;
+        }
+
+        serializer_->serialize_field(field_name);
+
+        if ((field_type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
+        {
+            SerializationBuilder builder(serializer_, field_type->as<RecordType>());
+            serialize_type(&builder, field);
+        }
+        else
+        {
+            serialize_type(serializer_, field_type, nullptr, reinterpret_cast<u8*>(field));
+        }
+        return *this;
+    }
+
+    template <typename FieldType>
+    SerializationBuilder& remove_field(const i32 version_added, const i32 version_removed, const FieldType& default_value, const char* field_name)
+    {
+        BEE_ASSERT_F(container_kind_ == SerializedContainerKind::none, "serialization builder is not configured to build a structure - cannot remove fields from non-structure types");
+
+        const auto field_type = get_type<FieldType>();
+        if (version_ < version_added || version_ >= version_removed)
+        {
+            return *this;
+        }
+
+        FieldType removed_data;
+
+        if (serializer_->mode == SerializerMode::writing)
+        {
+            copy(&removed_data, &default_value, 1);
+        }
+
+        serializer_->serialize_field(field_name);
+
+        if ((field_type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
+        {
+            SerializationBuilder builder(serializer_, field_type->as<RecordType>());
+            serialize_type(&builder, &removed_data);
+        }
+        else
+        {
+            serialize_type(serializer_, field_type, nullptr, reinterpret_cast<u8*>(&removed_data));
+        }
+
+        return *this;
+    }
+
+    SerializationBuilder& structure(const i32 serialized_version);
+
+    SerializationBuilder& container(const SerializedContainerKind kind, i32* size);
+
+    SerializationBuilder& text(char* buffer, const i32 size, const i32 capacity);
+
+    SerializationBuilder& key(String* data);
+
+    template <typename T>
+    SerializationBuilder& element(T* data)
+    {
+        BEE_ASSERT_F(container_kind_ != SerializedContainerKind::none, "serialization builder is not configured to build a container type");
+
+        auto type = get_type<T>();
+
+        if ((type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
+        {
+            SerializationBuilder builder(serializer_, type->as<RecordType>());
+            serialize_type(&builder, data);
+        }
+        else
+        {
+            serialize_type(serializer_, type, nullptr, reinterpret_cast<u8*>(data));
+        }
+
+        return *this;
     }
 
     inline SerializerMode mode() const
     {
-        return mode_;
+        return serializer_->mode;
     }
 
-    template <typename T>
-    inline void assert_trivial()
-    {
-        static_assert(std::is_trivially_copyable<T>::value && !std::is_pointer<T>::value, BEE_STATIC_ASSERT_MSG(
-                "Type `T` is not trivial (cannot be trivially copied or is a pointer type)",
-                "Consider adding a `convert<T>` specialization to the serializer to provide specialized serialization "
-                "behaviour for this type."
-        ));
-    }
 private:
-    SerializerMode mode_ { SerializerMode::reading };
+    Serializer*             serializer_ { nullptr };
+    const RecordType*       type_ { nullptr };
+    SerializedContainerKind container_kind_ { SerializedContainerKind::none };
+    i32                     version_ { -1 };
 };
 
 
-template <typename SerializerType, typename DataType>
-inline void serialize_type(SerializerType* serializer, DataType* data, const char* name)
+template <typename DataType, typename ReflectedType = DataType>
+inline void serialize(const SerializerMode mode, Serializer* serializer, DataType* data)
 {
-    BEE_ASSERT(serializer != nullptr);
-    serializer->convert(data, name);
-}
+    BEE_ASSERT_F(serializer->format != SerializerFormat::unknown, "Serializer has an invalid kind");
 
-template <typename SerializerType, typename DataType>
-inline void serialize_type(SerializerType* serializer, const DataType* data, const char* name)
-{
-    BEE_ASSERT(serializer != nullptr);
-    serialize_type(serializer, const_cast<DataType*>(data), name);
-}
+    const auto type = get_type<ReflectedType>();
+    if (BEE_FAIL_F(type->kind != TypeKind::unknown, "`DataType` is not marked for reflection - use BEE_REFLECT() on the types declaration"))
+    {
+        return;
+    }
 
+    serializer->mode = mode;
 
-template <typename SerializerType, typename DataType>
-inline void serialize(const SerializerMode mode, SerializerType* serializer, DataType* data)
-{
-    serializer->reset(mode);
     if (BEE_FAIL_F(serializer->begin(), "Failed to initialize serialization"))
     {
         return;
     }
-    serialize_type(serializer, data, "");
+
+    if ((type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
+    {
+        SerializationBuilder builder(serializer, type->as<RecordType>());
+        serialize_type(&builder, data);
+    }
+    else
+    {
+        serialize_type(serializer, type, nullptr, reinterpret_cast<u8*>(data));
+    }
+
     serializer->end();
 }
 
+
 /*
- ****************************************************
+ **********************
  *
- * Specializations for serializing more complex data
+ * Array serialization
  *
- ****************************************************
+ **********************
  */
-
-/**
- * Serializes statically allocated c-style array
- */
-template <typename SerializerType, typename ElementType, i32 Size>
-inline void serialize_type(SerializerType* serializer, ElementType(*data)[Size], const char* name)
+template <typename T, ContainerMode Mode>
+inline void serialize_type(SerializationBuilder* builder, Array<T, Mode>* array)
 {
-    BEE_ASSERT(serializer != nullptr);
-    serializer->convert_cbuffer(&((*data)[0]), Size, name);
-}
+    int size = array->size();
+    builder->container(SerializedContainerKind::sequential, &size);
 
-template <typename SerializerType, i32 Size>
-inline void serialize_type(SerializerType* serializer, char(*data)[Size], const char* name)
-{
-    BEE_ASSERT(serializer != nullptr);
-    serializer->convert_cstr(&((*data)[0]), Size, name);
-}
-
-template <typename SerializerType>
-inline void serialize_type(SerializerType* serializer, const char** data, const char* name)
-{
-    BEE_ASSERT(serializer != nullptr);
-
-    int size = 0;
-
-    if (*data != nullptr && serializer->mode() == SerializerMode::writing)
+    if (builder->mode() == SerializerMode::reading)
     {
-        size = str::length(*data) + 1;
+        array->resize(size);
     }
 
-    serializer->convert_cstr(const_cast<char*>(*data), size, name);
+    for (auto& element : *array)
+    {
+        builder->element(&element);
+    }
 }
 
-BEE_SERIALIZE(1, Type)
-{
-    BEE_ADD_FIELD(1, hash);
-    BEE_ADD_FIELD(1, size);
-    BEE_ADD_FIELD(1, alignment);
 
-    if (serializer->mode() == SerializerMode::reading)
+/*
+ **************************
+ *
+ * HashMap serialization
+ *
+ **************************
+ */
+template <
+    typename        KeyType,
+    typename        ValueType,
+    ContainerMode   Mode,
+    typename        Hasher,
+    typename        KeyEqual
+>
+inline void serialize_type(SerializationBuilder* builder, HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>* map)
+{
+    int size = map->size();
+    builder->container(SerializedContainerKind::key_value, &size);
+
+    if (builder->mode() == SerializerMode::reading)
     {
-        // Fixup string pointers
-        const auto registered_type = get_type(data->hash);
-        if (registered_type.is_valid())
+        KeyValuePair<KeyType, ValueType> key_val{};
+
+        for (int i = 0; i < size; ++i)
         {
-            *data = registered_type;
+            builder->key(&key_val.key);
+            builder->element(&key_val.value);
+            map->insert(key_val);
         }
     }
     else
     {
-        BEE_ADD_FIELD(1, annotated_name);
-        BEE_ADD_FIELD(1, fully_qualified_name);
-        BEE_ADD_FIELD(1, name);
+        for (KeyValuePair<KeyType, ValueType>& elem : *map)
+        {
+            builder->key(&elem.key);
+            builder->element(&elem.value);
+        }
     }
 }
 
+/*
+ **********************
+ *
+ * String serialization
+ *
+ **********************
+ */
+inline void serialize_type(SerializationBuilder* builder, String* string)
+{
+    int size = string->size();
+    builder->container(SerializedContainerKind::text, &size);
+
+    if (builder->mode() == SerializerMode::reading)
+    {
+        string->resize(size);
+    }
+
+    builder->text(string->data(), string->size(), string->capacity());
+}
+
+
+/*
+ **********************
+ *
+ * Path serialization
+ *
+ **********************
+ */
+inline void serialize_type(SerializationBuilder* builder, Path* path)
+{
+    int size = path->size();
+    builder->container(SerializedContainerKind::text, &size);
+
+    if (builder->mode() == SerializerMode::reading)
+    {
+        path->data_.resize(size);
+    }
+
+    builder->text(path->data_.data(), path->data_.size(), path->data_.capacity());
+}
+
+
 
 } // namespace bee
-
-

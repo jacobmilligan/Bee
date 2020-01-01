@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <Bee/Core/ReflectionV2.hpp>
-#include <Bee/Core/SerializationV2/Serialization.hpp>
+#include <Bee/Core/Reflection.hpp>
+#include <Bee/Core/Serialization/Serialization.hpp>
 #include "../../../../../Tools/BeeReflect/Tests/BasicStruct.hpp"
 
 namespace bee {
