@@ -8,7 +8,7 @@
 #pragma once
 
 
-#include "Bee/Core/ReflectionV2.hpp"
+#include "Bee/Core/Reflection.hpp"
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
 

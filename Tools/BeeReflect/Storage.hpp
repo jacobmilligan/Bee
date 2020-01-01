@@ -8,7 +8,7 @@
 #pragma once
 
 #include "Bee/Core/Memory/LinearAllocator.hpp"
-#include "Bee/Core/ReflectionV2.hpp"
+#include "Bee/Core/Reflection.hpp"
 #include "Bee/Core/Path.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
 

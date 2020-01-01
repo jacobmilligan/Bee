@@ -523,7 +523,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, RecordTypeStorage* 
         {
             auto clang_type = llvm::dyn_cast<clang::ConstantArrayType>(qualtype);
             auto new_array_type = allocator->allocate_storage<ArrayType>();
-            const auto element_type = clang_type->getElementType();
+            const auto element_type = clang_type->getElementType().getDesugaredType(decl.getASTContext());
 
             new_array_type->hash = hash;
             new_array_type->name = allocator->allocate_name(array_type_name);
@@ -534,8 +534,13 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, RecordTypeStorage* 
             new_array_type->serialized_version = 1;
 
             const auto element_type_name = print_qualtype_name(element_type, decl.getASTContext());
-            const auto element_type_hash = get_type_hash(element_type_name.c_str());
+            const auto element_type_hash = get_type_hash({ element_type_name.data(), static_cast<i32>(element_type_name.size()) });
             new_array_type->element_type = type_map->find_type(element_type_hash);
+
+            if (new_array_type->element_type == nullptr)
+            {
+                new_array_type->element_type = get_type(element_type_hash);
+            }
 
             if (new_array_type->element_type != nullptr)
             {
@@ -1197,6 +1202,11 @@ bool AttributeParser::parse(DynamicArray<Attribute>* dst_attributes, Serializati
     if (serialization_info->serialized_version <= 0)
     {
         serialization_info->serialized_version = 1;
+    }
+
+    if (serialization_info->flags == SerializationFlags::none)
+    {
+        serialization_info->flags |= SerializationFlags::packed_format;
     }
 
     return true;

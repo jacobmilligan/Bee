@@ -239,7 +239,8 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
 
 void codegen_array_type(const ArrayType* type, CodeGenerator* codegen)
 {
-    codegen->write("template <> BEE_EXPORT_SYMBOL const Type* get_type<%s>(const TypeTag<%s>& tag)", type->name, type->name);
+    // Array types shouldn't be exported
+    codegen->write("template <> const Type* get_type<%s>(const TypeTag<%s>& tag)", type->name, type->name);
     codegen->scope([&]()
     {
         codegen->write("static ArrayType instance");
@@ -625,7 +626,7 @@ i32 generate_reflection(const ReflectedFile& file, io::StringStream* src_stream,
     if (mode != CodegenMode::templates_only)
     {
         codegen.write_line("#include \"%s\"", file.location.to_generic_string(temp_allocator()).c_str());
-        codegen.write_line("#include <Bee/Core/ReflectionV2.hpp>");
+        codegen.write_line("#include <Bee/Core/Reflection.hpp>");
         codegen.newline();
     }
 
@@ -880,7 +881,7 @@ void link_registrations(const Span<const Path>& search_paths, io::StringStream* 
         codegen.write_line("#include \"%s\"", include_path.c_str());
     }
 
-    codegen.write_line("#include <Bee/Core/ReflectionV2.hpp>");
+    codegen.write_line("#include <Bee/Core/Reflection.hpp>");
     codegen.newline();
     codegen.newline();
     codegen.write_line("namespace bee {");
