@@ -17,10 +17,8 @@ bee_test(Bee.Tests.Core
         FunctionalTests.cpp
         HashTests.cpp
         GUIDTests.cpp
-#        SerializationTests.cpp
         SerializationTestsTypes.hpp
         SerializationTests.cpp
-#        ReflectionTests.cpp
         ReflectionTests.cpp
         PathTests.cpp
         HandleTableTests.cpp
