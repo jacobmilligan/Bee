@@ -169,11 +169,11 @@ class BEE_DEVELOP_API AssetCompilerPipeline
 public:
 
     template <typename CompilerType>
-    bool register_compiler()
+    inline bool register_compiler()
     {
         auto file_types = CompilerType::supported_file_types;
         auto file_type_count = static_array_length(CompilerType::supported_file_types);
-        return register_compiler(Type::from_static<CompilerType>(), file_types, file_type_count, [](Allocator* allocator)
+        return register_compiler(get_type<CompilerType>(), file_types, file_type_count, [](Allocator* allocator)
         {
             return BEE_NEW(allocator, CompilerType)();
         });
@@ -187,13 +187,13 @@ private:
 
     struct RegisteredCompiler
     {
-        Type                        type;
+        const Type*                 type;
         FixedArray<u32>             file_types;
         create_function_t           create;
         FixedArray<AssetCompiler*>  instances;
 
         RegisteredCompiler(
-            const Type& new_type,
+            const Type* new_type,
             const char* const* new_file_types,
             const i32 new_file_type_count,
             create_function_t&& create_function
@@ -223,7 +223,7 @@ private:
     DynamicHashMap<u32, i32>            file_type_map_;
     DynamicArray<RegisteredCompiler>    compilers_;
 
-    bool register_compiler(const Type& type, const char* const* supported_file_types, i32 supported_file_type_count, create_function_t&& create_function);
+    bool register_compiler(const Type* type, const char* const* supported_file_types, i32 supported_file_type_count, create_function_t&& create_function);
 
     RegisteredCompiler* find_compiler_no_lock(const char* name);
 

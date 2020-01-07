@@ -34,10 +34,12 @@ struct PlatformSize
 };
 
 
-struct WindowConfig
+struct BEE_REFLECT(serializable) WindowConfig
 {
-    const char*     title { "Bee Application" }; // nonserialized
-    MonitorHandle   monitor; // nonserialized
+    BEE_REFLECT(nonserialized)
+    const char*     title { "Bee Application" };
+    BEE_REFLECT(nonserialized)
+    MonitorHandle   monitor;
     bool            fullscreen { false };
     bool            borderless { false };
     bool            allow_resize { true };
@@ -47,19 +49,6 @@ struct WindowConfig
     i32             x { 0 };
     i32             y { 0 };
 };
-
-
-BEE_SERIALIZE(1, WindowConfig)
-{
-    BEE_ADD_FIELD(1, fullscreen);
-    BEE_ADD_FIELD(1, borderless);
-    BEE_ADD_FIELD(1, allow_resize);
-    BEE_ADD_FIELD(1, centered);
-    BEE_ADD_FIELD(1, width);
-    BEE_ADD_FIELD(1, height);
-    BEE_ADD_FIELD(1, x);
-    BEE_ADD_FIELD(1, y);
-}
 
 
 BEE_RUNTIME_API bool platform_launch(const char* app_name);

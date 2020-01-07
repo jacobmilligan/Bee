@@ -356,6 +356,11 @@ function(bee_reflect target)
         endif ()
     endforeach()
 
+    list(LENGTH reflected_sources reflected_sources_length)
+    if (${reflected_sources_length} LESS_EQUAL 0)
+        return()
+    endif ()
+
     # Now we build the bee-reflect command.
     # Add all the system and regular include dirs
     set(include_dirs)
@@ -406,6 +411,11 @@ function(bee_reflect_link target)
         file(GLOB_RECURSE dep_files "${generated_root}/${dep}/*.registration")
         list(APPEND registration_files ${dep_files})
     endforeach ()
+
+    list(LENGTH registration_files registration_files_length)
+    if (${registration_files_length} LESS_EQUAL 0)
+        return()
+    endif ()
 
     add_custom_command(
             PRE_BUILD

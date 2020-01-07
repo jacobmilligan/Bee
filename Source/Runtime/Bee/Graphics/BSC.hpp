@@ -83,32 +83,6 @@ struct BSCTextSource
     PipelineStateDescriptor pipeline_state;
 };
 
-
-/*
- *******************************************************
- *
- * # BSCShader & BSCModule serialization
- *
- ********************************************************
- */
-BEE_SERIALIZE(1, BSCShader)
-{
-    BEE_ADD_FIELD(1, stage);
-    BEE_ADD_FIELD(1, entry);
-    BEE_ADD_FIELD(1, binary);
-}
-
-BEE_SERIALIZE(1, BSCModule)
-{
-    BEE_ADD_FIELD(1, target);
-    BEE_ADD_FIELD(1, name);
-    BEE_ADD_FIELD(1, filename);
-    BEE_ADD_FIELD(1, shaders);
-    BEE_ADD_FIELD(1, shader_count);
-    BEE_ADD_FIELD(1, pipeline_state);
-}
-
-
 BEE_RUNTIME_API String bsc_target_to_string(const BSCTarget target, Allocator* allocator = system_allocator());
 
 BEE_RUNTIME_API BSCTarget bsc_target_from_string(const StringView& target_string);

@@ -155,17 +155,17 @@ struct WorkerMainParams
 struct JobSystemContext
 {
     std::atomic_bool            initialized { false };
-    Thread::id_t                main_thread_id;
+    Thread::id_t                main_thread_id { 0 };
     FixedArray<Worker>          workers;
 
     // Signal indicating that the system is currently running and active
     std::atomic_bool            is_active { false };
-    std::atomic_int32_t         pending_job_count;
+    std::atomic_int32_t         pending_job_count { 0 };
     std::mutex                  worker_wait_mutex;
     std::condition_variable     worker_wait_cv;
 };
 
-static JobSystemContext* g_job_system = nullptr;
+static JobSystemContext g_job_system;
 
 
 void worker_execute_one_job(Worker* local_worker)
@@ -177,12 +177,12 @@ void worker_execute_one_job(Worker* local_worker)
     // Try and steal a job from another local_worker if we couldn't pop one from the local local_worker
     if (job == nullptr)
     {
-        const auto num_workers = g_job_system->workers.size();
+        const auto num_workers = g_job_system.workers.size();
         // if there's only one local_worker and one main thread steal that local_worker immediately
         if (num_workers == 1)
         {
             worker_idx = 0;
-            job = g_job_system->workers[worker_idx].job_queue.steal();
+            job = g_job_system.workers[worker_idx].job_queue.steal();
         }
         else
         {
@@ -194,7 +194,7 @@ void worker_execute_one_job(Worker* local_worker)
             }
 
             BEE_ASSERT_F(worker_idx >= 0 && worker_idx < num_workers, "Scheduler: invalid local_worker index");
-            job = g_job_system->workers[worker_idx].job_queue.steal();
+            job = g_job_system.workers[worker_idx].job_queue.steal();
         }
     }
 
@@ -214,13 +214,13 @@ void worker_execute_one_job(Worker* local_worker)
 
         local_worker->current_executing_job = nullptr;
 
-        g_job_system->pending_job_count.fetch_sub(1, std::memory_order_release);
+        g_job_system.pending_job_count.fetch_sub(1, std::memory_order_release);
 
         // The job allocator guarantees that this delete is thread safe across non-local threads
         const auto owning_worker_idx = job->owning_worker_id();
         BEE_ASSERT(owning_worker_idx >= 0);
 
-        auto& owning_worker = g_job_system->workers[owning_worker_idx];
+        auto& owning_worker = g_job_system.workers[owning_worker_idx];
         const auto completed_idx = owning_worker.completed_job_count.fetch_add(1, std::memory_order_acquire);
 
         if (BEE_FAIL_F(completed_idx < BEE_WORKER_MAX_COMPLETED_JOBS, "Detected a leak in the job system: too many jobs were allocated on a single thread"))
@@ -248,23 +248,23 @@ void worker_main(const WorkerMainParams& params)
 {
     // Wait until all workers are ready and initialized
     params.ready_counter->fetch_sub(1, std::memory_order_release);
-    while (!g_job_system->initialized.load()) {}
+    while (!g_job_system.initialized.load()) {}
 
     // Run until job system has shutdown
-    while (g_job_system->is_active.load(std::memory_order_acquire))
+    while (g_job_system.is_active.load(std::memory_order_acquire))
     {
         worker_execute_one_job(params.worker);
         worker_gc(params.worker);
 
         // we don't want to sleep if we're only running jobs while waiting on a counter
-        if (g_job_system->pending_job_count.load() <= 0)
+        if (g_job_system.pending_job_count.load() <= 0)
         {
-            std::unique_lock<std::mutex> wait_lock(g_job_system->worker_wait_mutex);
+            std::unique_lock<std::mutex> wait_lock(g_job_system.worker_wait_mutex);
 
-            g_job_system->worker_wait_cv.wait(wait_lock, [&]()
+            g_job_system.worker_wait_cv.wait(wait_lock, [&]()
             {
-                return g_job_system->pending_job_count.load(std::memory_order_acquire) > 0
-                    || !g_job_system->is_active.load(std::memory_order_acquire);
+                return g_job_system.pending_job_count.load(std::memory_order_acquire) > 0
+                    || !g_job_system.is_active.load(std::memory_order_acquire);
             });
         }
     }
@@ -272,12 +272,10 @@ void worker_main(const WorkerMainParams& params)
 
 bool job_system_init(const JobSystemInitInfo& info)
 {
-    BEE_ASSERT(g_job_system == nullptr);
-    g_job_system = BEE_NEW(system_allocator(), JobSystemContext)();
-    BEE_ASSERT(g_job_system != nullptr);
+    BEE_ASSERT(!g_job_system.initialized.load());
 
-    g_job_system->is_active.store(true, std::memory_order_relaxed);
-    g_job_system->main_thread_id = current_thread::id();
+    g_job_system.is_active.store(true, std::memory_order_relaxed);
+    g_job_system.main_thread_id = current_thread::id();
 
     // allocate and initialize workers
     auto num_workers = info.num_workers;
@@ -288,7 +286,7 @@ bool job_system_init(const JobSystemInitInfo& info)
 
     const auto worker_count_with_main_thread = num_workers + 1;
 
-    g_job_system->workers.resize_no_raii(worker_count_with_main_thread);
+    g_job_system.workers.resize_no_raii(worker_count_with_main_thread);
 
     // indicates to the workers to wait to run their main loop until all threads are initialized
     std::atomic_int32_t ready_counter(num_workers);
@@ -305,18 +303,18 @@ bool job_system_init(const JobSystemInitInfo& info)
         str::format(thread_info.name, Thread::max_name_length, "sky::jobs(%d)", current_cpu_idx + 1);
 
         // Initialize the worker data
-        worker_params.worker = &g_job_system->workers[current_cpu_idx];
+        worker_params.worker = &g_job_system.workers[current_cpu_idx];
 
         new (worker_params.worker) Worker(current_cpu_idx, info);
 
-        g_job_system->workers[current_cpu_idx].thread_local_idx = current_cpu_idx;
+        g_job_system.workers[current_cpu_idx].thread_local_idx = current_cpu_idx;
 
         // Add a thread if not main thread
         if (current_cpu_idx < worker_count_with_main_thread - 1)
         {
-            new (&g_job_system->workers[current_cpu_idx].thread) Thread(thread_info, &worker_main, worker_params);
+            new (&g_job_system.workers[current_cpu_idx].thread) Thread(thread_info, &worker_main, worker_params);
 
-            // g_job_system->workers[current_cpu_idx].thread.set_affinity(current_cpu_idx); NOTE(Jacob): disabled for PC
+            // g_job_system.workers[current_cpu_idx].thread.set_affinity(current_cpu_idx); NOTE(Jacob): disabled for PC
         }
         else
         {
@@ -329,19 +327,19 @@ bool job_system_init(const JobSystemInitInfo& info)
 
     while (ready_counter.load(std::memory_order_acquire) > 0) {}
 
-    g_job_system->initialized.store(true);
+    g_job_system.initialized.store(true);
     return true;
 }
 
 void job_system_shutdown()
 {
-    const auto pending_job_count = g_job_system->pending_job_count.load(std::memory_order_seq_cst);
+    const auto pending_job_count = g_job_system.pending_job_count.load(std::memory_order_seq_cst);
     BEE_ASSERT_F(pending_job_count <= 0, "Tried to shut down the job system with %d jobs still pending", pending_job_count);
 
-    g_job_system->is_active.store(false, std::memory_order_release);
-    g_job_system->worker_wait_cv.notify_all();
+    g_job_system.is_active.store(false, std::memory_order_release);
+    g_job_system.worker_wait_cv.notify_all();
 
-    for (auto& worker : g_job_system->workers)
+    for (auto& worker : g_job_system.workers)
     {
         if (worker.thread.joinable())
         {
@@ -350,26 +348,24 @@ void job_system_shutdown()
     }
 
     // Cleanup the systems heap allocation and reset to default state
-    BEE_DELETE(system_allocator(), g_job_system);
-    g_job_system = nullptr;
+    g_job_system.initialized.store(false);
 }
 
 void job_schedule_group(JobGroup* group, Job** dependencies, const i32 dependency_count)
 {
-    BEE_ASSERT_F(g_job_system != nullptr, "Job system has been shutdown or was never started");
-    BEE_ASSERT_F(g_job_system->initialized.load(), "Attempted to run jobs without initializing the job system");
+    BEE_ASSERT_F(g_job_system.initialized.load(), "Attempted to run jobs without initializing the job system");
 
     const auto local_worker_idx = get_local_job_worker_id();
-    auto& local_worker = g_job_system->workers[local_worker_idx];
+    auto& local_worker = g_job_system.workers[local_worker_idx];
 
     for (int d = 0; d < dependency_count; ++d)
     {
         group->add_job(dependencies[d]);
-        g_job_system->pending_job_count.fetch_add(1, std::memory_order_release);
+        g_job_system.pending_job_count.fetch_add(1, std::memory_order_release);
         local_worker.job_queue.push(dependencies[d]);
     }
 
-    g_job_system->worker_wait_cv.notify_all();
+    g_job_system.worker_wait_cv.notify_all();
 }
 
 void job_schedule(JobGroup* group, Job* job)
@@ -379,7 +375,7 @@ void job_schedule(JobGroup* group, Job* job)
 
 bool job_wait(JobGroup* group)
 {
-    BEE_ASSERT_F(g_job_system->initialized.load(), "Attempted to wait on a job without initializing the job system");
+    BEE_ASSERT_F(g_job_system.initialized.load(), "Attempted to wait on a job without initializing the job system");
 
     // Wait on the job to finish before we actually go and complete it
     const auto local_worker_idx = get_local_job_worker_id();
@@ -387,12 +383,12 @@ bool job_wait(JobGroup* group)
     {
         return false;
     }
-    auto local_worker = &g_job_system->workers[local_worker_idx];
+    auto local_worker = &g_job_system.workers[local_worker_idx];
 
     // Try and help execute jobs while we're waiting for this job to complete
     while (group->has_pending_jobs())
     {
-        if (!g_job_system->is_active.load(std::memory_order_acquire))
+        if (!g_job_system.is_active.load(std::memory_order_acquire))
         {
             break;
         }
@@ -407,19 +403,19 @@ bool job_wait(JobGroup* group)
 Allocator* local_job_allocator()
 {
     const auto worker_idx = get_local_job_worker_id();
-    return &g_job_system->workers[worker_idx].job_allocator;
+    return &g_job_system.workers[worker_idx].job_allocator;
 }
 
 Allocator* job_temp_allocator()
 {
     const auto worker_idx = get_local_job_worker_id();
-    return &g_job_system->workers[worker_idx].temp_allocator;
+    return &g_job_system.workers[worker_idx].temp_allocator;
 }
 
 Job* get_local_executing_job()
 {
     const auto local_worker = get_local_job_worker_id();
-    return g_job_system->workers[local_worker].current_executing_job;
+    return g_job_system.workers[local_worker].current_executing_job;
 }
 
 i32 get_local_job_worker_id()
@@ -433,16 +429,16 @@ i32 get_local_job_worker_id()
     }
 
     // Main thread is always the last thread in the workers array
-    if (current_thread::id() == g_job_system->main_thread_id)
+    if (current_thread::id() == g_job_system.main_thread_id)
     {
-        thread_local_idx = g_job_system->workers.back().thread_local_idx;
+        thread_local_idx = g_job_system.workers.back().thread_local_idx;
         return thread_local_idx;
     }
 
     // first time looking for worker, so search for it
     // Note: the last thread in the workers array won't have been initialized and will therefore
     // have the launching threads ID (usually the main thread)
-    for (const auto& worker : g_job_system->workers)
+    for (const auto& worker : g_job_system.workers)
     {
         if (worker.thread.id() == current_thread::id())
         {
@@ -457,13 +453,13 @@ i32 get_local_job_worker_id()
 
 i32 get_job_worker_count()
 {
-    return g_job_system->workers.size(); // last 'worker' is the main thread
+    return g_job_system.workers.size(); // last 'worker' is the main thread
 }
 
 size_t get_local_job_allocator_size()
 {
     const auto worker_idx = get_local_job_worker_id();
-    return g_job_system->workers[worker_idx].job_allocator.allocated_size();
+    return g_job_system.workers[worker_idx].job_allocator.allocated_size();
 }
 
 

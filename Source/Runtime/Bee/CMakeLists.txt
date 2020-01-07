@@ -3,7 +3,8 @@ add_subdirectory(Core)
 
 # Make the Bee library target and link with Bee.Core
 bee_new_source_root()
-add_subdirectory(Asset)
+#add_subdirectory(Asset)
+add_subdirectory(AssetV2)
 add_subdirectory(Application)
 add_subdirectory(Graphics)
 

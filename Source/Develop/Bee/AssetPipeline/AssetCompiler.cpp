@@ -70,7 +70,7 @@ const char* asset_platform_to_string(const AssetPlatform platform_flags)
 
 
 AssetCompilerPipeline::RegisteredCompiler::RegisteredCompiler(
-    const Type& new_type,
+    const Type* new_type,
     const char* const* new_file_types,
     const i32 new_file_type_count,
     create_function_t&& create_function
@@ -102,7 +102,7 @@ AssetCompilerPipeline::RegisteredCompiler::~RegisteredCompiler()
 
     instances.clear();
     file_types.clear();
-    type = Type{};
+    type = nullptr;
 }
 
 
@@ -111,7 +111,7 @@ AssetCompilerPipeline::RegisteredCompiler* AssetCompilerPipeline::find_compiler_
     const auto hash = get_hash(name);
     for (auto& compiler : compilers_)
     {
-        if (compiler.type.hash == hash)
+        if (compiler.type->hash == hash)
         {
             return &compiler;
         }
@@ -123,7 +123,7 @@ i32 AssetCompilerPipeline::get_free_compiler_no_lock()
 {
     for (int i = 0; i < compilers_.size(); ++i)
     {
-        if (!compilers_[i].type.is_valid())
+        if (compilers_[i].type == nullptr)
         {
             return i;
         }
@@ -132,11 +132,11 @@ i32 AssetCompilerPipeline::get_free_compiler_no_lock()
 }
 
 
-bool AssetCompilerPipeline::register_compiler(const Type& type, const char* const* supported_file_types, i32 supported_file_type_count, create_function_t&& create_function)
+bool AssetCompilerPipeline::register_compiler(const Type* type, const char* const* supported_file_types, i32 supported_file_type_count, create_function_t&& create_function)
 {
     scoped_spinlock_t lock(mutex_);
 
-    if (BEE_FAIL_F(find_compiler_no_lock(type.name) == nullptr, "\"%s\" is already a registered asset compiler", type.name))
+    if (BEE_FAIL_F(find_compiler_no_lock(type->name) == nullptr, "\"%s\" is already a registered asset compiler", type->name))
     {
         return false;
     }
@@ -145,7 +145,7 @@ bool AssetCompilerPipeline::register_compiler(const Type& type, const char* cons
     for (int ft = 0; ft < supported_file_type_count; ++ft)
     {
         const auto found_filetype = file_type_map_.find(get_hash(supported_file_types[ft]));
-        if (BEE_FAIL_F(found_filetype == nullptr, "File type with extension \"%s\" is already supported by asset compiler \"%s\"", supported_file_types[ft], compilers_[found_filetype->value].type.name))
+        if (BEE_FAIL_F(found_filetype == nullptr, "File type with extension \"%s\" is already supported by asset compiler \"%s\"", supported_file_types[ft], compilers_[found_filetype->value].type->name))
         {
             return false;
         }

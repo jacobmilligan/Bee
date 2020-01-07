@@ -45,7 +45,7 @@ struct RawHandle : public HandleBase<IDType> {
     static constexpr IDType min_id      = static_cast<IDType>(0);
     static constexpr IDType invalid_id  = InvalidID;
 
-    constexpr RawHandle(const id_t& new_id = invalid_id) noexcept;
+    explicit constexpr RawHandle(const id_t& new_id = invalid_id) noexcept;
 
     inline constexpr bool is_valid() const noexcept;
 };
