@@ -9,6 +9,7 @@
 
 #include <Bee/Application/Main.hpp>
 #include <Bee/AssetV2/AssetV2.hpp>
+#include <Bee/AssetPipelineV2/AssetCompilerV2.hpp>
 #include <Bee/Core/Containers/ResourcePool.hpp>
 #include <Bee/Core/Jobs/JobSystem.hpp>
 #include <Bee/Core/IO.hpp>
@@ -56,7 +57,6 @@ struct DefaultLocator final : bee::AssetLocator
 };
 
 
-
 int bee_main(int argc, char** argv)
 {
     bee::job_system_init(bee::JobSystemInitInfo{});
@@ -67,12 +67,17 @@ int bee_main(int argc, char** argv)
     bee::register_asset_locator("DefaultLocator", &locator);
     bee::register_asset_loader("TextureLoader", &texture_loader, { bee::get_type<bee::Texture>() });
 
+    bee::register_asset_compiler<bee::TextureCompiler>();
+    bee::compile_asset_sync(bee::AssetPlatform::windows, "test/test.png");
+//    bee::TextureSettings settings{};
+//    settings.mipmap = true;
+//    compile_asset(AssetPlatform::windows, "texture/path/tex.png");
     const auto texture_guid = bee::generate_guid();
     bee::register_asset_name("textures::cube", texture_guid);
     auto texture = bee::load_asset<bee::Texture>("textures::cube");
+    texture.unload();
 
     bee::assets_shutdown();
     bee::job_system_shutdown();
-    texture.unload();
     return 0;
 }

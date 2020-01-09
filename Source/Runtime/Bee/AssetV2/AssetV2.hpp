@@ -238,7 +238,11 @@ Asset<T>::~Asset()
 template <typename T>
 void Asset<T>::unload(const AssetUnloadType& type)
 {
-    unload_asset(info_, type);
+    if (info_ != nullptr)
+    {
+        unload_asset(info_, type);
+    }
+
     data_ = nullptr;
     info_ = nullptr;
 }

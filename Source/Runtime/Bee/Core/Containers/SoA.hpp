@@ -30,7 +30,7 @@ class SoA : public Noncopyable
 public:
     SoA() = default;
 
-    SoA(const i32 capacity, Allocator* allocator = system_allocator());
+    explicit SoA(const i32 capacity, Allocator* allocator = system_allocator());
 
     SoA(SoA&& other) noexcept;
 
@@ -83,6 +83,32 @@ public:
     inline const u8* data() const
     {
         return data_;
+    }
+
+    template <typename T>
+    struct Range
+    {
+        SoA<Types...>& soa;
+
+        explicit Range(SoA<Types...>& parent)
+            : soa(parent)
+        {}
+
+        inline T* begin()
+        {
+            return soa.get<T>();
+        }
+
+        inline T* end()
+        {
+            return soa.get<T>() + soa.size();
+        }
+    };
+
+    template <typename T>
+    inline Range<T> enumerate()
+    {
+        return Range<T>(*this);
     }
 private:
     static constexpr i32 type_count_ = sizeof... (Types);

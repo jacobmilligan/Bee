@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "Bee/Core/Config.hpp"
+#include <Bee/AssetPipelineV2/AssetCompilerV2.hpp>
 
 namespace bee {
 
@@ -16,6 +16,23 @@ struct BEE_REFLECT(serializable) Texture
 {
     BEE_REFLECT(nonserialized)
     bool loaded { false };
+
+    bool mipmap { false };
+};
+
+struct BEE_REFLECT(serializable, ext = "png", ext = "jpg", ext = "tga")
+TextureCompiler final : public bee::AssetCompiler
+{
+    bool mipmap { false };
+
+    AssetCompilerStatus compile(AssetCompilerContext* ctx) override
+    {
+        log_info("compiling texture...");
+        Texture texture{};
+        texture.mipmap = mipmap;
+        ctx->add_artifact(texture);
+        return AssetCompilerStatus::success;
+    }
 };
 
 

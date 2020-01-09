@@ -18,6 +18,23 @@
 namespace bee {
 
 
+struct u128
+{
+    u64 data[2];
+
+    u128()
+    {
+        data[0] = 0;
+        data[1] = 0;
+    }
+
+    u128(const u64 low, const u64 high)
+    {
+        data[0] = low;
+        data[1] = high;
+    }
+};
+
 /*
  ******************************************************************************
  *
@@ -26,6 +43,8 @@ namespace bee {
  ******************************************************************************
  */
 BEE_CORE_API u32 get_hash(const void* input, size_t length, u32 seed);
+
+BEE_CORE_API u128 get_hash128(const void* input, size_t length, u64 seed);
 
 
 /*
@@ -238,6 +257,15 @@ struct Hash<const char* const> {
     }
 };
 
+template <>
+struct Hash<u128>
+{
+    inline u32 operator()(const u128& key) const
+    {
+        return get_hash(key.data, sizeof(u64) * static_array_length(key.data), 0xF00D);
+    }
+};
+
 
 template <typename T>
 BEE_FORCE_INLINE u32 get_hash(const T& object)
@@ -246,7 +274,8 @@ BEE_FORCE_INLINE u32 get_hash(const T& object)
 }
 
 
-class BEE_CORE_API HashState : public Noncopyable {
+class BEE_CORE_API HashState : public Noncopyable
+{
 public:
     HashState();
 
@@ -269,6 +298,32 @@ public:
     u32 end();
 private:
     XXH32_state_t state_;
+};
+
+class BEE_CORE_API HashState128 : public Noncopyable
+{
+public:
+    HashState128();
+
+    explicit HashState128(const u64 seed);
+
+    HashState128(HashState128&& other) noexcept ;
+
+    ~HashState128() = default;
+
+    HashState128& operator=(HashState128&& other) noexcept;
+
+    void add(const void* input, const u32 size);
+
+    template <typename T>
+    inline void add(const T& input)
+    {
+        add(&input, sizeof(T));
+    }
+
+    u128 end();
+private:
+    XXH3_state_t state_;
 };
 
 
