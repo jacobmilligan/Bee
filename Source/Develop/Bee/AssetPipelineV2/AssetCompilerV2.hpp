@@ -38,6 +38,11 @@ enum class AssetCompilerStatus
     unknown
 };
 
+enum class AssetCompilerKind
+{
+    default_compiler,
+    custom_compiler
+};
 
 struct AssetCompilerResult
 {
@@ -55,35 +60,23 @@ struct AssetCompilerResult
 class AssetCompilerContext
 {
 public:
-    AssetCompilerContext(const GUID& guid, const AssetPlatform platform, Allocator* allocator);
+    AssetCompilerContext(const AssetPlatform platform, Allocator* allocator);
 
-    template <typename T>
-    inline void add_artifact(T* data)
+    io::MemoryStream add_artifact();
+
+    inline AssetPlatform platform() const
     {
-        // We need to write into a temp buffer first before we can write to file to get a content hash
-        DynamicArray<u8> buffer(allocator_);
-        BinarySerializer serializer(&buffer);
-        serialize(SerializerMode::writing, &serializer, data);
+        return platform_;
+    }
 
-        HashState128 hash;
-        hash.add(guid_);
-        hash.add(type->hash);
-        hash.add(platform_);
-        hash.add(buffer.data(), buffer.size());
+    inline const DynamicArray<DynamicArray<u8>>& artifacts() const
+    {
+        return artifacts_;
     }
 private:
-    struct Artifact
-    {
-        u128        hash;
-        void*       data { nullptr };
-    };
-
-    GUID                    guid_;
-    Allocator*              allocator_ { nullptr };
-    AssetPlatform           platform_ { AssetPlatform::unknown };
-    DynamicArray<Artifact>  artifacts_;
-
-    void add_artifact(const Type* type, void* data);
+    Allocator*                      allocator_ { nullptr };
+    AssetPlatform                   platform_ { AssetPlatform::unknown };
+    DynamicArray<DynamicArray<u8>>  artifacts_;
 };
 
 struct AssetCompiler
@@ -99,18 +92,14 @@ struct BEE_REFLECT(serializable) AssetMeta
     Path    source;
 };
 
-void register_asset_compiler(const Type* type, AssetCompiler*(*allocate_function)());
+void register_asset_compiler(const AssetCompilerKind kind, const Type* type, AssetCompiler*(*allocate_function)());
 
 void unregister_asset_compiler(const Type* type);
 
-void asset_compiler_add_file_type(const Type* type, const char* extension);
-
-void asset_compiler_remove_file_type(const Type* type, const char* extension);
-
 template <typename T>
-inline void register_asset_compiler()
+inline void register_asset_compiler(const AssetCompilerKind kind)
 {
-    register_asset_compiler(get_type<T>(), []() -> AssetCompiler*
+    register_asset_compiler(kind, get_type<T>(), []() -> AssetCompiler*
     {
         return BEE_NEW(system_allocator(), T)();
     });
@@ -122,21 +111,17 @@ inline void unregister_asset_compiler()
     unregister_asset_compiler(get_type<T>());
 }
 
-template <typename T>
-inline void asset_compiler_add_file_type(const char* file_type)
-{
-    asset_compiler_add_file_type(get_type<T>(), file_type);
-}
+AssetCompiler* get_default_asset_compiler(const char* path);
+
+AssetCompiler* get_asset_compiler(const u32 hash);
+
+AssetCompiler* get_asset_compiler(const Type* type);
 
 template <typename T>
-inline void asset_compiler_remove_file_type(const char* file_type)
+inline AssetCompiler* get_asset_compiler()
 {
-    asset_compiler_remove_file_type(get_type<T>(), file_type);
+    return get_asset_compiler(get_type<T>());
 }
-
-bool compile_asset(JobGroup* group, const AssetPlatform platform, const char* path);
-
-bool compile_asset_sync(const AssetPlatform platform, const char* path);
 
 
 } // namespace bee

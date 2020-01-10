@@ -16,8 +16,6 @@ struct BEE_REFLECT(serializable) Texture
 {
     BEE_REFLECT(nonserialized)
     bool loaded { false };
-
-    bool mipmap { false };
 };
 
 struct BEE_REFLECT(serializable, ext = "png", ext = "jpg", ext = "tga")
@@ -28,9 +26,8 @@ TextureCompiler final : public bee::AssetCompiler
     AssetCompilerStatus compile(AssetCompilerContext* ctx) override
     {
         log_info("compiling texture...");
-        Texture texture{};
-        texture.mipmap = mipmap;
-        ctx->add_artifact(texture);
+        auto stream = ctx->add_artifact();
+        stream.write(&mipmap, sizeof(bool));
         return AssetCompilerStatus::success;
     }
 };

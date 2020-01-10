@@ -132,6 +132,10 @@ public:
     template <class... Args>
     void emplace_back(Args&&... args);
 
+    void insert(const i32 index, const T& data);
+
+    void insert(const i32, T&& data);
+
     void erase(const i32 index);
 
     void copy(const i32 offset, const T* data_begin, const T* data_end);
@@ -186,6 +190,8 @@ private:
     void move_construct_no_destruct(Array<T, Mode>& other);
 
     void destroy();
+
+    void shift_right(const i32 first_index);
 };
 
 template <typename T>
@@ -640,6 +646,35 @@ void Array<T, Mode>::emplace_back(Args&&... args)
 
     size_ = new_size;
     new (&data_[size_ - 1]) T(std::forward<Args>(args)...);
+}
+
+template <typename T, ContainerMode Mode>
+void Array<T, Mode>::shift_right(const i32 first_index)
+{
+    BEE_ASSERT(first_index < size_ || (size_ == 0 && first_index == 0));
+    if (!ensure_capacity(container_mode_constant<Mode>{}, size_ + 1))
+    {
+        return;
+    }
+
+    // shift everything right
+    memmove(data_ + first_index + 1, data_ + first_index, sizeof(T) * (size_ - first_index));
+}
+
+template <typename T, ContainerMode Mode>
+void Array<T, Mode>::insert(const i32 index, const T& data)
+{
+    shift_right(index);
+    new (&data_[index]) T(data);
+    ++size_;
+}
+
+template <typename T, ContainerMode Mode>
+void Array<T, Mode>::insert(const i32 index, T&& data)
+{
+    shift_right(index);
+    new (&data_[index]) T(std::move(data));
+    ++size_;
 }
 
 template <typename T, ContainerMode Mode>

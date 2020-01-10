@@ -204,6 +204,13 @@ namespace bee {
     #define BEE_ARCH_BITS 32
 #endif // Processor arch
 
+/*
+ * Endianness
+ */
+#if !defined(BEE_BIG_ENDIAN) && !defined(BEE_LITTLE_ENDIAN)
+    #define BEE_LITTLE_ENDIAN
+#endif // BEE_LITTLE_ENDIAN
+
 
 #ifndef BEE_EXPORT_SYMBOL
     #define BEE_EXPORT_SYMBOL

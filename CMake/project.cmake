@@ -1,3 +1,11 @@
+include(TestBigEndian)
+TEST_BIG_ENDIAN(BEE_BIG_ENDIAN)
+if (${BEE_BIG_ENDIAN})
+    add_definitions(-DBEE_BIG_ENDIAN)
+else()
+    add_definitions(-DBEE_LITTLE_ENDIAN)
+endif ()
+
 ################################################################################
 #
 # Setup global properties and variables for the build system to use

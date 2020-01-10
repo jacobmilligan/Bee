@@ -17,24 +17,6 @@
 
 namespace bee {
 
-
-struct u128
-{
-    u64 data[2];
-
-    u128()
-    {
-        data[0] = 0;
-        data[1] = 0;
-    }
-
-    u128(const u64 low, const u64 high)
-    {
-        data[0] = low;
-        data[1] = high;
-    }
-};
-
 /*
  ******************************************************************************
  *
@@ -262,7 +244,7 @@ struct Hash<u128>
 {
     inline u32 operator()(const u128& key) const
     {
-        return get_hash(key.data, sizeof(u64) * static_array_length(key.data), 0xF00D);
+        return get_hash(&key, sizeof(u128), 0xF00D);
     }
 };
 

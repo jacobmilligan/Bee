@@ -28,6 +28,54 @@ using u64       = uint64_t;
 
 using isize     = intptr_t;
 
+
+/*
+ * u128 - 128 bit numeric type
+ */
+struct u128
+{
+#if defined(BEE_LITTLE_ENDIAN)
+    u64 low { 0 };
+    u64 high { 0 };
+#elif defined(BEE_BIG_ENDIAN)
+    u64 high { 0 };
+    u64 low { 0 };
+#else
+    #error Unsupported byte order
+#endif // BEE_LITTLE_ENDIAN
+
+    constexpr u128() = default;
+
+    constexpr explicit u128(const u32 value)
+        : low(value),
+          high(0)
+    {}
+
+    constexpr explicit u128(const u64 value)
+        : low(value),
+          high(0)
+    {}
+
+    constexpr u128(const u64 low_value, const u64 high_value)
+        : low(low_value),
+          high(high_value)
+    {}
+
+    explicit inline operator u32() const
+    {
+        return static_cast<u32>(low);
+    }
+
+    explicit inline operator u64() const
+    {
+        return low;
+    }
+};
+
+#define BEE_PRIxu128 "016" PRIx64 "%016" PRIx64
+
+#define BEE_FMT_u128(value) value.high, value.low
+
 /*
  * Numeric limits - also includes float max and double max as they're often used in the same places
  */
