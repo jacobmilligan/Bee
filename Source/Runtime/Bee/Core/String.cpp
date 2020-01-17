@@ -278,7 +278,7 @@ String& String::insert(i32 index, const StringView& str)
 
 String& String::remove(const i32 index, const i32 count)
 {
-    BEE_ASSERT_F(index >= 0, "String::destroy: `index` must be >= 0");
+    BEE_ASSERT_F(index >= 0, "String::remove: `index` must be >= 0");
 
     if (count <= 0)
     {
@@ -315,7 +315,7 @@ void String::resize(const i32 size, const char c)
     {
         const auto old_size = size_;
         grow(size);
-        memset(data_ + old_size, '\0', size - old_size);
+        memset(data_ + old_size, c, size - old_size);
     }
     else
     {
@@ -471,11 +471,11 @@ i32 length(const char* string)
 /*
  * `copy` implementation
  */
-void copy(char* dst, i32 dst_size, const char* src, const i32 src_count)
+i32 copy(char* dst, const i32 dst_size, const char* src, const i32 src_count)
 {
     if (src_count <= 0)
     {
-        return;
+        return 0;
     }
 
     BEE_ASSERT(dst != nullptr);
@@ -487,17 +487,18 @@ void copy(char* dst, i32 dst_size, const char* src, const i32 src_count)
 
     if (copy_count <= 0)
     {
-        return;
+        return 0;
     }
 
     memcpy(dst, src, sign_cast<size_t>(copy_count));
     dst[copy_count] = '\0';
+    return copy_count - 1;
 }
 
 
-void copy(char* dst, i32 dst_size, const StringView& src)
+i32 copy(char* dst, i32 dst_size, const StringView& src)
 {
-    copy(dst, dst_size, src.data(), src.size());
+    return copy(dst, dst_size, src.data(), src.size());
 }
 
 
@@ -1072,6 +1073,20 @@ String to_string(const float value, Allocator* allocator)
 String to_string(const double value, Allocator* allocator)
 {
     return format(allocator, "%f", value);
+}
+
+String to_string(const u128& value, Allocator* allocator)
+{
+    return format(allocator, "%" BEE_PRIxu128, BEE_FMT_u128(value));
+}
+
+void to_u128(const StringView& src, u128* value)
+{
+    BEE_ASSERT(src.size() == 32);
+
+    const auto scan_result = sscanf(src.c_str(), "%16zx%16zx", &value->high, &value->low);
+
+    BEE_ASSERT(scan_result == 2);
 }
 
 /*

@@ -49,6 +49,19 @@ BEE_CORE_API i32 compare(const StringView& lhs, const StringView& rhs);
 
 BEE_CORE_API i32 compare(const StringView& lhs, const char* rhs);
 
+/**
+ * `length` - gets the length of a null-terminated c-string
+ */
+BEE_CORE_API i32 length(const char* string);
+
+
+/**
+ * `string_copy` - c-string copy function - mostly a wrapper around strncpy
+ */
+BEE_CORE_API i32 copy(char* dst, i32 dst_size, const char* src, i32 src_count);
+
+BEE_CORE_API i32 copy(char* dst, i32 dst_size, const StringView& src);
+
 
 } // namespace string
 
@@ -303,6 +316,332 @@ private:
 };
 
 
+template <i32 Capacity>
+class BEE_REFLECT(serializable) StaticString
+{
+public:
+    StaticString()
+        : size_(0)
+    {
+        buffer_[0] = '\0';
+    }
+
+    StaticString(const i32 count, char fill_char)
+        : size_(count)
+    {
+        memset(buffer_, static_cast<int>(fill_char), count);
+    }
+
+    explicit StaticString(const StringView& string_view)
+    {
+        append(string_view);
+    }
+
+    explicit StaticString(const char* c_str)
+    {
+        append(c_str);
+    }
+
+    template <i32 BufferSize>
+    StaticString(const char(&buffer)[BufferSize])
+    {
+        append(buffer);
+    }
+
+    StaticString(const StaticString<Capacity>& other)
+    {
+        append(other.view());
+    }
+
+    StaticString(StaticString&& other) noexcept
+    {
+        append(other.view());
+        memset(other.buffer_, 0, Capacity * sizeof(char));
+        other.set_size(0);
+    }
+
+    StaticString& operator=(const StaticString<Capacity>& other)
+    {
+        if (this == &other)
+        {
+            return *this;
+        }
+
+        set_size(0);
+        append(other.view());
+        return *this;
+    }
+
+    StaticString& operator=(StaticString<Capacity>&& other) noexcept
+    {
+        set_size(0);
+        append(other.view());
+        memset(other.buffer_, 0, Capacity * sizeof(char));
+        other.set_size(0);
+        return *this;
+    }
+
+    StaticString& operator=(const char* other)
+    {
+        set_size(0);
+        append(other);
+        return *this;
+    }
+
+    StaticString& operator=(const StringView& other)
+    {
+        set_size(0);
+        append(other);
+        return *this;
+    }
+
+    ~StaticString()
+    {
+        memset(buffer_, 0, sizeof(char) * Capacity);
+        set_size(0);
+    }
+
+    StaticString& append(char character)
+    {
+        if (size_ + 1 <= Capacity)
+        {
+            buffer_[size_] = character;
+            set_size(size_ + 1);
+        }
+        return *this;
+    }
+
+    StaticString& append(const StringView& string_view)
+    {
+        auto new_size = size_ + string_view.size();
+        if (new_size >= Capacity)
+        {
+            new_size = Capacity;
+            memcpy(buffer_, string_view.c_str(), Capacity - size_);
+        }
+        else
+        {
+            memcpy(buffer_, string_view.c_str(), string_view.size());
+        }
+
+        set_size(new_size);
+        return *this;
+    }
+
+    StaticString& append(const String& other)
+    {
+        return append(other.view())
+    }
+
+    StaticString& append(const char* c_str)
+    {
+        return append(StringView(c_str));
+    }
+
+    StaticString& insert(const i32 index, const i32 count, const char character)
+    {
+        BEE_ASSERT_F(index >= 0, "StaticString::insert: `index` must be >= 0");
+        BEE_ASSERT_F(index <= size_, "StaticString::insert: `index` must be <= size()");
+
+        if (count <= 0)
+        {
+            return *this;
+        }
+
+        const auto actual_count = count;
+
+        if (index + count <= Capacity)
+        {
+            memmove(&buffer_[index + actual_count], &buffer_[index], actual_count);
+        }
+        else
+        {
+            actual_count = Capacity - index;
+        }
+
+        for (int c = 0; c < actual_count; ++c)
+        {
+            buffer_[c] = character;
+        }
+
+        set_size(size_ + actual_count);
+        return *this;
+    }
+
+    StaticString& insert(const i32 index, const StringView& str)
+    {
+        BEE_ASSERT_F(index >= 0, "StaticString::insert: `index` must be >= 0");
+        BEE_ASSERT_F(index <= size_, "StaticString::insert: `index` must be <= size()");
+
+        if (str.empty())
+        {
+            return *this;
+        }
+
+        const auto actual_count = str.size();
+
+        if (index + str.size() <= Capacity)
+        {
+            memmove(&buffer_[index + actual_count], &buffer_[index], actual_count);
+        }
+        else
+        {
+            actual_count = Capacity - index;
+        }
+
+        memcpy(&buffer_[index + index], str.c_str(), actual_count);
+        set_size(size_ + actual_count);
+        return *this;
+    }
+
+    StaticString& insert(const i32 index, const char* c_str)
+    {
+        return insert(index, StringView(c_str));
+    }
+
+    StaticString& insert(const i32 index, const String& str)
+    {
+        return insert(index, str.view());
+    }
+
+    StaticString& remove(const i32 index, const i32 count)
+    {
+        BEE_ASSERT_F(index >= 0, "StaticString::remove: `index` must be >= 0");
+        if (count <= 0)
+        {
+            return *this;
+        }
+        BEE_ASSERT(index + count <= size_);
+        memmove(&buffer[index], &buffer_[index + count], size_ - (index + count));
+        set_size(size_ - count);
+        return *this
+    }
+
+    StaticString& remove(const i32 index)
+    {
+        return remove(index, size_ - index);
+    }
+
+    void resize(const i32 size, const char character)
+    {
+        BEE_ASSERT_F(size <= Capacity, "StaticString::resize: new size must be <= Size (%d <= %d)", size, Capacity);
+
+        if (size == size_)
+        {
+            return;
+        }
+
+        if (size > size_)
+        {
+            memset(&buffer_[size_], character, size - size_);
+        }
+
+        set_size(size);
+    }
+
+    void resize(const i32 size)
+    {
+        resize(size, '\0');
+    }
+
+    void clear()
+    {
+        size_ = 0;
+        memset(buffer_, 0, sizeof(char) * Capacity);
+    }
+
+    inline char& operator[](const i32 index)
+    {
+        BEE_ASSERT(index < size_);
+        return buffer_[index];
+    }
+
+    inline const char& operator[](const i32 index) const
+    {
+        BEE_ASSERT(index < size_);
+        return buffer_[index];
+    }
+
+    inline char& back()
+    {
+        return buffer_[size_ - 1];
+    }
+
+    inline const char& back() const
+    {
+        return buffer_[size_ - 1];
+    }
+
+    inline const char* c_str() const
+    {
+        return buffer_;
+    }
+
+    inline char* begin()
+    {
+        return buffer_;
+    }
+
+    inline const char* begin() const
+    {
+        return buffer_;
+    }
+
+    inline char* end()
+    {
+        return buffer_ + size_;
+    }
+
+    inline const char* end() const
+    {
+        return buffer_ + size_;
+    }
+
+    inline char* data()
+    {
+        return buffer_;
+    }
+
+    inline const char* data() const
+    {
+        return buffer_;
+    }
+
+    inline constexpr bool empty() const
+    {
+        return size_ <= 0;
+    }
+
+    inline constexpr i32 size() const
+    {
+        return size_;
+    }
+
+    inline constexpr i32 capacity() const
+    {
+        return Capacity;
+    }
+
+    inline StringView view() const
+    {
+        return StringView(buffer_);
+    }
+private:
+    i32     size_ { 0 };
+    char    buffer_[Capacity];
+
+    void set_size(const i32 new_size)
+    {
+        size_ = new_size <= Capacity ? new_size : Capacity;
+
+        if (size_ < Capacity)
+        {
+            buffer_[size_] = '\0';
+        }
+    }
+};
+
+
 /*
  ******************************************************************************
  *
@@ -311,19 +650,6 @@ private:
  *******************************************************************************
  */
 namespace str {
-/**
- * `length` - gets the length of a null-terminated c-string
- */
-BEE_CORE_API i32 length(const char* string);
-
-
-/**
- * `string_copy` - c-string copy function - mostly a wrapper around strncpy
- */
-BEE_CORE_API void copy(char* dst, i32 dst_size, const char* src, i32 src_count);
-
-BEE_CORE_API void copy(char* dst, i32 dst_size, const StringView& src);
-
 
 /**
  * `string_format` - format a string with printf-like format characters (similar to snprintf)
@@ -466,6 +792,10 @@ BEE_CORE_API String to_string(const u64 value, Allocator* allocator = system_all
 BEE_CORE_API String to_string(const float value, Allocator* allocator = system_allocator());
 
 BEE_CORE_API String to_string(const double value, Allocator* allocator = system_allocator());
+
+BEE_CORE_API String to_string(const u128& value, Allocator* allocator = system_allocator());
+
+BEE_CORE_API void to_u128(const StringView& src, u128* value);
 
 /**
  * `trim` functions - for removing all occurrences of a character at the start/end of a string
