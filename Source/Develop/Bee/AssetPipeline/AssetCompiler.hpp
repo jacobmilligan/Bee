@@ -1,22 +1,18 @@
 /*
- *  AssetPipeline.hpp
+ *  AssetCompiler.hpp
  *  Bee
  *
- *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
+ *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
 #pragma once
 
-#include "Bee/Core/NumericTypes.hpp"
-#include "Bee/Core/Enum.hpp"
 #include "Bee/Core/Reflection.hpp"
-#include "Bee/Core/IO.hpp"
-#include "Bee/Core/Containers/HashMap.hpp"
-#include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
-#include "Bee/Core/Serialization/JSONSerializer.hpp"
-
-#include <atomic>
+#include "Bee/Core/Path.hpp"
+#include "Bee/Core/IO.hpp"
+#include "Bee/Core/GUID.hpp"
+#include "Bee/Core/Serialization/BinarySerializer.hpp"
 
 
 namespace bee {
@@ -42,193 +38,168 @@ enum class AssetCompilerStatus
     unknown
 };
 
-
-const char* asset_platform_to_string(const AssetPlatform platform_flags);
-
-const char* asset_compiler_status_to_string(const AssetCompilerStatus status);
-
-
-struct AssetCompilerResult
+enum class AssetCompilerKind
 {
-    AssetCompilerStatus status { AssetCompilerStatus::unknown };
-    Type                compiled_type;
-
-    AssetCompilerResult() = default;
-
-    AssetCompilerResult(const AssetCompilerStatus final_status, const Type& final_type)
-        : status(final_status),
-          compiled_type(final_type)
-    {}
+    default_compiler,
+    custom_compiler
 };
 
+const char* asset_compiler_status_to_string(const AssetCompilerStatus value);
 
-struct AssetCompileSettings
+constexpr AssetPlatform current_asset_os()
 {
-    String json;
+#if BEE_OS_WINDOWS == 1
+    return AssetPlatform::windows;
+#elif BEE_OS_MACOS == 1
+    return AssetPlatform::macos;
+#elif BEE_OS_LINUX == 1
+    return AssetPlatform::linux;
+#endif // BEE_OS_*
+}
 
-    AssetCompileSettings() = default;
+constexpr AssetPlatform current_asset_gfx_backend()
+{
+#if BEE_CONFIG_METAL_BACKEND == 1
+    return AssetPlatform::metal;
+#elif BEE_CONFIG_VULKAN_BACKEND == 1
+    return AssetPlatform::vulkan;
+#else
+    return AssetPlatform::unknown
+#endif // BEE_CONFIG_*_BACKEND
+}
+
+
+constexpr AssetPlatform default_asset_platform = current_asset_os() | current_asset_gfx_backend();
+
+
+struct AssetCompiler;
+
+class AssetCompilerOptions
+{
+public:
+    AssetCompilerOptions() = default;
+
+    AssetCompilerOptions(AssetCompiler* compiler, const Type* type, void* data, Allocator* allocator)
+        : compiler_(compiler),
+          type_(type),
+          data_(data),
+          allocator_(allocator)
+    {}
+
+    ~AssetCompilerOptions();
 
     template <typename T>
-    explicit AssetCompileSettings(const T& settings, Allocator* allocator = system_allocator())
+    inline const T* get() const
     {
-        JSONWriter writer(allocator);
-        serialize(SerializerMode::writing, &writer, const_cast<T*>(&settings));
-        json = String(writer.c_str(), allocator);
+        BEE_ASSERT(get_type<T>() == type_);
+        return static_cast<const T*>(data_);
     }
 
-    template <typename T>
-    void load(T* dst)
+    inline const Type* type() const
     {
-        JSONReader reader(&json, json.allocator());
-        serialize(SerializerMode::reading, &reader, dst);
+        return type_;
     }
 
-    inline bool is_valid() const
+    inline const void* data() const
     {
-        return !json.empty();
+        return data_;
     }
 
-    inline void clear()
+    inline void* data()
     {
-        json.clear();
+        return data_;
     }
+
+    inline Allocator* allocator()
+    {
+        return allocator_;
+    }
+
+private:
+    AssetCompiler*  compiler_ { nullptr };
+    const Type*     type_ { nullptr };
+    void*           data_ { nullptr };
+    Allocator*      allocator_ { nullptr };
 };
 
-
-struct AssetCompileContext
+class AssetCompilerContext
 {
-    const AssetPlatform     platform { AssetPlatform::unknown };
-    const Path*             location;
-    io::Stream*             stream { nullptr };
-    Allocator*              temp_allocator { nullptr };
-    AssetCompileSettings*   settings { nullptr };
-
-    AssetCompileContext(const AssetPlatform new_platform, const Path* new_location, AssetCompileSettings* new_settings)
-        : platform(new_platform),
-          location(new_location),
-          settings(new_settings)
-    {}
-
-    template <typename T>
-    void load_settings(T* dst)
+public:
+    struct Artifact
     {
-        settings->load(dst);
-    }
-};
+        u128                hash;
+        DynamicArray<u8>    buffer;
 
-struct AssetCompileRequest
-{
-    AssetPlatform        platform { AssetPlatform::unknown };
-    const char*          src_path { nullptr };
-    AssetCompileSettings settings;
+        explicit Artifact(Allocator* allocator = system_allocator())
+            : buffer(allocator)
+        {}
+    };
 
-    AssetCompileRequest() = default;
+    AssetCompilerContext(const AssetPlatform platform, const TypeInstance& options, Allocator* allocator);
 
-    AssetCompileRequest(const char* new_src_path, const AssetPlatform new_platform)
-        : src_path(new_src_path),
-          platform(new_platform)
-    {}
+    io::MemoryStream add_artifact();
 
-    template <typename SettingsType>
-    AssetCompileRequest(const char* new_src_path, const AssetPlatform new_platform, const SettingsType& new_settings, Allocator* settings_allocator = system_allocator())
-        : src_path(new_src_path),
-          platform(new_platform),
-          settings(new_settings, settings_allocator)
-    {}
-};
+    void calculate_hashes();
 
-struct AssetCompileOperation
-{
-    Job*                job { nullptr };
-    AssetCompilerResult result;
-    io::MemoryStream    data { nullptr };
-
-    AssetCompileOperation() = default;
-
-    explicit AssetCompileOperation(DynamicArray<u8>* dst_data)
-        : data(dst_data)
-    {}
-
-    void reset(DynamicArray<u8>* dst_data)
+    inline AssetPlatform platform() const
     {
-        new (&data) io::MemoryStream(dst_data);
+        return platform_;
     }
+
+    inline const DynamicArray<Artifact>& artifacts() const
+    {
+        return artifacts_;
+    }
+
+    template <typename OptionsType>
+    const OptionsType& options() const
+    {
+        return *options_.get<OptionsType>();
+    }
+private:
+    AssetPlatform                   platform_ { AssetPlatform::unknown };
+    const TypeInstance&             options_;
+    Allocator*                      allocator_ { nullptr };
+    DynamicArray<Artifact>          artifacts_;
 };
 
-
-struct BEE_DEVELOP_API AssetCompiler
+struct AssetCompiler
 {
     virtual ~AssetCompiler() = default;
 
-    virtual AssetCompilerResult compile(AssetCompileContext* ctx) = 0;
+    virtual AssetCompilerStatus compile(AssetCompilerContext* ctx) = 0;
 };
 
+void register_asset_compiler(const AssetCompilerKind kind, const Type* type, AssetCompiler*(*allocate_function)());
 
-class BEE_DEVELOP_API AssetCompilerPipeline
+void unregister_asset_compiler(const Type* type);
+
+template <typename T>
+inline void register_asset_compiler(const AssetCompilerKind kind)
 {
-public:
-
-    template <typename CompilerType>
-    inline bool register_compiler()
+    register_asset_compiler(kind, get_type<T>(), []() -> AssetCompiler*
     {
-        auto file_types = CompilerType::supported_file_types;
-        auto file_type_count = static_array_length(CompilerType::supported_file_types);
-        return register_compiler(get_type<CompilerType>(), file_types, file_type_count, [](Allocator* allocator)
-        {
-            return BEE_NEW(allocator, CompilerType)();
-        });
-    }
+        return BEE_NEW(system_allocator(), T)();
+    });
+}
 
-    void unregister_compiler(const char* name);
+template <typename T>
+inline void unregister_asset_compiler()
+{
+    unregister_asset_compiler(get_type<T>());
+}
 
-    void compile_assets(JobGroup* group, i32 count, const AssetCompileRequest* requests, AssetCompileOperation* operations);
-private:
-    using create_function_t = Function<AssetCompiler*(Allocator*)>;
+Span<const i32> get_asset_compiler_ids(const StringView& path);
 
-    struct RegisteredCompiler
-    {
-        const Type*                 type;
-        FixedArray<u32>             file_types;
-        create_function_t           create;
-        FixedArray<AssetCompiler*>  instances;
+Span<const u32> get_asset_compiler_hashes(const StringView& path);
 
-        RegisteredCompiler(
-            const Type* new_type,
-            const char* const* new_file_types,
-            const i32 new_file_type_count,
-            create_function_t&& create_function
-        );
+AssetCompiler* get_default_asset_compiler(const StringView& path);
 
-        ~RegisteredCompiler();
-    };
+AssetCompiler* get_asset_compiler(const i32 id);
 
-    struct AssetCompileJob final : public Job
-    {
-        RegisteredCompiler*     compiler { nullptr };
-        AssetPlatform           platform;
-        Path                    src_path;
-        AssetCompileSettings    settings;
-        AssetCompileOperation*  operation{ nullptr };
+AssetCompiler* get_asset_compiler(const u32 hash);
 
-        AssetCompileJob(
-            RegisteredCompiler* requested_compiler,
-            const AssetCompileRequest& request,
-            AssetCompileOperation* dst_operation
-        );
-
-        void execute() override;
-    };
-
-    SpinLock                            mutex_;
-    DynamicHashMap<u32, i32>            file_type_map_;
-    DynamicArray<RegisteredCompiler>    compilers_;
-
-    bool register_compiler(const Type* type, const char* const* supported_file_types, i32 supported_file_type_count, create_function_t&& create_function);
-
-    RegisteredCompiler* find_compiler_no_lock(const char* name);
-
-    i32 get_free_compiler_no_lock();
-};
+const Type* get_asset_compiler_options_type(const u32 compiler_hash);
 
 
 } // namespace bee

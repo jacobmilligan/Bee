@@ -12,10 +12,8 @@
 #include <Bee/Core/Containers/ResourcePool.hpp>
 #include <Bee/Core/Jobs/JobSystem.hpp>
 #include <Bee/Core/IO.hpp>
-#include <Bee/AssetPipelineV2/AssetDatabase.hpp>
+#include <Bee/AssetPipeline/AssetDatabase.hpp>
 #include <Bee/Core/Filesystem.hpp>
-
-#include <inttypes.h>
 
 struct TextureLoader final : bee::AssetLoader
 {

@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <Bee/AssetPipelineV2/AssetCompilerV2.hpp>
+#include <Bee/AssetPipeline/AssetCompiler.hpp>
 
 namespace bee {
 
