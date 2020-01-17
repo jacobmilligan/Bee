@@ -72,56 +72,6 @@ constexpr AssetPlatform current_asset_gfx_backend()
 constexpr AssetPlatform default_asset_platform = current_asset_os() | current_asset_gfx_backend();
 
 
-struct AssetCompiler;
-
-class AssetCompilerOptions
-{
-public:
-    AssetCompilerOptions() = default;
-
-    AssetCompilerOptions(AssetCompiler* compiler, const Type* type, void* data, Allocator* allocator)
-        : compiler_(compiler),
-          type_(type),
-          data_(data),
-          allocator_(allocator)
-    {}
-
-    ~AssetCompilerOptions();
-
-    template <typename T>
-    inline const T* get() const
-    {
-        BEE_ASSERT(get_type<T>() == type_);
-        return static_cast<const T*>(data_);
-    }
-
-    inline const Type* type() const
-    {
-        return type_;
-    }
-
-    inline const void* data() const
-    {
-        return data_;
-    }
-
-    inline void* data()
-    {
-        return data_;
-    }
-
-    inline Allocator* allocator()
-    {
-        return allocator_;
-    }
-
-private:
-    AssetCompiler*  compiler_ { nullptr };
-    const Type*     type_ { nullptr };
-    void*           data_ { nullptr };
-    Allocator*      allocator_ { nullptr };
-};
-
 class AssetCompilerContext
 {
 public:
