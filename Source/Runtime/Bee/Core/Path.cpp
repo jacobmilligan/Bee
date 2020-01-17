@@ -73,9 +73,13 @@ Path::Path(const Path& other)
     data_ = other.data_;
 }
 
-Path& Path::operator=(const Path& other)
+Path::Path(Path&& other) noexcept
+    : data_(std::move(other.data_))
+{}
+
+Path& Path::operator=(Path&& other) noexcept
 {
-    data_ = other.data_;
+    data_ = std::move(other.data_);
     return *this;
 }
 
@@ -133,7 +137,7 @@ Path& Path::append(const StringView& src)
     }
     else
     {
-        if (data_.empty() || data_.back() != preferred_slash)
+        if (!data_.empty() && data_.back() != preferred_slash)
         {
             data_ += preferred_slash;
         }
@@ -317,6 +321,18 @@ const char* Path::c_str() const
     return data_.c_str();
 }
 
+Path& Path::make_generic()
+{
+    for (auto& c : data_)
+    {
+        if (c == preferred_slash)
+        {
+            c = generic_slash;
+        }
+    }
+    return *this;
+}
+
 String Path::to_generic_string(Allocator* allocator) const
 {
     String generic_str(data_.view(), allocator);
@@ -352,6 +368,39 @@ Path Path::relative_path(Allocator* allocator) const
     }
 
     return Path(str::substring(data_, first_slash + 1), allocator);
+}
+
+Path Path::relative_to(const Path& other, Allocator* allocator) const
+{
+    Path result(allocator);
+
+    /* Examples:
+     * "D:\Root" ("D:\Root\Another\Path") -> "..\..\Root"
+     * "D:\Root\Another\Path" ("D:\Root") -> "Another\Path"
+     * "D:\Root" ("C:\Root") -> "..\..\D:\Root"
+     * "/a/d" ("/b/c") -> "../../a/d"
+     */
+
+    // in-place definition of std::mismatch to avoid including <algorithm>
+    auto this_iter = begin();
+    auto other_iter = other.begin();
+    for (; this_iter != end() && other_iter != other.end() && *this_iter == *other_iter;)
+    {
+        ++this_iter;
+        ++other_iter;
+    }
+
+    for (; other_iter != other.end(); ++other_iter)
+    {
+        result.append("..");
+    }
+
+    for (; this_iter != end(); ++this_iter)
+    {
+        result.append(*this_iter);
+    }
+
+    return result;
 }
 
 bool Path::is_absolute() const
@@ -429,14 +478,18 @@ i32 path_compare(const StringView& lhs, const Path& rhs)
 
 StringView path_get_extension(const char* c_string)
 {
-    StringView view(c_string);
-    const auto last_dot = str::last_index_of(view, '.');
+    return path_get_extension(StringView(c_string));
+}
+
+StringView path_get_extension(const StringView& path)
+{
+    const auto last_dot = str::last_index_of(path, '.');
     if (last_dot == -1)
     {
         return "";
     }
 
-    return str::substring(view, last_dot);
+    return str::substring(path, last_dot);
 }
 
 

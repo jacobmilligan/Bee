@@ -39,7 +39,13 @@ public:
 
     Path(const StringView& src, Allocator* allocator = system_allocator()); // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
 
+    Path(const char* src, Allocator* allocator = system_allocator()) // NOLINT(google-explicit-constructor,hicpp-explicit-conversions)
+        : Path(StringView(src), allocator)
+    {}
+
     Path(const Path& other);
+
+    Path(Path&& other) noexcept;
 
     inline Path& operator=(const StringView& path)
     {
@@ -53,7 +59,9 @@ public:
         return *this;
     }
 
-    Path& operator=(const Path& other);
+    Path& operator=(const Path& other) = default;
+
+    Path& operator=(Path&& other) noexcept;
 
     /// @brief Gets the absolute path to the application binary's directory
     /// @return
@@ -71,6 +79,11 @@ public:
         return join(src.view(), allocator);
     }
 
+    inline Path join(const char* src, Allocator* allocator = system_allocator()) const
+    {
+        return join(StringView(src), allocator);
+    }
+
     Path& append(const StringView& src);
 
     inline Path& append(const Path& src)
@@ -78,21 +91,16 @@ public:
         return append(src.view());
     }
 
+    inline Path& append(const char* src)
+    {
+        return append(StringView(src));
+    }
+
     StringView extension() const;
 
     Path& append_extension(const StringView& ext);
 
-    inline Path& append_extension(const Path& ext)
-    {
-        return append_extension(ext.view());
-    }
-
     Path& set_extension(const StringView& ext);
-
-    inline Path& set_extension(const Path& ext)
-    {
-        return set_extension(ext.view());
-    }
 
     /// @brief Checks whether or not this path exists within the filesystem
     /// @return
@@ -122,6 +130,12 @@ public:
     /// Gets the path relative to the root, i.e. `D:\Some\Path` would be `Some\Path`
     Path relative_path(Allocator* allocator = system_allocator()) const;
 
+    /**
+     * Returns a new path object relative to another path, i.e. given this path: `D:\Root`
+     * and another path: `D:\Root\Another\Path`` the result would be `..\..\Root`
+     */
+    Path relative_to(const Path& other, Allocator* allocator = system_allocator()) const;
+
     bool is_absolute() const;
 
     /// @brief Gets the raw string representation of this path
@@ -135,6 +149,8 @@ public:
     String to_generic_string(Allocator* allocator = system_allocator()) const;
 
     String preferred_string(Allocator* allocator = system_allocator()) const;
+
+    Path& make_generic();
 
     /**
      * Converts the path to its absolute, normalized representation - all slashes are converted to the platforms
@@ -164,6 +180,7 @@ public:
     {
         return data_.allocator();
     }
+
 private:
     friend void serialize_type(SerializationBuilder* builder, Path* path);
 
@@ -187,6 +204,8 @@ BEE_CORE_API i32 path_compare(const Path& lhs, const StringView& rhs);
 BEE_CORE_API i32 path_compare(const StringView& lhs, const Path& rhs);
 
 BEE_CORE_API StringView path_get_extension(const char* c_string);
+
+BEE_CORE_API StringView path_get_extension(const StringView& path);
 
 
 inline bool operator==(const Path& lhs, const Path& rhs)
