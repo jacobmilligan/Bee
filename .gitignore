@@ -21,7 +21,7 @@ cmake-build-debug/
 cmake-build-release/
 CMakeFiles/
 ./CMakeCache.txt
-/Settings/User.json
+/Settings/User.*.json
 
 # Generated reflection data
 *.generated.cpp
