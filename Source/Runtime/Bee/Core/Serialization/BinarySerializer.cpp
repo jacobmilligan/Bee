@@ -161,5 +161,10 @@ void BinarySerializer::serialize_fundamental(i64* data)
     serialize_bytes(data, sizeof(i64));
 }
 
+void BinarySerializer::serialize_fundamental(u128* data)
+{
+    serialize_bytes(data, sizeof(u128));
+}
+
 
 } // namespace bee

@@ -263,6 +263,7 @@ void JSONSerializer::end_text(char* buffer, const i32 size, const i32 capacity)
 
     json_validate_type(rapidjson::kStringType, stack_.back());
     str::copy(buffer, capacity, stack_.back()->GetString(), static_cast<i32>(stack_.back()->GetStringLength()));
+    end_read_scope();
 }
 
 //void JSONSerializer::serialize_enum(const EnumType* type, u8* data)
@@ -452,6 +453,24 @@ void JSONSerializer::serialize_fundamental(double* data)
     if (json_validate_type<double>(stack_.back()))
     {
         *data = stack_.back()->GetDouble();
+        end_read_scope();
+    }
+}
+
+void JSONSerializer::serialize_fundamental(u128* data)
+{
+    static thread_local char buffer[33];
+
+    if (mode == SerializerMode::writing)
+    {
+        str::format(buffer, static_array_length(buffer), "%" BEE_PRIxu128, BEE_FMT_u128((*data)));
+        writer_.String(buffer, static_array_length(buffer) - 1);
+        return;
+    }
+
+    if (json_validate_type(rapidjson::kStringType, stack_.back()))
+    {
+        str::to_u128(StringView(stack_.back()->GetString(), stack_.back()->GetStringLength()), data);
         end_read_scope();
     }
 }

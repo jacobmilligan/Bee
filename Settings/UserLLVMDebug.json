@@ -1,0 +1,9 @@
+{
+    "cmake_options": {
+        "VULKAN_BACKEND": "ON",
+        "BUILD_CLANG_TOOLS": "ON",
+        "LLVM_INSTALL_DIR": "C:/Dev/llvm-project/install/Debug",
+        "FORCE_ASSERTIONS_ENABLED": "ON",
+        "FORCE_MEMORY_TRACKING": "OFF"
+    }
+}

@@ -26,18 +26,24 @@ SerializationBuilder::SerializationBuilder(Serializer* new_serializer, const Rec
 
 SerializationBuilder::~SerializationBuilder()
 {
-    if (container_kind_ == SerializedContainerKind::none || container_kind_ == SerializedContainerKind::text)
+    switch (container_kind_)
     {
-        return;
-    }
-
-    if (container_kind_ == SerializedContainerKind::key_value)
-    {
-        serializer_->end_object();
-    }
-    else
-    {
-        serializer_->end_array();
+        case SerializedContainerKind::none:
+        {
+            serializer_->end_record();
+            break;
+        }
+        case SerializedContainerKind::sequential:
+        {
+            serializer_->end_array();
+            break;
+        }
+        case SerializedContainerKind::key_value:
+        {
+            serializer_->end_object();
+            break;
+        }
+        default: break;
     }
 }
 
@@ -48,6 +54,7 @@ SerializationBuilder& SerializationBuilder::structure(const i32 serialized_versi
         return *this;
     }
 
+    serializer_->begin_record(type_);
     version_ = serialized_version;
     serialize_version(serializer_, &version_);
     return *this;
@@ -223,7 +230,13 @@ void serialize_table_record(const i32 version, Serializer* serializer, const Rec
     }
 }
 
-BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, SerializationFunction* serialization_function, u8* data, const Span<const Type*>& template_type_arguments)
+enum class SerializeTypeMode
+{
+    new_scope,
+    append_scope
+};
+
+BEE_CORE_API void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type*>& template_type_arguments)
 {
     if (type->serialized_version <= 0)
     {
@@ -237,7 +250,7 @@ BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Seria
         BEE_ASSERT_F((type->kind & TypeKind::record) != TypeKind::unknown, "Custom serializer functions must only be used with record types");
 
         SerializationBuilder builder(serializer, type->as<RecordType>());
-        serialization_function->serialize(&builder, data);
+        serialization_function(&builder, data);
         return;
     }
 
@@ -245,9 +258,19 @@ BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Seria
     if (type->is(TypeKind::record))
     {
         auto record_type = type->as<RecordType>();
+        for (const Type* base_type : record_type->base_records)
+        {
+            // FIXME(Jacob): is this the best way to handle inheritence?
+            // FIXME(Jacob): base types need their serialization builder functions because they're not fields
+            serialize_type(serialize_type_mode, serializer, base_type, nullptr, data, template_type_arguments);
+        }
+
         auto serialization_flags = type->serialization_flags;
 
-        serializer->begin_record(record_type);
+        if (serialize_type_mode != SerializeTypeMode::append_scope)
+        {
+            serializer->begin_record(record_type);
+        }
 
         i32 version = type->serialized_version;
         serialize_version(serializer, &version);
@@ -265,7 +288,10 @@ BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Seria
             serialize_table_record(version, serializer, record_type, data, template_type_arguments);
         }
 
-        serializer->end_record();
+        if (serialize_type_mode != SerializeTypeMode::append_scope)
+        {
+            serializer->end_record();
+        }
     }
     else if (type->is(TypeKind::array))
     {
@@ -312,15 +338,31 @@ BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Seria
             BEE_SERIALIZE_FUNDAMENTAL(unsigned_long_long_kind, u64)
             BEE_SERIALIZE_FUNDAMENTAL(float_kind, float)
             BEE_SERIALIZE_FUNDAMENTAL(double_kind, double)
+            BEE_SERIALIZE_FUNDAMENTAL(u128_kind, u128)
             default: break;
         }
 #undef BEE_SERIALIZE_FUNDAMENTAL
     }
 }
 
-BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, SerializationFunction* serialization_function, u8* data)
+void serialize_type(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data)
 {
-    return serialize_type(serializer, type, serialization_function, data, {});
+    return serialize_type(SerializeTypeMode::new_scope, serializer, type, serialization_function, data, {});
+}
+
+BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type*>& template_type_arguments)
+{
+    return serialize_type(SerializeTypeMode::new_scope, serializer, type, serialization_function, data, template_type_arguments);
+}
+
+void serialize_type_append(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data)
+{
+    serialize_type(SerializeTypeMode::append_scope, serializer, type, serialization_function, data, {});
+}
+
+void serialize_type_append(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type*>& template_type_arguments)
+{
+    serialize_type(SerializeTypeMode::append_scope, serializer, type, serialization_function, data, template_type_arguments);
 }
 
 

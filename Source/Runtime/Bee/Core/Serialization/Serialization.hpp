@@ -38,20 +38,6 @@ enum class SerializedContainerKind
 
 class SerializationBuilder;
 
-struct SerializationFunction
-{
-    virtual void serialize(SerializationBuilder* builder, void* data) = 0;
-};
-
-template <typename T>
-struct TypedSerializationFunction final : public SerializationFunction
-{
-    void serialize(SerializationBuilder* builder, void* data) override
-    {
-        serialize_type(builder, static_cast<T*>(data));
-    }
-};
-
 
 struct BEE_CORE_API Serializer
 {
@@ -85,11 +71,18 @@ struct BEE_CORE_API Serializer
     virtual void serialize_fundamental(i16* data) = 0;
     virtual void serialize_fundamental(i32* data) = 0;
     virtual void serialize_fundamental(i64* data) = 0;
+    virtual void serialize_fundamental(u128* data) = 0;
 };
 
 
-BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, SerializationFunction* serialization_function, u8* data);
-BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, SerializationFunction* serialization_function, u8* data, const Span<const Type*>& template_type_arguments);
+BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data);
+
+BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type*>& template_type_arguments);
+
+BEE_CORE_API void serialize_type_append(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data);
+
+BEE_CORE_API void serialize_type_append(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type*>& template_type_arguments);
+
 
 template <typename T>
 void serialize_type(SerializationBuilder* builder, T* data) {}
@@ -223,6 +216,11 @@ public:
         return serializer_->mode;
     }
 
+    inline Serializer* serializer()
+    {
+        return serializer_;
+    }
+
 private:
     Serializer*             serializer_ { nullptr };
     const RecordType*       type_ { nullptr };
@@ -260,6 +258,39 @@ inline void serialize(const SerializerMode mode, Serializer* serializer, DataTyp
     }
 
     serializer->end();
+}
+
+/*
+ ******************************
+ *
+ * TypeInstance serialization
+ *
+ ******************************
+ */
+inline void serialize_type(SerializationBuilder* builder, TypeInstance* instance)
+{
+    builder->serializer()->begin_record(get_type_as<TypeInstance, RecordType>());
+
+    builder->serializer()->serialize_field("bee::type");
+    u32 type_hash = instance->is_valid() ? instance->type()->hash : get_type<UnknownType>()->hash;
+    builder->serializer()->serialize_fundamental(&type_hash);
+
+    if (builder->mode() == SerializerMode::reading)
+    {
+        const Type* type = get_type(type_hash);
+        BEE_ASSERT(!type->is(TypeKind::unknown));
+
+        auto allocator = instance->allocator() != nullptr ? instance->allocator() : system_allocator();
+        *instance = std::move(type->create_instance(allocator));
+    }
+
+    if (builder->mode() == SerializerMode::reading || instance->is_valid())
+    {
+        BEE_ASSERT(instance->data() != nullptr);
+
+        auto data = static_cast<u8*>(const_cast<void*>(instance->data()));
+        serialize_type_append(builder->serializer(), instance->type(), nullptr, data);
+    }
 }
 
 
@@ -336,6 +367,27 @@ inline void serialize_type(SerializationBuilder* builder, HashMap<KeyType, Value
  **********************
  */
 inline void serialize_type(SerializationBuilder* builder, String* string)
+{
+    int size = string->size();
+    builder->container(SerializedContainerKind::text, &size);
+
+    if (builder->mode() == SerializerMode::reading)
+    {
+        string->resize(size);
+    }
+
+    builder->text(string->data(), string->size(), string->capacity());
+}
+
+/*
+ ******************************
+ *
+ * StaticString serialization
+ *
+ ******************************
+ */
+template <i32 Size>
+inline void serialize_type(SerializationBuilder* builder, StaticString<Size>* string)
 {
     int size = string->size();
     builder->container(SerializedContainerKind::text, &size);

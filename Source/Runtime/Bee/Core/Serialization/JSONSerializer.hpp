@@ -44,6 +44,12 @@ public:
         return string_buffer_.GetString();
     }
 
+    inline rapidjson::Document& doc()
+    {
+        BEE_ASSERT(mode == SerializerMode::reading);
+        return reader_doc_;
+    }
+
     bool begin() override;
     void end() override;
     void begin_record(const RecordType* type) override;
@@ -61,14 +67,15 @@ public:
     void serialize_fundamental(char* data) override;
     void serialize_fundamental(float* data) override;
     void serialize_fundamental(double* data) override;
-    void serialize_fundamental(bee::u8* data) override;
-    void serialize_fundamental(bee::u16* data) override;
-    void serialize_fundamental(bee::u32* data) override;
-    void serialize_fundamental(bee::u64* data) override;
-    void serialize_fundamental(bee::i8* data) override;
-    void serialize_fundamental(bee::i16* data) override;
-    void serialize_fundamental(bee::i32* data) override;
-    void serialize_fundamental(bee::i64* data) override;
+    void serialize_fundamental(u8* data) override;
+    void serialize_fundamental(u16* data) override;
+    void serialize_fundamental(u32* data) override;
+    void serialize_fundamental(u64* data) override;
+    void serialize_fundamental(i8* data) override;
+    void serialize_fundamental(i16* data) override;
+    void serialize_fundamental(i32* data) override;
+    void serialize_fundamental(i64* data) override;
+    void serialize_fundamental(u128* data) override;
 
 private:
     rapidjson::StringBuffer                             string_buffer_;
