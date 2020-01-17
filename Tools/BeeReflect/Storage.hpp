@@ -76,6 +76,7 @@ struct RecordTypeStorage
     DynamicArray<FunctionTypeStorage*>      functions;
     DynamicArray<EnumTypeStorage*>          enums;
     DynamicArray<RecordTypeStorage*>        nested_records;
+    DynamicArray<const char*>               base_type_names;
     DynamicArray<ArrayType*>                field_array_types;
     DynamicArray<TemplateParameter>         template_parameters;
     const char*                             template_decl_string { nullptr };

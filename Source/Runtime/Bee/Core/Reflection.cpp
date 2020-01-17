@@ -41,6 +41,10 @@ constexpr size_t sizeof_helper<void>()
  * Register all builtin fundamentals - these are registered as regular types
  */
 #define BEE_BUILTIN_TYPE(builtin_type, function_name)                   \
+    TypeInstance create_##function_name##_instance(Allocator* allocator)\
+    {                                                                   \
+        return make_type_instance<builtin_type>(allocator);             \
+    }                                                                   \
     template <> BEE_CORE_API  const Type* get_type<builtin_type>(const TypeTag<builtin_type>& tag)      \
     {                                                                   \
         static FundamentalType instance                                 \
@@ -50,6 +54,7 @@ constexpr size_t sizeof_helper<void>()
             alignof_helper<builtin_type>(),                             \
             #builtin_type,                                              \
             1,                                                          \
+            create_##function_name##_instance,                          \
             FundamentalKind::function_name##_kind                       \
         };                                                              \
         return &instance;                                               \
@@ -107,7 +112,7 @@ namespace_iterator& namespace_iterator::operator++()
     return *this;
 }
 
-bool namespace_iterator::operator==(const bee::namespace_iterator& other) const
+bool namespace_iterator::operator==(const namespace_iterator& other) const
 {
     return current_ == other.current_;
 }
@@ -150,6 +155,108 @@ namespace_iterator NamespaceRangeAdapter::end() const
     return type->namespaces_end();
 }
 
+
+/*
+ ****************************************
+ *
+ * TypeInstance - implementation
+ *
+ ****************************************
+ */
+TypeInstance::TypeInstance(const Type* type, void* data, Allocator* allocator, copier_t copier, deleter_t deleter)
+    : allocator_(allocator),
+      data_(data),
+      type_(type),
+      copier_(copier),
+      deleter_(deleter)
+{}
+
+TypeInstance::TypeInstance(const TypeInstance& other)
+{
+    if (this != &other)
+    {
+        copy_construct(other);
+    }
+}
+
+TypeInstance::TypeInstance(TypeInstance&& other) noexcept
+{
+    move_construct(other);
+}
+
+TypeInstance::~TypeInstance()
+{
+    destroy();
+    allocator_ = nullptr;
+    data_ = nullptr;
+    type_ = nullptr;
+    copier_ = nullptr;
+    deleter_ = nullptr;
+}
+
+TypeInstance& TypeInstance::operator=(const TypeInstance& other)
+{
+    if (this != &other)
+    {
+        copy_construct(other);
+    }
+
+    return *this;
+}
+
+TypeInstance& TypeInstance::operator=(TypeInstance&& other) noexcept
+{
+    move_construct(other);
+    return *this;
+}
+
+void TypeInstance::destroy()
+{
+    if (data_ != nullptr)
+    {
+        BEE_ASSERT(allocator_ != nullptr);
+        deleter_(allocator_, data_);
+    }
+}
+
+void TypeInstance::copy_construct(const TypeInstance& other)
+{
+    destroy();
+    allocator_ = other.allocator_;
+    data_ = other.copier_(allocator_, &other);
+    type_ = other.type_;
+    copier_ = other.copier_;
+    deleter_ = other.deleter_;
+}
+
+void TypeInstance::move_construct(TypeInstance& other) noexcept
+{
+    if (data_ != nullptr)
+    {
+        BEE_ASSERT(allocator_ != nullptr);
+        deleter_(allocator_, data_);
+    }
+
+    allocator_ = other.allocator_;
+    data_ = other.data_;
+    type_ = other.type_;
+    copier_ = other.copier_;
+    deleter_ = other.deleter_;
+
+    other.allocator_ = nullptr;
+    other.data_ = nullptr;
+    other.type_ = nullptr;
+    other.copier_ = nullptr;
+    other.deleter_ = nullptr;
+}
+
+bool TypeInstance::validate_type(const Type* type) const
+{
+    BEE_ASSERT_F(type_ != nullptr, "TypeInstance: instance is not valid - no type information is available");
+    BEE_ASSERT_F(data_ != nullptr, "TypeInstance: instance is null");
+    return BEE_CHECK_F(type == type_, "TypeInstance: cannot cast from %s to %s", type_->name, type->name);
+}
+
 /*
  ****************************************
  *
@@ -174,7 +281,7 @@ const Type* get_type(const u32 hash)
         return type->value;
     }
 
-    return get_type<bee::UnknownType>();
+    return get_type<UnknownType>();
 }
 
 BEE_CORE_API void reflection_register_builtin_types()

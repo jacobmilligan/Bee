@@ -22,6 +22,7 @@ bee_option_with_definition(VULKAN_BACKEND "Uses the Vulkan API as the GPU Backen
 bee_option_with_definition(ENABLE_MEMORY_TRACKING "Allows dynamically switching memory tracking on or off" ON)
 bee_option_with_definition(FORCE_MEMORY_TRACKING "Forces memory tracking on even in release builds" OFF)
 bee_option_with_definition(FORCE_ASSERTIONS_ENABLED "Enable assertions messages - crash and logging behaviour is build-type dependent" OFF)
+bee_option_with_definition(DISABLE_REFLECTION "Disables generating reflection data as a build step" OFF)
 
 # Validate LLVM install directory
 if (${BUILD_CLANG_TOOLS} MATCHES ON)

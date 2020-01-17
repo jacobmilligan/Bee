@@ -85,6 +85,7 @@ endfunction()
 function(bee_new_source_root)
     set(__bee_sources "" CACHE INTERNAL "")
     set(__bee_defines "" CACHE INTERNAL "")
+    set(__bee_current_source_root ${CMAKE_CURRENT_LIST_DIR} CACHE INTERNAL "")
 endfunction()
 
 
@@ -96,6 +97,7 @@ endfunction()
 function(bee_begin)
     set(__bee_include_dirs ${BEE_RUNTIME_ROOT} ${BEE_DEVELOP_ROOT} CACHE INTERNAL "")
     set(__bee_libraries "" CACHE INTERNAL "")
+    set(__bee_current_source_root "" CACHE INTERNAL "")
     bee_new_source_root()
 endfunction()
 
@@ -310,6 +312,10 @@ if (WIN32)
 endif ()
 
 function(bee_reflect target)
+    if (DISABLE_REFLECTION)
+        return()
+    endif ()
+
     cmake_parse_arguments(ARGS "INCLUDE_NON_HEADERS" "" "EXCLUDE" ${ARGN})
 
     set(output_dir ${PROJECT_SOURCE_DIR}/Build/DevData/Generated)
@@ -381,6 +387,8 @@ function(bee_reflect target)
         endif ()
     endforeach()
 
+    list(APPEND include_dirs -I${__bee_current_source_root})
+
     # Get all the compiler flags
     get_target_property(compile_defines ${target} COMPILE_DEFINITIONS)
     get_directory_property(global_defines COMPILE_DEFINITIONS)
@@ -393,6 +401,22 @@ function(bee_reflect target)
             list(APPEND defines -D${def})
         endif ()
     endforeach()
+
+    # -- Bee: bee-reflect: Ignoring $<$<CONFIG:Debug>:BEE_DEBUG=1>
+    # -- Bee: bee-reflect: Ignoring $<$<CONFIG:Release>:BEE_RELEASE=1>
+    # -- Bee: bee-reflect: Ignoring $<$<CONFIG:RelWithDebInfo>:BEE_ENABLE_ASSERTIONS=0>
+    # -- Bee: bee-reflect: Ignoring $<$<CONFIG:Release>:BEE_ENABLE_ASSERTIONS=0>
+    # -- Bee: bee-reflect: Ignoring $<$<CONFIG:MinSizeRel>:BEE_ENABLE_ASSERTIONS=0>
+    # -- Bee: bee-reflect: Ignoring $<$<CONFIG:Debug>:BEE_DEBUG=1>
+    # -- Bee: bee-reflect: Ignoring $<$<CONFIG:Release>:BEE_RELEASE=1>
+    # -- Bee: bee-reflect: Ignoring $<$<CONFIG:RelWithDebInfo>:BEE_ENABLE_ASSERTIONS=0>
+    # -- Bee: bee-reflect: Ignoring $<$<CONFIG:Release>:BEE_ENABLE_ASSERTIONS=0>
+    # -- Bee: bee-reflect: Ignoring $<$<CONFIG:MinSizeRel>:BEE_ENABLE_ASSERTIONS=0>
+    set(build_type_define
+        $<$<CONFIG:Debug>:-DBEE_DEBUG=1>
+        $<$<CONFIG:Release>:-DBEE_RELEASE=1>
+    )
+    list(APPEND defines ${build_type_define})
 
     add_custom_command(
             DEPENDS ${reflected_sources}
@@ -407,6 +431,10 @@ function(bee_reflect target)
 endfunction()
 
 function(bee_reflect_link target)
+    if (DISABLE_REFLECTION)
+        return()
+    endif ()
+
     set(generated_root ${PROJECT_SOURCE_DIR}/Build/DevData/Generated)
     set(output_dir ${generated_root}/${target})
     file(GLOB_RECURSE registration_files "${output_dir}/*.registration")

@@ -86,6 +86,9 @@ int bee_main(int argc, char** argv)
             return result;
         }
 
+        // Keep track of all the reflected files absolute paths for later so we can delete old, nonreflected files
+        bee::DynamicArray<bee::Path> reflectd_abs_paths;
+
         // Output a .generated.cpp file for each of the reflected headers
         for (auto& file : factory.storage.reflected_files)
         {
@@ -135,6 +138,8 @@ int bee_main(int argc, char** argv)
 
                 bee::fs::write(inl_path, output.view());
             }
+
+            reflectd_abs_paths.push_back(file.value.location);
         }
 
         bee::String header_comment(bee::temp_allocator());
@@ -142,13 +147,17 @@ int bee_main(int argc, char** argv)
 
         for (const std::string& compilation : options_parser.getSourcePathList())
         {
-            const auto filename = bee::Path(compilation.c_str(), bee::temp_allocator()).filename();
-            const auto path = output_dir.join(filename, bee::temp_allocator()).set_extension("generated").append_extension("cpp");
-
-            if (!path.exists())
+            const auto was_reflected = bee::container_index_of(reflectd_abs_paths, [&](const bee::Path& reflected)
             {
+                return compilation.c_str() == reflected.view();
+            }) >= 0;
+
+            if (!was_reflected)
+            {
+                const auto filename = bee::Path(compilation.c_str(), bee::temp_allocator()).filename();
+                auto output_path = output_dir.join(filename).set_extension("generated").append_extension("cpp");
                 bee::reflect::generate_empty_reflection(compilation.c_str(), &stream);
-                bee::fs::write(path, header_comment.view());
+                bee::fs::write(output_path, header_comment.view());
                 stream.seek(0, bee::io::SeekOrigin::begin);
                 header_comment.clear();
             }

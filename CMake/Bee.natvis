@@ -51,4 +51,8 @@
     <Type Name="bee::GUID">
         <DisplayString>{debug_string}</DisplayString>
     </Type>
+
+    <Type Name="bee::Type">
+        <DisplayString>{{Name = {name}}</DisplayString>
+    </Type>
 </AutoVisualizer>

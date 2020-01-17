@@ -77,3 +77,13 @@ class BEE_REFLECT() DerivedClass final : public BaseClass
 
 }
 }
+
+struct NonReflectedType
+{
+
+};
+
+struct BEE_REFLECT() ReflectedWithNonReflectedBase final : public NonReflectedType
+{
+
+};

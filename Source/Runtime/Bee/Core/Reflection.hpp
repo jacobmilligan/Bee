@@ -52,6 +52,7 @@ namespace bee {
     BEE_BUILTIN_TYPE(unsigned long long, unsigned_long_long)    \
     BEE_BUILTIN_TYPE(float, float)                              \
     BEE_BUILTIN_TYPE(double, double)                            \
+    BEE_BUILTIN_TYPE(bee::u128, u128)                           \
     BEE_BUILTIN_TYPE(void, void)
 
 
@@ -86,8 +87,9 @@ BEE_FLAGS(TypeKind, u32)
     template_decl           = 1u << 4u,
     field                   = 1u << 5u,
     function                = 1u << 6u,
-    fundamental             = 1u << 7u,
-    array                   = 1u << 8u,
+    method                  = 1u << 7u,
+    fundamental             = 1u << 8u,
+    array                   = 1u << 9u,
     record                  = class_decl | struct_decl | union_decl
 };
 
@@ -138,7 +140,6 @@ enum class FundamentalKind
 
 
 struct Type;
-struct SerializationFunction;
 
 
 class BEE_CORE_API namespace_iterator
@@ -279,21 +280,24 @@ struct TemplateParameter
     {}
 };
 
+class SerializationBuilder;
 
 struct Field
 {
-    u32                     hash { 0 };
-    size_t                  offset { 0 };
-    Qualifier               qualifier { Qualifier::none };
-    StorageClass            storage_class { StorageClass::none };
-    const char*             name { nullptr };
-    const Type*             type { nullptr };
-    Span<const Type*>       template_arguments;
-    Span<Attribute>         attributes;
-    SerializationFunction*  serializer_function { nullptr };
-    i32                     version_added { 0 };
-    i32                     version_removed { limits::max<i32>() };
-    i32                     template_argument_in_parent { -1 };
+    using serialization_function_t = void(*)(SerializationBuilder*, void*);
+
+    u32                         hash { 0 };
+    size_t                      offset { 0 };
+    Qualifier                   qualifier { Qualifier::none };
+    StorageClass                storage_class { StorageClass::none };
+    const char*                 name { nullptr };
+    const Type*                 type { nullptr };
+    Span<const Type*>           template_arguments;
+    Span<Attribute>             attributes;
+    serialization_function_t    serializer_function { nullptr };
+    i32                         version_added { 0 };
+    i32                         version_removed { limits::max<i32>() };
+    i32                         template_argument_in_parent { -1 };
 
     Field() = default;
 
@@ -306,7 +310,7 @@ struct Field
         const Type* new_type,
         const Span<const Type*> new_template_args,
         const Span<Attribute> new_attributes,
-        SerializationFunction* new_serializer_function,
+        serialization_function_t new_serializer_function,
         const i32 new_version_added = 0,
         const i32 new_version_removed = limits::max<i32>(),
         const i32 template_arg_index = -1
@@ -326,8 +330,103 @@ struct Field
 };
 
 
+class BEE_REFLECT(serializable, use_builder) BEE_CORE_API TypeInstance
+{
+public:
+    using copier_t = void*(*)(Allocator* allocator, const void* other);
+    using deleter_t = void(*)(Allocator* allocator, void* data);
+
+    TypeInstance() = default;
+
+    TypeInstance(const Type* type, void* data, Allocator* allocator, copier_t copier, deleter_t deleter);
+
+    ~TypeInstance();
+
+    TypeInstance(const TypeInstance& other);
+
+    TypeInstance(TypeInstance&& other) noexcept;
+
+    TypeInstance& operator=(const TypeInstance& other);
+
+    TypeInstance& operator=(TypeInstance&& other) noexcept;
+
+    inline bool is_valid() const
+    {
+        return allocator_ != nullptr && data_ != nullptr && type_ != nullptr && copier_ != nullptr && deleter_ != nullptr;
+    }
+
+    inline Allocator* allocator()
+    {
+        return allocator_;
+    }
+
+    inline const Type* type() const
+    {
+        BEE_ASSERT(type_ != nullptr);
+        return type_;
+    }
+
+    inline const void* data() const
+    {
+        return data_;
+    }
+
+    template <typename T>
+    inline T* get()
+    {
+        return validate_type(get_type<T>()) ? static_cast<T*>(data_) : nullptr;
+    }
+
+    template <typename T>
+    inline const T* get() const
+    {
+        return validate_type(get_type<T>()) ? static_cast<const T*>(data_) : nullptr;
+    }
+
+private:
+    Allocator*  allocator_ { nullptr };
+    void*       data_ { nullptr };
+    const Type* type_ { nullptr };
+    copier_t    copier_ { nullptr };
+    deleter_t   deleter_ { nullptr };
+
+    void destroy();
+
+    void copy_construct(const TypeInstance& other);
+
+    void move_construct(TypeInstance& other) noexcept;
+
+    bool validate_type(const Type* type) const;
+};
+
+template <typename T>
+inline TypeInstance make_type_instance(Allocator* allocator)
+{
+    static auto static_deleter = [](Allocator* allocator, void* data)
+    {
+        auto as_type_ptr = static_cast<T*>(data);
+        BEE_DELETE(allocator, as_type_ptr);
+    };
+
+    static auto static_copier = [](Allocator* allocator, const void* other) -> void*
+    {
+        return BEE_NEW(allocator, T)(*static_cast<const T*>(other));
+    };
+
+    return TypeInstance(get_type<T>(), BEE_NEW(allocator, T)(), allocator, static_copier, static_deleter);
+}
+
+template <>
+inline TypeInstance make_type_instance<void>(Allocator* /* allocator */)
+{
+    return TypeInstance();
+}
+
+
 struct Type
 {
+    using create_instance_t = TypeInstance(*)(Allocator*);
+
     u32                     hash { 0 };
     size_t                  size { 0 };
     size_t                  alignment { 0 };
@@ -335,6 +434,7 @@ struct Type
     const char*             name { nullptr };
     i32                     serialized_version { 0 };
     SerializationFlags      serialization_flags { SerializationFlags::none };
+    create_instance_t       create_instance { nullptr };
     Span<TemplateParameter> template_parameters;
 
     Type() = default;
@@ -346,14 +446,16 @@ struct Type
         const TypeKind new_kind,
         const char* new_name,
         const i32 new_serialized_version,
-        const SerializationFlags new_serialization_flags
+        const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function
     ) : hash(new_hash),
         size(new_size),
         alignment(new_alignment),
         kind(new_kind),
         name(new_name),
         serialized_version(new_serialized_version),
-        serialization_flags(new_serialization_flags)
+        serialization_flags(new_serialization_flags),
+        create_instance(create_instance_function)
     {}
 
     Type(
@@ -364,6 +466,7 @@ struct Type
         const char* new_name,
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function,
         const Span<TemplateParameter> new_template_parameters
     ) : hash(new_hash),
         size(new_size),
@@ -372,11 +475,16 @@ struct Type
         name(new_name),
         serialized_version(new_serialized_version),
         serialization_flags(new_serialization_flags),
+        create_instance(create_instance_function),
         template_parameters(new_template_parameters)
     {}
 
     inline bool is(const TypeKind flag) const
     {
+        if (flag == TypeKind::unknown)
+        {
+            return kind == TypeKind::unknown;
+        }
         return (kind & flag) != TypeKind::unknown;
     }
 
@@ -423,19 +531,9 @@ struct TypeSpec : public Type
         const size_t new_alignment,
         const char* new_name,
         const i32 new_serialized_version,
-        const SerializationFlags new_serialization_flags
-    ) : Type(new_hash, new_size, new_alignment, Kind, new_name, new_serialized_version, new_serialization_flags)
-    {}
-
-    TypeSpec(
-        const u32 new_hash,
-        const size_t new_size,
-        const size_t new_alignment,
-        const TypeKind specialized_kind,
-        const char* new_name,
-        const i32 new_serialized_version,
-        const SerializationFlags new_serialization_flags
-    ) : Type(new_hash, new_size, new_alignment, specialized_kind, new_name, new_serialized_version, new_serialization_flags)
+        const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function
+    ) : Type(new_hash, new_size, new_alignment, Kind, new_name, new_serialized_version, new_serialization_flags, create_instance_function)
     {}
 
     TypeSpec(
@@ -446,8 +544,21 @@ struct TypeSpec : public Type
         const char* new_name,
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function
+    ) : Type(new_hash, new_size, new_alignment, specialized_kind, new_name, new_serialized_version, new_serialization_flags, create_instance_function)
+    {}
+
+    TypeSpec(
+        const u32 new_hash,
+        const size_t new_size,
+        const size_t new_alignment,
+        const TypeKind specialized_kind,
+        const char* new_name,
+        const i32 new_serialized_version,
+        const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function,
         const Span<TemplateParameter> new_template_parameters
-    ) : Type(new_hash, new_size, new_alignment, Kind | TypeKind::template_decl, new_name, new_serialized_version, new_serialization_flags, new_template_parameters)
+    ) : Type(new_hash, new_size, new_alignment, Kind | TypeKind::template_decl, new_name, new_serialized_version, new_serialization_flags, create_instance_function, new_template_parameters)
     {
         BEE_ASSERT(!new_template_parameters.empty());
     }
@@ -459,8 +570,9 @@ struct TypeSpec : public Type
         const char* new_name,
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function,
         const Span<TemplateParameter> new_template_parameters
-    ) : TypeSpec(new_hash, new_size, new_alignment, Kind, new_name, new_serialized_version, new_serialization_flags, new_template_parameters)
+    ) : TypeSpec(new_hash, new_size, new_alignment, Kind, new_name, new_serialized_version, new_serialization_flags, create_instance_function, new_template_parameters)
     {}
 };
 
@@ -479,9 +591,10 @@ struct ArrayType final : public TypeSpec<TypeKind::array>
         const char* new_name,
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function,
         const i32 count,
         const Type* type
-    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags),
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags, create_instance_function),
         element_count(count),
         element_type(type)
     {}
@@ -500,8 +613,9 @@ struct FundamentalType final : public TypeSpec<TypeKind::fundamental>
         const size_t new_alignment,
         const char* new_name,
         const i32 new_serialized_version,
+        create_instance_t create_instance_function,
         const FundamentalKind new_fundamental_kind
-    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, SerializationFlags::none),
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, SerializationFlags::none, create_instance_function),
         fundamental_kind(new_fundamental_kind)
     {}
 };
@@ -538,10 +652,11 @@ struct EnumType final : public TypeSpec<TypeKind::enum_decl>
         const char* new_name,
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function,
         const bool scoped,
         const Span<EnumConstant> new_constants,
         const Span<Attribute> new_attributes
-    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags),
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags, create_instance_function),
         is_scoped(scoped),
         constants(new_constants),
         attributes(new_attributes)
@@ -617,13 +732,14 @@ struct FunctionType final : public TypeSpec<TypeKind::function>
         const char* new_name,
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function,
         const StorageClass new_storage_class,
         const bool make_constexpr,
         const Field& new_return_value,
         const Span<Field> new_parameters,
         const Span<Attribute> new_attributes,
         FunctionTypeInvoker callable_invoker
-    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags),
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags, create_instance_function),
         storage_class(new_storage_class),
         is_constexpr(make_constexpr),
         return_value(new_return_value),
@@ -639,6 +755,7 @@ struct FunctionType final : public TypeSpec<TypeKind::function>
         const char* new_name,
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function,
         const Span<TemplateParameter> new_template_parameters,
         const StorageClass new_storage_class,
         const bool make_constexpr,
@@ -646,7 +763,7 @@ struct FunctionType final : public TypeSpec<TypeKind::function>
         const Span<Field> new_parameters,
         const Span<Attribute> new_attributes,
         FunctionTypeInvoker callable_invoker
-    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags, new_template_parameters),
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags, create_instance_function, new_template_parameters),
         storage_class(new_storage_class),
         is_constexpr(make_constexpr),
         return_value(new_return_value),
@@ -676,6 +793,7 @@ struct RecordType final : public TypeSpec<TypeKind::record>
     Span<Attribute>             attributes;
     Span<const EnumType*>       enums;
     Span<const RecordType*>     records;
+    Span<const Type*>           base_records;
 
     using TypeSpec::TypeSpec;
 
@@ -689,17 +807,20 @@ struct RecordType final : public TypeSpec<TypeKind::record>
         const char* new_name,
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function,
         const Span<Field>& new_fields,
         const Span<FunctionType> new_functions,
         const Span<Attribute> new_attributes,
         const Span<const EnumType*> nested_enums,
-        const Span<const RecordType*> nested_records
-    ) : TypeSpec(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags),
+        const Span<const RecordType*> nested_records,
+        const Span<const Type*> bases
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags, create_instance_function),
         fields(new_fields),
         functions(new_functions),
         attributes(new_attributes),
         enums(nested_enums),
-        records(nested_records)
+        records(nested_records),
+        base_records(bases)
     {}
 
     RecordType(
@@ -710,25 +831,28 @@ struct RecordType final : public TypeSpec<TypeKind::record>
         const char* new_name,
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
+        create_instance_t create_instance_function,
         const Span<TemplateParameter> new_template_parameters,
         const Span<Field>& new_fields,
         const Span<FunctionType> new_functions,
         const Span<Attribute> new_attributes,
         const Span<const EnumType*> nested_enums,
-        const Span<const RecordType*> nested_records
-    ) : TypeSpec(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags, new_template_parameters),
+        const Span<const RecordType*> nested_records,
+        const Span<const Type*> bases
+    ) : TypeSpec(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags, create_instance_function, new_template_parameters),
         fields(new_fields),
         functions(new_functions),
         attributes(new_attributes),
         enums(nested_enums),
-        records(nested_records)
+        records(nested_records),
+        base_records(bases)
     {}
 };
 
 struct UnknownType final : public TypeSpec<TypeKind::unknown>
 {
     UnknownType()
-        : TypeSpec(0, 0, 0, "bee::UnknownType", 0, SerializationFlags::none)
+        : TypeSpec(0, 0, 0, "bee::UnknownType", 0, SerializationFlags::none, nullptr)
     {}
 };
 
@@ -819,6 +943,10 @@ const char* reflection_dump_flags(const FlagType flag)
     {
         buffer[stream.size() - 1] = '\0';
     }
+    else
+    {
+        stream.null_terminate();
+    }
 
     // Skip the first space that occurs when getting multiple flags
     return count > 0 ? buffer + 1 : buffer;
@@ -827,4 +955,7 @@ const char* reflection_dump_flags(const FlagType flag)
 
 } // namespace bee
 
+#if BEE_CONFIG_DISABLE_REFLECTION == 0
 #include "ReflectedTemplates/Array.generated.inl"
+#include "ReflectedTemplates/String.generated.inl"
+#endif // BEE_CONFIG_DISABLE_REFLECTION

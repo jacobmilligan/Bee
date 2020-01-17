@@ -32,7 +32,8 @@ enum class BuiltinAttributeKind
     id,
     format,
     serializer_function,
-    use_builder
+    use_builder,
+    ignore
 };
 
 struct BuiltinAttribute
@@ -56,7 +57,8 @@ BuiltinAttribute g_builtin_attributes[] =
     { "id", BuiltinAttributeKind::id },
     { "format", BuiltinAttributeKind::format },
     { "serializer", BuiltinAttributeKind::serializer_function },
-    { "use_builder", BuiltinAttributeKind::use_builder }
+    { "use_builder", BuiltinAttributeKind::use_builder },
+    { "ignore", BuiltinAttributeKind::ignore }
 };
 
 
@@ -114,6 +116,25 @@ i32 get_attribute_index(const DynamicArray<Attribute>& attributes, const char* n
     });
 }
 
+bool has_reflect_attribute(const clang::Decl& decl)
+{
+    for (auto& attribute : decl.attrs())
+    {
+        if (attribute->getKind() != clang::attr::Annotate)
+        {
+            continue;
+        }
+
+        auto annotation_decl = llvm::dyn_cast<clang::AnnotateAttr>(attribute);
+        if (annotation_decl != nullptr && annotation_decl->getAnnotation().startswith("bee-reflect"))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void Diagnostics::init(clang::DiagnosticsEngine* diag_engine)
 {
     engine = diag_engine;
@@ -149,7 +170,7 @@ void Diagnostics::init(clang::DiagnosticsEngine* diag_engine)
         "field is missing the `id` attribute. If one field in a class, struct or union has the `id` attribute "
         "then all other fields are required to also have an `id` attribute where each `id` is a unique integer id."
     );
-    err_requires_explicit_ordering = engine->getCustomDiagID(
+    err_id_is_not_unique = engine->getCustomDiagID(
         clang::DiagnosticsEngine::Error,
         "`id` attribute on field is not unique - all fields that have the `id` attribute must be unique and greater "
         "than zero"
@@ -236,6 +257,24 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
     const auto name = print_name(decl);
     auto storage = allocator->allocate_storage<RecordTypeStorage>(&decl);
     auto type = &storage->type;
+
+    // Get all the base class names
+    for (const auto& base : decl.bases())
+    {
+        if (base.isVirtual())
+        {
+            continue;
+        }
+
+        auto base_type_ptr = base.getType().getTypePtrOrNull();
+        if (base_type_ptr == nullptr || !has_reflect_attribute(*base_type_ptr->getAsCXXRecordDecl()))
+        {
+            continue;
+        }
+
+        auto base_name = allocator->allocate_name(print_qualtype_name(base.getType(), decl.getASTContext()));
+        storage->base_type_names.push_back(base_name);
+    }
 
     if (!decl.isDependentType())
     {
@@ -563,7 +602,17 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, RecordTypeStorage* 
         }
     }
 
+    // We need to parse the attributes before allocating storage to ensure ignored fields aren't reflected
+    DynamicArray<Attribute> tmp_attributes(temp_allocator());
+    SerializationInfo serialization_info{};
+    if (!attr_parser.parse(&tmp_attributes, &serialization_info, allocator))
+    {
+        return;
+    }
+
     auto storage = create_field(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), parent, decl.getType(), decl.getTypeSpecStartLoc());
+    storage.attributes = std::move(tmp_attributes);
+
     auto& field = storage.field;
 
     if (field.type == nullptr)
@@ -597,12 +646,6 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, RecordTypeStorage* 
     if (parent == nullptr)
     {
         diagnostics.Report(decl.getLocation(), clang::diag::err_incomplete_type);
-        return;
-    }
-
-    SerializationInfo serialization_info{};
-    if (!attr_parser.parse(&storage.attributes, &serialization_info, allocator))
-    {
         return;
     }
 
@@ -662,6 +705,12 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, RecordTypeSto
     type->size = sizeof(void*); // functions only have size when used as function pointer
     type->alignment = alignof(void*);
     type->kind = TypeKind::function;
+
+    if (is_member_function)
+    {
+        type->kind |= TypeKind::method;
+    }
+
     storage->return_field = create_field(decl.getName(), -1, decl.getASTContext(), parent, decl.getReturnType(), decl.getTypeSpecStartLoc());
     storage->add_invoker_type_arg(print_qualtype_name(decl.getReturnType(), decl.getASTContext()));
 
@@ -1141,6 +1190,11 @@ bool AttributeParser::parse_attribute(DynamicArray<Attribute>* dst_attributes, S
         {
             serialization_info->flags |= SerializationFlags::uses_builder;
             break;
+        }
+        case BuiltinAttributeKind::ignore:
+        {
+            // returning false will cause parsing to fail which will cause the type to not be reflected
+            return false;
         }
         default: break;
     }
