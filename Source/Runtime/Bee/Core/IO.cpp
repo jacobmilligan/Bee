@@ -438,8 +438,6 @@ i32 StringStream::write(const void* src_buffer, i32 src_buffer_size)
         }
     }
 
-    ensure_null_terminated();
-
     return write_size;
 }
 
@@ -482,8 +480,6 @@ i32 StringStream::write_v(const char* fmt, va_list args)
         string.c_string.current_stream_size_ = math::max(offset(), string.c_string.current_stream_size_);
     }
 
-    ensure_null_terminated();
-
     return write_size;
 }
 
@@ -515,25 +511,43 @@ i32 StringStream::size() const
     return mode() == Mode::container ? string.container->size() : string.c_string.current_stream_size_;
 }
 
-const char* StringStream::c_str() const
+const char* StringStream::c_str_buffer() const
 {
-    if (mode() == Mode::read_only)
+    switch (mode())
     {
-        return string.c_string.data.read_only;
-    }
-
-    if (mode() == Mode::read_write)
-    {
-        return string.c_string.data.read_write;
+        case Mode::read_only:
+        {
+            return string.c_string.data.read_only;
+        }
+        case Mode::read_write:
+        {
+            return string.c_string.data.read_write;
+        }
+        default: break;
     }
 
     BEE_ASSERT(string.container != nullptr);
     return string.container->data();
 }
 
+const char* StringStream::c_str() const
+{
+    const char* result = c_str_buffer();
+
+#if BEE_CONFIG_ENABLE_ASSERTIONS == 1
+    if (mode() != Mode::container)
+    {
+        const auto null_terminator = size() < capacity() ? size() : capacity() - 1;
+        BEE_ASSERT_F(result[null_terminator] == '\0', "StringStream: the source string is not null-terminated - you can call `StringStream::null_terminate` to ensure the source is a valid c-string");
+    }
+#endif // BEE_CONFIG_ENABLE_ASSERTIONS == 1
+
+    return result;
+}
+
 StringView StringStream::view() const
 {
-    return StringView(c_str(), size());
+    return StringView(c_str_buffer(), size());
 }
 
 char* StringStream::data()
@@ -552,7 +566,7 @@ char* StringStream::data()
     return string.container->data() + current_offset_;
 }
 
-void StringStream::ensure_null_terminated()
+void StringStream::null_terminate()
 {
     // String containers already handle null termination and read-only strings can't be modified
     if (mode() == Mode::container || mode() == Mode::read_only)

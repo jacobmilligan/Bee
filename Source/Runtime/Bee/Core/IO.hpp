@@ -374,6 +374,10 @@ public:
         return mode() == Mode::container ? string.container->capacity() : string.c_string.capacity_;
     };
 
+    void null_terminate();
+
+    const char* c_str_buffer() const;
+
     const char* c_str() const;
 
     StringView view() const;
@@ -399,8 +403,6 @@ private:
     i32     current_offset_ { 0 };
 
     char* data();
-
-    void ensure_null_terminated();
 };
 
 

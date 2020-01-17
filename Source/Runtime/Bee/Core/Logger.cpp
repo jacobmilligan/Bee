@@ -25,7 +25,7 @@ void default_logger_callback(const LogVerbosity verbosity, const char* fmt, va_l
 struct LogSystem
 {
     RecursiveSpinLock                   system_mutex;
-    SpinLock                            stdio_mutex;
+    RecursiveSpinLock                   stdio_mutex;
     LogVerbosity                        verbosity { LogVerbosity::debug };
     DynamicArray<logger_callback_t*>    registered_loggers;
 
@@ -154,7 +154,7 @@ void win32_write_console(const LogVerbosity verbosity, const char* write_buffer,
 
 void default_logger_callback(const LogVerbosity verbosity, const char* fmt, va_list va_args)
 {
-    scoped_spinlock_t lock(g_log.stdio_mutex);
+    scoped_recursive_spinlock_t lock(g_log.stdio_mutex);
 
 #if BEE_OS_WINDOWS == 1
     static constexpr int write_buffer_size = 4096; // 4K
@@ -164,7 +164,7 @@ void default_logger_callback(const LogVerbosity verbosity, const char* fmt, va_l
     io::StringStream stream(write_buffer, write_buffer_size, 0);
     stream.write_v(fmt, va_args);
     stream.write("\n");
-    win32_write_console(verbosity, stream.c_str(), stream.size());
+    win32_write_console(verbosity, stream.c_str_buffer(), stream.size());
 #else
     vfprintf(file, fmt, va_args);
 #endif // BEE_OS_WINDOWS == 1
