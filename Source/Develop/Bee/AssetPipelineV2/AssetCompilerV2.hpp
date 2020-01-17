@@ -44,39 +44,123 @@ enum class AssetCompilerKind
     custom_compiler
 };
 
-struct AssetCompilerResult
+const char* asset_compiler_status_to_string(const AssetCompilerStatus value);
+
+constexpr AssetPlatform current_asset_os()
 {
-    AssetCompilerStatus status { AssetCompilerStatus::unknown };
-    const Type*         compiled_type { nullptr };
+#if BEE_OS_WINDOWS == 1
+    return AssetPlatform::windows;
+#elif BEE_OS_MACOS == 1
+    return AssetPlatform::macos;
+#elif BEE_OS_LINUX == 1
+    return AssetPlatform::linux;
+#endif // BEE_OS_*
+}
 
-    AssetCompilerResult() = default;
+constexpr AssetPlatform current_asset_gfx_backend()
+{
+#if BEE_CONFIG_METAL_BACKEND == 1
+    return AssetPlatform::metal;
+#elif BEE_CONFIG_VULKAN_BACKEND == 1
+    return AssetPlatform::vulkan;
+#else
+    return AssetPlatform::unknown
+#endif // BEE_CONFIG_*_BACKEND
+}
 
-    AssetCompilerResult(const AssetCompilerStatus new_status, const Type* new_compiled_type)
-        : status(new_status),
-          compiled_type(new_compiled_type)
+
+constexpr AssetPlatform default_asset_platform = current_asset_os() | current_asset_gfx_backend();
+
+
+struct AssetCompiler;
+
+class AssetCompilerOptions
+{
+public:
+    AssetCompilerOptions() = default;
+
+    AssetCompilerOptions(AssetCompiler* compiler, const Type* type, void* data, Allocator* allocator)
+        : compiler_(compiler),
+          type_(type),
+          data_(data),
+          allocator_(allocator)
     {}
+
+    ~AssetCompilerOptions();
+
+    template <typename T>
+    inline const T* get() const
+    {
+        BEE_ASSERT(get_type<T>() == type_);
+        return static_cast<const T*>(data_);
+    }
+
+    inline const Type* type() const
+    {
+        return type_;
+    }
+
+    inline const void* data() const
+    {
+        return data_;
+    }
+
+    inline void* data()
+    {
+        return data_;
+    }
+
+    inline Allocator* allocator()
+    {
+        return allocator_;
+    }
+
+private:
+    AssetCompiler*  compiler_ { nullptr };
+    const Type*     type_ { nullptr };
+    void*           data_ { nullptr };
+    Allocator*      allocator_ { nullptr };
 };
 
 class AssetCompilerContext
 {
 public:
-    AssetCompilerContext(const AssetPlatform platform, Allocator* allocator);
+    struct Artifact
+    {
+        u128                hash;
+        DynamicArray<u8>    buffer;
+
+        explicit Artifact(Allocator* allocator = system_allocator())
+            : buffer(allocator)
+        {}
+    };
+
+    AssetCompilerContext(const AssetPlatform platform, const TypeInstance& options, Allocator* allocator);
 
     io::MemoryStream add_artifact();
+
+    void calculate_hashes();
 
     inline AssetPlatform platform() const
     {
         return platform_;
     }
 
-    inline const DynamicArray<DynamicArray<u8>>& artifacts() const
+    inline const DynamicArray<Artifact>& artifacts() const
     {
         return artifacts_;
     }
+
+    template <typename OptionsType>
+    const OptionsType& options() const
+    {
+        return *options_.get<OptionsType>();
+    }
 private:
-    Allocator*                      allocator_ { nullptr };
     AssetPlatform                   platform_ { AssetPlatform::unknown };
-    DynamicArray<DynamicArray<u8>>  artifacts_;
+    const TypeInstance&             options_;
+    Allocator*                      allocator_ { nullptr };
+    DynamicArray<Artifact>          artifacts_;
 };
 
 struct AssetCompiler
@@ -84,12 +168,6 @@ struct AssetCompiler
     virtual ~AssetCompiler() = default;
 
     virtual AssetCompilerStatus compile(AssetCompilerContext* ctx) = 0;
-};
-
-struct BEE_REFLECT(serializable) AssetMeta
-{
-    GUID    guid;
-    Path    source;
 };
 
 void register_asset_compiler(const AssetCompilerKind kind, const Type* type, AssetCompiler*(*allocate_function)());
@@ -111,17 +189,17 @@ inline void unregister_asset_compiler()
     unregister_asset_compiler(get_type<T>());
 }
 
-AssetCompiler* get_default_asset_compiler(const char* path);
+Span<const i32> get_asset_compiler_ids(const StringView& path);
+
+Span<const u32> get_asset_compiler_hashes(const StringView& path);
+
+AssetCompiler* get_default_asset_compiler(const StringView& path);
+
+AssetCompiler* get_asset_compiler(const i32 id);
 
 AssetCompiler* get_asset_compiler(const u32 hash);
 
-AssetCompiler* get_asset_compiler(const Type* type);
-
-template <typename T>
-inline AssetCompiler* get_asset_compiler()
-{
-    return get_asset_compiler(get_type<T>());
-}
+const Type* get_asset_compiler_options_type(const u32 compiler_hash);
 
 
 } // namespace bee

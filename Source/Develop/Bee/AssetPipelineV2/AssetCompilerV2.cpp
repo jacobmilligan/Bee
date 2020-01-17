@@ -8,29 +8,43 @@
 #include "Bee/AssetPipelineV2/AssetCompilerV2.hpp"
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Thread.hpp"
+#include "Bee/Core/Memory/PoolAllocator.hpp"
 
 namespace bee {
+
+BEE_TRANSLATION_TABLE(asset_compiler_status_to_string, AssetCompilerStatus, const char*, AssetCompilerStatus::unknown,
+    "success",                  // success
+    "fatal_error",              // fatal_error
+    "unsupported_platform",     // unsupported_platform
+    "invalid_source_format"     // invalid_source_format
+)
+
+
+BEE_DEFINE_VERSIONED_HANDLE(AssetOptions);
 
 
 struct AssetCompilerInfo
 {
     const Type*                     type { nullptr };
+    const Type*                     options_type { nullptr };
     DynamicArray<u32>               extensions;
     DynamicArray<AssetCompiler*>    per_thread;
 };
 
 struct AssetFileType
 {
-    String              extension;
-    DynamicArray<i32>   compiler_ids;
+    String                extension;
+    DynamicArray<i32>     compiler_ids;
+    DynamicArray<u32>     compiler_hashes;
 };
 
 static DynamicArray<AssetCompilerInfo>      g_compilers;
 static DynamicHashMap<u32, AssetFileType>   g_filetype_map;
 
 
-AssetCompilerContext::AssetCompilerContext(const AssetPlatform platform, Allocator* allocator)
+AssetCompilerContext::AssetCompilerContext(const AssetPlatform platform, const TypeInstance& options, Allocator* allocator)
     : platform_(platform),
+      options_(options),
       allocator_(allocator),
       artifacts_(allocator)
 {}
@@ -38,7 +52,15 @@ AssetCompilerContext::AssetCompilerContext(const AssetPlatform platform, Allocat
 io::MemoryStream AssetCompilerContext::add_artifact()
 {
     artifacts_.emplace_back(allocator_);
-    return io::MemoryStream(&artifacts_.back());
+    return io::MemoryStream(&artifacts_.back().buffer);
+}
+
+void AssetCompilerContext::calculate_hashes()
+{
+    for (auto& artifact : artifacts_)
+    {
+        artifact.hash = get_hash128(artifact.buffer.data(), artifact.buffer.size(), 0xF00D);
+    }
 }
 
 u32 get_extension_hash(const StringView& ext)
@@ -71,10 +93,24 @@ void register_asset_compiler(const AssetCompilerKind kind, const Type* type, Ass
 
     auto& info = g_compilers.back();
     info.type = type;
+    info.options_type = get_type<UnknownType>();
+
+    const auto compiler_id = g_compilers.size() - 1;
 
     // Validate that no compilers have been registered with the supported extensions
     for (const Attribute& attr : type->as<RecordType>()->attributes)
     {
+        // get the options type attribute
+        if (str::compare(attr.name, "options") == 0 && attr.kind == AttributeKind::type)
+        {
+            if (BEE_CHECK_F(info.options_type->is(TypeKind::unknown), "Asset compiler defines more than one options type"))
+            {
+                info.options_type = attr.value.type;
+            }
+            continue;
+        }
+
+        // Handle supported file type extensions
         if (str::compare(attr.name, "ext") != 0 || attr.kind != AttributeKind::string)
         {
             continue;
@@ -96,21 +132,23 @@ void register_asset_compiler(const AssetCompilerKind kind, const Type* type, Ass
             filetype_mapping->value.extension = ext;
         }
 
-        const auto compiler_id = g_compilers.size() - 1;
 
         if (kind == AssetCompilerKind::default_compiler)
         {
             // default compiler always comes first
             filetype_mapping->value.compiler_ids.insert(0, compiler_id);
+            filetype_mapping->value.compiler_hashes.insert(0, type->hash);
         }
         else
         {
             filetype_mapping->value.compiler_ids.push_back(compiler_id);
+            filetype_mapping->value.compiler_hashes.push_back(type->hash);
         }
 
         info.extensions.push_back(ext_hash);
     }
 
+    // One pool allocator for options per thread - we'll lock
     for (int i = 0; i < get_job_worker_count(); ++i)
     {
         info.per_thread.push_back(allocate_function());
@@ -135,14 +173,15 @@ void unregister_asset_compiler(const Type* type)
         auto extension_mapping = g_filetype_map.find(hash);
         if (extension_mapping != nullptr)
         {
-            const auto compiler_id = container_index_of(extension_mapping->value.compiler_ids, [&](const i32 index)
+            const auto compiler_mapping_idx = container_index_of(extension_mapping->value.compiler_ids, [&](const i32 index)
             {
                 return index == compiler_index;
             });
 
-            if (compiler_id >= 0)
+            if (compiler_mapping_idx >= 0)
             {
-                extension_mapping->value.compiler_ids.erase(compiler_id);
+                extension_mapping->value.compiler_ids.erase(compiler_mapping_idx);
+                extension_mapping->value.compiler_hashes.erase(compiler_mapping_idx);
 
                 if (extension_mapping->value.compiler_ids.empty())
                 {
@@ -155,41 +194,58 @@ void unregister_asset_compiler(const Type* type)
     g_compilers.erase(compiler_index);
 }
 
-AssetCompiler* get_default_asset_compiler(const char* path)
+Span<const i32> get_asset_compiler_ids(const StringView& path)
 {
-    const auto ext = path_get_extension(path);
-    const auto hash = get_extension_hash(ext);
-    auto filetype_mapping = g_filetype_map.find(hash);
+    const auto ext_hash = get_extension_hash(path_get_extension(path));
+    const auto file_type_mapping = g_filetype_map.find(ext_hash);
+    if (file_type_mapping == nullptr)
+    {
+        return Span<const i32>{};
+    }
 
-    if (filetype_mapping == nullptr)
+    return file_type_mapping->value.compiler_ids.const_span();
+}
+
+Span<const u32> get_asset_compiler_hashes(const StringView& path)
+{
+    const auto ext_hash = get_extension_hash(path_get_extension(path));
+    const auto file_type_mapping = g_filetype_map.find(ext_hash);
+    if (file_type_mapping == nullptr)
+    {
+        return Span<const u32>{};
+    }
+
+    return file_type_mapping->value.compiler_hashes.const_span();
+}
+
+AssetCompiler* get_default_asset_compiler(const StringView& path)
+{
+    const auto compiler_ids = get_asset_compiler_ids(path);
+    return compiler_ids.empty() ? nullptr : g_compilers[compiler_ids[0]].per_thread[get_local_job_worker_id()];
+}
+
+AssetCompiler* get_asset_compiler(const i32 id)
+{
+    if (id < 0 || id >= g_compilers.size())
     {
         return nullptr;
     }
 
-    BEE_ASSERT(!filetype_mapping->value.compiler_ids.empty());
-
-    const auto compiler_index = filetype_mapping->value.compiler_ids[0];
-
-    BEE_ASSERT(compiler_index < g_compilers.size());
-
-    return g_compilers[compiler_index].per_thread[get_local_job_worker_id()];
+    return g_compilers[id].per_thread[get_local_job_worker_id()];
 }
 
 AssetCompiler* get_asset_compiler(const u32 hash)
 {
     const auto compiler_index = find_compiler(hash);
-    if (compiler_index < 0)
-    {
-        return nullptr;
-    }
-
-    return g_compilers[compiler_index].per_thread[get_local_job_worker_id()];
+    return compiler_index < 0 ? nullptr : g_compilers[compiler_index].per_thread[get_local_job_worker_id()];
 }
 
-AssetCompiler* get_asset_compiler(const Type* type)
+const Type* get_asset_compiler_options_type(const u32 compiler_hash)
 {
-    return get_asset_compiler(type->hash);
+    const auto compiler = find_compiler(compiler_hash);
+    return compiler >= 0 ? g_compilers[compiler].options_type : get_type<UnknownType>();
 }
+
 
 
 
