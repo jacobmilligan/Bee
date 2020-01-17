@@ -21,25 +21,28 @@ enum class GUIDFormat
     /**
      * 00000000000000000000000000000000
      */
-        digits,
+    digits,
 
     /**
      * 00000000-0000-0000-0000-000000000000
      */
-        digits_with_hyphen,
+    digits_with_hyphen,
 
     /**
      * {00000000-0000-0000-0000-000000000000}
      */
-        braced_digits_with_hyphen,
+    braced_digits_with_hyphen,
 
     /**
      * (00000000-0000-0000-0000-000000000000)
      */
-        parens_digits_with_hyphen,
+    parens_digits_with_hyphen,
 
     unknown
 };
+
+
+i32 guid_format_length(const GUIDFormat format);
 
 /*
  ************************************************************************************************************
@@ -56,6 +59,7 @@ struct BEE_REFLECT(serializable, use_builder) GUID
     u8  data[16];
 
 #if BEE_DEBUG
+    BEE_REFLECT(nonserialized)
     char debug_string[33];
 #endif // BEE_DEBUG
 
@@ -158,42 +162,10 @@ BEE_CORE_API i32 guid_to_string(const GUID& guid, GUIDFormat format, char* dst, 
 BEE_CORE_API GUID guid_from_string(const StringView& string);
 
 
-/**
- * Serializes a GUID without also serializing the whole object with version etc. so it just ends up in text formats
- * (such as JSON) as a key-value pair
- */
-template <typename SerializerType>
-inline void serialize_type(SerializerType* serializer, GUID* guid, const char* name)
-{
-    static constexpr i32 string_buffer_size = 33;
-
-    BEE_ASSERT(serializer != nullptr);
-
-    // include null-termination
-    char string_buffer[string_buffer_size] { 0 };
-    auto convert_size = string_buffer_size;
-
-    if (serializer->mode() == SerializerMode::writing)
-    {
-        convert_size = guid_to_string(*guid, GUIDFormat::digits, make_span(string_buffer, string_buffer_size));
-        BEE_ASSERT(convert_size == string_buffer_size - 1);
-    }
-
-    serializer->convert_cstr(string_buffer, convert_size, name);
-
-    if (serializer->mode() == SerializerMode::reading)
-    {
-        *guid = guid_from_string(string_buffer);
-#if BEE_DEBUG
-        memcpy(guid->debug_string, string_buffer, string_buffer_size * sizeof(char));
-#endif // BEE_DEBUG
-    }
-}
-
 inline void serialize_type(SerializationBuilder* builder, GUID* guid)
 {
-    static constexpr auto guid_as_digits_size = 33;
-    static thread_local char string_buffer[guid_as_digits_size];
+    static constexpr auto guid_as_digits_size = 32;
+    static thread_local char string_buffer[guid_as_digits_size + 1];
 
     if (builder->mode() == SerializerMode::writing)
     {
@@ -202,7 +174,7 @@ inline void serialize_type(SerializationBuilder* builder, GUID* guid)
 
     int size = guid_as_digits_size;
     builder->container(SerializedContainerKind::text, &size)
-        .text(string_buffer, guid_as_digits_size, guid_as_digits_size);
+           .text(string_buffer, guid_as_digits_size, guid_as_digits_size + 1);
 
     BEE_ASSERT(size == guid_as_digits_size);
 

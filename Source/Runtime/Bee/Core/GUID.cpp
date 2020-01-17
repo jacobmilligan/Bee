@@ -30,6 +30,12 @@ void write_dash_if_needed(String* dst_str, const GUIDFormat format)
     }
 }
 
+BEE_TRANSLATION_TABLE(guid_format_length, GUIDFormat, i32, GUIDFormat::unknown,
+    32, // digits
+    36, // digits_with_hyphen,
+    38, // braced_digits_with_hyphen,
+    38  // parens_digits_with_hyphen,
+)
 
 /*
  ************************************
@@ -45,7 +51,7 @@ i32 guid_to_string(const GUID& guid, GUIDFormat format, char* dst, i32 dst_buffe
 
 i32 guid_to_string(const GUID& guid, GUIDFormat format, const Span<char>& dst)
 {
-    if (BEE_FAIL(dst.size() >= 33))
+    if (BEE_FAIL(dst.size() >= guid_format_length(format)))
     {
         return -1;
     }
@@ -228,6 +234,8 @@ GUID guid_from_string(const StringView& string)
     memcpy(result.data + 10, &last_group, 6);
     return result;
 }
+
+
 
 
 
