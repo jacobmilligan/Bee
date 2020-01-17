@@ -56,7 +56,7 @@ BEE_CORE_API size_t get_local_job_allocator_size();
 
 
 template <typename JobType, typename... ConstructorArgs>
-inline Job* allocate_job(ConstructorArgs&&... args)
+inline JobType* allocate_job(ConstructorArgs&&... args)
 {
     auto job = BEE_NEW(local_job_allocator(), JobType)(std::forward<ConstructorArgs>(args)...);
     BEE_ASSERT(job->parent() == nullptr);

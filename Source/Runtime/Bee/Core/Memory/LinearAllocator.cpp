@@ -119,12 +119,12 @@ void LinearAllocator::deallocate(void* ptr)
 
     BEE_ASSERT(allocated_size_ >= header);
 
-    allocated_size_ -= get_header(ptr);
+    allocated_size_ -= header;
 
     if (is_overflow_memory(ptr))
     {
         BEE_FREE(overflow_, ptr);
-        allocated_overflow_ -= get_header(ptr);
+        allocated_overflow_ -= header;
     }
 }
 

@@ -168,3 +168,32 @@ TEST(PathTests, path_iterator)
         ++part_idx;
     }
 }
+
+TEST(PathTests, relative_to)
+{
+    /* Examples:
+     * "D:\Root" ("D:\Root\Another\Path") -> "..\..\Root"
+     * "D:\Root\Another\Path" ("D:\Root") -> "Another\Path"
+     * "D:\Root" ("C:\Root") -> "..\..\D:\Root"
+     * "/a/d" ("/b/c") -> "../../a/d"
+     */
+    bee::Path path("D:\\Root");
+    auto relative = path.relative_to("D:\\Root\\Another\\Path");
+    ASSERT_STREQ(relative.c_str(), "..\\..");
+
+    path = "D:\\Root\\Another\\Path";
+    relative = path.relative_to("D:\\Root");
+    ASSERT_STREQ(relative.c_str(), "Another\\Path");
+
+    path = "D:\\Root";
+    relative = path.relative_to("C:\\Root");
+    ASSERT_STREQ(relative.c_str(), "..\\..\\D:\\Root");
+
+    path = "/a/d";
+    auto generic_str = path.relative_to("/b/c").to_generic_string();
+    ASSERT_STREQ(generic_str.c_str(), "../../a/d");
+
+    path = "D:\\Root\\test.txt";
+    relative = path.relative_to("D:\\Root\\Another\\Path");
+    ASSERT_STREQ(relative.c_str(), "..\\..\\test.txt");
+}
