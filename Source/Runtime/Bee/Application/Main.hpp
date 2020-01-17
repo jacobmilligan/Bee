@@ -34,6 +34,9 @@ void preinit_main()
     logger_init();
     init_signal_handler();
     enable_exception_handling();
+#if BEE_CONFIG_DISABLE_REFLECTION == 0
+    reflection_init();
+#endif // #if BEE_CONFIG_DISABLE_REFLECTION == 0
 }
 
 
