@@ -25,7 +25,7 @@ struct MockResource {
     }
 };
 
-BEE_DEFINE_VERSIONED_HANDLE(MockResource);
+BEE_VERSIONED_HANDLE_32(MockResourceHandle);
 
 constexpr int MockResource::new_intval;
 constexpr char MockResource::new_charval;

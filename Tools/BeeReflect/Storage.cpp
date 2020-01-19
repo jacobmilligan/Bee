@@ -64,8 +64,22 @@ bool TypeMap::try_add_type(const Type* type, const clang::Decl& decl, ReflectedF
     }
 
     auto& src_manager = decl.getASTContext().getSourceManager();
-    const auto file = src_manager.getFileEntryForID(src_manager.getFileID(decl.getLocation()));
-    const auto filename_ref = file->getName();
+
+
+    llvm::StringRef filename_ref{};
+
+    if (decl.getLocation().isFileID())
+    {
+        const auto file = src_manager.getFileEntryForID(src_manager.getFileID(decl.getLocation()));
+        filename_ref = file->getName();
+    }
+    else
+    {
+        const auto file_loc = src_manager.getFileLoc(src_manager.getExpansionLoc(decl.getLocation()));
+        const auto file = src_manager.getFileEntryForID(src_manager.getFileID(file_loc));
+        filename_ref = file->getName();
+    }
+
     String filepath(StringView(filename_ref.data(), filename_ref.size()), temp_allocator());
     str::replace(&filepath, Path::preferred_slash, Path::generic_slash); // normalize the slashes
 

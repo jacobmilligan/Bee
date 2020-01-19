@@ -396,7 +396,14 @@ void codegen_enum(const EnumTypeStorage* storage, CodeGenerator* codegen)
         {
             for (const EnumConstant& constant : storage->constants)
             {
-                codegen->write_line("EnumConstant { \"%s\", %" PRIi64 ", get_type<%s>() },", constant.name, constant.value, constant.underlying_type->name);
+                codegen->write_line(
+                    "EnumConstant { \"%s\", %u, %" PRIi64 ", get_type<%s>(), %s },",
+                    constant.name,
+                    get_type_hash(constant.name),
+                    constant.value,
+                    constant.underlying_type->name,
+                    storage->type.is_flags ? "true" : "false"
+                );
             }
         }, ";");
         codegen->newline();
@@ -963,24 +970,32 @@ void link_registrations(const Span<const Path>& search_paths, io::StringStream* 
     codegen.write("void reflection_init()");
     codegen.scope([&]()
     {
-        codegen.write("static const Type* types[] = ");
-        codegen.scope([&]()
+        if (!link_results.empty())
         {
-            for (const auto& result : link_results)
+            codegen.write("static const Type* types[] = ");
+            codegen.scope([&]()
             {
-                const LinkResult& data = result.second;
-                codegen.write_line("get_type<%" BEE_PRIsv ">(),", BEE_FMT_SV(data.fully_qualified_name));
-            }
-        }, "; // types");
-        codegen.newline();
-        codegen.newline();
-        codegen.write_line("reflection_register_builtin_types();");
-        codegen.newline();
-        codegen.write("for (const Type* type : types)");
-        codegen.scope([&]()
+                for (const auto& result : link_results)
+                {
+                    const LinkResult& data = result.second;
+                    codegen.write_line("get_type<%" BEE_PRIsv ">(),", BEE_FMT_SV(data.fully_qualified_name));
+                }
+            }, "; // types");
+            codegen.newline();
+            codegen.newline();
+        }
+
+        codegen.write("reflection_register_builtin_types();");
+
+        if (!link_results.empty())
         {
-            codegen.write("register_type(type);");
-        });
+            codegen.newline();
+            codegen.write("for (const Type* type : types)");
+            codegen.scope([&]()
+            {
+                codegen.write("register_type(type);");
+            });
+        }
     }, " // void reflection_init()\n");
     codegen.newline();
     codegen.newline();

@@ -12,15 +12,13 @@
 
 namespace bee {
 
+
 BEE_TRANSLATION_TABLE(asset_compiler_status_to_string, AssetCompilerStatus, const char*, AssetCompilerStatus::unknown,
     "success",                  // success
     "fatal_error",              // fatal_error
     "unsupported_platform",     // unsupported_platform
     "invalid_source_format"     // invalid_source_format
 )
-
-
-BEE_DEFINE_VERSIONED_HANDLE(AssetOptions);
 
 
 struct AssetCompilerInfo
@@ -42,8 +40,9 @@ static DynamicArray<AssetCompilerInfo>      g_compilers;
 static DynamicHashMap<u32, AssetFileType>   g_filetype_map;
 
 
-AssetCompilerContext::AssetCompilerContext(const AssetPlatform platform, const TypeInstance& options, Allocator* allocator)
+AssetCompilerContext::AssetCompilerContext(const AssetPlatform platform, const StringView& location, const TypeInstance& options, Allocator* allocator)
     : platform_(platform),
+      location_(location),
       options_(options),
       allocator_(allocator),
       artifacts_(allocator)

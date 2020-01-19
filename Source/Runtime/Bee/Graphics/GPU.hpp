@@ -603,15 +603,15 @@ enum class BarrierType
  *
  ********************************************************
  */
-BEE_DEFINE_RAW_HANDLE_U32(Device);
-BEE_DEFINE_VERSIONED_HANDLE(Swapchain);
-BEE_DEFINE_VERSIONED_HANDLE(Texture);
-BEE_DEFINE_VERSIONED_HANDLE(TextureView);
-BEE_DEFINE_VERSIONED_HANDLE(Buffer);
-BEE_DEFINE_VERSIONED_HANDLE(BufferView);
-BEE_DEFINE_VERSIONED_HANDLE(RenderPass);
-BEE_DEFINE_VERSIONED_HANDLE(Shader);
-BEE_DEFINE_VERSIONED_HANDLE(PipelineState);
+BEE_DEFINE_RAW_HANDLE_U32(DeviceHandle);
+BEE_VERSIONED_HANDLE_32(SwapchainHandle);
+BEE_VERSIONED_HANDLE_32(TextureHandle);
+BEE_VERSIONED_HANDLE_32(TextureViewHandle);
+BEE_VERSIONED_HANDLE_32(BufferHandle);
+BEE_VERSIONED_HANDLE_32(BufferViewHandle);
+BEE_VERSIONED_HANDLE_32(RenderPassHandle);
+BEE_VERSIONED_HANDLE_32(ShaderHandle);
+BEE_VERSIONED_HANDLE_32(PipelineStateHandle);
 
 /*
  ********************************************************

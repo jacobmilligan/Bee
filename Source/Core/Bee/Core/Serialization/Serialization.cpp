@@ -6,6 +6,9 @@
  */
 
 #include "Bee/Core/Serialization/Serialization.hpp"
+#include "Bee/Core/IO.hpp"
+
+#include <inttypes.h>
 
 
 namespace bee {
@@ -238,6 +241,8 @@ enum class SerializeTypeMode
 
 BEE_CORE_API void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type*>& template_type_arguments)
 {
+    static thread_local char enum_constant_buffer[1024];
+
     if (type->serialized_version <= 0)
     {
         log_error("Skipping serialization for `%s`: type is not marked for serialization using the `serializable` attribute", type->name);
@@ -308,6 +313,146 @@ BEE_CORE_API void serialize_type(const SerializeTypeMode serialize_type_mode, Se
 
         serializer->end_array();
     }
+    else if (type->is(TypeKind::enum_decl))
+    {
+        auto as_enum = type->as<EnumType>();
+        // Binary doesn't need special treatment - just serialize as underlying fundamental
+        if (serializer->format == SerializerFormat::binary)
+        {
+            serialize_type(serializer, as_enum->underlying_type, nullptr, data);
+        }
+        else
+        {
+            // Text format needs to either display the constant name or a series of flags. If the value isn't a valid
+            // power of two then it should be parsed as an integer
+            if (!as_enum->is_flags)
+            {
+                if (serializer->mode == SerializerMode::writing)
+                {
+                    i64 value = 0;
+                    memcpy(&value, data, as_enum->underlying_type->size);
+
+                    const auto constant_index = container_index_of(as_enum->constants, [&](const EnumConstant& c)
+                    {
+                        return c.value == value;
+                    });
+
+                    if (constant_index < 0)
+                    {
+                        str::format(enum_constant_buffer, static_array_length(enum_constant_buffer), "%" PRId64, value);
+                    }
+                    else
+                    {
+                        const char* constant_name = as_enum->constants[constant_index].name;
+                        str::format(enum_constant_buffer, static_array_length(enum_constant_buffer), "%s", constant_name);
+                    }
+
+                    int size = str::length(enum_constant_buffer);
+                    serializer->begin_text(&size);
+                    serializer->end_text(enum_constant_buffer, size, static_array_length(enum_constant_buffer));
+                }
+                else
+                {
+                    int size = 0;
+                    serializer->begin_text(&size);
+
+                    BEE_ASSERT(size <= static_array_length(enum_constant_buffer));
+
+                    serializer->end_text(enum_constant_buffer, size, static_array_length(enum_constant_buffer));
+                    const auto constant_hash = get_type_hash({ enum_constant_buffer, size });
+
+                    const auto constant_index = container_index_of(as_enum->constants, [&](const EnumConstant& c)
+                    {
+                        return c.hash == constant_hash;
+                    });
+
+                    // Invalid enum constant - just parse as int
+                    if (constant_index < 0)
+                    {
+                        i64 value = 0;
+                        sscanf(enum_constant_buffer, "%" SCNd64, &value);
+                        memcpy(data, &value, as_enum->underlying_type->size);
+                    }
+                    else
+                    {
+                        // valid so we can copy the constant value into data
+                        memcpy(data, &as_enum->constants[constant_index].value, as_enum->underlying_type->size);
+                    }
+                }
+            }
+            else
+            {
+                i64 value = 0;
+                memcpy(&value, data, as_enum->underlying_type->size);
+
+                if (serializer->mode == SerializerMode::writing)
+                {
+                    io::StringStream stream(enum_constant_buffer, static_array_length(enum_constant_buffer), 0);
+
+                    for (const auto constant : enumerate(as_enum->constants))
+                    {
+                        if ((value & constant.value.value) != 0)
+                        {
+                            stream.write_fmt("%s", constant.value.name);
+
+                            if (constant.index < as_enum->constants.size() - 1)
+                            {
+                                stream.write(" | ");
+                            }
+                        }
+                    }
+
+                    int size = stream.size();
+                    serializer->begin_text(&size);
+                    serializer->end_text(enum_constant_buffer, size, stream.capacity());
+                }
+                else
+                {
+                    int size = 0;
+                    serializer->begin_text(&size);
+
+                    BEE_ASSERT(size <= static_array_length(enum_constant_buffer));
+
+                    serializer->end_text(enum_constant_buffer, size, static_array_length(enum_constant_buffer));
+
+                    io::StringStream stream(enum_constant_buffer, static_array_length(enum_constant_buffer), 0);
+
+                    const char* flag_begin = enum_constant_buffer;
+                    const char* flag_end = flag_begin;
+                    i64 flag_as_int = 0;
+                    i64 final_flag = 0;
+
+                    for (int offset = 0; offset < size; ++offset)
+                    {
+                        if (!str::is_space(enum_constant_buffer[offset]) && enum_constant_buffer[offset] != '|')
+                        {
+                            ++flag_end;
+                            continue;
+                        }
+
+                        const auto flag_hash = get_type_hash(StringView(flag_begin, sign_cast<i32>(flag_end - flag_begin)));
+                        const auto flag_index = container_index_of(as_enum->constants, [&](const EnumConstant& c)
+                        {
+                            return c.hash == flag_hash;
+                        });
+
+                        if (flag_index < 0)
+                        {
+                            sscanf(enum_constant_buffer, "%" SCNd64, &flag_as_int);
+                        }
+                        else
+                        {
+                            flag_as_int = as_enum->constants[flag_index].value;
+                        }
+
+                        final_flag |= flag_as_int;
+                    }
+
+                    memcpy(data, &final_flag, as_enum->underlying_type->size);
+                }
+            }
+        }
+    }
     else if (type->is(TypeKind::fundamental))
     {
         const auto fundamental_type = type->as<FundamentalType>();
@@ -317,7 +462,7 @@ BEE_CORE_API void serialize_type(const SerializeTypeMode serialize_type_mode, Se
         {
             case FundamentalKind::bool_kind:
             {
-                bool value = *reinterpret_cast<bool*>(data) ? true : false;
+                bool value = *reinterpret_cast<bool*>(data) ? true : false; // NOLINT
                 serializer->serialize_fundamental(&value);
                 if (serializer->mode == SerializerMode::reading)
                 {

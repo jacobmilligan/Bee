@@ -283,7 +283,7 @@ int bb_entry(int argc, char** argv)
     if (configure_cmd != nullptr)
     {
         const auto generator = cli::get_positional(configure_cmd->value, 0);
-        // Project root is always at: <Root>/<BuildConfig>/bb.exe/../../../
+        // EditorApp root is always at: <Root>/<BuildConfig>/bb.exe/../../../
         const auto cmake_generator = generator_mappings.find(generator);
         if (cmake_generator == nullptr)
         {

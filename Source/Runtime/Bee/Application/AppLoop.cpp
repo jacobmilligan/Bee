@@ -11,9 +11,8 @@
 namespace bee {
 
 
-int app_loop(const AppLaunchConfig& config, Application* app)
+int app_init(const AppInitInfo& info, AppContext* ctx)
 {
-
     /*
      ************************************
      *
@@ -27,17 +26,13 @@ int app_loop(const AppLaunchConfig& config, Application* app)
      *
      ************************************
      */
-    reflection_init();
-
-    if (!platform_launch(config.app_name))
+    if (!platform_launch(info.app_name))
     {
         return EXIT_FAILURE;
     }
 
-    AppContext ctx;
-
     // Initialize platform
-    input_buffer_init(&ctx.default_input);
+    input_buffer_init(&ctx->default_input);
 
     // Initialize graphics systems
     if (!gpu_init())
@@ -47,47 +42,22 @@ int app_loop(const AppLaunchConfig& config, Application* app)
     }
 
     // Create main window
-    ctx.main_window = create_window(config.main_window_config);
-    BEE_ASSERT(ctx.main_window.is_valid());
+    ctx->main_window = create_window(info.main_window_config);
+    BEE_ASSERT(ctx->main_window.is_valid());
 
     /*
      **********************************
      *
      * App initialization order:
-     *  1. app launch
+     *  ...
      *
      **********************************
      */
-    const auto launch_result = app->launch(&ctx);
-    if (launch_result != EXIT_SUCCESS)
-    {
-        destroy_window(ctx.main_window);
-        return launch_result;
-    }
+    return EXIT_SUCCESS;
+}
 
-    /*
-     ********************
-     *
-     * Main loop
-     *
-     ********************
-     */
-    while (platform_is_running() && !platform_quit_requested() && !ctx.quit)
-    {
-        poll_input(&ctx.default_input);
-        app->tick(&ctx);
-    }
-
-    /*
-     *********************************
-     *
-     * App shutdown order:
-     *  1. app shutdown
-     *
-     *********************************
-     */
-    app->shutdown(&ctx);
-
+void app_shutdown()
+{
     /*
      *********************************
      *
@@ -106,7 +76,6 @@ int app_loop(const AppLaunchConfig& config, Application* app)
         platform_shutdown(); // closes all windows by default
     }
 
-    return EXIT_SUCCESS;
 }
 
 

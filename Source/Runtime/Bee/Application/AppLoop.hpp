@@ -15,7 +15,7 @@
 namespace bee {
 
 
-struct AppLaunchConfig
+struct AppInitInfo
 {
     const char*     app_name { nullptr };
     WindowConfig    main_window_config;
@@ -40,7 +40,9 @@ struct BEE_RUNTIME_API Application
 };
 
 
-BEE_RUNTIME_API int app_loop(const AppLaunchConfig& config, Application* app);
+BEE_RUNTIME_API int app_init(const AppInitInfo& info, AppContext* ctx);
+
+BEE_RUNTIME_API void app_shutdown();
 
 
 

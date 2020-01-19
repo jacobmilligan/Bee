@@ -249,6 +249,11 @@ void JSONSerializer::begin_text(i32* length)
         return;
     }
 
+    if (stack_.back()->IsArray())
+    {
+        stack_.push_back(&stack_.back()->GetArray()[current_element()]);
+    }
+
     json_validate_type(rapidjson::kStringType, stack_.back());
     *length = static_cast<i32>(stack_.back()->GetStringLength());
 }

@@ -9,6 +9,8 @@
 
 #include "Bee/Core/NumericTypes.hpp"
 
+#include <type_traits>
+
 #if BEE_COMPILER_MSVC == 1
     #include <intrin.h>
 #endif // BEE_COMPILER_MSVC == 1
@@ -75,6 +77,25 @@ native_type func_name(const enum_type value)                                    
     __BEE_ENUM_FLAG_OPERATOR(E, T, &)                               \
     enum class E : T
 
+#define BEE_REFLECTED_FLAGS(E, T, ...) enum class E : T;            \
+    inline constexpr T underlying_flag_t(E cls) noexcept            \
+    {                                                               \
+        return static_cast<T>(cls);                                 \
+    }                                                               \
+    template <E Value>                                              \
+    inline constexpr T flag_index() noexcept                        \
+    {                                                               \
+        return static_cast<T>(1u << static_cast<T>(Value));         \
+    }                                                               \
+    inline constexpr E operator~(E cls) noexcept                    \
+    {                                                               \
+        return static_cast<E>(~underlying_flag_t(cls));             \
+    }                                                               \
+    __BEE_ENUM_FLAG_OPERATOR(E, T, |)                               \
+    __BEE_ENUM_FLAG_OPERATOR(E, T, ^)                               \
+    __BEE_ENUM_FLAG_OPERATOR(E, T, &)                               \
+    enum class BEE_REFLECT(flags, __VA_ARGS__) E : T
+
 /**
  * # count_trailing_zeroes
  *
@@ -129,19 +150,124 @@ BEE_FORCE_INLINE u32 count_leading_zeroes(const u32 value)
  * calls a function for each flag
  */
 template <typename FlagType, typename FuncType>
-constexpr void for_each_flag(const FlagType& flags, const FuncType& callback)
+constexpr
+std::enable_if_t<std::is_enum_v<FlagType>>
+for_each_flag(const FlagType& flags, const FuncType& callback)
 {
+    using underlying_t = std::underlying_type_t<FlagType>;
+    constexpr auto one = static_cast<underlying_t>(1);
+
     // see: https://lemire.me/blog/2018/02/21/iterating-over-set-bits-quickly/
-    auto bitmask = static_cast<u32>(flags);
+    auto bitmask = static_cast<underlying_t>(flags);
     while (bitmask != 0)
     {
-        const auto cur_bit = count_trailing_zeroes(bitmask);
-        callback(static_cast<FlagType>(1u << cur_bit));
+        const auto cur_bit = static_cast<underlying_t>(count_trailing_zeroes(bitmask));
+        callback(static_cast<FlagType>(one << cur_bit));
 BEE_PUSH_WARNING
 BEE_DISABLE_WARNING_MSVC(4146) // warning C4146: unary minus operator applied to unsigned type, result still unsigned
         bitmask ^= bitmask & -bitmask;
 BEE_POP_WARNING
     }
+}
+
+template <typename FlagType, typename FuncType>
+constexpr
+std::enable_if_t<!std::is_enum_v<FlagType>>
+for_each_flag(const FlagType& flags, const FuncType& callback)
+{
+    constexpr auto one = static_cast<FlagType>(1);
+
+    // see: https://lemire.me/blog/2018/02/21/iterating-over-set-bits-quickly/
+    auto bitmask = flags;
+    while (bitmask != 0)
+    {
+        const auto cur_bit = static_cast<FlagType>(count_trailing_zeroes(bitmask));
+        callback(one << cur_bit);
+        BEE_PUSH_WARNING
+        BEE_DISABLE_WARNING_MSVC(4146) // warning C4146: unary minus operator applied to unsigned type, result still unsigned
+        bitmask ^= bitmask & -bitmask;
+        BEE_POP_WARNING
+    }
+}
+
+template <typename T>
+constexpr i32 count_bits_32(const T flags)
+{
+    // see: https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
+    const auto input = flags - ((flags >> 1) & 0x55555555);                     // reuse input as temporary
+    const auto temp = (input & 0x33333333) + ((input >> 2) & 0x33333333);       // temp
+    return static_cast<i32>(((temp + (temp >> 4) & 0xF0F0F0F) * 0x1010101) >> 24);  // count
+}
+
+template <typename T>
+constexpr i32 count_bits_64(const T flags)
+{
+    // see: https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
+    const auto input = flags - ((flags >> 1) & (T)~(T)0/3);                                   // input
+    const auto temp = (input & (T)~(T)0/15*3) + ((input >> 2) & (T)~(T)0/15*3); // temp
+    const auto v = (temp + (temp >> 4)) & (T)~(T)0/255*15;                            // temp
+    return (T)(v * ((T)~(T)0/255)) >> (sizeof(T) - 1) * CHAR_BIT;           // count
+}
+
+template <typename T>
+constexpr
+std::enable_if_t<!std::is_enum_v<T>, i32>
+count_bits(const T& flags);
+
+template <>
+constexpr i32 count_bits(const i8& flags)
+{
+    return count_bits_32(flags);
+}
+
+template <>
+constexpr i32 count_bits(const i16& flags)
+{
+    return count_bits_32(flags);
+}
+
+template <>
+constexpr i32 count_bits(const i32& flags)
+{
+    return count_bits_32(flags);
+}
+
+template <>
+constexpr i32 count_bits(const i64& flags)
+{
+    return count_bits_64(flags);
+}
+
+template <>
+constexpr i32 count_bits(const u8& flags)
+{
+    return count_bits_32(flags);
+}
+
+template <>
+constexpr i32 count_bits(const u16& flags)
+{
+    return count_bits_32(flags);
+}
+
+template <>
+constexpr i32 count_bits(const u32& flags)
+{
+    return count_bits_32(flags);
+}
+
+template <>
+constexpr i32 count_bits(const u64& flags)
+{
+    return count_bits_64(flags);
+}
+
+template <typename T>
+constexpr
+std::enable_if_t<std::is_enum_v<T>, i32>
+count_bits(const T& flags)
+{
+    return count_bits(static_cast<std::underlying_type_t<T>>(flags));
 }
 
 

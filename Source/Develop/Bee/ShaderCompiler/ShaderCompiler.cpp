@@ -14,6 +14,7 @@
 #include "Bee/Graphics/BSC.hpp"
 #include "Bee/Graphics/Shader.hpp"
 #include "Bee/Core/Serialization/StreamSerializer.hpp"
+#include "Bee/Core/Serialization/JSONSerializer.hpp"
 
 #include <dxc/dxcapi.h>
 
@@ -84,24 +85,18 @@ BEE_TRANSLATION_TABLE(shader_type_to_gpu_stage, BSCShaderType, ShaderStage, BSCS
 //)
 
 
-AssetCompilerResult ShaderCompiler::compile(AssetCompileContext* ctx)
+AssetCompilerStatus ShaderCompiler::compile(AssetCompilerContext* ctx)
 {
-    // HACK(Jacob): hack to only support SPIRV target for now
-    if ((ctx->platform & AssetPlatform::vulkan) == AssetPlatform::unknown)
-    {
-        return AssetCompilerResult(AssetCompilerStatus::unsupported_platform, Type());
-    }
-
-    const auto text_src = bsc_parse_source(*ctx->location, ctx->temp_allocator);
+    const auto text_src = bsc_parse_source(ctx->location(), ctx->temp_allocator());
     if (text_src.name.empty())
     {
-        return AssetCompilerResult(AssetCompilerStatus::invalid_source_format, Type());
+        return AssetCompilerStatus::invalid_source_format;
     }
 
     BSCTarget targets[static_cast<i32>(BSCTarget::none)];
     int target_count = 0;
 
-    for_each_flag(ctx->platform, [&](const AssetPlatform platform)
+    for_each_flag(ctx->platform(), [&](const AssetPlatform platform)
     {
         auto target = BSCTarget::none;
 
@@ -126,8 +121,6 @@ AssetCompilerResult ShaderCompiler::compile(AssetCompileContext* ctx)
         }
     });
 
-    BEE_ASSERT_F(target_count == 1, "Multiple BSC targets are not supported");
-
     BSCModule module{};
     str::format(module.name, static_array_length(module.name), "%s", text_src.name.c_str());
     module.target = targets[0];
@@ -142,7 +135,7 @@ AssetCompilerResult ShaderCompiler::compile(AssetCompileContext* ctx)
         &source_blob
     );
 
-    auto module_name = str::to_wchar(text_src.name.view(), ctx->temp_allocator);
+    auto module_name = str::to_wchar(text_src.name.view(), ctx->temp_allocator());
 
     for (int shd = 0; shd < module.shader_count; ++shd)
     {
@@ -153,7 +146,7 @@ AssetCompilerResult ShaderCompiler::compile(AssetCompileContext* ctx)
         wchar_t shader_profile_str[8];
         swprintf(shader_profile_str, static_array_length(shader_profile_str), L"%ls_6_0", profile_str);
 
-        auto entry_name = str::to_wchar(text_src.shader_entries[shd].view(), ctx->temp_allocator);
+        auto entry_name = str::to_wchar(text_src.shader_entries[shd].view(), ctx->temp_allocator());
 
         LPCWSTR dxc_args[] = {
             L"-T", shader_profile_str,
@@ -194,7 +187,7 @@ AssetCompilerResult ShaderCompiler::compile(AssetCompileContext* ctx)
 
             log_error("ShaderCompiler: DXC: %" BEE_PRIsv "", BEE_FMT_SV(error_message));
 
-            return AssetCompilerResult(AssetCompilerStatus::fatal_error, Type::from_static<Shader>());
+            return AssetCompilerStatus::fatal_error;
         }
 
         // get spirv data
@@ -203,7 +196,7 @@ AssetCompilerResult ShaderCompiler::compile(AssetCompileContext* ctx)
 
         if (spirv_blob == nullptr)
         {
-            return AssetCompilerResult(AssetCompilerStatus::fatal_error, Type::from_static<Shader>());
+            return AssetCompilerStatus::fatal_error;
         }
 
         const auto reflect_success = reflect_shader(
@@ -211,32 +204,30 @@ AssetCompilerResult ShaderCompiler::compile(AssetCompileContext* ctx)
             shader_type,
             static_cast<u8*>(spirv_blob->GetBufferPointer()),
             sign_cast<i32>(spirv_blob->GetBufferSize()),
-            ctx->temp_allocator
+            ctx->temp_allocator()
         );
 
         if (!reflect_success)
         {
             log_error("ShaderCompiler: failed to reflect shader");
-            return AssetCompilerResult(AssetCompilerStatus::fatal_error, Type::from_static<Shader>());
+            return AssetCompilerStatus::fatal_error;
         }
     }
 
-    StreamSerializer serializer(ctx->stream);
+    auto output_stream = ctx->add_artifact();
+    StreamSerializer serializer(&output_stream);
     serialize(SerializerMode::writing, &serializer, &module);
 
-    ShaderCompilerSettings settings;
-    ctx->settings->load(&settings);
-
-    if (settings.output_debug_artifacts)
+    auto options = ctx->options<ShaderCompilerOptions>();
+    if (options.output_debug_artifacts)
     {
-        const auto debug_location = debug_location_.join(module.name, job_temp_allocator()).append_extension("json");
-        JSONWriter json_writer(job_temp_allocator());
-        serialize(SerializerMode::writing, &json_writer, &module);
-        fs::write(debug_location, json_writer.c_str());
-        ctx->settings->clear();
+        const auto debug_location = debug_location_.join(module.name, ctx->temp_allocator()).append_extension("json");
+        JSONSerializer debug_serializer(ctx->temp_allocator());
+        serialize(SerializerMode::writing, &debug_serializer, &module);
+        fs::write(debug_location, debug_serializer.c_str());
     }
 
-    return AssetCompilerResult(AssetCompilerStatus::success, Type::from_static<Shader>());
+    return AssetCompilerStatus::success;
 }
 
 

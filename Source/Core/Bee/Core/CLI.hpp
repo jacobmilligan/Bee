@@ -103,13 +103,110 @@ private:
 
 struct BEE_CORE_API ParserDescriptor
 {
-    const char*         command_name { nullptr }; // string used to invoke the command. Only used for subparsers
-    i32                 positional_count { 0 };
-    const Positional*   positionals { nullptr };
-    i32                 option_count { 0 };
-    const Option*       options { nullptr };
-    i32                 subparser_count { 0 };
-    ParserDescriptor*   subparsers { nullptr };
+    const char*             command_name { nullptr }; // string used to invoke the command. Only used for subparsers
+    i32                     positional_count { 0 };
+    const Positional*       positionals { nullptr };
+    i32                     option_count { 0 };
+    const Option*           options { nullptr };
+    i32                     subparser_count { 0 };
+    const ParserDescriptor* subparsers { nullptr };
+
+    ParserDescriptor() = default;
+
+    ParserDescriptor(
+        const char* name,
+        const i32 new_pos_count,
+        const Positional* new_positionals,
+        const i32 new_option_count,
+        const Option* new_options,
+        const i32 new_subparser_count = 0,
+        const ParserDescriptor* new_subparsers = nullptr
+    ) : command_name(name),
+        positional_count(new_pos_count),
+        positionals(new_positionals),
+        option_count(new_option_count),
+        options(new_options),
+        subparser_count(new_subparser_count),
+        subparsers(new_subparsers)
+    {}
+
+    template <i32 SubparserCount>
+    ParserDescriptor(
+        const char* name,
+        const ParserDescriptor(&subparser_buffer)[SubparserCount]
+    ) : command_name(name),
+        subparser_count(SubparserCount),
+        subparsers(subparser_buffer)
+    {}
+
+    template <i32 PositionalsSize>
+    ParserDescriptor(
+        const char* name,
+        const Positional(&positionals_buffer)[PositionalsSize]
+    ) : command_name(name),
+        positional_count(PositionalsSize),
+        positionals(positionals_buffer),
+    {}
+
+    template <i32 PositionalsSize, i32 SubparserCount>
+    ParserDescriptor(
+        const char* name,
+        const Positional(&positionals_buffer)[PositionalsSize],
+        const ParserDescriptor(&subparser_buffer)[SubparserCount]
+    ) : command_name(name),
+        positional_count(PositionalsSize),
+        positionals(positionals_buffer),
+        subparser_count(SubparserCount),
+        subparsers(subparser_buffer)
+    {}
+
+    template <i32 OptionsSize>
+    ParserDescriptor(
+        const char* name,
+        const Option(&optionals_buffer)[OptionsSize]
+    ) : command_name(name),
+        option_count(OptionsSize),
+        options(optionals_buffer)
+    {}
+
+    template <i32 OptionsSize, i32 SubparserCount>
+    ParserDescriptor(
+        const char* name,
+        const Option(&optionals_buffer)[OptionsSize],
+        const ParserDescriptor(&subparser_buffer)[SubparserCount]
+    ) : command_name(name),
+        option_count(OptionsSize),
+        options(optionals_buffer),
+        subparser_count(SubparserCount),
+        subparsers(subparser_buffer)
+    {}
+
+    template <i32 PositionalsSize, i32 OptionsSize>
+    ParserDescriptor(
+        const char* name,
+        const Positional(&positionals_buffer)[PositionalsSize],
+        const Option(&optionals_buffer)[OptionsSize]
+    ) : command_name(name),
+        positional_count(PositionalsSize),
+        positionals(positionals_buffer),
+        option_count(OptionsSize),
+        options(optionals_buffer)
+    {}
+
+    template <i32 PositionalsSize, i32 OptionsSize, i32 SubparserCount>
+    ParserDescriptor(
+        const char* name,
+        const Positional(&positionals_buffer)[PositionalsSize],
+        const Option(&optionals_buffer)[OptionsSize],
+        const ParserDescriptor(&subparser_buffer)[SubparserCount]
+    ) : command_name(name),
+        positional_count(PositionalsSize),
+        positionals(positionals_buffer),
+        option_count(OptionsSize),
+        options(optionals_buffer),
+        subparser_count(SubparserCount),
+        subparsers(subparser_buffer)
+    {}
 };
 
 

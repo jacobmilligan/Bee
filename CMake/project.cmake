@@ -21,6 +21,7 @@ endif ()
 
 set(BEE_CMAKE_ROOT ${CMAKE_CURRENT_LIST_DIR})
 set(BEE_PROJECT_ROOT ${PROJECT_SOURCE_DIR})
+set(BEE_CORE_ROOT ${BEE_PROJECT_ROOT}/Source/Core)
 set(BEE_RUNTIME_ROOT ${BEE_PROJECT_ROOT}/Source/Runtime)
 set(BEE_DEVELOP_ROOT ${BEE_PROJECT_ROOT}/Source/Develop)
 set(BEE_THIRD_PARTY ${BEE_PROJECT_ROOT}/ThirdParty)
@@ -95,7 +96,7 @@ endfunction()
 #
 ################################################################################
 function(bee_begin)
-    set(__bee_include_dirs ${BEE_RUNTIME_ROOT} ${BEE_DEVELOP_ROOT} CACHE INTERNAL "")
+    set(__bee_include_dirs ${BEE_CORE_ROOT} ${BEE_RUNTIME_ROOT} ${BEE_DEVELOP_ROOT} CACHE INTERNAL "")
     set(__bee_libraries "" CACHE INTERNAL "")
     set(__bee_current_source_root "" CACHE INTERNAL "")
     bee_new_source_root()
@@ -290,7 +291,7 @@ function(bee_test name)
         set(cached_sources ${__bee_sources})
 
         bee_new_source_root()
-        bee_add_sources(${BEE_RUNTIME_ROOT}/Bee/TestMain.cpp ${ARGS_SOURCES})
+        bee_add_sources(${BEE_CORE_ROOT}/TestMain.cpp ${ARGS_SOURCES})
         bee_exe(${name} LINK_LIBRARIES ${ARGS_LINK_LIBRARIES} gtest)
 
         __bee_set_compile_options(${name})
@@ -359,7 +360,7 @@ function(bee_reflect target)
             # any presences of the BEE_REFLECT macro - this will slurp up #defines etc. as well which is
             # okay because bee-reflect will just output stubs for any files that don't generate reflection
             file(READ ${src} contents)
-            string(FIND "${contents}" "BEE_REFLECT(" position)
+            string(FIND "${contents}" "BEE_REFLECT" position)
 
             if (position GREATER_EQUAL 0)
                 # All good - we can include this file in the reflection generation

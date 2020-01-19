@@ -15,7 +15,7 @@ namespace bee {
 namespace fs {
 
 
-BEE_DEFINE_VERSIONED_HANDLE(DirectoryEntry);
+BEE_VERSIONED_HANDLE_32(DirectoryEntryHandle);
 
 class BEE_CORE_API DirectoryIterator
 {

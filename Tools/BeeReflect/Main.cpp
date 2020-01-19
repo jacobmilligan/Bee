@@ -186,6 +186,11 @@ int bee_main(int argc, char** argv)
         bee::reflect::link_registrations(search_paths.const_span(), &stream);
 
         bee::Path output_path(output_link_opt.getValue().c_str());
+        const auto folder = output_path.parent(bee::temp_allocator());
+        if (!folder.exists())
+        {
+            bee::fs::mkdir(folder);
+        }
         bee::fs::write(output_path, stream.view());
     }
 

@@ -658,7 +658,7 @@ BEE_CORE_API String format(Allocator* allocator, const char* format, ...) BEE_PR
 
 BEE_CORE_API String format(const char* format, ...) BEE_PRINTFLIKE(1, 2);
 
-BEE_CORE_API void format(char* buffer, i32 buffer_size, const char* format, ...) BEE_PRINTFLIKE(3, 4);
+BEE_CORE_API i32 format(char* buffer, i32 buffer_size, const char* format, ...) BEE_PRINTFLIKE(3, 4);
 
 
 /**

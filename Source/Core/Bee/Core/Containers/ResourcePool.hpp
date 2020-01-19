@@ -32,9 +32,11 @@ public:
     using resource_t    = ResourceType;
 
     static_assert(
-        std::is_base_of_v<VersionedHandle<typename HandleType::tag_t>, HandleType>,
-        "Bee: ResourcePool<Capacity, HandleType, ResourceType>: HandleType must derive from "
-        "VersionedHandle, i.e:\nstruct MyHandle : public VersionedHandle<MyHandle>{}"
+        std::is_base_of_v<versioned_handle_32_t<typename HandleType::tag_t>, HandleType>
+            ||
+        std::is_base_of_v<versioned_handle_64_t<typename HandleType::tag_t>, HandleType>,
+        "Bee: ResourcePool<HandleType, ResourceType>: HandleType must derive from "
+        "VersionedHandle, i.e:\nstruct MyHandle : public VersionedHandle<MyHandle, u32>{}"
     );
 
     class iterator
@@ -131,6 +133,8 @@ public:
         i32             current_index_ { 0 };
         i32             current_chunk_ { 0 };
     };
+
+    ResourcePool() = default;
 
     explicit ResourcePool(const size_t chunk_byte_size, Allocator* allocator = system_allocator())
         : chunk_byte_size_(chunk_byte_size),

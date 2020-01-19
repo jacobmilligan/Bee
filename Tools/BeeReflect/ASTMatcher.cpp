@@ -514,15 +514,6 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* pa
     type->hash = get_type_hash({ name.data(), static_cast<i32>(name.size()) });
     type->is_scoped = decl.isScoped();
 
-    for (const clang::EnumConstantDecl* ast_constant : decl.enumerators())
-    {
-        EnumConstant constant{};
-        constant.name = allocator->allocate_name(ast_constant->getName());
-        constant.value = ast_constant->getInitVal().getRawData()[0];
-        constant.underlying_type = underlying_type;
-        storage->add_constant(constant);
-    }
-
     SerializationInfo serialization_info{};
     if (!attr_parser.parse(&storage->attributes, &serialization_info, allocator))
     {
@@ -531,6 +522,27 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* pa
 
     type->serialization_flags = serialization_info.flags;
     type->serialized_version = serialization_info.serialized_version;
+
+    const auto flags_attr_index = container_index_of(storage->attributes, [&](const Attribute& attr)
+    {
+        return str::compare(attr.name, "flags") == 0 && attr.kind == AttributeKind::boolean;
+    });
+
+    type->is_flags = flags_attr_index >= 0;
+    if (type->is_flags)
+    {
+        // remove it as if it was a builtin attribute for enums only
+        storage->attributes.erase(flags_attr_index);
+    }
+
+    for (const clang::EnumConstantDecl* ast_constant : decl.enumerators())
+    {
+        EnumConstant constant{};
+        constant.name = allocator->allocate_name(ast_constant->getName());
+        constant.value = ast_constant->getInitVal().getRawData()[0];
+        constant.underlying_type = underlying_type;
+        storage->add_constant(constant);
+    }
 
     if (parent == nullptr)
     {

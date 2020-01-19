@@ -14,19 +14,12 @@
 #include "Bee/Core/GUID.hpp"
 #include "Bee/Core/Serialization/BinarySerializer.hpp"
 
+#include "Bee/AssetPipeline/AssetPlatform.hpp"
+
 
 namespace bee {
 
 
-BEE_FLAGS(AssetPlatform, u32)
-{
-    unknown = 0u,
-    windows = 1u << 0u,
-    macos   = 1u << 1u,
-    linux   = 1u << 2u,
-    metal   = 1u << 3u,
-    vulkan  = 1u << 4u,
-};
 
 
 enum class AssetCompilerStatus
@@ -46,31 +39,6 @@ enum class AssetCompilerKind
 
 const char* asset_compiler_status_to_string(const AssetCompilerStatus value);
 
-constexpr AssetPlatform current_asset_os()
-{
-#if BEE_OS_WINDOWS == 1
-    return AssetPlatform::windows;
-#elif BEE_OS_MACOS == 1
-    return AssetPlatform::macos;
-#elif BEE_OS_LINUX == 1
-    return AssetPlatform::linux;
-#endif // BEE_OS_*
-}
-
-constexpr AssetPlatform current_asset_gfx_backend()
-{
-#if BEE_CONFIG_METAL_BACKEND == 1
-    return AssetPlatform::metal;
-#elif BEE_CONFIG_VULKAN_BACKEND == 1
-    return AssetPlatform::vulkan;
-#else
-    return AssetPlatform::unknown
-#endif // BEE_CONFIG_*_BACKEND
-}
-
-
-constexpr AssetPlatform default_asset_platform = current_asset_os() | current_asset_gfx_backend();
-
 
 class AssetCompilerContext
 {
@@ -85,7 +53,7 @@ public:
         {}
     };
 
-    AssetCompilerContext(const AssetPlatform platform, const TypeInstance& options, Allocator* allocator);
+    AssetCompilerContext(const AssetPlatform platform, const StringView& location, const TypeInstance& options, Allocator* allocator);
 
     io::MemoryStream add_artifact();
 
@@ -94,6 +62,16 @@ public:
     inline AssetPlatform platform() const
     {
         return platform_;
+    }
+
+    inline const StringView& location() const
+    {
+        return location_;
+    }
+
+    inline Allocator* temp_allocator()
+    {
+        return allocator_;
     }
 
     inline const DynamicArray<Artifact>& artifacts() const
@@ -108,6 +86,7 @@ public:
     }
 private:
     AssetPlatform                   platform_ { AssetPlatform::unknown };
+    StringView                      location_;
     const TypeInstance&             options_;
     Allocator*                      allocator_ { nullptr };
     DynamicArray<Artifact>          artifacts_;

@@ -15,7 +15,7 @@
 namespace bee {
 
 
-BEE_DEFINE_VERSIONED_HANDLE(Asset);
+BEE_VERSIONED_HANDLE_32(AssetHandle);
 
 
 struct BEE_RUNTIME_API AssetCache

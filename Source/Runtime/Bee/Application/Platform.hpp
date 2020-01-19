@@ -23,8 +23,8 @@
 namespace bee {
 
 
-BEE_DEFINE_RAW_HANDLE_I32(Monitor);
-BEE_DEFINE_VERSIONED_HANDLE(Window);
+BEE_DEFINE_RAW_HANDLE_I32(MonitorHandle);
+BEE_VERSIONED_HANDLE_32(WindowHandle);
 
 
 struct PlatformSize

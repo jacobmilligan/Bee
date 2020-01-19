@@ -7,6 +7,7 @@
 
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/Thread.hpp"
+#include "Bee/Core/Reflection.hpp"
 
 #include <stdlib.h>
 

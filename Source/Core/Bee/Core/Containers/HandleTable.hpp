@@ -26,8 +26,11 @@ public:
     using data_t                    = DataType;
 
     static_assert(
-        std::is_base_of_v<VersionedHandle<typename handle_t::tag_t>, handle_t>,
-        "HandleTable: HandleType must derive from VersionedHandle, i.e:\nstruct MyHandle : public VersionedHandle<MyHandle>{}"
+        std::is_base_of_v<versioned_handle_32_t<typename HandleType::tag_t>, HandleType>
+            ||
+        std::is_base_of_v<versioned_handle_64_t<typename HandleType::tag_t>, HandleType>,
+        "Bee: HandleTable<Capacity, HandleType, ResourceType>: HandleType must derive from "
+        "VersionedHandle, i.e:\nstruct MyHandle : public VersionedHandle<MyHandle, u32>{}"
     );
 
     static_assert(

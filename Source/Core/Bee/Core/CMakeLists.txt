@@ -74,6 +74,3 @@ bee_reflect(
     Error.hpp
     Bitset.hpp
 )
-
-# Tests
-add_subdirectory(Tests)

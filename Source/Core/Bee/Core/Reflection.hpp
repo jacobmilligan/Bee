@@ -10,6 +10,9 @@
 #include "Bee/Core/Enum.hpp"
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/Logger.hpp"
+#include "Bee/Core/IO.hpp"
+
+#include <inttypes.h>
 
 
 namespace bee {
@@ -625,23 +628,29 @@ struct FundamentalType final : public TypeSpec<TypeKind::fundamental>
 struct EnumConstant
 {
     const char* name { nullptr };
+    u32         hash { 0 };
     i64         value { 0 };
     const Type* underlying_type { nullptr };
+    bool        is_flag { false };
 
     EnumConstant() = default;
 
-    EnumConstant(const char* new_name, const i64 new_value, const Type* new_underlying_type)
+    EnumConstant(const char* new_name, const u32 new_hash, const i64 new_value, const Type* new_underlying_type, const bool flag)
         : name(new_name),
+          hash(new_hash),
           value(new_value),
-          underlying_type(new_underlying_type)
+          underlying_type(new_underlying_type),
+          is_flag(flag)
     {}
 };
 
 struct EnumType final : public TypeSpec<TypeKind::enum_decl>
 {
     bool                is_scoped { false };
+    bool                is_flags { false };
     Span<EnumConstant>  constants;
     Span<Attribute>     attributes;
+    const Type*         underlying_type { nullptr };
 
     EnumType() = default;
 
@@ -660,8 +669,130 @@ struct EnumType final : public TypeSpec<TypeKind::enum_decl>
         is_scoped(scoped),
         constants(new_constants),
         attributes(new_attributes)
-    {}
+    {
+        // if the first constant is a flag it means the enum must have been reflected with the `flags` attribute
+        is_flags = constants[0].is_flag;
+        underlying_type = constants[0].underlying_type;
+    }
 };
+
+template <typename T>
+inline void enum_to_string(io::StringStream* stream, const T& value)
+{
+    auto type = get_type_as<T, EnumType>();
+    if (!type->is_flags)
+    {
+        const auto const_index = container_index_of(type->constants, [&](const EnumConstant& c)
+        {
+            return c.value == static_cast<i64>(value);
+        });
+
+        if (const_index >= 0)
+        {
+            stream->write_fmt("%s", type->constants[const_index].name);
+        }
+        else
+        {
+            stream->write_fmt("%" PRId64, static_cast<i64>(value));
+        }
+    }
+    else
+    {
+        int flag_count = count_bits(value);
+        int current_flag = 0;
+        for_each_flag(value, [&](const T& flag)
+        {
+            const auto const_index = container_index_of(type->constants, [&](const EnumConstant& c)
+            {
+                return c.value == static_cast<i64>(flag);
+            });
+
+            if (const_index >= 0)
+            {
+                stream->write_fmt("%s", type->constants[const_index].name);
+            }
+            else
+            {
+                stream->write_fmt("%" PRId64, static_cast<i64>(flag));
+            }
+
+            if (current_flag < flag_count - 1)
+            {
+                stream->write(" | ");
+            }
+
+            ++current_flag;
+        });
+    }
+}
+
+template <typename T>
+inline String enum_to_string(const T& value, Allocator* allocator = system_allocator())
+{
+    String result(allocator);
+    io::StringStream stream(&result);
+    enum_to_string<T>(&stream, value);
+    return std::move(result);
+}
+
+template <typename T>
+inline T enum_from_string(const StringView& string)
+{
+    auto type = get_type_as<T, EnumType>();
+
+    if (!type->is_flags)
+    {
+        const auto const_hash = get_type_hash(string);
+        const auto const_index = container_index_of(type->constants, [&](const EnumConstant& c)
+        {
+            return c.hash == const_hash;
+        });
+
+        if (const_index >= 0)
+        {
+            return static_cast<T>(type->constants[const_index].value);
+        }
+
+        return T{};
+    }
+    else
+    {
+        T value = static_cast<T>(0);
+
+        const char* begin = string.begin();
+        const char* end = begin;
+
+        while (begin != string.end())
+        {
+            // skip alpha numeric chars to get end of token
+            while (end != string.end() && !str::is_space(*end) && *end != '|')
+            {
+                ++end;
+            }
+
+            const auto const_hash = get_type_hash(StringView(begin, static_cast<i32>(end - begin)));
+            const auto const_index = container_index_of(type->constants, [&](const EnumConstant& c)
+            {
+                return c.hash == const_hash;
+            });
+
+            if (const_index >= 0)
+            {
+                value |= static_cast<T>(type->constants[const_index].value);
+            }
+
+            // skip whitespace and '|' char to get beginning of next token
+            while (end != string.end() && str::is_space(*end) || *end == '|')
+            {
+                ++end;
+            }
+
+            begin = end;
+        }
+
+        return value;
+    }
+}
 
 
 struct FunctionTypeInvoker
