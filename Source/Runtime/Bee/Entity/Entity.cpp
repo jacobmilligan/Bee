@@ -13,18 +13,19 @@
 namespace bee {
 
 
-Archetype::Archetype(const u32 sorted_type_hash, const Span<const Type* const>& sorted_types, const size_t entity_size, Allocator* allocator)
-    : hash(sorted_type_hash),
-      entity_size(0),
-      types(sorted_types, allocator),
-      offsets(sorted_types.size(), 0, allocator)
-{}
-
 ChunkAllocator::ChunkAllocator(const size_t chunk_size, const size_t chunk_alignment)
     : chunk_size_(chunk_size),
       chunk_alignment_(chunk_alignment)
-{
+{}
 
+ChunkAllocator::~ChunkAllocator()
+{
+    while (first_ != nullptr)
+    {
+        auto current = first_->next;
+        system_allocator()->deallocate(first_);
+        first_ = current;
+    }
 }
 
 ChunkAllocator::AllocHeader* ChunkAllocator::get_alloc_header(void* ptr)
@@ -41,11 +42,11 @@ const ChunkAllocator::AllocHeader* ChunkAllocator::get_alloc_header(const void* 
 
 void* ChunkAllocator::allocate(const size_t size, const size_t alignment)
 {
-    auto offset = round_up(last_->size + sizeof(AllocHeader), alignment);
-    const auto remaining_chunk_space = chunk_size_ - offset;
+    const auto last_size = last_ == nullptr ? 0 : last_->size;
+    auto offset = round_up(last_size + sizeof(AllocHeader), alignment);
 
     // Use the currently available chunk
-    if (last_ == nullptr || size > remaining_chunk_space)
+    if (last_ == nullptr || size <= chunk_size_ - offset - sizeof(ChunkHeader))
     {
         ChunkHeader* new_chunk = nullptr;
 
@@ -63,8 +64,9 @@ void* ChunkAllocator::allocate(const size_t size, const size_t alignment)
         new (new_chunk) ChunkHeader{};
 
         new_chunk->size = sizeof(ChunkHeader);
-        new_chunk->data = reinterpret_cast<u8*>(new_chunk) + sizeof(ChunkHeader);
-        offset = round_up(sizeof(ChunkHeader) + sizeof(AllocHeader), alignment);
+        new_chunk->data = reinterpret_cast<u8*>(new_chunk);
+
+        offset = round_up(new_chunk->size + sizeof(AllocHeader), alignment);
 
         if (last_ == nullptr)
         {
@@ -77,12 +79,20 @@ void* ChunkAllocator::allocate(const size_t size, const size_t alignment)
         }
     }
 
-    auto ptr = reinterpret_cast<u8*>(last_) + offset;
+    auto ptr = last_->data + offset;
     auto header = get_alloc_header(ptr);
-
     header->chunk = last_;
     header->size = size + sizeof(AllocHeader);
     last_->size = offset + size;
+
+    if (BEE_FAIL_F(last_->size <= chunk_size_, "Cannot allocate more than %zu bytes", chunk_size_))
+    {
+        return nullptr;
+    }
+
+#if BEE_DEBUG == 1
+    memset(ptr, uninitialized_alloc_pattern, size);
+#endif // BEE_DEBUG == 1
 
     return ptr;
 }
@@ -107,7 +117,7 @@ void* ChunkAllocator::reallocate(void* ptr, const size_t old_size, const size_t 
 
 void ChunkAllocator::deallocate(void* ptr)
 {
-    auto header = reinterpret_cast<AllocHeader*>(reinterpret_cast<u8*>(ptr) - sizeof(AllocHeader));
+    auto header = get_alloc_header(ptr);
 
     if (BEE_FAIL(header->chunk->signature == header_signature))
     {
@@ -123,8 +133,14 @@ void ChunkAllocator::deallocate(void* ptr)
         header->chunk->next = free_;
         free_ = header->chunk;
     }
+
+#if BEE_DEBUG == 1
+    memset(header, deallocated_memory_pattern, header->size);
+#endif // BEE_DEBUG == 1
 }
 
+
+const Type* World::entity_type_ = nullptr;
 
 
 World::World(const WorldDescriptor& desc)
@@ -132,6 +148,10 @@ World::World(const WorldDescriptor& desc)
       archetype_allocator_(kibibytes(64), alignof(Archetype)),
       component_allocator_(kibibytes(64), alignof(ComponentChunk))
 {
+    if (entity_type_ == nullptr)
+    {
+        entity_type_ = get_type<Entity>();
+    }
 
 }
 
@@ -147,10 +167,48 @@ void World::create_entities(Entity* dst, const i32 count)
     BEE_ASSERT(dst != nullptr);
     BEE_ASSERT(count > 0);
 
+    auto archetype = lookup_or_create_archetype(&entity_type_, 1);
+    auto chunk = archetype->last_chunk;
+    auto offset = 0;
+
     for (int e = 0; e < count; ++e)
     {
         dst[e] = entities_.allocate();
         BEE_ASSERT(dst[e].is_valid());
+    }
+
+    // We allocated the entities sequentially so, aside from jumps between resource chunks, this iterator
+    // should be contiguous access
+    auto info_iter = entities_.get_iterator(dst[0]);
+
+    while (chunk != nullptr)
+    {
+        const auto copy_count = math::min(count - offset, chunk->capacity - chunk->count);
+        memcpy(chunk->data + chunk->count * sizeof(Entity), dst + offset, copy_count * sizeof(Entity));
+        chunk->count += copy_count;
+        offset += copy_count;
+
+        for (int e = 0; e < copy_count; ++e)
+        {
+            BEE_ASSERT_F(info_iter != entities_.end(), "More default chunks were created than entities");
+            info_iter->chunk = chunk;
+            info_iter->index_in_chunk = e;
+            ++info_iter;
+        }
+
+        if (offset >= count)
+        {
+            break;
+        }
+
+        if (chunk->next == nullptr)
+        {
+            chunk = create_chunk(archetype);
+        }
+        else
+        {
+            chunk = chunk->next;
+        }
     }
 }
 
@@ -166,38 +224,77 @@ void World::destroy_entities(const Entity* to_destroy, const i32 count)
 
     for (int e = 0; e < count; ++e)
     {
+        auto& info = entities_[to_destroy[e]];
+        destroy_entity(&info);
         entities_.deallocate(to_destroy[e]);
     }
 }
 
-Archetype* World::get_or_create_archetype(const Span<const Type* const>& sorted_types)
+ArchetypeHandle World::get_archetype(const Type* const* types, const i32 type_count)
 {
-    const auto archetype_hash = get_hash(sorted_types.data(), sorted_types.byte_size(), 0xF00D);
+    auto sorted_types = BEE_ALLOCA_ARRAY(const Type*, type_count + 1);
+    sorted_types_fill(sorted_types, types, type_count);
+    auto archetype = lookup_archetype(types, type_count + 1);
+    return archetype == nullptr ? ArchetypeHandle{} : ArchetypeHandle { archetype->hash };
+}
+
+ArchetypeHandle World::create_archetype(const Type* const* types, const i32 type_count)
+{
+    auto sorted_types = BEE_ALLOCA_ARRAY(const Type*, type_count);
+    sorted_types_fill(sorted_types, types, type_count);
+    auto archetype = lookup_or_create_archetype(sorted_types, type_count + 1);
+    BEE_ASSERT(archetype != nullptr);
+    return ArchetypeHandle { archetype->hash };
+}
+
+void World::destroy_archetype(const ArchetypeHandle& archetype)
+{
+    auto archetype_ptr = archetype_lookup_.find(archetype.id);
+    BEE_ASSERT_F(archetype_ptr != nullptr, "No archetype with the ID %u exists", archetype.id);
+    destroy_archetype(archetype_ptr->value);
+}
+
+Archetype* World::lookup_archetype(const Type* const* sorted_types, const i32 type_count)
+{
+    const auto hash = get_archetype_hash(sorted_types, type_count);
+    auto archetype = archetype_lookup_.find(hash);
+    return archetype != nullptr ? archetype->value : nullptr;
+}
+
+Archetype* World::lookup_or_create_archetype(const Type* const* sorted_types, const i32 type_count)
+{
+    BEE_ASSERT(sorted_types[0] == get_type<Entity>());
+
+    const auto archetype_hash = get_archetype_hash(sorted_types, type_count);
     auto mapped = archetype_lookup_.find(archetype_hash);
     if (mapped != nullptr)
     {
         return mapped->value;
     }
 
-    // Entity is always the first component so we can look it up later
-    auto entity_size = sizeof(Entity);
-    for (const Type* const type : sorted_types)
-    {
-        entity_size += type->size;
-    }
-
-    auto archetype = BEE_NEW(archetype_allocator_, Archetype)(archetype_hash, sorted_types, entity_size, &archetype_allocator_);
-
-    size_t current_offset = 0;
-
-    for (int t = 0; t < archetype->types.size(); ++t)
-    {
-        archetype->offsets[t] = current_offset;
-        current_offset += archetype->types[t]->size;
-    }
-
+    const auto archetype_size = sizeof(Archetype) + type_count * (sizeof(const Type*) + sizeof(size_t*)); // NOLINT
+    auto archetype_memory = static_cast<u8*>(BEE_MALLOC_ALIGNED(archetype_allocator_, archetype_size, alignof(Archetype)));
+    auto archetype_types = archetype_memory + sizeof(Archetype);
+    auto archetype_offsets = archetype_memory + sizeof(Archetype) + sizeof(const Type*) * type_count; // NOLINT
+    auto archetype = reinterpret_cast<Archetype*>(archetype_memory);
+    
+    new (archetype) Archetype{};
+    archetype->hash = archetype_hash;
+    archetype->type_count = type_count;
+    archetype->types = reinterpret_cast<const Type**>(archetype_types);
+    archetype->offsets = reinterpret_cast<size_t*>(archetype_offsets);
     archetype->chunk_size = component_allocator_.max_allocation_size(); // TODO(Jacob): allow variable-sized archetypes
-    archetype->first_chunk = archetype->last_chunk = create_chunk(archetype);
+    archetype->chunk_count = 0;
+
+    for (int t = 0; t < type_count; ++t)
+    {
+        archetype->offsets[t] = archetype->entity_size;
+        archetype->types[t] = sorted_types[t];
+        archetype->entity_size += sorted_types[t]->size;
+    }
+
+    create_chunk(archetype);
+    archetype_lookup_.insert(archetype_hash, archetype);
     return archetype;
 }
 
@@ -210,7 +307,9 @@ void World::destroy_archetype(Archetype* archetype)
         archetype->first_chunk = next_chunk;
     }
 
-    BEE_DELETE(archetype_allocator_, archetype);
+    archetype_lookup_.erase(archetype->hash);
+    destruct(archetype);
+    BEE_FREE(archetype_allocator_, archetype);
 }
 
 ComponentChunk* World::create_chunk(Archetype* archetype)
@@ -218,12 +317,25 @@ ComponentChunk* World::create_chunk(Archetype* archetype)
     auto ptr = static_cast<u8*>(BEE_MALLOC_ALIGNED(component_allocator_, archetype->chunk_size, alignof(ComponentChunk)));
     auto chunk = reinterpret_cast<ComponentChunk*>(ptr);
     chunk->next = nullptr;
-    chunk->allocated_size = archetype->chunk_size;
+    chunk->previous = archetype->last_chunk;
+    chunk->allocated_size = archetype->chunk_size - sizeof(ComponentChunk);
     chunk->bytes_per_entity = archetype->entity_size;
-    chunk->capacity = chunk->bytes_per_entity / (chunk->allocated_size - sizeof(ComponentChunk));
+    chunk->capacity = chunk->allocated_size / chunk->bytes_per_entity;
     chunk->count = 0;
     chunk->archetype = archetype;
     chunk->data = ptr + sizeof(ComponentChunk);
+
+    if (archetype->first_chunk == nullptr)
+    {
+        archetype->first_chunk = archetype->last_chunk = chunk;
+    }
+    else
+    {
+        archetype->last_chunk->next = chunk;
+        archetype->last_chunk = chunk;
+    }
+
+    ++archetype->chunk_count;
     return chunk;
 }
 
@@ -249,6 +361,8 @@ void World::destroy_chunk(ComponentChunk* chunk)
         chunk->archetype->last_chunk = chunk->previous;
     }
 
+    --chunk->archetype->chunk_count;
+
     BEE_FREE(component_allocator_, chunk);
 }
 
@@ -257,16 +371,21 @@ void World::destroy_entity(EntityInfo* info)
     BEE_ASSERT(info->index_in_chunk < info->chunk->count);
 
     auto archetype = info->chunk->archetype;
-    auto entity = reinterpret_cast<Entity*>(info->chunk->data + sizeof(Entity) * info->index_in_chunk);
-    auto last_chunk = archetype->last_chunk;
     auto old_chunk = info->chunk;
 
     // If this is not last entity in the chunk we have to swap it with the last one in the archetype
     if (info->index_in_chunk != info->chunk->count - 1)
     {
+        auto last_chunk = archetype->last_chunk;
+
         // Copy the last entities components and then decrement the count of that chunk
         copy_components_in_chunks(info->chunk, info->index_in_chunk, last_chunk, last_chunk->count - 1);
         old_chunk = last_chunk;
+
+        auto last_entity_moved = reinterpret_cast<Entity*>(info->chunk->data + sizeof(Entity) * info->index_in_chunk);
+        auto& last_entity_info = entities_[*last_entity_moved];
+        last_entity_info.chunk = info->chunk;
+        last_entity_info.index_in_chunk = info->index_in_chunk;
     }
 
     --old_chunk->count;
@@ -282,7 +401,6 @@ void World::destroy_entity(EntityInfo* info)
     }
     else
     {
-        new (entity) Entity{};
         info->index_in_chunk = -1;
         info->chunk = nullptr;
     }
@@ -292,13 +410,18 @@ void World::move_entity(EntityInfo* info, Archetype* dst)
 {
     BEE_ASSERT(dst->first_chunk != nullptr);
     BEE_ASSERT(dst->last_chunk != nullptr);
+    BEE_ASSERT(info->chunk != nullptr);
+
+    if (info->chunk->archetype == dst)
+    {
+        log_warning("Tried to move an entity into the same archetype it's already in");
+        return;
+    }
 
     // Allocate a new chunk if the archetype is full
     if (dst->last_chunk->count >= dst->last_chunk->capacity)
     {
-        auto new_chunk = create_chunk(dst);
-        dst->last_chunk->next = new_chunk;
-        dst->last_chunk = new_chunk;
+        create_chunk(dst);
     }
 
     // Copy the components from the old to the new chunk - last is always the only empty chunk
@@ -306,15 +429,15 @@ void World::move_entity(EntityInfo* info, Archetype* dst)
     destroy_entity(info);
 
     ++dst->last_chunk->count;
-    info->index_in_chunk = dst->last_chunk->count;
+    info->index_in_chunk = dst->last_chunk->count - 1;
     info->chunk = dst->last_chunk;
 }
 
 bool World::has_component(const EntityInfo* info, const Type* type)
 {
-    for (const Type* const stored_type : info->chunk->archetype->types)
+    for (int t = 0; t < info->chunk->archetype->type_count; ++t)
     {
-        if (stored_type == type)
+        if (info->chunk->archetype->types[t]->hash == type->hash)
         {
             return true;
         }
@@ -322,47 +445,58 @@ bool World::has_component(const EntityInfo* info, const Type* type)
     return false;
 }
 
-static thread_local const Type* local_type_array[128];
-
-Span<const Type* const> get_sorted_type_array_additive(const Span<const Type* const>& old_types, const Type* added_type)
+u32 get_archetype_hash(const Type* const* sorted_types, const i32 type_count)
 {
-    if (BEE_FAIL(old_types.size() + 1 < static_array_length(local_type_array)))
+    HashState hash(0xF00D);
+    for (int t = 0; t < type_count; ++t)
     {
-        return Span<const Type* const>{};
+        hash.add(sorted_types[t]->hash);
     }
-
-    memcpy(local_type_array, old_types.data(), old_types.byte_size());
-    local_type_array[old_types.size()] = added_type;
-    std::sort(local_type_array, local_type_array + old_types.size() + 1);
-    return Span<const Type* const>(local_type_array);
+    return hash.end();
 }
 
-Span<const Type* const> get_sorted_type_array_subtractive(const Span<const Type* const>& old_types, const Type* removed_type)
+void sort_types(const Type** types, const i32 count)
 {
-    if (old_types.size() - 1 <= 0)
+    std::sort(types, types + count, [](const Type* lhs, const Type* rhs)
     {
-        return Span<const Type* const>{};
-    }
+        return lhs->hash > rhs->hash;
+    });
+}
 
-    memcpy(local_type_array, old_types.data(), old_types.byte_size());
+i32 sorted_types_fill(const Type** dst, const Type* const* src, const i32 count)
+{
+    dst[0] = get_type<Entity>();
+    memcpy(dst + 1, src, sizeof(const Type*) * count); // NOLINT
+    sort_types(dst + 1, count);
+    return count + 1;
+}
 
-    int type_index = -1;
+i32 sorted_types_fill_append(const Type** dst, const Type* const* sorted_types, const i32 types_count, const Type* appended_type)
+{
+    BEE_ASSERT(appended_type != get_type<Entity>());
+    BEE_ASSERT(sorted_types[0] == get_type<Entity>());
+    memcpy(dst, sorted_types, sizeof(const Type*) * types_count); // NOLINT
+    dst[types_count] = appended_type;
+    sort_types(dst + 1, types_count);
+    return types_count + 1;
+}
 
-    for (int t = 0; t < old_types.size(); ++t)
+i32 sorted_types_fill_remove(const Type** dst, const Type* const* sorted_types, const i32 types_count, const Type* removed_type)
+{
+    BEE_ASSERT(removed_type != get_type<Entity>());
+    BEE_ASSERT(sorted_types[0] == get_type<Entity>());
+
+    int index = 1;
+    for (int t = 0; t < types_count; ++t)
     {
-        if (local_type_array[t]->hash == removed_type->hash)
+        if (sorted_types[t]->hash != removed_type->hash)
         {
-            type_index = t;
-            break;
+            dst[index++] = sorted_types[t];
         }
     }
 
-    if (type_index >= 0 && type_index < old_types.size() - 1)
-    {
-        std::swap(local_type_array[type_index], local_type_array[old_types.size()]);
-    }
-
-    return Span<const Type* const>(local_type_array, old_types.size() - 1);
+    sort_types(dst + 1, types_count - 1);
+    return types_count - 1;
 }
 
 void copy_components_in_chunks(ComponentChunk* dst, const i32 dst_index, const ComponentChunk* src, const i32 src_index)
@@ -371,10 +505,12 @@ void copy_components_in_chunks(ComponentChunk* dst, const i32 dst_index, const C
 
     const auto src_archetype = src->archetype;
     auto dst_archetype = dst->archetype;
-    auto src_type_iter = src_archetype->types.begin();
-    auto dst_type_iter = dst_archetype->types.begin();
-    auto src_offset_iter = src_archetype->offsets.begin();
-    auto dst_offset_iter = dst_archetype->offsets.begin();
+    auto src_type_iter = src_archetype->types;
+    auto dst_type_iter = dst_archetype->types;
+    auto src_type_end = src_archetype->types + src_archetype->type_count;
+    auto dst_type_end = dst_archetype->types + dst_archetype->type_count;
+    auto src_offset_iter = src_archetype->offsets;
+    auto dst_offset_iter = dst_archetype->offsets;
     void* dst_component = nullptr;
     void* src_component = nullptr;
 
@@ -382,7 +518,7 @@ void copy_components_in_chunks(ComponentChunk* dst, const i32 dst_index, const C
      * We can take advantage of the fact that the type arrays are always sorted by hash and
      * keep stepping through, only incrementing each iterator when one has a smaller hash than the other
      */
-    while (src_type_iter != src_archetype->types.end() && dst_type_iter != dst_archetype->types.end())
+    while (src_type_iter != src_type_end && dst_type_iter != dst_type_end)
     {
         // copy over types that are the same
         if ((*src_type_iter)->hash == (*dst_type_iter)->hash)

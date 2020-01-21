@@ -23,7 +23,7 @@
 namespace bee {
 
 
-BEE_DEFINE_RAW_HANDLE_I32(MonitorHandle);
+BEE_RAW_HANDLE_I32(MonitorHandle) BEE_REFLECT(serializable);
 BEE_VERSIONED_HANDLE_32(WindowHandle);
 
 

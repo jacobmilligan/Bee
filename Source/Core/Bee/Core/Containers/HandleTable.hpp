@@ -25,12 +25,9 @@ public:
     using handle_t                  = HandleType;
     using data_t                    = DataType;
 
-    static_assert(
-        std::is_base_of_v<versioned_handle_32_t<typename HandleType::tag_t>, HandleType>
-            ||
-        std::is_base_of_v<versioned_handle_64_t<typename HandleType::tag_t>, HandleType>,
-        "Bee: HandleTable<Capacity, HandleType, ResourceType>: HandleType must derive from "
-        "VersionedHandle, i.e:\nstruct MyHandle : public VersionedHandle<MyHandle, u32>{}"
+    static_assert(sizeof(HandleType::generator_t::id_type) <= 8,
+        "Bee: HandleTable<Capacity, HandleType, ResourceType>: HandleType must be declared using the BEE_VERSIONED_HANDLE() "
+        "macro and be smaller than 64 bits in size"
     );
 
     static_assert(
@@ -39,8 +36,8 @@ public:
     );
 
     static_assert(
-        capacity < handle_t::index_mask - 1,
-        "HandleTable: ResourcePool: Capacity must be less than 2^24 - 1"
+        capacity < handle_t::generator_t::index_mask - 1,
+        "HandleTable: ResourcePool: Capacity must be less than HandleType::generator_t::index_mask - 1"
     );
 
     HandleTable();

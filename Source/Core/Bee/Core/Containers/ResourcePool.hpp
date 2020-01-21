@@ -31,12 +31,9 @@ public:
     using handle_t      = HandleType;
     using resource_t    = ResourceType;
 
-    static_assert(
-        std::is_base_of_v<versioned_handle_32_t<typename HandleType::tag_t>, HandleType>
-            ||
-        std::is_base_of_v<versioned_handle_64_t<typename HandleType::tag_t>, HandleType>,
-        "Bee: ResourcePool<HandleType, ResourceType>: HandleType must derive from "
-        "VersionedHandle, i.e:\nstruct MyHandle : public VersionedHandle<MyHandle, u32>{}"
+    static_assert(sizeof(typename HandleType::generator_t::id_type) <= 8,
+        "Bee: ResourcePool<HandleType, ResourceType>: HandleType must be declared using the BEE_VERSIONED_HANDLE() "
+        "macro and be smaller than 64 bits in size"
     );
 
     class iterator
@@ -168,18 +165,18 @@ public:
     void deallocate(const HandleType& handle)
     {
         const auto index = sign_cast<i32>(handle.index());
-        const auto chunk_index = index % chunk_capacity_;
+        const auto index_in_chunk = index % chunk_capacity_;
         auto& chunk = get_chunk(index);
 
-        BEE_ASSERT_F(index < resource_count_ && chunk_index < chunk_capacity_, "Handle had an invalid index");
-        BEE_ASSERT_F(chunk.versions[chunk_index] == handle.version(), "Attempted to free a resource using an outdated handle");
-        BEE_ASSERT_F(chunk.active_states[chunk_index], "Handle referenced a deallocated resource");
+        BEE_ASSERT_F(index_in_chunk < chunk_capacity_, "Handle had an invalid index");
+        BEE_ASSERT_F(chunk.versions[index_in_chunk] == handle.version(), "Attempted to free a resource using an outdated handle");
+        BEE_ASSERT_F(chunk.active_states[index_in_chunk], "Handle referenced a deallocated resource");
 
-        destruct(&chunk.data[chunk_index]);
-        chunk.active_states[chunk_index] = false;
-        ++chunk.versions[chunk_index];
+        destruct(&chunk.data[index_in_chunk]);
+        chunk.active_states[index_in_chunk] = false;
+        ++chunk.versions[index_in_chunk];
 
-        chunk.free_list[chunk_index] = next_free_resource_;
+        chunk.free_list[index_in_chunk] = next_free_resource_;
         next_free_resource_ = index;
 
         --resource_count_;
@@ -257,6 +254,12 @@ public:
     {
         return iterator(this, chunks_.size() * chunk_capacity_);
     }
+
+    inline iterator get_iterator(const HandleType& handle)
+    {
+        BEE_ASSERT(handle.is_valid());
+        return iterator(this, sign_cast<i32>(handle.index()));
+    }
 private:
 
     size_t                      chunk_byte_size_ { 0 };
@@ -304,7 +307,7 @@ private:
         const auto index = sign_cast<i32>(handle.index());
         const auto chunk_index = index / chunk_capacity_;
         const auto resource_index = index % chunk_capacity_;
-        BEE_ASSERT_F(index < resource_count_ && chunk_index < chunks_.size() && resource_index < chunk_capacity_, "Handle had an invalid index");
+        BEE_ASSERT_F(chunk_index < chunks_.size() && resource_index < chunk_capacity_, "Handle had an invalid index");
         BEE_ASSERT_F(chunks_[chunk_index].versions[resource_index] == handle.version(), "Handle was out of date with the version stored in the resource pool");
         BEE_ASSERT_F(chunks_[chunk_index].active_states[resource_index], "Handle referenced a deallocated resource");
         return chunks_[chunk_index].data[resource_index];

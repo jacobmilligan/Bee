@@ -64,6 +64,17 @@ BEE_POP_WARNING
     return reinterpret_cast<void*>(aligned);
 }
 
+
+// Must be a macro because even a FORCE_INLINE function may possibly free the memory
+#if BEE_OS_WINDOWS == 1
+    #define BEE_ALLOCA(Size, Alignment) _alloca(bee::round_up(Size, Alignment))
+#else
+    #define BEE_ALLOCA(Size, Alignment) alloca(bee::round_up(Size, Alignment))
+#endif // BEE_OS_WINDOWS == 1
+
+#define BEE_ALLOCA_ARRAY(T, Size) static_cast<T*>(BEE_ALLOCA(sizeof(T) * Size, alignof(T)))
+
+
 BEE_CORE_API size_t get_page_size() noexcept;
 
 BEE_CORE_API size_t get_min_stack_size() noexcept;

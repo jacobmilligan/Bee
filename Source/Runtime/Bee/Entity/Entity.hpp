@@ -7,18 +7,19 @@
 
 #pragma once
 
-#include "Bee/Core/Handle.hpp"
 #include "Bee/Core/Containers/ResourcePool.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
 #include "Bee/Core/Memory/PoolAllocator.hpp"
-#include "Bee/Core/Reflection.hpp"
 
 
 namespace bee {
 
 
-BEE_VERSIONED_HANDLE_64(Entity);
-BEE_VERSIONED_HANDLE_32(ArchetypeHandle);
+struct Type;
+
+
+BEE_VERSIONED_HANDLE_64(Entity) BEE_REFLECT(serializable);
+BEE_RAW_HANDLE_U32(ArchetypeHandle);
 
 struct Archetype;
 
@@ -38,16 +39,15 @@ struct ComponentChunk
 
 struct Archetype
 {
-    u32                             hash { 0 };
-    size_t                          chunk_size { 0 };
-    size_t                          entity_size { 0 };
-    FixedArray<const Type*>         types;
-    FixedArray<size_t>              offsets;
-    i32                             chunk_count { 0 };
-    ComponentChunk*                 first_chunk { nullptr };
-    ComponentChunk*                 last_chunk { nullptr };
-
-    Archetype(const u32 sorted_type_hash, const Span<const Type* const>& sorted_types, const size_t entity_size, Allocator* allocator);
+    u32             hash { 0 };
+    size_t          chunk_size { 0 };
+    size_t          entity_size { 0 };
+    i32             type_count { 0 };
+    const Type**    types { nullptr };
+    size_t*         offsets { nullptr };
+    i32             chunk_count { 0 };
+    ComponentChunk* first_chunk { nullptr };
+    ComponentChunk* last_chunk { nullptr };
 };
 
 
@@ -57,6 +57,8 @@ public:
     ChunkAllocator() = default;
 
     ChunkAllocator(const size_t chunk_size, const size_t chunk_alignment);
+
+    ~ChunkAllocator() override;
 
     bool is_valid(const void* ptr) const override;
 
@@ -68,7 +70,7 @@ public:
 
     inline size_t max_allocation_size() const
     {
-        return chunk_size_ - sizeof(ChunkHeader) - sizeof(AllocHeader);
+        return chunk_size_ - sizeof(AllocHeader) - sizeof(ChunkHeader);
     }
 private:
     static constexpr u32 header_signature = 0x23464829;
@@ -112,6 +114,21 @@ public:
     explicit World(const WorldDescriptor& desc);
 
     /*
+     * Archetype management
+     */
+    template <typename... Types>
+    ArchetypeHandle get_or_create_archetype();
+
+    template <typename... Types>
+    ArchetypeHandle get_archetype();
+
+    ArchetypeHandle get_archetype(const Type* const* types, const i32 type_count);
+
+    ArchetypeHandle create_archetype(const Type* const* types, const i32 type_count);
+
+    void destroy_archetype(const ArchetypeHandle& archetype);
+
+    /*
      * Entity management
      */
     Entity create_entity(); // not thread-safe
@@ -131,6 +148,16 @@ public:
     template <typename T>
     bool has_component(const Entity& entity) const; // not thread-safe
 
+    inline i64 alive_count() const
+    {
+        return entities_.size();
+    }
+
+    inline i32 archetype_count() const
+    {
+        return archetype_lookup_.size();
+    }
+
 private:
     /*
      * Entity management
@@ -140,6 +167,8 @@ private:
         i32             index_in_chunk { 0 };
         ComponentChunk* chunk { nullptr };
     };
+
+    static const Type* entity_type_;
 
     ResourcePool<Entity, EntityInfo>    entities_;
 
@@ -153,7 +182,9 @@ private:
     /*
      * Implementation
      */
-    Archetype* get_or_create_archetype(const Span<const Type* const>& sorted_types);
+    Archetype* lookup_archetype(const Type* const* sorted_types, const i32 type_count);
+
+    Archetype* lookup_or_create_archetype(const Type* const* sorted_types, const i32 type_count);
 
     void destroy_archetype(Archetype* archetype);
 
@@ -171,12 +202,17 @@ private:
     static T* get_component_ptr(EntityInfo* info, const Type* type);
 };
 
-
-BEE_RUNTIME_API Span<const Type* const> get_sorted_type_array_additive(const Span<const Type* const>& old_types, const Type* added_type);
-
-BEE_RUNTIME_API Span<const Type* const> get_sorted_type_array_subtractive(const Span<const Type* const>& old_types, const Type* removed_type);
+BEE_RUNTIME_API u32 get_archetype_hash(const Type* const* sorted_types, const i32 type_count);
 
 BEE_RUNTIME_API void copy_components_in_chunks(ComponentChunk* dst, const i32 dst_index, const ComponentChunk* src, const i32 src_index);
+
+BEE_RUNTIME_API void sort_types(const Type** types, const i32 count);
+
+BEE_RUNTIME_API i32 sorted_types_fill(const Type** dst, const Type* const* src, const i32 count);
+
+BEE_RUNTIME_API i32 sorted_types_fill_append(const Type** dst, const Type* const* sorted_types, const i32 types_count, const Type* appended_type);
+
+BEE_RUNTIME_API i32 sorted_types_fill_remove(const Type** dst, const Type* const* sorted_types, const i32 types_count, const Type* removed_type);
 
 
 } // namespace bee

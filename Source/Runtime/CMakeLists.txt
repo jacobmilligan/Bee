@@ -7,5 +7,6 @@ add_subdirectory(Bee/Entity)
 
 bee_library(Bee.Runtime LINK_LIBRARIES Bee.Core)
 target_compile_definitions(Bee.Runtime PUBLIC BEE_BUILD_EXPORT_LIBRARY)
+bee_reflect(Bee.Runtime)
 
 add_subdirectory(Tests)

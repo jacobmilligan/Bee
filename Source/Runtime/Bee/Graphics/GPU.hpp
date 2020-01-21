@@ -603,7 +603,7 @@ enum class BarrierType
  *
  ********************************************************
  */
-BEE_DEFINE_RAW_HANDLE_U32(DeviceHandle);
+BEE_RAW_HANDLE_U32(DeviceHandle);
 BEE_VERSIONED_HANDLE_32(SwapchainHandle);
 BEE_VERSIONED_HANDLE_32(TextureHandle);
 BEE_VERSIONED_HANDLE_32(TextureViewHandle);

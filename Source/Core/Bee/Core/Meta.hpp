@@ -213,7 +213,7 @@ struct has_type<T, FirstType, Types...>
 };
 
 template <typename T, typename... Types>
-static constexpr i32 has_type_v = has_type<T, Types...>::value;
+static constexpr bool has_type_v = has_type<T, Types...>::value;
 
 
 /**

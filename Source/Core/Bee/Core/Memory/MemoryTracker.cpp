@@ -64,10 +64,8 @@ void set_tracking_mode(const TrackingMode mode)
     g_proxy.tracking_mode = mode;
 }
 
-void record_manual_allocation(void* address, const size_t size, const size_t alignment, const i32 skipped_stack_frames)
+void record_manual_allocation_nolock(void* address, const size_t size, const size_t alignment, const i32 skipped_stack_frames)
 {
-    scoped_recursive_spinlock_t lock(g_proxy.mutex);
-
     if (g_proxy.tracking_mode == TrackingMode::disabled)
     {
         return;
@@ -93,10 +91,14 @@ void record_manual_allocation(void* address, const size_t size, const size_t ali
     g_proxy.tracking_mode = TrackingMode::enabled;
 }
 
-void erase_manual_allocation(void* address)
+void record_manual_allocation(void* address, const size_t size, const size_t alignment, const i32 skipped_stack_frames)
 {
     scoped_recursive_spinlock_t lock(g_proxy.mutex);
+    record_manual_allocation_nolock(address, size, alignment, skipped_stack_frames);
+}
 
+void erase_manual_allocation_nolock(void* address)
+{
     if (g_proxy.tracking_mode == TrackingMode::disabled)
     {
         return;
@@ -115,18 +117,22 @@ void erase_manual_allocation(void* address)
         g_proxy.total_allocations -= alloc_size;
     }
     g_proxy.tracking_mode = TrackingMode::enabled;
+}
 
+void erase_manual_allocation(void* address)
+{
+    scoped_recursive_spinlock_t lock(g_proxy.mutex);
+    erase_manual_allocation_nolock(address);
 }
 
 void* allocate_tracked(Allocator* allocator, const size_t size, const size_t alignment)
 {
-    scoped_recursive_spinlock_t lock(g_proxy.mutex);
-
     auto address = allocator->allocate(size, alignment);
 
     if (!allocator->allocator_proxy_disable_tracking())
     {
-        record_manual_allocation(address, size, alignment, 1);
+        scoped_recursive_spinlock_t lock(g_proxy.mutex);
+        record_manual_allocation_nolock(address, size, alignment, 1);
     }
 
     return address;
@@ -134,15 +140,14 @@ void* allocate_tracked(Allocator* allocator, const size_t size, const size_t ali
 
 void* reallocate_tracked(Allocator* allocator, void* old_address, const size_t old_size, const size_t new_size, const size_t alignment)
 {
-    scoped_recursive_spinlock_t lock(g_proxy.mutex);
-
     auto new_address = allocator->reallocate(old_address, old_size, new_size, alignment);
 
     // Reallocating is a special-case where a nullptr is a useful return value for certain allocators
     if (new_address != nullptr && !allocator->allocator_proxy_disable_tracking())
     {
+        scoped_recursive_spinlock_t lock(g_proxy.mutex);
         erase_manual_allocation(old_address);
-        record_manual_allocation(new_address, new_size, alignment, 1);
+        record_manual_allocation_nolock(new_address, new_size, alignment, 1);
     }
 
     return new_address;
@@ -150,15 +155,14 @@ void* reallocate_tracked(Allocator* allocator, void* old_address, const size_t o
 
 void deallocate_tracked(Allocator* allocator, void* ptr)
 {
-    scoped_recursive_spinlock_t lock(g_proxy.mutex);
-
-    allocator->deallocate(ptr);
-
     // freeing a nullptr is considered valid and evaluates to a no-op
     if (ptr != nullptr && !allocator->allocator_proxy_disable_tracking())
     {
-        erase_manual_allocation(ptr);
+        scoped_recursive_spinlock_t lock(g_proxy.mutex);
+        erase_manual_allocation_nolock(ptr);
     }
+
+    allocator->deallocate(ptr);
 }
 
 i32 get_tracked_allocations(AllocationEvent* dst_buffer, const i32 dst_buffer_count)
