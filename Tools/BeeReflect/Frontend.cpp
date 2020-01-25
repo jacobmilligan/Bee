@@ -64,7 +64,7 @@ std::unique_ptr<clang::ASTConsumer> BeeReflectFrontendAction::CreateASTConsumer(
     CI.getHeaderSearchOpts().UseBuiltinIncludes = false;
     CI.getHeaderSearchOpts().UseStandardSystemIncludes = false;
     CI.getHeaderSearchOpts().UseStandardCXXIncludes = false;
-    CI.getPreprocessor().SetSuppressIncludeNotFoundError(true);
+//    CI.getPreprocessor().SetSuppressIncludeNotFoundError(true);
 
     for (const auto& path : CI.getHeaderSearchOpts().UserEntries)
     {
@@ -78,7 +78,9 @@ std::unique_ptr<clang::ASTConsumer> BeeReflectFrontendAction::CreateASTConsumer(
 
 bool BeeReflectFrontendAction::BeginInvocation(clang::CompilerInstance& CI)
 {
-    CI.getInvocation().getPreprocessorOpts().addMacroDef("BEE_COMPILE_REFLECTION");
+    auto& preprocessor_opts = CI.getInvocation().getPreprocessorOpts();
+    preprocessor_opts.addMacroDef("BEE_COMPILE_REFLECTION");
+
     CI.getInvocation().getFrontendOpts().SkipFunctionBodies = true;
     matcher_.diagnostics.init(&CI.getDiagnostics());
     return true;

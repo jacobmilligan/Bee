@@ -35,7 +35,7 @@ public:
 
     constexpr UniquePtr() noexcept = default;
 
-    constexpr UniquePtr(nullptr_t) noexcept
+    constexpr UniquePtr(nullptr_t) noexcept // NOLINT
         : pointer_(nullptr),
           allocator_(nullptr)
     {}
@@ -140,13 +140,13 @@ inline bool operator==(nullptr_t, const UniquePtr<T>& rhs) noexcept
 template <typename LHSType, typename RHSType>
 inline bool operator!=(const UniquePtr<LHSType>& lhs, const UniquePtr<RHSType>& rhs) noexcept
 {
-    return !(lhs == rhs);
+    return !(lhs == rhs); // NOLINT
 }
 
 template <typename T>
 inline bool operator!=(const UniquePtr<T>& lhs, nullptr_t) noexcept
 {
-    return !(lhs == nullptr);
+    return !(lhs == nullptr); // NOLINT
 }
 
 template <typename T>
@@ -190,11 +190,11 @@ public:
 
     constexpr RefCountPtr() noexcept = default;
 
-    constexpr RefCountPtr(nullptr_t) noexcept
+    constexpr RefCountPtr(nullptr_t) noexcept // NOLINT
         : pointer_(nullptr)
     {}
 
-    RefCountPtr(pointer_t pointer) noexcept
+    RefCountPtr(pointer_t pointer) noexcept // NOLINT
     {
         reset(pointer);
     }

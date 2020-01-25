@@ -21,34 +21,35 @@ float length(const quaternion& quat);
 
 quaternion normalize(const quaternion& quat);
 
-struct quaternion
+struct BEE_REFLECT(serializable) quaternion
 {
     static constexpr uint32_t num_components = 4;
 
-    union
+    union BEE_REFLECT(serializable)
     {
-        struct
+        BEE_REFLECT(nonserialized)
+        float components[num_components];
+
+        struct BEE_REFLECT(serializable)
         {
             float w, x, y, z;
         };
-
-        float components[num_components];
     };
 
-    BEE_FORCE_INLINE quaternion() noexcept // NOLINT(cppcoreguidelines-pro-type-member-init)
+    BEE_FORCE_INLINE quaternion() noexcept // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
         : w(1.0f), x(0.0f), y(0.0f), z(0.0f)
     {}
 
-    BEE_FORCE_INLINE quaternion(const float in_w, const float in_x, // NOLINT(cppcoreguidelines-pro-type-member-init)
+    BEE_FORCE_INLINE quaternion(const float in_w, const float in_x, // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
                                 const float in_y, const float in_z) noexcept
         : w(in_w), x(in_x), y(in_y), z(in_z)
     {}
 
-    explicit BEE_FORCE_INLINE quaternion(const float4& vec) noexcept // NOLINT(cppcoreguidelines-pro-type-member-init)
+    explicit BEE_FORCE_INLINE quaternion(const float4& vec) noexcept // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
         : w(vec.w), x(vec.x), y(vec.y), z(vec.z)
     {}
 
-    explicit BEE_FORCE_INLINE quaternion(const float4x4& mat) noexcept // NOLINT(cppcoreguidelines-pro-type-member-init)
+    explicit BEE_FORCE_INLINE quaternion(const float4x4& mat) noexcept // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
     {
         // adapted from: http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToquaternion/
 

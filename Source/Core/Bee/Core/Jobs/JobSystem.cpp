@@ -300,7 +300,7 @@ bool job_system_init(const JobSystemInitInfo& info)
     for (int current_cpu_idx = 0; current_cpu_idx < worker_count_with_main_thread; ++current_cpu_idx)
     {
         // Setup a name for debugging
-        str::format(thread_info.name, Thread::max_name_length, "sky::jobs(%d)", current_cpu_idx + 1);
+        str::format_buffer(thread_info.name, Thread::max_name_length, "sky::jobs(%d)", current_cpu_idx + 1);
 
         // Initialize the worker data
         worker_params.worker = &g_job_system.workers[current_cpu_idx];

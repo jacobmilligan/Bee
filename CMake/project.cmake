@@ -365,8 +365,8 @@ function(bee_reflect target)
             if (position GREATER_EQUAL 0)
                 # All good - we can include this file in the reflection generation
                 get_filename_component(filename ${src} NAME_WE)
-                list(APPEND expected_output ${output_dir}/${target}/${filename}.generated.cpp)
-                list(APPEND reflected_sources ${src})
+                list(APPEND expected_output "${output_dir}/${target}/${filename}.generated.cpp")
+                list(APPEND reflected_sources "${src}")
             endif ()
         endif ()
     endforeach()
@@ -382,13 +382,22 @@ function(bee_reflect target)
     set(system_include_dirs)
     foreach(dir ${__bee_include_dirs})
         if (dir MATCHES "${BEE_THIRD_PARTY}.*")
-            list(APPEND system_include_dirs -isystem${dir})
+            list(APPEND system_include_dirs -isystem"${dir}")
         else()
-            list(APPEND include_dirs -I${dir})
+            list(APPEND include_dirs -I"${dir}")
         endif ()
     endforeach()
 
-    list(APPEND include_dirs -I${__bee_current_source_root})
+    list(APPEND include_dirs -I"${__bee_current_source_root}")
+
+    # bee-reflect needs to explicitly tell clang where the compilers implicit include directories are located
+    # because we need to use the same standard types as is being compiled by the project, not just rely on llvm's
+    # builtin headers
+    if ("${CMAKE_CXX_COMPILER_ID}" MATCHES MSVC)
+        foreach(compiler_path $ENV{INCLUDE})
+            list(APPEND include_dirs -isystem"${compiler_path}")
+        endforeach()
+    endif ()
 
     # Get all the compiler flags
     get_target_property(compile_defines ${target} COMPILE_DEFINITIONS)
@@ -426,8 +435,9 @@ function(bee_reflect target)
             USES_TERMINAL
             COMMENT "Running bee-reflect on header files: generating ${expected_output}"
     )
-
-    target_sources(${target} PUBLIC ${expected_output})
+    add_custom_target(REFLECT_${target} DEPENDS ${expected_output})
+    set_source_files_properties(${expected_output} PROPERTIES GENERATED 1)
+    add_dependencies(${target} REFLECT_${target})
     target_include_directories(${target} PUBLIC ${output_dir}/${target})
 endfunction()
 

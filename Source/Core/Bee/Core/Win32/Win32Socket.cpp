@@ -40,7 +40,7 @@ i32 socket_reset_address(SocketAddress* address, const SocketType type, const So
     hints.ai_flags = AI_PASSIVE | AI_CANONNAME;
 
     char port_string[8];
-    str::format(port_string, 8, "%u", htons(port));
+    str::format_buffer(port_string, 8, "%u", htons(port));
 
     return getaddrinfo(hostname, port_string, &hints, &address->info);
 }

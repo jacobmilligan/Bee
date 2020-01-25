@@ -8,7 +8,6 @@
 #pragma once
 
 #include "Bee/Core/NumericTypes.hpp"
-#include "Bee/Core/Hash.hpp"
 #include "Bee/Core/Serialization/Serialization.hpp"
 
 #include <string.h>

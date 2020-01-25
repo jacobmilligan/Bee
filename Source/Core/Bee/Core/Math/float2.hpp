@@ -7,20 +7,30 @@
 
 #pragma once
 
-#include "Bee/Core/Config.hpp"
 #include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/Math/vec.hpp"
 
 namespace bee {
 
 
-struct float2 : public vec<float, 2> {
-    union {
-        struct { value_t x, y; };
-
-        struct { value_t u, v; };
-
+struct BEE_REFLECT(serializable) float2 : public vec<float, 2> {
+    union BEE_REFLECT(serializable)
+    {
+        BEE_REFLECT(nonserialized)
         component_array_t components;
+
+        struct BEE_REFLECT(serializable)
+        {
+            value_t x, y;
+        };
+
+        /*
+         * Non-reflected aliases for x, y
+         */
+        struct
+        {
+            value_t u, v;
+        };
     };
 
     float2() // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
@@ -35,7 +45,7 @@ struct float2 : public vec<float, 2> {
     : x(cx), y(cy)
     {}
 
-    BEE_FORCE_INLINE value_t operator[](const uint32_t i)
+    BEE_FORCE_INLINE value_t operator[](const u32 i)
     {
         return components[i];
     }

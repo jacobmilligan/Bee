@@ -390,7 +390,7 @@ i32 gpu_enumerate_physical_devices(PhysicalDeviceInfo* dst_buffer, const i32 buf
         const auto major = VK_VERSION_MAJOR(props.apiVersion);
         const auto minor = VK_VERSION_MINOR(props.apiVersion);
         const auto patch = VK_VERSION_PATCH(props.apiVersion);
-        str::format(info.api_version, static_array_length(info.api_version), "Vulkan %u.%u.%u", major, minor, patch);
+        str::format_buffer(info.api_version, static_array_length(info.api_version), "Vulkan %u.%u.%u", major, minor, patch);
     }
 
     return device_count;
@@ -706,7 +706,7 @@ SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const Sw
     swapchain->images = FixedArray<TextureHandle>::with_size(image_count);
     swapchain->image_views = FixedArray<TextureViewHandle>::with_size(image_count);
 
-    str::format(swapchain->id_string, static_array_length(swapchain->id_string), "handle:%u", created_handle.id);
+    str::format_buffer(swapchain->id_string, static_array_length(swapchain->id_string), "handle:%u", created_handle.id);
     gpu_set_object_name(
         device.handle,
         VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT,

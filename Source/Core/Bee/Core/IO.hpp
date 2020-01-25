@@ -7,7 +7,6 @@
 
 #pragma once
 
-#include "Bee/Core/String.hpp"
 #include "Bee/Core/Path.hpp"
 #include "Bee/Core/Meta.hpp"
 

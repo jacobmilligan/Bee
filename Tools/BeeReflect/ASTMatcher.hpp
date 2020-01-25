@@ -128,13 +128,15 @@ struct ASTMatcher final : public clang::ast_matchers::MatchFinder::MatchCallback
 
     void reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStorage* parent = nullptr);
 
+    void reflect_record_children(const clang::CXXRecordDecl& decl, RecordTypeStorage* storage);
+
     void reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* parent = nullptr);
 
-    void reflect_field(const clang::FieldDecl& decl, RecordTypeStorage* parent);
+    void reflect_field(const clang::FieldDecl& decl, const clang::ASTRecordLayout& enclosing_layout, RecordTypeStorage* parent);
 
     void reflect_function(const clang::FunctionDecl& decl, RecordTypeStorage* parent = nullptr);
 
-    FieldStorage create_field(const llvm::StringRef& name, const i32 index, const clang::ASTContext& ast_context, const RecordTypeStorage* parent, const clang::QualType& qual_type, const clang::SourceLocation& location);
+    FieldStorage create_field(const llvm::StringRef& name, const i32 index, const clang::ASTContext& ast_context, const clang::ASTRecordLayout* enclosing_layout, const RecordTypeStorage* parent, const clang::QualType& qual_type, const clang::SourceLocation& location);
 };
 
 

@@ -35,7 +35,6 @@ struct ConfigureInfo
 {
     const char*             bb_generator { nullptr };
     const char*             cmake_generator { nullptr };
-    const char*             build_type { nullptr };
     DynamicArray<String>    cmake_options;
 };
 
@@ -101,69 +100,77 @@ const BuildInfo& get_build_info()
     return info;
 }
 
-bool configure(const ConfigureInfo& config_info)
+bool configure(const DynamicArray<String>& build_types, const ConfigureInfo& config_info)
 {
-    auto& build_info = get_build_info();
-    auto build_dir = build_info.build_dir.join(config_info.bb_generator);
-    if (config_info.build_type != nullptr)
+    auto cmake_processes = FixedArray<ProcessHandle>::with_size(build_types.size());
+
+    for (const auto build_type_enumer : enumerate(build_types))
     {
-        build_dir.join(config_info.build_type);
+        const String& build_type = build_type_enumer.value;
+        auto& build_info = get_build_info();
+        auto build_dir = build_info.build_dir.join(config_info.bb_generator);
+        if (!build_type.empty())
+        {
+            build_dir.join(build_type.view());
+        }
+
+        const auto install_dir = build_dir.join("Install");
+
+        String cmd;
+        io::StringStream stream(&cmd);
+
+        if (str::compare(config_info.bb_generator, "CLion") == 0)
+        {
+            // Call vcvarsall before running cmake for clion builds
+            stream.write_fmt(R"("%s" x64 && )", build_info.vcvarsall_path.c_str());
+        }
+
+        stream.write_fmt(
+            R"("%s" "%s" -G "%s" -B )",
+            build_info.cmake_path.c_str(),
+            build_info.project_root.c_str(),
+            config_info.cmake_generator
+        );
+
+        const auto is_single_config = !build_type.empty() && str::compare(build_type, "MultiConfig") != 0;
+
+        if (is_single_config)
+        {
+            stream.write_fmt(R"("%s" )", build_dir.join(build_type.view()).c_str());
+            stream.write_fmt(" -DCMAKE_BUILD_TYPE=%s", build_type.c_str());
+            stream.write_fmt(R"( -DCMAKE_INSTALL_PREFIX="%s" )", install_dir.join(build_type.view()).c_str());
+        }
+        else
+        {
+            stream.write_fmt(R"("%s" )", build_dir.c_str());
+            stream.write_fmt(R"(-DCMAKE_INSTALL_PREFIX="%s" )", install_dir.c_str());
+        }
+
+        // Add the extra cmake options to pass to the build system
+        for (const auto& opt : config_info.cmake_options)
+        {
+            stream.write_fmt("%s ", opt.c_str());
+        }
+
+        log_info("\nbb: Configuring %s build with CMake command:\n\n%s\n", build_type.c_str(), cmd.c_str());
+
+        CreateProcessInfo proc_info{};
+        proc_info.handle = &cmake_processes[build_type_enumer.index];
+        proc_info.flags = CreateProcessFlags::priority_high | CreateProcessFlags::create_hidden;
+        proc_info.command_line = cmd.c_str();
+
+        if (!create_process(proc_info))
+        {
+            log_error("bb: Unable to find cmake");
+            return false;
+        }
     }
 
-    const auto install_dir = build_dir.join("Install");
-
-    String cmd;
-    io::StringStream stream(&cmd);
-
-    if (str::compare(config_info.bb_generator, "CLion") == 0)
+    for (auto& proc_handle : cmake_processes)
     {
-        // Call vcvarsall before running cmake for clion builds
-        stream.write_fmt(R"("%s" x64 && )", build_info.vcvarsall_path.c_str());
+        wait_for_process(proc_handle);
+        destroy_process(proc_handle);
     }
-
-    stream.write_fmt(
-        R"("%s" "%s" -G "%s" -B )",
-        build_info.cmake_path.c_str(),
-        build_info.project_root.c_str(),
-        config_info.cmake_generator
-    );
-
-    const auto is_single_config = config_info.build_type != nullptr && str::compare(config_info.build_type, "MultiConfig") != 0;
-
-    if (is_single_config)
-    {
-        stream.write_fmt(R"("%s" )", build_dir.join(config_info.build_type).c_str());
-        stream.write_fmt(" -DCMAKE_BUILD_TYPE=%s", config_info.build_type);
-        stream.write_fmt(R"( -DCMAKE_INSTALL_PREFIX="%s" )", install_dir.join(config_info.build_type).c_str());
-    }
-    else
-    {
-        stream.write_fmt(R"("%s" )", build_dir.c_str());
-        stream.write_fmt(R"(-DCMAKE_INSTALL_PREFIX="%s" )", install_dir.c_str());
-    }
-
-    // Add the extra cmake options to pass to the build system
-    for (const auto& opt : config_info.cmake_options)
-    {
-        stream.write_fmt("%s ", opt.c_str());
-    }
-
-    log_info("Running CMake with command: %s", cmd.c_str());
-
-    bee::ProcessHandle cmake_handle{};
-    bee::CreateProcessInfo proc_info{};
-    proc_info.handle = &cmake_handle;
-    proc_info.flags = bee::CreateProcessFlags::priority_high | bee::CreateProcessFlags::create_hidden;
-    proc_info.command_line = cmd.c_str();
-
-    if (!bee::create_process(proc_info))
-    {
-        bee::log_error("bb: Unable to find cmake");
-        return false;
-    }
-
-    bee::wait_for_process(cmake_handle);
-    bee::destroy_process(cmake_handle);
 
     return true;
 }
@@ -321,13 +328,10 @@ int bb_entry(int argc, char** argv)
             build_types.push_back("MultiConfig");
         }
 
-        for (const auto& build_type : build_types)
+        // Configure the standard build types
+        if (!configure(build_types, config_info))
         {
-            config_info.build_type = build_type.c_str();
-            if (!configure(config_info))
-            {
-                return EXIT_FAILURE;
-            }
+            return EXIT_FAILURE;
         }
 
         return EXIT_SUCCESS;

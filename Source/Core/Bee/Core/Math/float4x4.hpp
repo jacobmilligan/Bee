@@ -13,14 +13,15 @@ namespace bee {
 
 struct quaternion;
 
-struct float4x4 {
+struct BEE_REFLECT(serializable) float4x4 {
     static constexpr uint8_t num_elements = 16;
 
-    union
+    union BEE_REFLECT(serializable)
     {
+        BEE_REFLECT(nonserialized)
         float entries[num_elements]{0.0f};
 
-        struct
+        struct BEE_REFLECT(serializable)
         {
             float m00, m01, m02, m03;
             float m10, m11, m12, m13;

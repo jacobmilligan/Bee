@@ -468,7 +468,7 @@ void JSONSerializer::serialize_fundamental(u128* data)
 
     if (mode == SerializerMode::writing)
     {
-        str::format(buffer, static_array_length(buffer), "%" BEE_PRIxu128, BEE_FMT_u128((*data)));
+        str::format_buffer(buffer, static_array_length(buffer), "%" BEE_PRIxu128, BEE_FMT_u128((*data)));
         writer_.String(buffer, static_array_length(buffer) - 1);
         return;
     }

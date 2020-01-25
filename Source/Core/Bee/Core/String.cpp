@@ -533,7 +533,7 @@ String format(const char* format, ...)
     return result;
 }
 
-i32 format(char* buffer, i32 buffer_size, const char* format, ...)
+i32 format_buffer(char* buffer, i32 buffer_size, const char* format, ...)
 {
     va_list args;
     va_start(args, format);

@@ -12,17 +12,24 @@
 namespace bee {
 
 
-struct float4 : public vec<float, 4> {
-    union {
-        struct {
+struct BEE_REFLECT(serializable) float4 : public vec<float, 4> {
+    union BEE_REFLECT(serializable)
+    {
+        BEE_REFLECT(nonserialized)
+        value_t components[num_components];
+
+        struct BEE_REFLECT(serializable)
+        {
             value_t x, y, z, w;
         };
 
-        struct {
+        /*
+         * Non-reflected aliases for x, y, z, w
+         */
+        struct
+        {
             value_t r, g, b, a;
         };
-
-        value_t components[num_components];
     };
 
     BEE_FORCE_INLINE float4() // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)

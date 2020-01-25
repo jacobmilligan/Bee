@@ -263,7 +263,8 @@ Array<T, Mode>::Array(std::initializer_list<T> init, Allocator* allocator) noexc
 template <typename T, ContainerMode Mode>
 Array<T, Mode> Array<T, Mode>::with_size(const i32 size, Allocator* allocator) noexcept
 {
-    Array<T, Mode> array(size, T{}, allocator);
+    Array<T, Mode> array(size, allocator);
+    array.resize(size);
     return std::move(array);
 }
 

@@ -336,6 +336,17 @@ namespace bee {
     #define BEE_TEMPLATED(x) ::bee::ComplexTypeTag<::bee::get_static_string_hash(#x)>
 #endif // BEE_REFLECT
 
+#if BEE_CONFIG_DISABLE_REFLECTION == 0
+    #ifndef BEE_ENABLE_REFLECTION
+        #define BEE_ENABLE_REFLECTION
+    #endif // BEE_ENABLE_REFLECTION
+#endif // BEE_CONFIG_DISABLE_REFLECTION
+
+#if defined(BEE_COMPILE_REFLECTION) && defined(BEE_ENABLE_REFLECTION)
+    #undef BEE_ENABLE_REFLECTION
+#endif // defined(BEE_COMPILE_REFLECTION) && defined(BEE_ENABLE_REFLECTION)
+
+
 template <typename T, int Size>
 inline constexpr int static_array_length(T(&)[Size])
 {

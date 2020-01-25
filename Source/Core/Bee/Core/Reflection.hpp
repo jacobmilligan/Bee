@@ -8,7 +8,6 @@
 #pragma once
 
 #include "Bee/Core/Enum.hpp"
-#include "Bee/Core/String.hpp"
 #include "Bee/Core/Logger.hpp"
 #include "Bee/Core/IO.hpp"
 
@@ -1086,7 +1085,7 @@ const char* reflection_dump_flags(const FlagType flag)
 
 } // namespace bee
 
-#if BEE_CONFIG_DISABLE_REFLECTION == 0
+#ifdef BEE_ENABLE_REFLECTION
 #include "ReflectedTemplates/Array.generated.inl"
 #include "ReflectedTemplates/String.generated.inl"
-#endif // BEE_CONFIG_DISABLE_REFLECTION
+#endif // BEE_ENABLE_REFLECTION

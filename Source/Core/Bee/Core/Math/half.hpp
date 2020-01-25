@@ -13,7 +13,8 @@ namespace bee {
 
 static constexpr u16 half_max = 0xFFE0;
 
-class BEE_CORE_API half {
+class BEE_REFLECT(serializable) BEE_CORE_API half
+{
 public:
     half()
         : val_(0)
@@ -83,6 +84,7 @@ public:
         return val_ != other.val_;
     }
 private:
+    BEE_REFLECT()
     u16 val_ { 0 };
 
     float half_to_float(u16 h) const;

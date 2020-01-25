@@ -254,7 +254,13 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
         return;
     }
 
-    const auto name = print_name(decl);
+    if (decl.isAnonymousStructOrUnion())
+    {
+        reflect_record_children(decl, parent);
+        return;
+    }
+
+    const auto name = str::format("%" BEE_PRIsv, BEE_FMT_SV(print_name(decl)));
     auto storage = allocator->allocate_storage<RecordTypeStorage>(&decl);
     auto type = &storage->type;
 
@@ -307,7 +313,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
 
     // Name will be valid here even for templated classes because it doesn't contain the template parameters.
     // `name` will get overwritten below if it's a template type so don't move this line of code
-    type->hash = get_type_hash({ name.data(), static_cast<i32>(name.size()) });
+    type->hash = get_type_hash(name.view());
 
     // Gather template parameters
     auto class_template = decl.getDescribedClassTemplate();
@@ -318,7 +324,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
 
         String template_name(temp_allocator());
         io::StringStream stream(&template_name);
-        stream.write_fmt("%" BEE_PRIsv "<", BEE_FMT_SV(name));
+        stream.write_fmt("%s<", name.c_str());
 
         int param_index = 0;
         const auto param_count = static_cast<int>(class_template->getTemplateParameters()->size());
@@ -360,7 +366,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
     }
     else
     {
-        type->name = allocator->allocate_name(name);
+        type->name = allocator->allocate_name(llvm::StringRef(name.c_str()));
     }
 
 
@@ -383,6 +389,11 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
         parent->add_record(storage);
     }
 
+    reflect_record_children(decl, storage);
+}
+
+void ASTMatcher::reflect_record_children(const clang::CXXRecordDecl &decl, RecordTypeStorage *storage)
+{
     bool requires_field_order_validation = false;
 
     for (const clang::Decl* child : decl.decls())
@@ -429,7 +440,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
 
                 if (child_field != nullptr)
                 {
-                    reflect_field(*child_field, storage);
+                    reflect_field(*child_field, decl.getASTContext().getASTRecordLayout(&decl), storage);
                 }
 
                 if (storage->fields.size() > old_field_count && !requires_field_order_validation)
@@ -554,8 +565,13 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* pa
     }
 }
 
-void ASTMatcher::reflect_field(const clang::FieldDecl& decl, RecordTypeStorage* parent)
+void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRecordLayout& enclosing_layout, RecordTypeStorage* parent)
 {
+    if (decl.isAnonymousStructOrUnion())
+    {
+        return;
+    }
+
     AttributeParser attr_parser{};
 
     const auto requires_annotation = parent == nullptr;
@@ -565,7 +581,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, RecordTypeStorage* 
         return;
     }
 
-    auto qualtype = decl.getType();
+    auto qualtype = decl.getType().getDesugaredType(decl.getASTContext());
     if (qualtype->isConstantArrayType())
     {
         const auto array_type_name = print_qualtype_name(qualtype, decl.getASTContext());
@@ -622,7 +638,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, RecordTypeStorage* 
         return;
     }
 
-    auto storage = create_field(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), parent, decl.getType(), decl.getTypeSpecStartLoc());
+    auto storage = create_field(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), &enclosing_layout, parent, decl.getType(), decl.getTypeSpecStartLoc());
     storage.attributes = std::move(tmp_attributes);
 
     auto& field = storage.field;
@@ -723,7 +739,7 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, RecordTypeSto
         type->kind |= TypeKind::method;
     }
 
-    storage->return_field = create_field(decl.getName(), -1, decl.getASTContext(), parent, decl.getReturnType(), decl.getTypeSpecStartLoc());
+    storage->return_field = create_field(decl.getName(), -1, decl.getASTContext(), nullptr, parent, decl.getReturnType(), decl.getTypeSpecStartLoc());
     storage->add_invoker_type_arg(print_qualtype_name(decl.getReturnType(), decl.getASTContext()));
 
     // If this is a method type then we need to skip the implicit `this` parameter
@@ -736,7 +752,7 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, RecordTypeSto
 
     for (auto& param : clang::ArrayRef<clang::ParmVarDecl*>(params_begin, params_end))
     {
-        auto param_storage = create_field(param->getName(), param->getFunctionScopeIndex(), param->getASTContext(), parent, param->getType(), param->getLocation());
+        auto param_storage = create_field(param->getName(), param->getFunctionScopeIndex(), param->getASTContext(), nullptr, parent, param->getType(), param->getLocation());
         auto& field = param_storage.field;
         field.offset = param->getFunctionScopeIndex();
         field.storage_class = get_storage_class(param->getStorageClass(), param->getStorageDuration());
@@ -772,7 +788,7 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, RecordTypeSto
     }
 }
 
-FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i32 index, const clang::ASTContext & ast_context, const struct bee::reflect::RecordTypeStorage* parent, const clang::QualType& qual_type, const clang::SourceLocation& location)
+FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i32 index, const clang::ASTContext& ast_context, const clang::ASTRecordLayout* enclosing_layout, const struct bee::reflect::RecordTypeStorage* parent, const clang::QualType& qual_type, const clang::SourceLocation& location)
 {
     /*
     * Get the layout of the parent record this field is in and also get pointers to the desugared type so that
@@ -786,9 +802,9 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
     field.offset = 0;
     field.qualifier = get_qualifier(desugared_type);
 
-    if (parent != nullptr && index >= 0)
+    if (enclosing_layout != nullptr)
     {
-        field.offset = ast_context.getASTRecordLayout(parent->decl).getFieldOffset(static_cast<u32>(index)) / 8;
+        field.offset = enclosing_layout->getFieldOffset(static_cast<u32>(index)) / 8;
     }
 
     clang::QualType original_type;

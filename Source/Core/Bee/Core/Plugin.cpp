@@ -176,10 +176,10 @@ PluginAPI load_dynamic_plugin(const char* name)
     static constexpr i32 plugin_name_capacity = 1024;
     char symbol_name[plugin_name_capacity];
 
-    str::format(symbol_name, plugin_name_capacity, "bee_load_plugin_%s", plugin->name);
+    str::format_buffer(symbol_name, plugin_name_capacity, "bee_load_plugin_%s", plugin->name);
     plugin->load = (load_function_t*)get_library_symbol(plugin->lib, symbol_name);
 
-    str::format(symbol_name, plugin_name_capacity, "bee_unload_plugin_%s", plugin->name);
+    str::format_buffer(symbol_name, plugin_name_capacity, "bee_unload_plugin_%s", plugin->name);
     plugin->unload = (unload_function_t*)get_library_symbol(plugin->lib, symbol_name);
 
     const auto plugin_load_success = plugin->load != nullptr && plugin->unload != nullptr;

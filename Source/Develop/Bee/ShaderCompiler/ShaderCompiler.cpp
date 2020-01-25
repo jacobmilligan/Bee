@@ -122,7 +122,7 @@ AssetCompilerStatus ShaderCompiler::compile(AssetCompilerContext* ctx)
     });
 
     BSCModule module{};
-    str::format(module.name, static_array_length(module.name), "%s", text_src.name.c_str());
+    str::format_buffer(module.name, static_array_length(module.name), "%s", text_src.name.c_str());
     module.target = targets[0];
     module.shader_count = text_src.shader_count;
 

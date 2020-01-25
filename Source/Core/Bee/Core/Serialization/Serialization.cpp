@@ -339,12 +339,12 @@ BEE_CORE_API void serialize_type(const SerializeTypeMode serialize_type_mode, Se
 
                     if (constant_index < 0)
                     {
-                        str::format(enum_constant_buffer, static_array_length(enum_constant_buffer), "%" PRId64, value);
+                        str::format_buffer(enum_constant_buffer, static_array_length(enum_constant_buffer), "%" PRId64, value);
                     }
                     else
                     {
                         const char* constant_name = as_enum->constants[constant_index].name;
-                        str::format(enum_constant_buffer, static_array_length(enum_constant_buffer), "%s", constant_name);
+                        str::format_buffer(enum_constant_buffer, static_array_length(enum_constant_buffer), "%s", constant_name);
                     }
 
                     int size = str::length(enum_constant_buffer);
