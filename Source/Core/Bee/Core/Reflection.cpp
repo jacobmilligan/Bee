@@ -96,12 +96,12 @@ namespace_iterator::namespace_iterator(const StringView& fully_qualified_name)
     }
 }
 
-const StringView namespace_iterator::operator*() const
+StringView namespace_iterator::operator*() const
 {
     return StringView(current_, size_);
 }
 
-const StringView namespace_iterator::operator->() const
+StringView namespace_iterator::operator->() const
 {
     return StringView(current_, size_);
 }

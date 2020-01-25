@@ -469,12 +469,12 @@ function(bee_reflect_link target)
 
     add_custom_command(
             PRE_BUILD
-            DEPENDS ${typelist_files}
+            DEPENDS ${typelist_files} ${bee_reflect_program}
             OUTPUT ${output_dir}/Reflection.init.cpp
             COMMAND ${bee_reflect_program} link "${output_dir}" ${linked_dirs} --output ${output_dir}/Reflection.init.cpp --
             USES_TERMINAL
             COMMENT "Running the bee-reflect linker on ${target}"
     )
-message("link "${output_dir}" ${linked_dirs} --output ${output_dir}/Reflection.init.cpp --")
+
     target_sources(${target} PUBLIC ${output_dir}/Reflection.init.cpp)
 endfunction()

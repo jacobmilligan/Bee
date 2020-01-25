@@ -41,12 +41,12 @@ String get_name_as_ident(const Type& type, Allocator* allocator = system_allocat
 String get_target_name_as_ident(const StringView& target_name, Allocator* allocator = system_allocator())
 {
     String name_as_ident(target_name, allocator);
-    str::replace(&name_as_ident, "::", "_");
-    str::replace(&name_as_ident, " ", "_");
-    str::replace(&name_as_ident, "<", "_");
-    str::replace(&name_as_ident, ">", "_");
-    str::replace(&name_as_ident, "-", "_");
-    str::replace(&name_as_ident, ".", "_");
+    str::replace(&name_as_ident, "::", "__");
+    str::replace(&name_as_ident, " ", "__");
+    str::replace(&name_as_ident, "<", "__");
+    str::replace(&name_as_ident, ">", "__");
+    str::replace(&name_as_ident, "-", "__");
+    str::replace(&name_as_ident, ".", "__");
     return name_as_ident;
 }
 
@@ -64,7 +64,7 @@ void codegen_template_parameters(const Span<const TemplateParameter>& parameters
         for (const TemplateParameter& param : parameters)
         {
             codegen->write_line(
-                "TemplateParameter { %u, \"%s\", \"%s\" },",
+                R"(TemplateParameter { %u, "%s", "%s" },)",
                 param.hash,
                 param.name,
                 param.type_name

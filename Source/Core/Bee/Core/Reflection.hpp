@@ -159,9 +159,9 @@ public:
 
     namespace_iterator& operator=(const namespace_iterator& other) = default;
 
-    const StringView operator*() const;
+    StringView operator*() const;
 
-    const StringView operator->() const;
+    StringView operator->() const;
 
     namespace_iterator& operator++();
 
@@ -1013,6 +1013,7 @@ BEE_FORCE_INLINE const Type* get_type()
 
 BEE_CORE_API u32 get_type_hash(const StringView& type_name);
 
+// Thread-safe as long as nothing is calling `register_type`
 BEE_CORE_API const Type* get_type(const u32 hash);
 
 template <typename ReflectedType, typename T>
@@ -1023,6 +1024,7 @@ BEE_FORCE_INLINE const T* get_type_as()
 
 BEE_CORE_API void reflection_register_builtin_types();
 
+// NOT THREAD SAFE - should only ever be done at initialization by `reflection_init`
 BEE_CORE_API void register_type(const Type* type);
 
 BEE_CORE_API const Attribute* find_attribute(const Type* type, const char* attribute_name);
