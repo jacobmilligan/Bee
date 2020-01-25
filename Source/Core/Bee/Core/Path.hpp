@@ -152,11 +152,15 @@ public:
 
     Path& make_generic();
 
+    Path get_generic(Allocator* allocator = system_allocator()) const;
+
     /**
      * Converts the path to its absolute, normalized representation - all slashes are converted to the platforms
      * `preferred_slash` and symlinks removed
      */
     Path& normalize();
+
+    Path get_normalized(Allocator* allocator = system_allocator()) const;
 
     /// @brief Gets the character size of the path string
     /// @return

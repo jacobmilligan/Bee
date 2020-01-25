@@ -40,6 +40,13 @@ int bee_main(int argc, char** argv)
         llvm::cl::Required,
         llvm::cl::sub(generate_subcommand)
     );
+    llvm::cl::list<std::string> target_dependencies(
+        "target-dependencies",
+        llvm::cl::cat(bee_reflect_cat),
+        llvm::cl::desc("list of names of library dependencies for generating type lists"),
+        llvm::cl::sub(generate_subcommand),
+        llvm::cl::CommaSeparated
+    );
 
     llvm::cl::SubCommand link_subcommand(
         "link",
@@ -88,6 +95,7 @@ int bee_main(int argc, char** argv)
 
         // Keep track of all the reflected files absolute paths for later so we can delete old, nonreflected files
         bee::DynamicArray<bee::Path> reflectd_abs_paths;
+        bee::DynamicArray<const bee::Type*> reflected_types;
 
         // Output a .generated.cpp file for each of the reflected headers
         for (auto& file : factory.storage.reflected_files)
@@ -118,15 +126,6 @@ int bee_main(int argc, char** argv)
                                          .append_extension("cpp");
             bee::fs::write(output_path, output.view());
 
-            output.clear();
-            stream.seek(0, bee::io::SeekOrigin::begin);
-
-            // Output a .registration file for looking up a type by hash
-            const auto reg_path = output_dir.join(file.value.location.filename(), bee::temp_allocator()).set_extension("registration");
-            bee::reflect::generate_registration(file.value.location, file.value.all_types.span(), &stream);
-
-            bee::fs::write(reg_path, output.view());
-
             // Output a generated.inl file if required - a type in the file is templated and requires a `get_type` specialization
             output.clear();
             stream.seek(0, bee::io::SeekOrigin::begin);
@@ -140,6 +139,7 @@ int bee_main(int argc, char** argv)
             }
 
             reflectd_abs_paths.push_back(file.value.location);
+            reflected_types.append(file.value.all_types.const_span()); // keep track of these for generating typelists
         }
 
         bee::String header_comment(bee::temp_allocator());
@@ -163,6 +163,8 @@ int bee_main(int argc, char** argv)
             }
         }
 
+        bee::reflect::generate_typelist(output_dir, target_dependencies, reflected_types.span());
+
         return EXIT_SUCCESS;
     }
 
@@ -181,17 +183,13 @@ int bee_main(int argc, char** argv)
             search_paths[p] = path;
         }
 
-        bee::String output;
-        bee::io::StringStream stream(&output);
-        bee::reflect::link_registrations(search_paths.const_span(), &stream);
-
         bee::Path output_path(output_link_opt.getValue().c_str());
         const auto folder = output_path.parent(bee::temp_allocator());
         if (!folder.exists())
         {
             bee::fs::mkdir(folder);
         }
-        bee::fs::write(output_path, stream.view());
+        bee::reflect::link_typelists(output_path, search_paths.const_span());
     }
 
     return EXIT_SUCCESS;

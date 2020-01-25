@@ -501,7 +501,7 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* pa
         return;
     }
 
-    const auto underlying = decl.getIntegerType().getDesugaredType(ast_context);
+    const auto underlying = decl.getIntegerType().getCanonicalType();
     // Get the associated types hash so we can look it up later
     const auto underlying_name = print_qualtype_name(underlying, ast_context);
     const auto underlying_type = get_type(get_type_hash({
@@ -581,7 +581,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
         return;
     }
 
-    auto qualtype = decl.getType().getDesugaredType(decl.getASTContext());
+    auto qualtype = decl.getType().getCanonicalType();
     if (qualtype->isConstantArrayType())
     {
         const auto array_type_name = print_qualtype_name(qualtype, decl.getASTContext());
@@ -589,30 +589,31 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
         if (type_map->find_type(hash) == nullptr)
         {
             auto clang_type = llvm::dyn_cast<clang::ConstantArrayType>(qualtype);
-            auto new_array_type = allocator->allocate_storage<ArrayType>();
-            const auto element_type = clang_type->getElementType().getDesugaredType(decl.getASTContext());
+            auto array_storage = allocator->allocate_storage<ArrayTypeStorage>();
+            const auto element_type = clang_type->getElementType().getCanonicalType();
 
-            new_array_type->hash = hash;
-            new_array_type->name = allocator->allocate_name(array_type_name);
-            new_array_type->kind = TypeKind::array;
-            new_array_type->element_count = sign_cast<i32>(*clang_type->getSize().getRawData());
-            new_array_type->size = 0; // functions only have size when used as function pointer
-            new_array_type->alignment = 0;
-            new_array_type->serialized_version = 1;
+            auto& new_array_type = array_storage->type;
+            new_array_type.hash = hash;
+            new_array_type.name = allocator->allocate_name(array_type_name);
+            new_array_type.kind = TypeKind::array;
+            new_array_type.element_count = sign_cast<i32>(*clang_type->getSize().getRawData());
+            new_array_type.size = 0; // functions only have size when used as function pointer
+            new_array_type.alignment = 0;
+            new_array_type.serialized_version = 1;
 
             const auto element_type_name = print_qualtype_name(element_type, decl.getASTContext());
             const auto element_type_hash = get_type_hash({ element_type_name.data(), static_cast<i32>(element_type_name.size()) });
-            new_array_type->element_type = type_map->find_type(element_type_hash);
+            new_array_type.element_type = type_map->find_type(element_type_hash);
 
-            if (new_array_type->element_type == nullptr)
+            if (new_array_type.element_type == nullptr)
             {
-                new_array_type->element_type = get_type(element_type_hash);
+                new_array_type.element_type = get_type(element_type_hash);
             }
 
-            if (new_array_type->element_type != nullptr)
+            if (new_array_type.element_type != nullptr)
             {
-                new_array_type->size = new_array_type->element_type->size * new_array_type->element_count; // functions only have size when used as function pointer
-                new_array_type->alignment = new_array_type->element_type->alignment;
+                new_array_type.size = new_array_type.element_type->size * new_array_type.element_count; // functions only have size when used as function pointer
+                new_array_type.alignment = new_array_type.element_type->alignment;
             }
             else
             {
@@ -621,11 +622,11 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
 
             if (parent == nullptr)
             {
-                type_map->add_array(new_array_type, decl);
+                type_map->add_array(array_storage, decl);
             }
             else
             {
-                parent->add_array_type(new_array_type);
+                parent->add_array_type(array_storage);
             }
         }
     }
@@ -794,7 +795,7 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
     * Get the layout of the parent record this field is in and also get pointers to the desugared type so that
     * i.e. u8 becomes unsigned char
     */
-    auto desugared_type = qual_type.getDesugaredType(ast_context);
+    auto desugared_type = qual_type.getCanonicalType();
 
     FieldStorage storage{};
     auto& field = storage.field;
@@ -820,11 +821,11 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
             field.qualifier |= Qualifier::cv_const;
         }
 
-        original_type = pointee.getUnqualifiedType();
+        original_type = pointee.getUnqualifiedType().getCanonicalType();
     }
     else
     {
-        original_type = desugared_type.getUnqualifiedType();
+        original_type = desugared_type.getUnqualifiedType().getCanonicalType();
     }
 
     // Get the associated types hash so we can look it up later

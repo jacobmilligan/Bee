@@ -42,6 +42,13 @@ Path& Path::normalize()
     return *this;
 }
 
+Path Path::get_normalized(Allocator* allocator) const
+{
+    Path normalized_path(view(), allocator);
+    normalized_path.normalize();
+    return std::move(normalized_path);
+}
+
 bool Path::exists() const
 {
     auto attrs = GetFileAttributesA(data_.c_str());

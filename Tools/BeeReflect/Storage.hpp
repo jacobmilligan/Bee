@@ -60,6 +60,7 @@ inline bool operator<=(const FieldStorage& lhs, const FieldStorage& rhs)
 }
 
 
+struct ArrayTypeStorage;
 struct FunctionTypeStorage;
 struct EnumTypeStorage;
 struct ReflectedFile;
@@ -77,7 +78,7 @@ struct RecordTypeStorage
     DynamicArray<EnumTypeStorage*>          enums;
     DynamicArray<RecordTypeStorage*>        nested_records;
     DynamicArray<const char*>               base_type_names;
-    DynamicArray<ArrayType*>                field_array_types;
+    DynamicArray<ArrayTypeStorage*>         field_array_types;
     DynamicArray<TemplateParameter>         template_parameters;
     const char*                             template_decl_string { nullptr };
 
@@ -101,7 +102,7 @@ struct RecordTypeStorage
 
     void add_enum(EnumTypeStorage* storage);
 
-    void add_array_type(ArrayType* array_type);
+    void add_array_type(ArrayTypeStorage* array_type);
 
     void add_template_parameter(const TemplateParameter& param);
 };
@@ -150,6 +151,12 @@ struct EnumTypeStorage
     void add_attribute(const Attribute& attribute);
 };
 
+struct ArrayTypeStorage
+{
+    bool        is_generated { false };
+    ArrayType   type;
+};
+
 
 class ReflectionAllocator
 {
@@ -193,7 +200,7 @@ struct ReflectedFile
     DynamicArray<const RecordTypeStorage*>      records;
     DynamicArray<const FunctionTypeStorage*>    functions;
     DynamicArray<const EnumTypeStorage*>        enums;
-    DynamicArray<const ArrayType*>              arrays;
+    DynamicArray<ArrayTypeStorage*>             arrays;
     DynamicArray<const Type*>                   all_types;
 
     bool try_insert_type(const Type* type);
@@ -219,7 +226,7 @@ struct TypeMap
 
     bool try_add_type(const Type* type, const clang::Decl& decl, ReflectedFile** reflected_file);
 
-    void add_array(ArrayType* type, const clang::Decl& decl);
+    void add_array(ArrayTypeStorage* type, const clang::Decl& decl);
 
     void add_record(RecordTypeStorage* record, const clang::Decl& decl);
 

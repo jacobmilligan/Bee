@@ -333,6 +333,13 @@ Path& Path::make_generic()
     return *this;
 }
 
+Path Path::get_generic(Allocator* allocator) const
+{
+    Path generic_path(view(), allocator);
+    generic_path.make_generic();
+    return std::move(generic_path);
+}
+
 String Path::to_generic_string(Allocator* allocator) const
 {
     String generic_str(data_.view(), allocator);

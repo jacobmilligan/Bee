@@ -13,6 +13,7 @@
 #include "Bee/Core/Containers/HashMap.hpp"
 
 #include <time.h>
+#include <llvm/ADT/ArrayRef.h>
 
 namespace bee {
 namespace reflect {
@@ -182,9 +183,9 @@ void generate_empty_reflection(const char* location, io::StringStream* stream);
 
 i32 generate_reflection(const ReflectedFile& file, io::StringStream* stream, CodegenMode mode);
 
-void generate_registration(const Path& source_location, const Span<const Type*>& types, io::StringStream* stream);
+void generate_typelist(const Path& target_dir, const llvm::ArrayRef<std::string>& target_dependencies, const Span<const Type*>& all_types);
 
-void link_registrations(const Span<const Path>& search_paths, io::StringStream* stream);
+void link_typelists(const Path& output_path, const Span<const Path>& search_paths);
 
 
 } // namespace reflect

@@ -119,10 +119,10 @@ bool TypeMap::try_add_type(const Type* type, const clang::Decl& decl, ReflectedF
     return true;
 }
 
-void TypeMap::add_array(ArrayType* array, const clang::Decl& decl)
+void TypeMap::add_array(ArrayTypeStorage* array, const clang::Decl& decl)
 {
     ReflectedFile* location = nullptr;
-    if (!try_add_type(array, decl, &location))
+    if (!try_add_type(&array->type, decl, &location))
     {
         return;
     }
@@ -201,14 +201,14 @@ void RecordTypeStorage::add_enum(EnumTypeStorage* storage)
     enums.push_back(storage);
 }
 
-void RecordTypeStorage::add_array_type(ArrayType* array_type)
+void RecordTypeStorage::add_array_type(ArrayTypeStorage* storage)
 {
-    if (!location->try_insert_type(array_type))
+    if (!location->try_insert_type(&storage->type))
     {
         return;
     }
 
-    field_array_types.push_back(array_type);
+    field_array_types.push_back(storage);
 }
 
 void RecordTypeStorage::add_template_parameter(const TemplateParameter& param)

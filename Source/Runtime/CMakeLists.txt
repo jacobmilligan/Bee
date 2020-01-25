@@ -6,7 +6,7 @@ add_subdirectory(Bee/Graphics)
 add_subdirectory(Bee/Entity)
 
 bee_library(Bee.Runtime LINK_LIBRARIES Bee.Core)
-target_compile_definitions(Bee.Runtime PUBLIC BEE_BUILD_EXPORT_LIBRARY)
 bee_reflect(Bee.Runtime)
 
+bee_new_source_root()
 add_subdirectory(Tests)

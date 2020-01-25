@@ -395,7 +395,7 @@ function(bee_reflect target)
     # builtin headers
     if ("${CMAKE_CXX_COMPILER_ID}" MATCHES MSVC)
         foreach(compiler_path $ENV{INCLUDE})
-            list(APPEND include_dirs -isystem"${compiler_path}")
+            list(APPEND system_include_dirs -isystem"${compiler_path}")
         endforeach()
     endif ()
 
@@ -428,16 +428,19 @@ function(bee_reflect target)
     )
     list(APPEND defines ${build_type_define})
 
+    get_target_property(linked_targets ${target} LINK_LIBRARIES)
+    string(REPLACE ";" "," linked_targets "${linked_targets}")
+
     add_custom_command(
-            DEPENDS ${reflected_sources}
+            DEPENDS ${reflected_sources} ${bee_reflect_program}
             OUTPUT ${expected_output}
-            COMMAND ${bee_reflect_program} generate ${reflected_sources} --output ${PROJECT_SOURCE_DIR}/Build/DevData/Generated/${target} -- ${defines} ${include_dirs} ${system_include_dirs}
+            COMMAND ${bee_reflect_program} generate ${reflected_sources} --output ${PROJECT_SOURCE_DIR}/Build/DevData/Generated/${target} --target-dependencies ${linked_targets} -- ${defines} ${include_dirs} ${system_include_dirs}
             USES_TERMINAL
             COMMENT "Running bee-reflect on header files: generating ${expected_output}"
     )
-    add_custom_target(REFLECT_${target} DEPENDS ${expected_output})
+
     set_source_files_properties(${expected_output} PROPERTIES GENERATED 1)
-    add_dependencies(${target} REFLECT_${target})
+    target_sources(${target} PRIVATE ${expected_output})
     target_include_directories(${target} PUBLIC ${output_dir}/${target})
 endfunction()
 
@@ -448,30 +451,30 @@ function(bee_reflect_link target)
 
     set(generated_root ${PROJECT_SOURCE_DIR}/Build/DevData/Generated)
     set(output_dir ${generated_root}/${target})
-    file(GLOB_RECURSE registration_files "${output_dir}/*.registration")
+    file(GLOB_RECURSE typelist_files "${output_dir}/TypeList.generated.hpp")
 
     get_target_property(linked_targets ${target} LINK_LIBRARIES)
     set(linked_dirs)
 
     foreach (dep ${linked_targets})
-        set(linked_dirs "${linked_dirs} \"${generated_root}/${dep}/*.registration\"")
-        file(GLOB_RECURSE dep_files "${generated_root}/${dep}/*.registration")
-        list(APPEND registration_files ${dep_files})
+        list(APPEND linked_dirs "${generated_root}/${dep}")
+        file(GLOB_RECURSE dep_files "${generated_root}/${dep}/TypeList.generated.hpp")
+        list(APPEND typelist_files ${dep_files})
     endforeach ()
 
-    list(LENGTH registration_files registration_files_length)
-    if (${registration_files_length} LESS_EQUAL 0)
+    list(LENGTH typelist_files typelist_files_length)
+    if (${typelist_files_length} LESS_EQUAL 0)
         return()
     endif ()
 
     add_custom_command(
             PRE_BUILD
-            DEPENDS ${registration_files}
+            DEPENDS ${typelist_files}
             OUTPUT ${output_dir}/Reflection.init.cpp
             COMMAND ${bee_reflect_program} link "${output_dir}" ${linked_dirs} --output ${output_dir}/Reflection.init.cpp --
             USES_TERMINAL
             COMMENT "Running the bee-reflect linker on ${target}"
     )
-
+message("link "${output_dir}" ${linked_dirs} --output ${output_dir}/Reflection.init.cpp --")
     target_sources(${target} PUBLIC ${output_dir}/Reflection.init.cpp)
 endfunction()

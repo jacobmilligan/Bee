@@ -1006,7 +1006,7 @@ template <typename T>
 const Type* get_type(const TypeTag<T>& tag);
 
 template <typename T>
-inline const Type* get_type()
+BEE_FORCE_INLINE const Type* get_type()
 {
     return get_type(TypeTag<T>{});
 }
@@ -1016,7 +1016,7 @@ BEE_CORE_API u32 get_type_hash(const StringView& type_name);
 BEE_CORE_API const Type* get_type(const u32 hash);
 
 template <typename ReflectedType, typename T>
-inline const T* get_type_as()
+BEE_FORCE_INLINE const T* get_type_as()
 {
     return get_type<ReflectedType>()->as<T>();
 }
