@@ -33,6 +33,7 @@ struct BuildInfo
 
 struct ConfigureInfo
 {
+    bool                    reset_cache { false };
     const char*             bb_generator { nullptr };
     const char*             cmake_generator { nullptr };
     DynamicArray<String>    cmake_options;
@@ -112,6 +113,15 @@ bool configure(const DynamicArray<String>& build_types, const ConfigureInfo& con
         if (!build_type.empty())
         {
             build_dir.join(build_type.view());
+        }
+
+        if (config_info.reset_cache)
+        {
+            const auto cache_path = build_dir.join("CMakeCache.txt");
+            if (fs::is_file(cache_path))
+            {
+                fs::remove(cache_path);
+            }
         }
 
         const auto install_dir = build_dir.join("Install");
@@ -246,18 +256,21 @@ int bb_entry(int argc, char** argv)
         ++cur_generator;
     }
 
-    cli::Option config_file_option('s', "settings", false, "A JSON file containing CMake settings", 1);
+    cli::Option configure_options[] = {
+        { cli::Option('s', "settings", false, "A JSON file containing CMake settings", 1) },
+        { cli::Option('r', "reset", false, "Forces a reset of the CMake cache", 0) }
+    };
 
     cli::ParserDescriptor subparsers[2]{};
     subparsers[0].command_name = "configure";
     subparsers[0].positional_count = 1;
     subparsers[0].positionals = &generator_pos;
-    subparsers[0].option_count = 1;
-    subparsers[0].options = &config_file_option;
+    subparsers[0].option_count = static_array_length(configure_options);
+    subparsers[0].options = configure_options;
 
     subparsers[1].command_name = "build";
-    subparsers[1].option_count = 1;
-    subparsers[1].options = &config_file_option;
+    subparsers[1].option_count = static_array_length(configure_options);
+    subparsers[1].options = configure_options;
 
     cli::ParserDescriptor parser{};
     parser.subparser_count = bee::static_array_length(subparsers);
@@ -299,6 +312,7 @@ int bb_entry(int argc, char** argv)
         }
 
         ConfigureInfo config_info{};
+        config_info.reset_cache = cli::has_option(configure_cmd->value, "reset");
         config_info.bb_generator = generator;
         config_info.cmake_generator = cmake_generator->value.c_str();
 
