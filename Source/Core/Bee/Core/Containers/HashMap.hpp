@@ -53,7 +53,7 @@ template <
     typename        Hasher = Hash<KeyType>,
     typename        KeyEqual = EqualTo<KeyType>
 >
-class BEE_REFLECT(serializable) HashMap : public Noncopyable
+class BEE_REFLECT(serializable) HashMap
 {
 public:
     /*
@@ -159,9 +159,13 @@ public:
 
     HashMap(map_t&& other) noexcept;
 
+    HashMap(const map_t& other);
+
     ~HashMap() = default;
 
     HashMap& operator=(map_t&& other) noexcept;
+
+    HashMap& operator=(const map_t& other);
 
     value_t& operator[](const KeyType& key) noexcept;
 
@@ -269,7 +273,7 @@ private:
 
     constexpr bool implicit_grow(const fixed_container_mode_t& fixed_capacity);
 
-    constexpr bool implicit_grow(const dynamic_container_mode_t& fixed_capacity);
+    constexpr bool implicit_grow(const dynamic_container_mode_t& dynamic_capacity);
 };
 
 template <typename KeyType, typename ValueType, ContainerMode Mode, typename Hasher, typename KeyEqual>
@@ -342,6 +346,16 @@ HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::HashMap(HashMap<KeyType, Va
     other.active_node_count_ = 0;
 }
 
+template<typename KeyType, typename ValueType, ContainerMode Mode, typename Hasher, typename KeyEqual>
+HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::HashMap(const HashMap::map_t& other)
+    : hasher_(other.hasher_),
+      key_comparer_(other.key_comparer_),
+      node_storage_(other.node_storage_),
+      hash_shift_(other.hash_shift_),
+      load_factor_(other.load_factor_),
+      active_node_count_(other.active_node_count_)
+{}
+
 /*
  *******************************
  *
@@ -365,6 +379,19 @@ HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::operator=(HashMap<KeyType, 
     other.load_factor_ = 0;
     other.active_node_count_ = 0;
 
+    return *this;
+}
+
+template<typename KeyType, typename ValueType, ContainerMode Mode, typename Hasher, typename KeyEqual>
+HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>&
+HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::operator=(const HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>& other)
+{
+    hasher_ = other.hasher_;
+    key_comparer_ = other.key_comparer_;
+    node_storage_ = other.node_storage_;
+    hash_shift_ = other.hash_shift_;
+    load_factor_ = other.load_factor_;
+    active_node_count_ = other.active_node_count_;
     return *this;
 }
 
@@ -808,6 +835,7 @@ constexpr bool HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::implicit_gro
     rehash(next_growth_capacity());
     return true;
 }
+
 
 } // namespace bee
 
