@@ -31,6 +31,44 @@ BEE_CORE_API u32 logical_core_count();
 } // namespace concurrency
 
 
+class BEE_CORE_API Semaphore final
+{
+public:
+    Semaphore(const i32 initial_count, const i32 max_count);
+
+    Semaphore(const i32 initial_count, const i32 max_count, const char* name);
+
+    ~Semaphore();
+
+    bool try_acquire();
+
+    void acquire();
+
+    void release();
+
+    void release(const i32 count);
+
+private:
+    native_semaphore_t sem_;
+};
+
+
+class BEE_CORE_API Barrier
+{
+public:
+    explicit Barrier(const i32 thread_count);
+
+    Barrier(const i32 thread_count, const i32 spin_count);
+
+    ~Barrier();
+
+    void wait();
+
+private:
+    native_barrier_t barrier_;
+};
+
+
 class BEE_CORE_API SpinLock
 {
 public:

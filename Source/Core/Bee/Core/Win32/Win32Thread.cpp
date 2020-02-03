@@ -101,6 +101,7 @@ void Thread::join()
     const auto join_success = WaitForSingleObject(native_thread_, INFINITE);
     BEE_ASSERT_F(join_success != WAIT_FAILED, "Thread: failed to join thread: Win32 error code: %lu", GetLastError());
     native_thread_ = nullptr;
+    memset(name_, 0, static_array_length(name_));
 }
 
 void Thread::detach()
@@ -165,9 +166,22 @@ Thread::execute_cb_return_t Thread::execute_cb(void* params)
         return access_violation_code;
     }
 
+    // register with temp allocator if needed
+    if (data->register_with_temp_allocator)
+    {
+        temp_allocator_register_thread();
+    }
+
     // run the threads function
     data->invoker(data->function, data->arg);
+
+    if (data->register_with_temp_allocator)
+    {
+        temp_allocator_unregister_thread();
+    }
+
     data->destructor(data->function, data->arg);
+
     return 0;
 }
 

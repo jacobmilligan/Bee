@@ -6,11 +6,74 @@
  */
 
 #include "Bee/Core/Concurrency.hpp"
+#include "Bee/Core/Win32/MinWindows.h"
 
 namespace bee {
 
 
-ReaderWriterMutex::ReaderWriterMutex()
+Semaphore::Semaphore(const i32 initial_count, const i32 max_count)
+    : sem_(nullptr)
+{
+    sem_ = CreateSemaphore(NULL, static_cast<LONG>(initial_count), static_cast<LONG>(max_count), NULL);
+}
+
+Semaphore::Semaphore(const i32 initial_count, const i32 max_count, const char* name)
+    : sem_(nullptr)
+{
+    sem_ = CreateSemaphore(NULL, static_cast<LONG>(initial_count), static_cast<LONG>(max_count), name);
+}
+
+Semaphore::~Semaphore()
+{
+    if (sem_ != NULL)
+    {
+        ::CloseHandle(sem_);
+        sem_ = NULL;
+    }
+}
+
+bool Semaphore::try_acquire()
+{
+    return ::WaitForSingleObject(sem_, 0L) == WAIT_OBJECT_0;
+}
+
+void Semaphore::acquire()
+{
+    ::WaitForSingleObject(sem_, INFINITE);
+}
+
+void Semaphore::release()
+{
+    ::ReleaseSemaphore(sem_, 1, NULL);
+}
+
+void Semaphore::release(const i32 count)
+{
+    ::ReleaseSemaphore(sem_, static_cast<LONG>(count), NULL);
+}
+
+
+Barrier::Barrier(const i32 thread_count)
+    : Barrier(thread_count, -1)
+{}
+
+Barrier::Barrier(const i32 thread_count, const i32 spin_count)
+{
+    const auto success = ::InitializeSynchronizationBarrier(&barrier_, static_cast<LONG>(thread_count), static_cast<LONG>(spin_count));
+}
+
+Barrier::~Barrier()
+{
+    ::DeleteSynchronizationBarrier(&barrier_);
+}
+
+void Barrier::wait()
+{
+    ::EnterSynchronizationBarrier(&barrier_, 0);
+}
+
+
+ReaderWriterMutex::ReaderWriterMutex() // NOLINT
 {
     ::InitializeSRWLock(&mutex_);
 }
@@ -44,5 +107,6 @@ void ReaderWriterMutex::unlock_write()
 {
     ::ReleaseSRWLockExclusive(&mutex_);
 }
+
 
 } // namespace bee

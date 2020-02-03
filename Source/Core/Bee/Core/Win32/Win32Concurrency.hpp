@@ -15,6 +15,8 @@ namespace bee {
 
 using native_rw_mutex_t = SRWLOCK;
 using native_mutex_t = SRWLOCK;
+using native_semaphore_t = HANDLE;
+using native_barrier_t = SYNCHRONIZATION_BARRIER;
 
 
 } // namespace bee
