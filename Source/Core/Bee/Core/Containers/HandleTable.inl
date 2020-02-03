@@ -22,7 +22,7 @@ namespace bee {
     BEE_END_MACRO_BLOCK
 
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 HandleTable<Capacity, HandleType, DataType>::HandleTable()
     : next_available_index_(0),
       size_(0)
@@ -31,20 +31,20 @@ HandleTable<Capacity, HandleType, DataType>::HandleTable()
     reset();
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 HandleTable<Capacity, HandleType, DataType>::HandleTable(HandleTable<Capacity, HandleType, DataType>&& other) noexcept
 {
     move_construct(std::forward<HandleTable<Capacity, HandleType, DataType>>(other));
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 HandleTable<Capacity, HandleType, DataType>& HandleTable<Capacity, HandleType, DataType>::operator=(HandleTable<Capacity, HandleType, DataType>&& other) noexcept
 {
     move_construct(std::forward<HandleTable<Capacity, HandleType, DataType>>(other));
     return *this;
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 void HandleTable<Capacity, HandleType, DataType>::move_construct(HandleTable<Capacity, HandleType, DataType>&& other) noexcept
 {
     next_available_index_ = other.next_available_index_;
@@ -59,7 +59,7 @@ void HandleTable<Capacity, HandleType, DataType>::move_construct(HandleTable<Cap
     other.reset();
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 HandleType HandleTable<Capacity, HandleType, DataType>::create_uninitialized(DataType** new_data)
 {
     BEE_ASSERT(new_data != nullptr);
@@ -99,7 +99,7 @@ HandleType HandleTable<Capacity, HandleType, DataType>::create_uninitialized(Dat
     return HandleType(sparse_index, index_data.version);
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 HandleType HandleTable<Capacity, HandleType, DataType>::create(const DataType& value)
 {
     DataType* new_data = nullptr;
@@ -108,7 +108,7 @@ HandleType HandleTable<Capacity, HandleType, DataType>::create(const DataType& v
     return handle;
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 template <typename... Args>
 HandleType HandleTable<Capacity, HandleType, DataType>::emplace(DataType** new_data, Args&&... args) noexcept
 {
@@ -118,7 +118,7 @@ HandleType HandleTable<Capacity, HandleType, DataType>::emplace(DataType** new_d
     return handle;
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 void HandleTable<Capacity, HandleType, DataType>::destroy(const HandleType& handle)
 {
     BEE_HANDLE_TABLE_VALIDATE(handle);
@@ -147,7 +147,7 @@ void HandleTable<Capacity, HandleType, DataType>::destroy(const HandleType& hand
     next_available_index_ = handle_idx;
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 bool HandleTable<Capacity, HandleType, DataType>::contains(const HandleType& handle)
 {
     const auto index = handle.index();
@@ -155,7 +155,7 @@ bool HandleTable<Capacity, HandleType, DataType>::contains(const HandleType& han
     return index < capacity && indices_[index].dense_index < size_ && version == indices_[index].version;
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 template <typename Predicate>
 HandleType HandleTable<Capacity, HandleType, DataType>::find(Predicate&& pred)
 {
@@ -170,7 +170,7 @@ HandleType HandleTable<Capacity, HandleType, DataType>::find(Predicate&& pred)
     return HandleType();
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 void HandleTable<Capacity, HandleType, DataType>::clear()
 {
     for (u32 data_idx = 0; data_idx < size_; ++data_idx)
@@ -181,7 +181,7 @@ void HandleTable<Capacity, HandleType, DataType>::clear()
     reset();
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 void HandleTable<Capacity, HandleType, DataType>::reset()
 {
     size_ = 0;
@@ -197,20 +197,20 @@ void HandleTable<Capacity, HandleType, DataType>::reset()
 }
 
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 DataType* HandleTable<Capacity, HandleType, DataType>::get(const HandleType& handle)
 {
     BEE_HANDLE_TABLE_VALIDATE(handle);
     return &data_[indices_[handle.index()].dense_index];
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 DataType* HandleTable<Capacity, HandleType, DataType>::operator[](const HandleType& handle)
 {
     return get(handle);
 }
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 const DataType* HandleTable<Capacity, HandleType, DataType>::operator[](const HandleType& handle) const
 {
     return get(handle);

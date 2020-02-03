@@ -16,18 +16,20 @@
 namespace bee {
 
 
-template <i32 Capacity, typename HandleType, typename DataType>
+template <u64 Capacity, typename HandleType, typename DataType>
 class HandleTable : public Noncopyable
 {
 public:
-    static constexpr i32 capacity   = Capacity;
     using table_t                   = HandleTable<Capacity, HandleType, DataType>;
     using handle_t                  = HandleType;
     using data_t                    = DataType;
+    using id_t                      = typename HandleType::generator_t::id_t;
 
-    static_assert(sizeof(HandleType::generator_t::id_type) <= 8,
+    static constexpr id_t capacity   = static_cast<id_t>(Capacity);
+
+    static_assert(sizeof(id_t) <= 8,
         "Bee: HandleTable<Capacity, HandleType, ResourceType>: HandleType must be declared using the BEE_VERSIONED_HANDLE() "
-        "macro and be smaller than 64 bits in size"
+        "macro and be <= 64 bits in size"
     );
 
     static_assert(
@@ -78,24 +80,24 @@ public:
         return data_ + size_;
     }
 
-    inline i32 size() const
+    inline id_t size() const
     {
-        return sign_cast<i32>(size_);
+        return size_;
     }
 private:
     struct IndexData
     {
-        static constexpr auto invalid_index = limits::max<u32>();
-        u32 version { 0 };
-        u32 dense_index { invalid_index };
-        u32 next_dense_index { 0 };
+        static constexpr auto invalid_index = limits::max<id_t>();
+        id_t version { 0 };
+        id_t dense_index { invalid_index };
+        id_t next_dense_index { 0 };
     };
 
-    u32             next_available_index_ { 0 };
-    u32             size_ { 0 };
+    id_t            next_available_index_ { 0 };
+    id_t            size_ { 0 };
     IndexData       indices_[capacity];
     DataType        data_[capacity];
-    u32             dense_to_sparse_[capacity];
+    id_t            dense_to_sparse_[capacity];
 
     DataType* get(const handle_t& handle);
 

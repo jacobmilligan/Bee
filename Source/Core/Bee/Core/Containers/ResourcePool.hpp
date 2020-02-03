@@ -18,20 +18,26 @@ namespace bee {
 template <typename HandleType, typename ResourceType>
 class BEE_CORE_API ResourcePool
 {
+public:
+    using id_t = typename HandleType::generator_t::id_t;
+
 private:
     struct ResourceChunk
     {
-        i32                         size { 0 };
-        FixedArray<i32>             free_list;
-        FixedArray<u32>             versions;
-        FixedArray<bool>            active_states;
-        FixedArray<ResourceType>    data;
+        id_t            index { 0 };
+        id_t            size { 0 };
+        id_t            capacity { 0 };
+        u8*             ptr { nullptr };
+        id_t*           free_list { nullptr };
+        id_t*           versions { nullptr };
+        bool*           active_states { nullptr };
+        ResourceType*   data { nullptr };
     };
 public:
     using handle_t      = HandleType;
     using resource_t    = ResourceType;
 
-    static_assert(sizeof(typename HandleType::generator_t::id_type) <= 8,
+    static_assert(sizeof(id_t) <= 8,
         "Bee: ResourcePool<HandleType, ResourceType>: HandleType must be declared using the BEE_VERSIONED_HANDLE() "
         "macro and be smaller than 64 bits in size"
     );
@@ -44,7 +50,7 @@ public:
         using reference         = ResourceType&;
         using pointer           = ResourceType*;
 
-        explicit iterator(ResourcePool* pool, const u32 index)
+        explicit iterator(ResourcePool* pool, const id_t index)
             : pool_(pool),
               current_index_(index % pool->chunk_capacity_),
               current_chunk_(index / pool->chunk_capacity_)
@@ -95,7 +101,7 @@ public:
 
         iterator& operator++()
         {
-            const auto chunk_count = pool_->chunks_.size();
+            const auto chunk_count = pool_->chunk_count_;
             const auto chunk_capacity = pool_->chunk_capacity_;
 
             for (; current_chunk_ < chunk_count; ++current_chunk_)
@@ -126,9 +132,9 @@ public:
             return *this;
         }
     private:
-        ResourcePool*   pool_ {nullptr };
-        i32             current_index_ { 0 };
-        i32             current_chunk_ { 0 };
+        ResourcePool*   pool_ { nullptr };
+        id_t            current_index_ { 0 };
+        id_t            current_chunk_ { 0 };
     };
 
     ResourcePool() = default;
@@ -136,13 +142,30 @@ public:
     explicit ResourcePool(const size_t chunk_byte_size, Allocator* allocator = system_allocator())
         : chunk_byte_size_(chunk_byte_size),
           chunk_capacity_(chunk_byte_size / sizeof(ResourceType)),
-          allocator_(allocator),
-          chunks_(allocator)
+          allocator_(allocator)
     {}
+
+    ~ResourcePool()
+    {
+        for (id_t chunk = 0; chunk < chunk_count_; ++chunk)
+        {
+            reset_chunk(&chunks_[chunk]);
+            if (chunks_[chunk].ptr != nullptr)
+            {
+                BEE_FREE(allocator_, chunks_[chunk].ptr);
+                chunks_[chunk].ptr = nullptr;
+            }
+        }
+
+        if (chunks_ != nullptr && allocator_ != nullptr)
+        {
+            BEE_FREE(allocator_, chunks_);
+        }
+    }
 
     HandleType allocate()
     {
-        if (next_free_resource_ >= chunks_.size() * chunk_capacity_)
+        if (next_free_resource_ >= chunk_count_ * chunk_capacity_)
         {
             allocate_chunk();
         }
@@ -164,7 +187,7 @@ public:
 
     void deallocate(const HandleType& handle)
     {
-        const auto index = sign_cast<i32>(handle.index());
+        const auto index = handle.index();
         const auto index_in_chunk = index % chunk_capacity_;
         auto& chunk = get_chunk(index);
 
@@ -174,7 +197,8 @@ public:
 
         destruct(&chunk.data[index_in_chunk]);
         chunk.active_states[index_in_chunk] = false;
-        ++chunk.versions[index_in_chunk];
+        chunk.versions[index_in_chunk] = (chunk.versions[index_in_chunk] + 1) & HandleType::generator_t::version_mask;
+        chunk.versions[index_in_chunk] = math::min(chunk.versions[index_in_chunk], HandleType::generator_t::min_version);
 
         chunk.free_list[index_in_chunk] = next_free_resource_;
         next_free_resource_ = index;
@@ -185,32 +209,9 @@ public:
 
     void clear()
     {
-        for (auto& chunk : chunks_)
+        for (id_t chunk = 0; chunk < chunk_count_; ++chunk)
         {
-            chunk.size = 0;
-            chunk.free_list.clear();
-            chunk.data.clear();
-            chunk.versions.clear();
-        }
-    }
-
-    void shrink_to_fit()
-    {
-        int new_size = chunks_.size();
-
-        for (; new_size >= 0; --new_size)
-        {
-            if (chunks_[new_size].size > 0)
-            {
-                break;
-            }
-        }
-
-        new_size = math::max(0, new_size);
-        if (new_size != chunks_.size())
-        {
-            chunks_.resize(new_size);
-            chunks_.shrink_to_fit();
+            reset_chunk(&chunks_[chunk]);
         }
     }
 
@@ -220,19 +221,19 @@ public:
         return chunks_[index / chunk_capacity_].active_states[index % chunk_capacity_];
     }
 
-    inline i32 size() const
+    inline id_t size() const
     {
         return resource_count_;
     }
 
-    inline i32 chunk_count() const
+    inline id_t chunk_count() const
     {
-        return chunks_.size();
+        return chunk_count_;
     }
 
     inline size_t allocated_size() const
     {
-        return chunk_byte_size_ * chunks_.size();
+        return chunk_byte_size_ * chunk_count_;
     }
 
     inline ResourceType& operator[](const HandleType& handle)
@@ -252,62 +253,78 @@ public:
 
     inline iterator end()
     {
-        return iterator(this, chunks_.size() * chunk_capacity_);
+        return iterator(this, chunk_count_ * chunk_capacity_);
     }
 
     inline iterator get_iterator(const HandleType& handle)
     {
         BEE_ASSERT(handle.is_valid());
-        return iterator(this, sign_cast<i32>(handle.index()));
+        return iterator(this, handle.index());
     }
 private:
 
-    size_t                      chunk_byte_size_ { 0 };
-    i32                         chunk_capacity_ { 0 };
-    i32                         resource_count_ { 0 };
-    i32                         next_free_resource_ { 0 };
-    Allocator*                  allocator_ { nullptr };
-    FixedArray<ResourceChunk>   chunks_ { nullptr };
+    size_t          chunk_byte_size_ { 0 };
+    id_t            chunk_capacity_ { 0 };
+    id_t            chunk_count_ { 0 };
+    id_t            resource_count_ { 0 };
+    id_t            next_free_resource_ { 0 };
+    Allocator*      allocator_ { nullptr };
+    ResourceChunk*  chunks_ { nullptr };
 
     void allocate_chunk()
     {
-        chunks_.resize(chunks_.size() + 1);
-        chunks_.back().size = 0;
-        chunks_.back().free_list = FixedArray<i32>::with_size(chunk_capacity_, allocator_);
-        chunks_.back().versions = FixedArray<u32>::with_size(chunk_capacity_, allocator_);
-        chunks_.back().active_states = FixedArray<bool>::with_size(chunk_capacity_, allocator_);
-        chunks_.back().data = FixedArray<ResourceType>::with_size(chunk_capacity_, allocator_);
+        auto new_chunks_ptr = BEE_REALLOC(allocator_, chunks_, chunk_count_ * sizeof(ResourceChunk), (chunk_count_ + 1) * sizeof(ResourceChunk), alignof(ResourceChunk));
 
-        reset_chunk(chunks_.size() - 1);
+        BEE_ASSERT(new_chunks_ptr != nullptr);
+
+        chunks_ = static_cast<ResourceChunk*>(new_chunks_ptr);
+        ++chunk_count_;
+
+        auto chunk = chunks_ + chunk_count_ - 1;
+        chunk->index = chunk_count_ - 1;
+        chunk->size = 0;
+        chunk->capacity = chunk_capacity_;
+        chunk->ptr = static_cast<u8*>(BEE_MALLOC(allocator_, chunk_capacity_ * (sizeof(id_t) * 2 + sizeof(bool) + sizeof(ResourceType))));
+        chunk->free_list = reinterpret_cast<id_t*>(chunk->ptr);
+        chunk->versions = chunk->free_list + chunk_capacity_;
+        chunk->active_states = reinterpret_cast<bool*>(chunk->versions + chunk_capacity_);
+        chunk->data = reinterpret_cast<ResourceType*>(chunk->active_states + chunk_capacity_);
+
+        memset(chunk->active_states, 0, sizeof(bool) * chunk_capacity_);
+
+        for (id_t r = 0; r < chunk_capacity_; ++r)
+        {
+            new (chunk->data + r) ResourceType{};
+        }
+
+        reset_chunk(chunk);
     }
 
-    void reset_chunk(const i32 chunk_index)
+    void reset_chunk(ResourceChunk* chunk)
     {
-        auto& chunk = chunks_[chunk_index];
-
-        for (int i = 0; i < chunk.free_list.size(); ++i)
+        for (id_t i = 0; i < chunk->capacity; ++i)
         {
-            chunk.free_list[i] = (chunk_index * chunk_capacity_) + i + 1;
-            chunk.versions[i] = 1;
-            if (chunk.active_states[i])
+            chunk->free_list[i] = (chunk->index * chunk->capacity) + i + 1;
+            chunk->versions[i] = 1;
+            if (chunk->active_states[i])
             {
-                chunk.active_states[i] = false;
-                destruct(&chunk.data[i]);
+                chunk->active_states[i] = false;
+                destruct(chunk->data + i);
             }
         }
     }
 
-    ResourceChunk& get_chunk(const i32 index)
+    ResourceChunk& get_chunk(const id_t index)
     {
         return chunks_[index / chunk_capacity_];
     }
 
     const ResourceType& validate_resource(const HandleType& handle) const
     {
-        const auto index = sign_cast<i32>(handle.index());
+        const auto index = handle.index();
         const auto chunk_index = index / chunk_capacity_;
         const auto resource_index = index % chunk_capacity_;
-        BEE_ASSERT_F(chunk_index < chunks_.size() && resource_index < chunk_capacity_, "Handle had an invalid index");
+        BEE_ASSERT_F(resource_count_ > 0 && chunk_index < chunk_count_ && resource_index < chunk_capacity_, "Handle had an invalid index");
         BEE_ASSERT_F(chunks_[chunk_index].versions[resource_index] == handle.version(), "Handle was out of date with the version stored in the resource pool");
         BEE_ASSERT_F(chunks_[chunk_index].active_states[resource_index], "Handle referenced a deallocated resource");
         return chunks_[chunk_index].data[resource_index];
