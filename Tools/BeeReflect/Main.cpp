@@ -13,7 +13,7 @@
 
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Filesystem.hpp"
-#include "Bee/Application/Main.hpp"
+#include "Bee/Core/Main.hpp"
 
 #include <llvm/Support/CommandLine.h>
 #include <clang/Tooling/CommonOptionsParser.h>

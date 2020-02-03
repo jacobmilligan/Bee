@@ -870,11 +870,15 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
 
             // We want to lookup the type using the unspecialized type name from the template decl
             const auto template_decl = specialization->getInstantiatedFrom().dyn_cast<clang::ClassTemplateDecl*>();
-
-            BEE_ASSERT(template_decl != nullptr);
-
-            const auto unspecialized_type_name = template_decl->getQualifiedNameAsString();
-            type_hash = get_type_hash({ unspecialized_type_name.data(), static_cast<i32>(unspecialized_type_name.size()) });
+            if (template_decl == nullptr)
+            {
+                type_hash = 0;
+            }
+            else
+            {
+                const auto unspecialized_type_name = template_decl->getQualifiedNameAsString();
+                type_hash = get_type_hash({ unspecialized_type_name.data(), static_cast<i32>(unspecialized_type_name.size()) });
+            }
         }
     }
 
