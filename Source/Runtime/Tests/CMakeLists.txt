@@ -1,7 +1,6 @@
 bee_test(Bee.Tests.Runtime
     LINK_LIBRARIES
 
-    Bee.Core
     Bee.Runtime
 
     SOURCES

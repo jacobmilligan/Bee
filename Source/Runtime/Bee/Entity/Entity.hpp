@@ -7,97 +7,92 @@
 
 #pragma once
 
+#include "Bee/Entity/Component.hpp"
+
 #include "Bee/Core/Containers/ResourcePool.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
 #include "Bee/Core/Memory/PoolAllocator.hpp"
+#include "Bee/Core/Memory/SmartPointers.hpp"
+#include "Bee/Core/Jobs/JobSystem.hpp"
+#include "Bee/Core/Concurrency.hpp"
 
 
 namespace bee {
 
 
-struct Type;
-
-
 BEE_VERSIONED_HANDLE_64(Entity) BEE_REFLECT(serializable);
-BEE_RAW_HANDLE_U32(ArchetypeHandle);
+BEE_RAW_HANDLE_U32(EntityComponentQuery) BEE_REFLECT(serializable);
 
-struct Archetype;
+class World;
 
-struct ComponentChunk
+struct EntityComponentQueryData
 {
-    ComponentChunk* next { nullptr };
-    ComponentChunk* previous { nullptr };
-
-    size_t          allocated_size { 0 };
-    size_t          bytes_per_entity { 0 };
-    i32             capacity { 0 };
-    i32             count { 0 };
-    Archetype*      archetype { nullptr };
-    u8*             data { nullptr };
+    u32                 hash { 0 };
+    i32                 type_count { 0 };
+    const Type**        types;
+    Span<const Type*>   write_types;
+    Span<const Type*>   read_types;
 };
 
-
-struct Archetype
+struct EntityComponentQueryTypeInfo
 {
-    u32             hash { 0 };
-    size_t          chunk_size { 0 };
-    size_t          entity_size { 0 };
-    i32             type_count { 0 };
-    const Type**    types { nullptr };
-    size_t*         offsets { nullptr };
-    i32             chunk_count { 0 };
-    ComponentChunk* first_chunk { nullptr };
-    ComponentChunk* last_chunk { nullptr };
+    bool        read_only { false };
+    const Type* type { nullptr };
 };
 
-
-class ChunkAllocator final : public Allocator
+template <typename ActualJobType>
+struct EntitySystemJob : public Job
 {
 public:
-    ChunkAllocator() = default;
+    void init(World* owning_world, const EntityComponentQuery& query_to_run);
 
-    ChunkAllocator(const size_t chunk_size, const size_t chunk_alignment);
-
-    ~ChunkAllocator() override;
-
-    bool is_valid(const void* ptr) const override;
-
-    void* allocate(size_t size, size_t alignment) override;
-
-    void* reallocate(void* ptr, size_t old_size, size_t new_size, size_t alignment) override;
-
-    void deallocate(void* ptr) override;
-
-    inline size_t max_allocation_size() const
-    {
-        return chunk_size_ - sizeof(AllocHeader) - sizeof(ChunkHeader);
-    }
+    void execute() final;
 private:
-    static constexpr u32 header_signature = 0x23464829;
+    World*                      world_ { nullptr };
+    EntityComponentQuery        query_;
 
-    struct ChunkHeader
+    void execute_for_each_in_chunk(ComponentChunk* chunk);
+};
+
+class EntitySystem
+{
+public:
+    virtual void init() { };
+
+    virtual void execute() = 0;
+
+    void init_with_world(World* world)
     {
-        ChunkHeader*    next { nullptr };
-        u32             signature { header_signature };
-        u8*             data { nullptr };
-        size_t          size { 0 };
-    };
+        world_ = world;
+        init();
+    }
 
-    struct AllocHeader
+    template <typename T>
+    EntityComponentQueryTypeInfo read()
     {
-        ChunkHeader*    chunk { nullptr };
-        size_t          size { 0 };
-    };
+        return EntityComponentQueryTypeInfo { true, get_type<T>() };
+    }
 
-    size_t          chunk_size_ { 0 };
-    size_t          chunk_alignment_ { 0 };
-    ChunkHeader*    first_ { nullptr };
-    ChunkHeader*    last_ { nullptr };
-    ChunkHeader*    free_ { nullptr };
+    template <typename T>
+    EntityComponentQueryTypeInfo read_write()
+    {
+        return EntityComponentQueryTypeInfo { false, get_type<T>() };
+    }
 
-    static AllocHeader* get_alloc_header(void* ptr);
+    template <typename... Infos>
+    EntityComponentQuery get_or_create_query(Infos&&... infos)
+    {
+        EntityComponentQueryTypeInfo query_infos[sizeof...(Infos)] { infos... };
+        return world_->get_or_create_query(query_infos, sizeof...(Infos));
+    }
 
-    static const AllocHeader* get_alloc_header(const void* ptr);
+    template <typename CallbackType>
+    inline void for_each_entity(const EntityComponentQuery& query, CallbackType&& callback);
+
+    template <typename JobType, typename... ConstructorArgs>
+    void execute_jobs(const EntityComponentQuery& query, JobGroup* group, ConstructorArgs&&... args);
+private:
+    World* world_ { nullptr };
 };
 
 
@@ -117,36 +112,61 @@ public:
      * Archetype management
      */
     template <typename... Types>
-    ArchetypeHandle get_or_create_archetype();
+    inline ArchetypeHandle create_archetype(); // not thread-safe
 
     template <typename... Types>
-    ArchetypeHandle get_archetype();
+    inline ArchetypeHandle get_archetype(); // not thread-safe
 
-    ArchetypeHandle get_archetype(const Type* const* types, const i32 type_count);
+    ArchetypeHandle get_archetype(const Type* const* types, const i32 type_count); // not thread-safe
 
-    ArchetypeHandle create_archetype(const Type* const* types, const i32 type_count);
+    ArchetypeHandle create_archetype(const Type* const* types, const i32 type_count); // not thread-safe
 
-    void destroy_archetype(const ArchetypeHandle& archetype);
+    void destroy_archetype(const ArchetypeHandle& archetype); // not thread-safe
 
     /*
      * Entity management
      */
     Entity create_entity(); // not thread-safe
 
+    Entity create_entity(const ArchetypeHandle& archetype);  // not thread-safe
+
     void create_entities(Entity* dst, const i32 count); // not thread-safe
+
+    void create_entities(const ArchetypeHandle& archetype, Entity* dst, const i32 count); // not thread-safe
 
     void destroy_entity(const Entity& entity); // not thread-safe
 
     void destroy_entities(const Entity* to_destroy, const i32 count); // not thread-safe
 
     template <typename T, typename... Args>
-    T* add_component(const Entity& entity, Args&&... args); // not thread-safe
+    inline T* add_component(const Entity& entity, Args&&... args); // not thread-safe
 
     template <typename T>
-    void remove_component(const Entity& entity); // not thread-safe
+    inline void remove_component(const Entity& entity); // not thread-safe
 
     template <typename T>
-    bool has_component(const Entity& entity) const; // not thread-safe
+    inline bool has_component(const Entity& entity) const; // not thread-safe
+
+    template <typename T>
+    inline T* get_component(const Entity& entity); // not thread-safe
+
+    /*
+     * Query management
+     */
+    EntityComponentQuery get_or_create_query(const EntityComponentQueryTypeInfo* type_infos, const i32 count);
+
+    void query_chunks(const EntityComponentQuery& handle, DynamicArray<ComponentChunk*>* results);
+
+    void query_chunks(JobGroup* wait_handle, const EntityComponentQuery& query_handle, DynamicArray<ComponentChunk*>* results);
+
+    /*
+     * System management
+     */
+    template <typename T, typename... Args>
+    inline void add_system(Args&&... args) noexcept; // not thread-safe
+
+    template <typename T>
+    inline T* get_system() noexcept;
 
     inline i64 alive_count() const
     {
@@ -168,23 +188,43 @@ private:
         ComponentChunk* chunk { nullptr };
     };
 
-    static const Type* entity_type_;
+    static const Type*                      entity_type_;
 
-    ResourcePool<Entity, EntityInfo>    entities_;
+    ResourcePool<Entity, EntityInfo>        entities_;
 
     /*
      * Component management
      */
-    ChunkAllocator                      component_allocator_;
-    ChunkAllocator                      archetype_allocator_;
-    DynamicHashMap<u32, Archetype*>     archetype_lookup_;
+    ChunkAllocator                          component_allocator_;
+    ChunkAllocator                          archetype_allocator_;
+    DynamicHashMap<u32, Archetype*>         archetype_lookup_;
+
+    /*
+     * System management
+     */
+    struct SystemInfo
+    {
+        const Type*     type { nullptr };
+        EntitySystem*   instance { nullptr };
+    };
+
+    DynamicArray<UniquePtr<EntitySystem>>           systems_;
+    DynamicArray<DynamicArray<EntitySystem*>>       system_groups_;
+    DynamicHashMap<u32, SystemInfo>                 system_lookup_;
+
+    /*
+     * Query management
+     */
+    ChunkAllocator                                  query_allocator_;
+    DynamicHashMap<u32, EntityComponentQueryData*>  queries_;
+    EntityComponentDependencyMap                    dependencies_;
 
     /*
      * Implementation
      */
     Archetype* lookup_archetype(const Type* const* sorted_types, const i32 type_count);
 
-    Archetype* lookup_or_create_archetype(const Type* const* sorted_types, const i32 type_count);
+    Archetype* get_or_create_archetype(const Type* const* sorted_types, const i32 type_count);
 
     void destroy_archetype(Archetype* archetype);
 
@@ -192,14 +232,15 @@ private:
 
     void destroy_chunk(ComponentChunk* chunk);
 
+    void create_entities(Archetype* archetype, Entity* dst, const i32 count);
+
     void move_entity(EntityInfo* info, Archetype* dst);
 
     void destroy_entity(EntityInfo* info);
 
     static bool has_component(const EntityInfo* info, const Type* type);
 
-    template <typename T>
-    static T* get_component_ptr(EntityInfo* info, const Type* type);
+    static void* get_component_ptr(EntityInfo* info, const Type* type);
 };
 
 BEE_RUNTIME_API u32 get_archetype_hash(const Type* const* sorted_types, const i32 type_count);
