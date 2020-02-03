@@ -109,7 +109,7 @@ struct Worker final : public Noncopyable
     Thread                      thread;
     i32                         thread_local_idx { -1 };
     WorkStealingQueue           job_queue;
-    Job*                        current_executing_job;
+    Job*                        current_executing_job { nullptr };
     RandomGenerator<Xorshift>   random;
     VariableSizedPoolAllocator  job_allocator;
     LinearAllocator             temp_allocator;
@@ -118,7 +118,7 @@ struct Worker final : public Noncopyable
 
     Worker() = default;
 
-    Worker(const i32 thread_index, const JobSystemInitInfo& info)
+    Worker(const i32 thread_index, const JobSystemInitInfo& info) noexcept
         : thread_local_idx(thread_index),
           job_queue(info.max_jobs_per_worker_per_chunk),
           job_allocator(sizeof(Job), info.max_job_size, info.max_jobs_per_worker_per_chunk),
@@ -198,9 +198,15 @@ void worker_execute_one_job(Worker* local_worker)
         }
     }
 
-    // Found a job - execute it
+    // Found a job
     if (job != nullptr)
     {
+        // Wait on any dependencies the group the job belongs to might have
+        while (job->parent()->has_dependencies())
+        {
+            worker_execute_one_job(local_worker);
+        }
+
         local_worker->current_executing_job = job;
 
         // Only safe to reset the local temp allocator if no allocations are in use on any thread
@@ -208,6 +214,9 @@ void worker_execute_one_job(Worker* local_worker)
         {
             local_worker->temp_allocator.reset(); // HACK(Jacob): this needs to be replaced with a locking stack allocator
         }
+
+        const auto owning_worker_idx = job->owning_worker_id();
+        BEE_ASSERT(owning_worker_idx >= 0);
 
         // NOTE: This is a blocking call
         job->complete();
@@ -217,9 +226,6 @@ void worker_execute_one_job(Worker* local_worker)
         g_job_system.pending_job_count.fetch_sub(1, std::memory_order_release);
 
         // The job allocator guarantees that this delete is thread safe across non-local threads
-        const auto owning_worker_idx = job->owning_worker_id();
-        BEE_ASSERT(owning_worker_idx >= 0);
-
         auto& owning_worker = g_job_system.workers[owning_worker_idx];
         const auto completed_idx = owning_worker.completed_job_count.fetch_add(1, std::memory_order_acquire);
 
@@ -292,6 +298,7 @@ bool job_system_init(const JobSystemInitInfo& info)
     std::atomic_int32_t ready_counter(num_workers);
 
     ThreadCreateInfo thread_info{};
+    thread_info.use_temp_allocator = true;
     thread_info.priority = ThreadPriority::time_critical;
 
     WorkerMainParams worker_params{};
@@ -349,6 +356,8 @@ void job_system_shutdown()
 
     // Cleanup the systems heap allocation and reset to default state
     g_job_system.initialized.store(false);
+    
+    new (&g_job_system) JobSystemContext{};
 }
 
 void job_schedule_group(JobGroup* group, Job** dependencies, const i32 dependency_count)

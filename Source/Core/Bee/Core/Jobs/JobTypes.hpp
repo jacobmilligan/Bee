@@ -10,6 +10,8 @@
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Handle.hpp"
 #include "Bee/Core/Functional.hpp"
+#include "Bee/Core/Concurrency.hpp"
+#include "Bee/Core/Containers/Array.hpp"
 
 #include <atomic>
 #include <mutex>
@@ -21,21 +23,34 @@ class Allocator;
 struct Worker;
 class Job;
 
-class JobGroup
+class BEE_CORE_API JobGroup
 {
 public:
+    explicit JobGroup(Allocator* allocator = system_allocator());
+
+    ~JobGroup();
+
     void add_job(Job* job);
+
+    void add_dependency(JobGroup* child_group);
 
     i32 pending_count();
 
+    i32 dependency_count();
+
     bool has_pending_jobs();
+
+    bool has_dependencies();
 
     void signal(Job* job);
 private:
-    std::atomic_int32_t pending_count_ { 0 };
+    std::atomic_int32_t     pending_count_ { 0 };
+    std::atomic_int32_t     dependency_count_ { 0 };
+    ReaderWriterMutex       parents_mutex_;
+    DynamicArray<JobGroup*> parents_;
 };
 
-class BEE_CORE_API  Job
+class BEE_CORE_API Job
 {
 public:
     explicit Job();
@@ -57,7 +72,7 @@ public:
     i32 owning_worker_id() const;
 private:
     i32                     owning_worker_ { 0 };
-    std::atomic<JobGroup*>  parent_;
+    std::atomic<JobGroup*>  parent_ { nullptr };
 
     void move_construct(Job& other) noexcept;
 };
@@ -76,6 +91,20 @@ public:
     }
 private:
     FunctionType function_;
+};
+
+class ParallelForJob : public Job
+{
+public:
+    void init(const i32 iteration_count, const i32 execute_batch_size);
+
+    virtual void execute(const i32 index) = 0;
+
+    void execute() final;
+
+private:
+    i32 iteration_count_ { -1 };
+    i32 execute_batch_size_ { -1 };
 };
 
 

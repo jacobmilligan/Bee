@@ -63,6 +63,22 @@ inline JobType* allocate_job(ConstructorArgs&&... args)
     return job;
 }
 
+template <typename JobType, typename... ConstructorArgs>
+inline JobType* allocate_parallel_for(const i32 iteration_count, const i32 execute_batch_size, ConstructorArgs&&... args)
+{
+    static_assert(std::is_base_of<ParallelForJob, JobType>, "JobType must derive from ParallelForJob");
+
+    auto job = BEE_NEW(local_job_allocator(), JobType)(std::forward<ConstructorArgs>(args)...);
+
+    BEE_ASSERT(job->parent() == nullptr);
+
+    // use init rather than constructor to setup parallel for parameters to avoid user having to
+    // re-implement constructor
+    job->init(iteration_count, execute_batch_size);
+
+    return job;
+}
+
 template <typename FunctionType, typename... Args>
 inline Job* allocate_job(FunctionType&& function, Args&&... args)
 {
