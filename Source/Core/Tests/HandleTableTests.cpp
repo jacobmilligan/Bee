@@ -37,6 +37,7 @@ constexpr char MockResource::deallocated_charval;
 class HandleTableTest : public ::testing::Test {
 protected:
     using resource_pool_t = bee::HandleTable<32, MockResourceHandle, MockResource>;
+    using id_t = bee::HandleTable<32, MockResourceHandle, MockResource>::id_t;
 
     resource_pool_t resources_;
 
@@ -73,7 +74,7 @@ TEST_F(HandleTableTest, handles_are_correctly_deallocated)
 TEST_F(HandleTableTest, handles_are_exhausted_when_capacity_is_reached)
 {
     MockResourceHandle handle{};
-    for (int i = 0; i < resource_pool_t::capacity; ++i)
+    for (id_t i = 0; i < resource_pool_t::capacity; ++i)
     {
         handle = resources_.create({});
     }
@@ -85,7 +86,7 @@ TEST_F(HandleTableTest, handles_are_reused_correctly)
     auto first_handle = resources_.create({});
     resources_.destroy(first_handle);
 
-    for (int i = 0; i < resources_.capacity - 1; i++)
+    for (id_t i = 0; i < resources_.capacity - 1; i++)
     {
         auto handle = resources_.create({});
         resources_.destroy(handle);
@@ -103,7 +104,7 @@ TEST_F(HandleTableTest, reused_handles_detect_version_correctly)
     ASSERT_DEATH(resources_[handle1], "handle references destroyed data");
 
     // allocate and deallocate handles until the original one is recycled
-    for (int i = 0; i < resources_.capacity - 1; i++) {
+    for (id_t i = 0; i < resources_.capacity - 1; i++) {
         auto handle = resources_.create({});
         resources_.destroy(handle);
     }
@@ -119,9 +120,9 @@ TEST_F(HandleTableTest, reused_handles_detect_version_correctly)
 
 TEST_F(HandleTableTest, test_index_is_calculated_correctly)
 {
-    for (bee::u32 i = 0; i < (1u << MockResourceHandle::index_bits / 2); ++i)
+    for (id_t i = 0; i < (1u << MockResourceHandle::generator_t ::index_bits / 2); ++i)
     {
-        for (bee::u32 v = 0; v < (1u << MockResourceHandle::version_bits / 2); ++v)
+        for (id_t v = 0; v < (1u << MockResourceHandle::generator_t ::version_bits / 2); ++v)
         {
             const auto id = (v << 24) | i;
             ASSERT_EQ(MockResourceHandle{ id }.index(), i);
@@ -133,7 +134,7 @@ TEST_F(HandleTableTest, test_index_is_calculated_correctly)
 TEST_F(HandleTableTest, test_all_resources_can_allocate_and_get)
 {
     MockResource* resource = nullptr;
-    for (bee::u32 i = 0; i < resources_.capacity; ++i) {
+    for (id_t i = 0; i < resources_.capacity; ++i) {
         auto handle = resources_.create({});
         ASSERT_NO_FATAL_FAILURE(resource = resources_[handle]);
     }
@@ -172,7 +173,7 @@ TEST_F(HandleTableTest, stress_test)
 {
     MockResourceHandle handles[resource_pool_t::capacity];
     MockResource result{};
-    for (int i = 0; i < resources_.capacity; ++i)
+    for (id_t i = 0; i < resources_.capacity; ++i)
     {
         ASSERT_NO_FATAL_FAILURE(handles[i] = resources_.create(result));
     }
@@ -180,7 +181,7 @@ TEST_F(HandleTableTest, stress_test)
     ASSERT_EQ(resources_.size(), resources_.capacity);
 
     bee::RandomGenerator<bee::Xorshift> rand(239458);
-    for (int i = 0; i < resources_.capacity; ++i)
+    for (id_t i = 0; i < resources_.capacity; ++i)
     {
         auto& handle = handles[rand.random_range(0, resources_.capacity - 1)];
         if (resources_.contains(handle))
@@ -202,5 +203,5 @@ TEST_F(HandleTableTest, stress_test)
         }
     }
 
-    ASSERT_EQ(resources_.size(), 0);
+    ASSERT_EQ(resources_.size(), 0u);
 }

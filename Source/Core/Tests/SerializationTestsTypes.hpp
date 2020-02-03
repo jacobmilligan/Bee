@@ -9,7 +9,7 @@
 
 #include <Bee/Core/Reflection.hpp>
 #include <Bee/Core/Serialization/Serialization.hpp>
-#include "../../../../../Tools/BeeReflect/Tests/BasicStruct.hpp"
+#include "../../../../Tools/BeeReflect/Tests/BasicStruct.hpp"
 
 namespace bee {
 

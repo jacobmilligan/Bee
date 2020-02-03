@@ -9,6 +9,8 @@
 #include <Bee/Core/Memory/MallocAllocator.hpp>
 #include <Bee/Core/Memory/SmartPointers.hpp>
 
+#include <thread>
+
 #include <gtest/gtest.h>
 
 struct TestObjectBase {
@@ -59,9 +61,4 @@ TEST(MemoryTests, MallocAllocator_make_unique_constructs_and_destructs)
         ASSERT_TRUE(TestObjectBase::constructed);
     }
     ASSERT_FALSE(TestObjectBase::constructed);
-}
-
-TEST(MemoryTests, ChunkAllocator)
-{
-
 }

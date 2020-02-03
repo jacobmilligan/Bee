@@ -76,6 +76,7 @@ TEST(GUIDTests, guid_serialization)
     auto guid = bee::generate_guid();
     auto string = bee::guid_to_string(guid, bee::GUIDFormat::digits); // for comparison
     char stringbuf[33];
+    memset(stringbuf, 0, bee::static_array_length(stringbuf));
 
     const auto offset = offsetof(bee::GUID, data);
     const auto guid_type = bee::get_type_as<bee::GUID, bee::RecordType>();
@@ -84,8 +85,8 @@ TEST(GUIDTests, guid_serialization)
     bee::DynamicArray<bee::u8> stream;
     bee::BinarySerializer serializer(&stream);
     bee::serialize(bee::SerializerMode::writing, &serializer, &guid);
-    ASSERT_EQ(stream.size(), bee::static_array_length(stringbuf) + sizeof(bee::i32));
-    memcpy(stringbuf, stream.data() + sizeof(bee::i32), bee::static_array_length(stringbuf));
+    ASSERT_EQ(stream.size(), bee::static_array_length(stringbuf) - 1 + sizeof(bee::i32));
+    memcpy(stringbuf, stream.data() + sizeof(bee::i32), stream.size() - sizeof(bee::i32));
     ASSERT_STREQ(stringbuf, string.c_str());
 
     bee::GUID read_guid{};

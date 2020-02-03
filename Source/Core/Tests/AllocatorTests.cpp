@@ -6,31 +6,49 @@
  */
 
 #include <Bee/Core/Memory/LinearAllocator.hpp>
-
-#include <gtest/gtest.h>
 #include <Bee/Core/Memory/VariableSizedPoolAllocator.hpp>
 #include <Bee/Core/Memory/PoolAllocator.hpp>
+#include <Bee/Core/Memory/ThreadSafeLinearAllocator.hpp>
 #include <Bee/Core/Containers/Array.hpp>
+#include <Bee/Core/Concurrency.hpp>
+
+#include <gtest/gtest.h>
+#include <thread>
+
 
 TEST(AllocatorTests, linear_allocator)
 {
     bee::LinearAllocator allocator(128);
+    bee::DynamicArray<void*> allocations;
+
     // check capacity minus headers
     for (size_t alloc_idx = 0; alloc_idx < allocator.capacity() / (sizeof(size_t) + 1); ++alloc_idx)
     {
-        ASSERT_NO_FATAL_FAILURE(allocator.allocate(1));
+        void* ptr = nullptr;
+        ASSERT_NO_FATAL_FAILURE(ptr = allocator.allocate(1));
+        allocations.push_back(ptr);
     }
 
     ASSERT_DEATH(allocator.allocate(23), "reached capacity");
 
+    for (auto& alloc : allocations)
+    {
+        ASSERT_NO_FATAL_FAILURE(allocator.deallocate(alloc));
+    }
+
+    allocations.clear();
     allocator.reset();
 
-    ASSERT_NO_FATAL_FAILURE(allocator.allocate(allocator.max_allocation()));
+    void* ptr = nullptr;
+    ASSERT_NO_FATAL_FAILURE(ptr = allocator.allocate(allocator.max_allocation()));
+    ASSERT_NO_FATAL_FAILURE(allocator.deallocate(ptr));
 
     allocator.reset();
 
-    auto ptr = allocator.allocate(16);
+    ptr = allocator.allocate(16);
     ASSERT_TRUE(allocator.is_valid(ptr));
+
+    ASSERT_DEATH(allocator.reset(), "Not all allocations were deallocated");
 
     int value = 23;
     auto invalid_ptr = &value;
@@ -178,5 +196,84 @@ TEST(AllocatorTests, pool_allocator)
     }
 
     ASSERT_NO_FATAL_FAILURE(pool.~PoolAllocator());
+}
+
+TEST(AllocatorTests, ThreadSafeLinearAllocator)
+{
+    constexpr auto max_threads = 8;
+    constexpr auto per_thread_array_size = 100;
+    constexpr auto allocator_capacity = (bee::ThreadSafeLinearAllocator::min_allocation + sizeof(int)) * per_thread_array_size; // add extra for header
+
+    std::thread threads[8];
+    bee::ThreadSafeLinearAllocator allocator(max_threads, allocator_capacity);
+
+    int* per_thread_allocations[8][per_thread_array_size];
+
+    int index = 0;
+    std::atomic_int32_t count(0);
+    std::atomic_bool    flag(false);
+    bee::Barrier barrier(bee::static_array_length(threads)); // include the main thread
+
+    for (auto& thread : threads)
+    {
+        thread = std::thread([&, thread_index = index]()
+        {
+            allocator.register_thread();
+
+            for (int i = 0; i < per_thread_array_size; ++i)
+            {
+                per_thread_allocations[thread_index][i] = BEE_NEW(&allocator, int)(i);
+            }
+
+            count.fetch_add(1);
+            barrier.wait();
+
+            while (!flag.load()) {}
+
+            for (int i = 0; i < per_thread_array_size; ++i)
+            {
+                BEE_FREE(&allocator, per_thread_allocations[thread_index][i]);
+                per_thread_allocations[thread_index][i] = nullptr;
+            }
+
+            barrier.wait();
+
+            allocator.unregister_thread();
+        });
+        ++index;
+    }
+
+    while (count.load() < bee::static_array_length(threads)) {};
+
+    ASSERT_EQ(allocator.allocated_size(), allocator.capacity_per_thread() * allocator.max_threads());
+
+    for (auto per_thread : per_thread_allocations)
+    {
+        for (int i = 0; i < per_thread_array_size; ++i)
+        {
+            ASSERT_EQ(i, *per_thread[i]);
+        }
+    }
+
+    // Allow threads to deallocate and then unregister concurrently
+    flag.store(true);
+
+    for (auto& thread : threads)
+    {
+        if (thread.joinable())
+        {
+            thread.join();
+        }
+    }
+
+    for (auto per_thread : per_thread_allocations)
+    {
+        for (int i = 0; i < per_thread_array_size; ++i)
+        {
+            ASSERT_EQ(nullptr, per_thread[i]);
+        }
+    }
+
+    ASSERT_EQ(allocator.allocated_size(), 0);
 }
 

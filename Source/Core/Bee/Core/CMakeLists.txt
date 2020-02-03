@@ -17,6 +17,7 @@ bee_add_sources(
         Hash.hpp            Hash.cpp
         IO.hpp              IO.cpp      IO.inl
         Logger.hpp          Logger.cpp
+        Main.hpp
         Meta.hpp
         Plugin.hpp          Plugin.cpp
         Noncopyable.hpp

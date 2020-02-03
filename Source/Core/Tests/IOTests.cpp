@@ -89,6 +89,7 @@ TEST(IOTests, stringstream)
     stream.write("StringView write ");
     const char* append = "const char* write";
     stream.write(append, bee::str::length(append));
+    stream.null_terminate();
     ASSERT_STREQ(test_buffer, "StringView write const char* write"); // ensure null terminator
 
     // Test reading from the read-write buffer into another buffer

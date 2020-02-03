@@ -5,7 +5,7 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Core/Tests/SerializationTestsTypes.hpp"
+#include "Tests/SerializationTestsTypes.hpp"
 
 #include <Bee/Core/Serialization/Serialization.hpp>
 #include <Bee/Core/Serialization/JSONSerializer.hpp>
@@ -309,6 +309,7 @@ TEST(SerializationTestsV2, core_types)
 
     // Test hashmaps
     bee::DynamicHashMap<String, int> expected_map;
+    bee::DynamicHashMap<String, int> another(expected_map);
     expected_map.insert("one", 1);
     expected_map.insert("two", 2);
     expected_map.insert("three", 3);

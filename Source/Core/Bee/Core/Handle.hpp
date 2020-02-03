@@ -53,7 +53,7 @@ struct name                                                                     
 template <typename IdType, IdType IndexBits, IdType VersionBits>
 struct HandleGenerator
 {
-    using id_type                           = IdType;
+    using id_t                              = IdType;
 
     static constexpr IdType index_bits      = IndexBits;
     static constexpr IdType version_bits    = VersionBits;
