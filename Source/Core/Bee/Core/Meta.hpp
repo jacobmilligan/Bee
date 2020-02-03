@@ -242,5 +242,41 @@ constexpr typename std::underlying_type<EnumType>::type underlying_t(EnumType e)
     return static_cast<typename std::underlying_type<EnumType>::type>(e);
 }
 
+/**
+ * # function_traits
+ *
+ * Gets the return type, args (accessible by index), and the type of a valid argument tuple for a given
+ * callable type
+ */
+template <typename... Args>
+struct function_args_list {};
+
+template <typename T>
+struct function_traits : public function_traits<decltype(&T::operator())>
+{};
+
+template <typename ClassType, typename ReturnType, typename... Args>
+struct function_traits<ReturnType(ClassType::*)(Args...) const>
+{
+    static constexpr auto arg_count = sizeof...(Args);
+
+    using return_t      = ReturnType;
+    using args_list_t   = function_args_list<Args...>;
+};
+
+/**
+ * # remove_cv_ref_ptr
+ * For those special instances when you just want a value type
+ */
+template <typename T>
+struct remove_cv_ref_ptr
+{
+    using type = typename std::remove_cv<
+        typename std::remove_pointer<
+            typename std::remove_reference<T>::type
+        >::type
+    >::type;
+};
+
 
 } // namespace bee
