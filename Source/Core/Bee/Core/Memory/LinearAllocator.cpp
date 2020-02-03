@@ -65,7 +65,7 @@ void LinearAllocator::destroy()
 
     if (allocated_overflow_ != 0)
     {
-        log_error("LinearAllocator: not all allocations were freed before destroying the allocator (allocated_size_ = %zu)", allocated_overflow_);
+        log_error("LinearAllocator: not all allocations were deallocated before destroying the allocator (allocated_size_ = %zu)", allocated_overflow_);
     }
 
     BEE_FREE(system_allocator(), memory_);
@@ -149,6 +149,9 @@ void* LinearAllocator::reallocate(void* ptr, const size_t old_size, const size_t
 
     return realloc_memory;
 }
+
+
+
 
 
 } // namespace bee

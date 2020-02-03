@@ -21,6 +21,7 @@ namespace memory_tracker {
 
 enum class TrackingMode
 {
+    cannot_track,
     enabled,
     disabled
 };
@@ -36,6 +37,9 @@ enum class TrackingMode
  *
  **************************************************************************************************
  */
+BEE_CORE_API void init_tracker(const TrackingMode initial_tracking_mode);
+
+BEE_CORE_API void destroy_tracker();
 
 /**
  * Allows for enabling/disabling allocation tracking

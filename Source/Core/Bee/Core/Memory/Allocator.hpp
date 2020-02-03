@@ -189,6 +189,17 @@ BEE_FORCE_INLINE void destruct(ValueType* ptr)
 
 
 /*
+ ****************************************************
+ *
+ * # initializes and destroys the global allocators
+ *
+ ****************************************************
+ */
+BEE_CORE_API void global_allocators_init();
+
+BEE_CORE_API void global_allocators_shutdown();
+
+/*
  ****************************************************************************************
  *
  * # Global system allocator
@@ -217,7 +228,11 @@ BEE_CORE_API Allocator* system_allocator() noexcept;
  */
 BEE_CORE_API Allocator* temp_allocator() noexcept;
 
-BEE_CORE_API void reset_temp_allocator() noexcept;
+BEE_CORE_API void temp_allocator_reset() noexcept;
+
+BEE_CORE_API void temp_allocator_register_thread() noexcept;
+
+BEE_CORE_API void temp_allocator_unregister_thread() noexcept;
 
 /*
  **********************************************************

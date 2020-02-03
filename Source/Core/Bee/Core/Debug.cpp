@@ -33,7 +33,7 @@ void log_stack_trace(const LogVerbosity verbosity, const i32 skipped_frame_count
 
 void write_stack_trace(const StackTrace& trace, io::StringStream* stream)
 {
-    auto symbols = FixedArray<DebugSymbol>::with_size(trace.frame_count, temp_allocator());
+    auto symbols = FixedArray<DebugSymbol>::with_size(trace.frame_count);
     symbolize_stack_trace(symbols.data(), trace);
 
     for (int f = 0; f < symbols.size(); ++f)

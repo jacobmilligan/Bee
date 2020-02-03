@@ -189,6 +189,18 @@ void logger_init()
     }
 }
 
+void logger_shutdown()
+{
+    static bool recursion_check = false;
+
+    if (!recursion_check)
+    {
+        recursion_check = true;
+        destruct(&g_log);
+        recursion_check = false;
+    }
+}
+
 void log_set_verbosity(const LogVerbosity verbosity)
 {
     ensure_logger();

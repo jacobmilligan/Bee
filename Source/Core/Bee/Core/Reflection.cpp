@@ -266,6 +266,11 @@ bool TypeInstance::validate_type(const Type* type) const
  */
 static DynamicHashMap<u32, const Type*> g_type_map;
 
+void reflection_destroy()
+{
+    destruct(&g_type_map);
+}
+
 
 u32 get_type_hash(const StringView& type_name)
 {

@@ -34,7 +34,7 @@ void log_assert_message(
     va_list user_args
 )
 {
-    String msg_string(temp_allocator());
+    String msg_string;
     io::StringStream msg_stream(&msg_string);
 
     msg_stream.write_fmt("Bee: %s", assert_msg);
@@ -98,7 +98,7 @@ void __bee_print_error(
     ...
 )
 {
-    String msg_string(temp_allocator());
+    String msg_string;
     io::StringStream stream(&msg_string);
 
     stream.write_fmt("Bee %s error: ", type);

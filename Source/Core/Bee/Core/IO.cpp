@@ -341,11 +341,11 @@ Stream::Mode FileStream::file_mode_to_stream_mode(const char* file_mode)
  *
  *****************************************
  */
-StringStream::StringStream(const char* read_only_string, const i32 string_size)
+StringStream::StringStream(const char* read_only_string, const i32 string_length)
     : Stream(Mode::read_only)
 {
-    string.c_string.capacity_ = string_size;
-    string.c_string.current_stream_size_ = string_size;
+    string.c_string.capacity_ = string_length;
+    string.c_string.current_stream_size_ = string_length;
     string.c_string.data.read_only = read_only_string;
 }
 
@@ -537,8 +537,7 @@ const char* StringStream::c_str() const
 #if BEE_CONFIG_ENABLE_ASSERTIONS == 1
     if (mode() != Mode::container)
     {
-        const auto null_terminator = size() < capacity() ? size() : capacity() - 1;
-        BEE_ASSERT_F(result[null_terminator] == '\0', "StringStream: the source string is not null-terminated - you can call `StringStream::null_terminate` to ensure the source is a valid c-string");
+        BEE_ASSERT_F(*(result + size()) == '\0' || *(result + capacity()) == '\0', "StringStream: the source string is not null-terminated - you can call `StringStream::null_terminate` to ensure the source is a valid c-string");
     }
 #endif // BEE_CONFIG_ENABLE_ASSERTIONS == 1
 

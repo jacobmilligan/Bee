@@ -28,6 +28,8 @@ using logger_callback_t = void(const LogVerbosity verbosity, const char* fmt, va
 
 BEE_CORE_API void logger_init();
 
+BEE_CORE_API void logger_shutdown();
+
 BEE_CORE_API void log_set_verbosity(LogVerbosity verbosity);
 
 BEE_CORE_API LogVerbosity log_get_verbosity();

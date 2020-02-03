@@ -6,6 +6,7 @@ bee_add_sources(
         MallocAllocator.hpp             MallocAllocator.cpp
         LinearAllocator.hpp             LinearAllocator.cpp
         PoolAllocator.hpp               PoolAllocator.cpp
+        ThreadSafeLinearAllocator.hpp   ThreadSafeLinearAllocator.cpp
         VariableSizedPoolAllocator.hpp  VariableSizedPoolAllocator.cpp
 
         GlobalMemory.cpp

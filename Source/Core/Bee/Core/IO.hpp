@@ -338,7 +338,7 @@ private:
 class BEE_CORE_API StringStream final : public Stream
 {
 public:
-    StringStream(const char* read_only_string, const i32 string_size);
+    StringStream(const char* read_only_string, const i32 string_length);
 
     StringStream(char* read_write_string, const i32 string_capacity, const i32 initial_stream_size);
 
@@ -396,7 +396,7 @@ private:
             } data;
         } c_string;
 
-        String*     container;
+        String*     container { nullptr };
     } string;
 
     i32     current_offset_ { 0 };

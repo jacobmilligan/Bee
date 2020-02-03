@@ -20,22 +20,25 @@ struct Proxy
 {
     static constexpr i32 stack_frame_count = 16;
 
-    TrackingMode                            tracking_mode { TrackingMode::enabled };
+    TrackingMode                            tracking_mode { TrackingMode::cannot_track };
     RecursiveSpinLock                       mutex;
     DynamicHashMap<void*, AllocationEvent>  allocations;
     isize                                   total_allocations { 0 };
     isize                                   peak_allocations { 0 };
 
-    Proxy()
-        : allocations(system_allocator()),
+    Proxy() = default;
+
+    Proxy(const TrackingMode initial_tracking_mode, Allocator* backing_allocator)
+        : tracking_mode(initial_tracking_mode),
+          allocations(backing_allocator),
           total_allocations(0),
           peak_allocations(0)
     {}
 
-    ~Proxy()
+    ~Proxy() noexcept
     {
         // NOTE(Jacob): support detecting leaks on shut down?
-        tracking_mode = TrackingMode::disabled;
+        tracking_mode = TrackingMode::cannot_track;
         allocations.clear();
     }
 };
@@ -50,11 +53,22 @@ static Proxy g_proxy; // the global allocator proxy context
  *
  **************************************
  */
+void init_tracker(const TrackingMode initial_tracking_mode)
+{
+    BEE_ASSERT(g_proxy.tracking_mode == TrackingMode::cannot_track);
+    new (&g_proxy) Proxy(initial_tracking_mode, system_allocator());
+}
+
+void destroy_tracker()
+{
+    destruct(&g_proxy);
+}
+
 void set_tracking_mode(const TrackingMode mode)
 {
     scoped_recursive_spinlock_t lock(g_proxy.mutex);
 
-    if (mode == TrackingMode::disabled)
+    if (mode != TrackingMode::enabled)
     {
         // Clear the current allocations so we don't get errors when re-enabling it but keep total allocations and
         // peak usage around because that is still valid
@@ -66,7 +80,7 @@ void set_tracking_mode(const TrackingMode mode)
 
 void record_manual_allocation_nolock(void* address, const size_t size, const size_t alignment, const i32 skipped_stack_frames)
 {
-    if (g_proxy.tracking_mode == TrackingMode::disabled)
+    if (g_proxy.tracking_mode != TrackingMode::enabled)
     {
         return;
     }
@@ -99,7 +113,7 @@ void record_manual_allocation(void* address, const size_t size, const size_t ali
 
 void erase_manual_allocation_nolock(void* address)
 {
-    if (g_proxy.tracking_mode == TrackingMode::disabled)
+    if (g_proxy.tracking_mode != TrackingMode::enabled)
     {
         return;
     }
@@ -146,7 +160,10 @@ void* reallocate_tracked(Allocator* allocator, void* old_address, const size_t o
     if (new_address != nullptr && !allocator->allocator_proxy_disable_tracking())
     {
         scoped_recursive_spinlock_t lock(g_proxy.mutex);
-        erase_manual_allocation(old_address);
+        if (old_address != nullptr)
+        {
+            erase_manual_allocation(old_address);
+        }
         record_manual_allocation_nolock(new_address, new_size, alignment, 1);
     }
 

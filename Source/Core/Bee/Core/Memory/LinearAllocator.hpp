@@ -39,6 +39,7 @@ public:
 
     inline void reset()
     {
+        BEE_ASSERT_F(allocated_size_ == 0, "Not all allocations were deallocated before resetting the allocator");
         offset_ = 0;
     }
 

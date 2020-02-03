@@ -1002,6 +1002,8 @@ struct TypeTag
 
 extern void reflection_init();
 
+BEE_CORE_API void reflection_destroy();
+
 template <typename T>
 const Type* get_type(const TypeTag<T>& tag);
 

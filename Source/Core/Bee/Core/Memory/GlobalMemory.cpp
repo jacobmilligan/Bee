@@ -5,108 +5,52 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include <Bee/Core/Containers/Array.hpp>
 #include "Bee/Core/Memory/MallocAllocator.hpp"
-#include "Bee/Core/Memory/LinearAllocator.hpp"
+#include "Bee/Core/Memory/ThreadSafeLinearAllocator.hpp"
 #include "Bee/Core/Concurrency.hpp"
 
 namespace bee {
 
 
-Allocator* system_allocator() noexcept
+static MallocAllocator              g_system_allocator;
+static ThreadSafeLinearAllocator    g_temp_allocator;
+
+
+void global_allocators_init()
 {
-    static MallocAllocator default_allocator;
-    return &default_allocator;
+    new (&g_system_allocator) MallocAllocator{};
+    new (&g_temp_allocator) ThreadSafeLinearAllocator(32, BEE_CONFIG_DEFAULT_TEMP_ALLOCATOR_SIZE, &g_system_allocator);
 }
 
-
-struct TempAllocator final : public Allocator
+void global_allocators_shutdown()
 {
-    BEE_ALLOCATOR_DO_NOT_TRACK
+    destruct(&g_temp_allocator);
+    destruct(&g_system_allocator);
+}
 
-    explicit TempAllocator(const size_t capacity) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
-        : capacity_(capacity),
-          allocators_(system_allocator())
-    {}
-
-    ~TempAllocator() override
-    {
-        scoped_spinlock_t lock(global_lock_);
-
-        for (auto& allocator : allocators_)
-        {
-            allocator->destroy();
-        }
-
-        allocators_.clear();
-    }
-
-    void reset()
-    {
-        scoped_spinlock_t lock(global_lock_);
-        for (auto allocator : allocators_)
-        {
-            allocator->reset();
-        }
-    }
-
-    bool is_valid(const void* ptr) const override
-    {
-        return thread_local_allocator.is_valid(ptr);
-    }
-
-    void* allocate(size_t size, size_t alignment) override
-    {
-        ensure_allocator();
-        return thread_local_allocator.allocate(size, alignment);
-    }
-
-    void* reallocate(void* ptr, size_t old_size, size_t new_size, size_t alignment) override
-    {
-        ensure_allocator();
-        return thread_local_allocator.reallocate(ptr, old_size, new_size, alignment);
-    }
-
-    void deallocate(void* ptr) override
-    {
-        ensure_allocator();
-        thread_local_allocator.deallocate(ptr);
-    }
-
-private:
-    size_t                              capacity_ { 0 };
-    SpinLock                            global_lock_;
-    DynamicArray<LinearAllocator*>      allocators_;
-
-    static thread_local LinearAllocator  thread_local_allocator;
-
-    void ensure_allocator()
-    {
-        if (thread_local_allocator.capacity() > 0)
-        {
-            return;
-        }
-
-        // Overflow into system malloc if
-        thread_local_allocator = LinearAllocator(capacity_, system_allocator());
-
-        scoped_spinlock_t lock(global_lock_);
-        allocators_.push_back(&thread_local_allocator);
-    }
-};
-
-thread_local LinearAllocator TempAllocator::thread_local_allocator;
-
-static TempAllocator temp_allocator_instance(BEE_CONFIG_DEFAULT_TEMP_ALLOCATOR_SIZE);
+Allocator* system_allocator() noexcept
+{
+    return &g_system_allocator;
+}
 
 Allocator* temp_allocator() noexcept
 {
-    return &temp_allocator_instance;
+    return &g_temp_allocator;
 }
 
-void reset_temp_allocator() noexcept
+void temp_allocator_reset() noexcept
 {
-    temp_allocator_instance.reset();
+    g_temp_allocator.reset();
+}
+
+void temp_allocator_register_thread() noexcept
+{
+    g_temp_allocator.register_thread();
+}
+
+void temp_allocator_unregister_thread() noexcept
+{
+    g_temp_allocator.unregister_thread();
 }
 
 

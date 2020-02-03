@@ -76,6 +76,9 @@ struct ThreadCreateInfo
 
     char                    name[max_name_length] {};
     ThreadPriority          priority { ThreadPriority::normal };
+
+    // automatically registers the thread with the global temp allocator and unregisters when done
+    bool                    use_temp_allocator { false };
 };
 
 
@@ -160,10 +163,12 @@ private:
 
     struct ExecuteParams
     {
-        void(*invoker)(void*, void*);
-        void(*destructor)(void*, void*);
-        void* function { nullptr };
-        void* arg { nullptr };
+        void(*invoker)(void*, void*) { nullptr };
+        void(*destructor)(void*, void*) { nullptr };
+
+        void*   function { nullptr };
+        void*   arg { nullptr };
+        bool    register_with_temp_allocator { false };
     };
 
     char                name_[max_name_length]{};
