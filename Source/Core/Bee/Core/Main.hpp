@@ -27,17 +27,34 @@ namespace bee {
 void preinit_main()
 {
     current_thread::set_as_main();
-
+    global_allocators_init();
+    temp_allocator_register_thread();
+#if BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
+    memory_tracker::init_tracker(memory_tracker::TrackingMode::disabled);
+#endif // BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
     /*
      * Register logger before handlers so we can print something if anything goes wrong with their initialization.
      * If the logger fails to init and causes an exception well that's just too bad
      */
     logger_init();
-    init_signal_handler();
     enable_exception_handling();
+    init_signal_handler();
 #ifdef BEE_ENABLE_REFLECTION
     reflection_init();
 #endif // BEE_ENABLE_REFLECTION
+}
+
+// called by all main functions after running bee_main. Essentially does `preinit_main` in reverse order
+void post_main()
+{
+    reflection_destroy();
+    disable_exception_handling();
+    logger_shutdown();
+#if BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
+    memory_tracker::destroy_tracker();
+#endif // BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
+    temp_allocator_unregister_thread();
+    global_allocators_shutdown();
 }
 
 
@@ -72,6 +89,8 @@ int WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
     auto return_code = bee_main(argc, argv.data());
 
+    bee::post_main();
+
     LocalFree(command_line);
 
     return return_code;
@@ -84,7 +103,9 @@ int WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 int main(int argc, char** argv)
 {
     bee::preinit_main();
-    return bee_main(argc, argv);
+    const auto result = bee_main(argc, argv);
+    bee::post_main();
+    return result;
 }
 
 

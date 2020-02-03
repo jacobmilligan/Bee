@@ -9,8 +9,7 @@
 //  Copyright (c) 2019 Jacob Milligan. All rights reserved.
 //
 
-#include <Bee/Core/Logger.hpp>
-#include <Bee/Core/Reflection.hpp>
+#include <Bee/Core/Main.hpp>
 
 #include <gtest/gtest.h>
 
@@ -23,12 +22,10 @@ void test_logger_callback(const bee::LogVerbosity verbosity, const char* fmt, va
 }
 
 
-GTEST_API_ int main(int argc, char **argv)
+GTEST_API_ int bee_main(int argc, char **argv)
 {
-    bee::reflection_init();
-    printf("Running Bee TestMain...\n");
-    testing::InitGoogleTest(&argc, argv);
-    bee::logger_init();
+    printf("Running TestMain...\n");
     bee::log_register_callback(test_logger_callback);
+    testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

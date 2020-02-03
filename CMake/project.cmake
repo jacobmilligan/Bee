@@ -293,8 +293,10 @@ function(bee_test name)
         bee_new_source_root()
         bee_add_sources(${BEE_CORE_ROOT}/TestMain.cpp ${ARGS_SOURCES})
         bee_exe(${name} LINK_LIBRARIES ${ARGS_LINK_LIBRARIES} gtest)
+        target_compile_definitions(${name} PRIVATE GTEST_BREAK_ON_FAILURE)
 
         __bee_set_compile_options(${name})
+
         gtest_add_tests(TARGET ${name} ${ARGS_SOURCES})
 
         bee_new_source_root()
