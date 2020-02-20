@@ -41,6 +41,11 @@ public:
         return available_chunk_count_;
     }
 
+    inline size_t chunk_size() const
+    {
+        return chunk_size_ - sizeof(Header);
+    }
+
     void* allocate(size_t size, size_t alignment) override;
 
     void* reallocate(void* ptr, size_t old_size, size_t new_size, size_t alignment) override;

@@ -12,7 +12,7 @@
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Logger.hpp"
-#include "Bee/Application/Main.hpp"
+#include "Bee/Core/Main.hpp"
 #include "Bee/Core/JSON/JSON.hpp"
 
 namespace bee {

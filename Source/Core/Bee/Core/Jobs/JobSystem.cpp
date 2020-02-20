@@ -16,9 +16,65 @@
 #include "Bee/Core/Jobs/WorkStealingQueue.hpp"
 #include "Bee/Core/String.hpp"
 
+#include <atomic>
+
 
 namespace bee {
 
+
+//template <typename T>
+//struct AtomicNode
+//{
+//    std::atomic<AtomicNode<T>*> next { nullptr };
+//};
+//
+//template <typename T>
+//class AtomicStack
+//{
+//public:
+//    AtomicStack()
+//    {
+//        BEE_ASSERT(head_.is_lock_free());
+//    }
+//
+//    void push(AtomicNode<T>* item)
+//    {
+//        auto current = head_.load(std::memory_order_relaxed);
+//        TaggedPtr next{};
+//        next.ptr = item;
+//        do
+//        {
+//            next.tag = current.tag + 1;
+//            item->next.store(current.ptr, std::memory_order_relaxed);
+//        } while (!head_.compare_exchange_weak(current, next, std::memory_order_release, std::memory_order_relaxed));
+//    }
+//
+//    AtomicNode<T>* pop()
+//    {
+//        auto current = head_.load(std::memory_order_acquire);
+//        TaggedPtr next{};
+//
+//        while (current.ptr != nullptr)
+//        {
+//            next.ptr = current.ptr->next.load(std::memory_order_relaxed);
+//            next.tag = current.tag + 1;
+//            if (head_.compare_exchange_weak(current, next, std::memory_order_release, std::memory_order_acquire))
+//            {
+//                break;
+//            }
+//        }
+//
+//        return current.ptr;
+//    }
+//private:
+//    struct TaggedPtr
+//    {
+//        std::intptr_t   tag { 0 };
+//        AtomicNode<T>*  ptr { nullptr };
+//    };
+//
+//    std::atomic<TaggedPtr> head_;
+//};
 
 class JobAllocator : public Allocator
 {
@@ -113,8 +169,6 @@ struct Worker final : public Noncopyable
     RandomGenerator<Xorshift>   random;
     VariableSizedPoolAllocator  job_allocator;
     LinearAllocator             temp_allocator;
-    std::atomic_int32_t         completed_job_count { 0 };
-    Job*                        completed_jobs[BEE_WORKER_MAX_COMPLETED_JOBS];
 
     Worker() = default;
 
@@ -122,7 +176,7 @@ struct Worker final : public Noncopyable
         : thread_local_idx(thread_index),
           job_queue(info.max_jobs_per_worker_per_chunk),
           job_allocator(sizeof(Job), info.max_job_size, info.max_jobs_per_worker_per_chunk),
-          temp_allocator(info.per_worker_temp_allocator_capacity)
+          temp_allocator(info.per_worker_temp_allocator_capacity, system_allocator())
     {}
 
     Worker(Worker&& other) noexcept
@@ -132,14 +186,10 @@ struct Worker final : public Noncopyable
           current_executing_job(other.current_executing_job),
           random(other.random),
           job_allocator(std::move(other.job_allocator)),
-          temp_allocator(std::move(other.temp_allocator)),
-          completed_job_count(other.completed_job_count.load(std::memory_order_seq_cst))
+          temp_allocator(std::move(other.temp_allocator))
     {
-        memcpy(completed_jobs, other.completed_jobs, BEE_WORKER_MAX_COMPLETED_JOBS * sizeof(Job*));
-        memset(other.completed_jobs, 0, sizeof(Job*) * BEE_WORKER_MAX_COMPLETED_JOBS);
         other.thread_local_idx = 0;
         other.current_executing_job = nullptr;
-        other.completed_job_count.store(0, std::memory_order_seq_cst);
     }
 
     // cache-line pad to avoid false sharing
@@ -157,6 +207,7 @@ struct JobSystemContext
     std::atomic_bool            initialized { false };
     Thread::id_t                main_thread_id { 0 };
     FixedArray<Worker>          workers;
+//    AtomicStack<Job*>           completed_jobs;
 
     // Signal indicating that the system is currently running and active
     std::atomic_bool            is_active { false };
@@ -227,27 +278,9 @@ void worker_execute_one_job(Worker* local_worker)
 
         // The job allocator guarantees that this delete is thread safe across non-local threads
         auto& owning_worker = g_job_system.workers[owning_worker_idx];
-        const auto completed_idx = owning_worker.completed_job_count.fetch_add(1, std::memory_order_acquire);
 
-        if (BEE_FAIL_F(completed_idx < BEE_WORKER_MAX_COMPLETED_JOBS, "Detected a leak in the job system: too many jobs were allocated on a single thread"))
-        {
-            owning_worker.completed_job_count.store(completed_idx, std::memory_order_release);
-            return;
-        }
-
-        // Defer the actual delete until the local worker has no jobs left to execute
-        owning_worker.completed_jobs[completed_idx] = job;
+        BEE_DELETE(owning_worker.job_allocator, job);
     }
-}
-
-void worker_gc(Worker* worker)
-{
-    const auto completed_job_count = worker->completed_job_count.load(std::memory_order_acquire);
-    for (int j = 0; j < completed_job_count; ++j)
-    {
-        BEE_DELETE(worker->job_allocator, worker->completed_jobs[j]);
-    }
-    worker->completed_job_count.store(0, std::memory_order_release);
 }
 
 void worker_main(const WorkerMainParams& params)
@@ -260,7 +293,6 @@ void worker_main(const WorkerMainParams& params)
     while (g_job_system.is_active.load(std::memory_order_acquire))
     {
         worker_execute_one_job(params.worker);
-        worker_gc(params.worker);
 
         // we don't want to sleep if we're only running jobs while waiting on a counter
         if (g_job_system.pending_job_count.load() <= 0)
@@ -404,8 +436,6 @@ bool job_wait(JobGroup* group)
         worker_execute_one_job(local_worker);
     }
 
-    worker_gc(local_worker);
-
     return true;
 }
 
@@ -457,7 +487,7 @@ i32 get_local_job_worker_id()
     }
 
     // couldn't find a worker so this some other non-worker thread
-    BEE_UNREACHABLE("Couldn't find a worker for the current thread: there may be an error setting thread affinities at startup?");
+    BEE_UNREACHABLE("Couldn't find a worker for the current thread: there may be an error setting thread affinities at startup");
 }
 
 i32 get_job_worker_count()

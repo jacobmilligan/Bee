@@ -160,7 +160,7 @@ bool close_project(Project* project)
 
 int editor_app_run(Project* project)
 {
-    AppInitInfo info{};
+    AppDescriptor info{};
     info.app_name = "Bee Editor";
 
     AppContext ctx{};

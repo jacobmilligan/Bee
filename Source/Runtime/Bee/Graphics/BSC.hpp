@@ -70,7 +70,7 @@ struct BSCModule
     char                    filename[BSC_MAX_NAME];
     BSCShader               shaders[static_cast<i32>(BSCShaderType::count)];
     i32                     shader_count { 0 };
-    PipelineStateDescriptor pipeline_state;
+    PipelineStateCreateInfo pipeline_state;
 };
 
 
@@ -80,7 +80,7 @@ struct BSCTextSource
     String                  text;
     String                  shader_entries[static_cast<i32>(BSCShaderType::count)];
     i32                     shader_count { 0 };
-    PipelineStateDescriptor pipeline_state;
+    PipelineStateCreateInfo pipeline_state;
 };
 
 BEE_RUNTIME_API String bsc_target_to_string(const BSCTarget target, Allocator* allocator = system_allocator());

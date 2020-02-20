@@ -23,7 +23,7 @@ namespace bee {
 
 
 template <u64 Capacity, typename HandleType, typename DataType>
-HandleTable<Capacity, HandleType, DataType>::HandleTable()
+HandleTable<Capacity, HandleType, DataType>::HandleTable() noexcept
     : next_available_index_(0),
       size_(0)
 

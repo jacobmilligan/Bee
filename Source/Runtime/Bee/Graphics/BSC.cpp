@@ -303,13 +303,13 @@ BSC_PARSE_PIPELINE_SECTION(BlendStateDescriptor)
 {
     BSC_PIPELINE_MEMBER(blend_enabled);
     BSC_PIPELINE_MEMBER(format);
-    BSC_PIPELINE_MEMBER_FLAGS(write_mask, ColorWriteMask);
+    BSC_PIPELINE_MEMBER_FLAGS(color_write_mask, ColorWriteMask);
     BSC_PIPELINE_MEMBER(alpha_blend_op);
-    BSC_PIPELINE_MEMBER(rgb_blend_op);
+    BSC_PIPELINE_MEMBER(colorw_blend_op);
     BSC_PIPELINE_MEMBER(src_blend_alpha);
-    BSC_PIPELINE_MEMBER(src_blend_rgb);
+    BSC_PIPELINE_MEMBER(src_blend_colorw);
     BSC_PIPELINE_MEMBER(dst_blend_alpha);
-    BSC_PIPELINE_MEMBER(dst_blend_rgb);
+    BSC_PIPELINE_MEMBER(dst_blend_colorw);
 
 }
 
@@ -343,7 +343,7 @@ BSC_PARSE_PIPELINE_SECTION(DepthStencilStateDescriptor)
     BSC_PIPELINE_SECTION(back_face_stencil);
 }
 
-BSC_PARSE_PIPELINE_SECTION(PipelineStateDescriptor)
+BSC_PARSE_PIPELINE_SECTION(PipelineStateCreateInfo)
 {
     BSC_PIPELINE_MEMBER(primitive_type);
     BSC_PIPELINE_MEMBER(sample_count);

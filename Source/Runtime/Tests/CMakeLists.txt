@@ -7,6 +7,7 @@ bee_test(Bee.Tests.Runtime
 
     TestComponents.hpp
     EntityTests.cpp
+    RenderGraphTests.cpp
 )
 
 if (BUILD_TESTS)

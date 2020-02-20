@@ -163,7 +163,8 @@ public:
         }
     }
 
-    HandleType allocate()
+    template <typename... ConstructorArgs>
+    HandleType allocate(ConstructorArgs&&... args)
     {
         if (next_free_resource_ >= chunk_count_ * chunk_capacity_)
         {
@@ -180,7 +181,7 @@ public:
         next_free_resource_ = chunk.free_list[chunk_index];
 
         chunk.active_states[chunk_index] = true;
-        new (&chunk.data[chunk_index]) ResourceType();
+        new (&chunk.data[chunk_index]) ResourceType(std::forward<ConstructorArgs>(args)...);
 
         return HandleType(index, chunk.versions[chunk_index]);
     }

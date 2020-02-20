@@ -53,7 +53,7 @@ PhysicalDeviceVendor convert_vendor(const u32 id)
     return PhysicalDeviceVendor::unknown;
 }
 
-VkImageAspectFlags select_aspect_mask(const PixelFormat format)
+VkImageAspectFlags select_access_mask_from_format(const PixelFormat format)
 {
     switch(format)
     {
@@ -81,6 +81,76 @@ VkImageAspectFlags select_aspect_mask(const PixelFormat format)
             return VK_IMAGE_ASPECT_COLOR_BIT;
         }
     }
+}
+
+VkPipelineStageFlags select_pipeline_stage_from_access(const VkAccessFlags access)
+{
+    VkPipelineStageFlags result = 0;
+
+    for_each_flag(access, [&](const VkAccessFlags flag)
+    {
+        switch (flag)
+        {
+            case VK_ACCESS_INDIRECT_COMMAND_READ_BIT:
+            {
+                result |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+                break;
+            }
+            case VK_ACCESS_INDEX_READ_BIT:
+            case VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT:
+            {
+                result |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+                break;
+            }
+            case VK_ACCESS_INPUT_ATTACHMENT_READ_BIT:
+            {
+                result |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                break;
+            }
+            case VK_ACCESS_UNIFORM_READ_BIT:
+            case VK_ACCESS_SHADER_READ_BIT:
+            case VK_ACCESS_SHADER_WRITE_BIT:
+            {
+                result |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT
+                    | VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT
+                    | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+                    | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                    | VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT
+                    | VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT;
+                break;
+            }
+            case VK_ACCESS_COLOR_ATTACHMENT_READ_BIT:
+            case VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT:
+            {
+                result |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                break;
+            }
+            case VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT:
+            case VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT:
+            {
+                result |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+                break;
+            }
+            case VK_ACCESS_TRANSFER_READ_BIT:
+            case VK_ACCESS_TRANSFER_WRITE_BIT:
+            {
+                result |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+                break;
+            }
+            case VK_ACCESS_MEMORY_READ_BIT:
+            case VK_ACCESS_MEMORY_WRITE_BIT:
+            {
+                result |= VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+                break;
+            }
+            default:
+            {
+                BEE_UNREACHABLE("Invalid access type");
+            }
+        }
+    });
+
+    return result;
 }
 
 VkColorComponentFlags decode_color_write_mask(const ColorWriteMask mask)
@@ -145,6 +215,26 @@ VkImageUsageFlags decode_image_usage(const TextureUsage& usage)
         | decode_flag(usage, TextureUsage::input_attachment, VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
 }
 
+VkSampleCountFlagBits decode_sample_count(const u32 samples)
+{
+    switch (samples)
+    {
+        case 0u:
+        case 1u:
+        case 2u:
+        case 4u:
+        case 8u:
+        case 16u:
+        case 32u:
+        case 64u:
+        {
+            return static_cast<VkSampleCountFlagBits>(samples);
+        }
+        default: break;
+    }
+
+    BEE_UNREACHABLE("Invalid sample count (%u) must be power of two <= 64u", samples);
+}
 
 BEE_TRANSLATION_TABLE(convert_pixel_format, PixelFormat, VkFormat, PixelFormat::unknown,
     // Ordinary 8 bit formats
@@ -264,7 +354,7 @@ BEE_TRANSLATION_TABLE(convert_primitive_type, PrimitiveType, VkPrimitiveTopology
     VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP    // triangle_strip
 )
 
-BEE_TRANSLATION_TABLE(convert_polygon_mode, FillMode, VkPolygonMode, FillMode::unknown,
+BEE_TRANSLATION_TABLE(convert_fill_mode, FillMode, VkPolygonMode, FillMode::unknown,
     VK_POLYGON_MODE_LINE,   // wireframe
     VK_POLYGON_MODE_FILL    // solid
 )
@@ -301,7 +391,7 @@ BEE_TRANSLATION_TABLE(convert_blend_op, BlendOperation, VkBlendOp, BlendOperatio
     VK_BLEND_OP_MAX,                // max
 )
 
-BEE_TRANSLATION_TABLE(convert_descriptor_type, ResourceType, VkDescriptorType, ResourceType::unknown,
+BEE_TRANSLATION_TABLE(convert_resource_binding_type, ResourceBindingType, VkDescriptorType, ResourceBindingType::unknown,
     VK_DESCRIPTOR_TYPE_SAMPLER,                   // sampler
     VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,    // combined_texture_sampler
     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,             // sampled_texture
@@ -322,7 +412,7 @@ BEE_TRANSLATION_TABLE(convert_memory_usage, DeviceMemoryUsage, VmaMemoryUsage, D
     VMA_MEMORY_USAGE_GPU_TO_CPU       // gpu_to_cpu
 )
 
-BEE_TRANSLATION_TABLE(convert_compare_op, CompareFunc, VkCompareOp, CompareFunc::unknown,
+BEE_TRANSLATION_TABLE(convert_compare_func, CompareFunc, VkCompareOp, CompareFunc::unknown,
     VK_COMPARE_OP_NEVER,              // never
     VK_COMPARE_OP_LESS,               // less
     VK_COMPARE_OP_EQUAL,              // equal
@@ -389,6 +479,54 @@ BEE_TRANSLATION_TABLE(convert_border_color, BorderColor, VkBorderColor, BorderCo
     VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,    // transparent_black
     VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK,         // opaque_black
     VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE          // opaque_white
+)
+
+BEE_TRANSLATION_TABLE(convert_command_pool_hint, CommandPoolHint, VkCommandPoolCreateFlags, CommandPoolHint::unknown,
+    VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,               // transient,
+    VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT     // allow_individual_reset
+)
+
+BEE_TRANSLATION_TABLE(convert_command_buffer_reset_hint, CommandStreamReset, VkCommandBufferResetFlags, CommandStreamReset::unknown,
+    0u,                                             // none,
+    VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT   // release_resources
+)
+
+BEE_TRANSLATION_TABLE(convert_command_buffer_usage, CommandBufferUsage, VkCommandBufferUsageFlags, CommandBufferUsage::unknown,
+    0u,                                             // default_usage
+    VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,    // submit_once
+    VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT    // simultaneous_usage
+)
+
+BEE_TRANSLATION_TABLE(convert_access_mask, GpuResourceState, VkAccessFlags, GpuResourceState::unknown,
+    0,                                                                          // undefined
+    VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,                     // general
+    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, // color_attachment
+    VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,                                        // vertex_buffer
+    VK_ACCESS_UNIFORM_READ_BIT,                                                 // uniform_buffer
+    VK_ACCESS_INDEX_READ_BIT,                                                   // index_buffer
+    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT,                                // depth_read
+    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,                               // depth_write
+    VK_ACCESS_SHADER_READ_BIT,                                                  // shader_read_only
+    VK_ACCESS_INDIRECT_COMMAND_READ_BIT,                                        // indirect_argument
+    VK_ACCESS_TRANSFER_READ_BIT,                                                // transfer_src
+    VK_ACCESS_TRANSFER_WRITE_BIT,                                               // transfer_dst
+    0                                                                           // present
+)
+
+BEE_TRANSLATION_TABLE(convert_image_layout, GpuResourceState, VkImageLayout, GpuResourceState::unknown,
+    VK_IMAGE_LAYOUT_UNDEFINED,                          // undefined
+    VK_IMAGE_LAYOUT_GENERAL,                            // general
+    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,           // color_attachment
+    VK_IMAGE_LAYOUT_UNDEFINED,                          // vertex_buffer
+    VK_IMAGE_LAYOUT_UNDEFINED,                          // uniform_buffer
+    VK_IMAGE_LAYOUT_UNDEFINED,                          // index_buffer
+    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,    // depth_read
+    VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,   // depth_write
+    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,           // shader_read_only
+    VK_IMAGE_LAYOUT_UNDEFINED,                          // indirect_argument
+    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,               // transfer_src
+    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,               // transfer_dst
+    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR                     // present
 )
 
 

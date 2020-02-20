@@ -77,7 +77,7 @@ void WorkStealingQueue::push(Job* job)
     job_buffer_[bottom & job_buffer_mask_] = job;
 
     // use just a compiler fence here - stop reads before the job has been written
-    std::atomic_signal_fence(std::memory_order_acq_rel);
+    std::atomic_signal_fence(std::memory_order_release);
 
     bottom_idx_.store(bottom + 1, std::memory_order_relaxed);
 }
@@ -93,7 +93,7 @@ Job* WorkStealingQueue::pop()
     if (top > bottom)
     {
         // empty so clear bottom to empty state, i.e. bottom == top
-        bottom_idx_.store(top, std::memory_order_relaxed);
+        bottom_idx_.store(bottom + 1, std::memory_order_relaxed);
         return nullptr;
     }
 
@@ -106,14 +106,10 @@ Job* WorkStealingQueue::pop()
 
     auto expected_top = top;
     // If we're popping the last item in the queue we need to check if we fail any races with a `steal` operation
-    if (!std::atomic_compare_exchange_strong(&top_idx_, &expected_top, expected_top))
+    if (!top_idx_.compare_exchange_strong(expected_top, expected_top + 1, std::memory_order_seq_cst, std::memory_order_relaxed))
     {
         // failed race
         job = nullptr;
-    }
-    else
-    {
-        job_buffer_[bottom & job_buffer_mask_] = nullptr;
     }
 
     bottom_idx_.store(top + 1, std::memory_order_relaxed);
@@ -126,7 +122,7 @@ Job* WorkStealingQueue::steal()
 
     std::atomic_signal_fence(std::memory_order_seq_cst);
 
-    const auto bottom = bottom_idx_.load(std::memory_order_relaxed);
+    const auto bottom = bottom_idx_.load(std::memory_order_acquire);
 
     if (top >= bottom)
     {
@@ -139,7 +135,7 @@ Job* WorkStealingQueue::steal()
 
     auto expected_top = top;
     // check for races with a `pop` operation and if successful increment the `top`
-    if (!std::atomic_compare_exchange_strong(&top_idx_, &expected_top, expected_top + 1))
+    if (!top_idx_.compare_exchange_strong(expected_top, expected_top + 1, std::memory_order_seq_cst, std::memory_order_relaxed))
     {
         // Failed a race with a `pop` operation
         return nullptr;

@@ -10,40 +10,35 @@
 
 #include "Bee/Core/Error.hpp"
 #include "Bee/Application/Platform.hpp"
+#include "Bee/Core/Jobs/JobSystem.hpp"
 
 
 namespace bee {
 
 
-struct AppInitInfo
-{
-    const char*     app_name { nullptr };
-    WindowConfig    main_window_config;
-};
-
-
-struct AppContext
+struct AppContext // NOLINT
 {
     bool            quit { false };
     WindowHandle    main_window;
     InputBuffer     default_input;
+    void*           user_data { nullptr };
 };
 
+struct JobSystemInitInfo;
 
-struct BEE_RUNTIME_API Application
+struct AppDescriptor
 {
-    virtual int launch(AppContext* ctx) = 0;
+    const char*         app_name { nullptr };
+    WindowConfig        main_window_config;
+    JobSystemInitInfo   job_system_info;
+    void*               user_data { nullptr };
 
-    virtual void shutdown(AppContext* ctx) = 0;
-
-    virtual void tick(AppContext* ctx) = 0;
+    int (*on_launch)(AppContext* ctx) { nullptr };
+    void (*on_shutdown)(AppContext* ctx) { nullptr };
+    void (*on_frame)(AppContext* ctx) { nullptr };
 };
 
-
-BEE_RUNTIME_API int app_init(const AppInitInfo& info, AppContext* ctx);
-
-BEE_RUNTIME_API void app_shutdown();
-
+BEE_RUNTIME_API int app_run(const AppDescriptor& desc);
 
 
 } // namespace bee

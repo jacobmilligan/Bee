@@ -130,7 +130,7 @@ TEST_F(JobsTests, test_count)
         ASSERT_EQ(result[i], 100000) << "Job: " << i;
     }
 
-    ASSERT_EQ(bee::get_local_job_allocator_size(), 0);
+    //ASSERT_EQ(bee::get_local_job_allocator_size(), 0);
 
     done = 0;
 

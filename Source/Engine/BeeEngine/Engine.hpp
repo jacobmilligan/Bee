@@ -24,7 +24,7 @@ struct GameCmdHeader
 };
 
 
-BEE_GAME_API int game_run(const AppInitInfo& info, const char* game_plugin_name);
+BEE_GAME_API int game_run(const AppDescriptor& info, const char* game_plugin_name);
 
 
 } // namespace bee

@@ -26,9 +26,9 @@ struct name                                                                     
                                                                                             \
     IdType id { InvalidId };                                                                \
                                                                                             \
-    constexpr name() = default;                                                             \
+    constexpr name() noexcept = default;                                                    \
                                                                                             \
-    explicit constexpr name(const IdType& new_id)                                           \
+    explicit constexpr name(const IdType& new_id) noexcept                                  \
         : id(new_id)                                                                        \
     {}                                                                                      \
                                                                                             \
@@ -37,11 +37,9 @@ struct name                                                                     
     inline constexpr bool operator!=(const name& other) const { return id != other.id; }    \
 }
 
-#define BEE_RAW_HANDLE_I32(name) BEE_RAW_HANDLE(name, bee::i32, -1)
+#define BEE_RAW_HANDLE_I32(Name) BEE_RAW_HANDLE(Name, bee::i32, -1)
 
-#define BEE_RAW_HANDLE_U32(name) BEE_RAW_HANDLE(name, bee::u32, bee::limits::max<bee::u32>())
-
-#define BEE_DEFINE_OPAQUE_HANDLE(struct_format, function_format) typedef struct struct_format* struct_format##Handle
+#define BEE_RAW_HANDLE_U32(Name) BEE_RAW_HANDLE(Name, bee::u32, bee::limits::max<bee::u32>())
 
 
 /**
@@ -123,8 +121,8 @@ struct name                                                                     
  * ```
  * would be necessary to do without these macros
  */
-#define BEE_VERSIONED_HANDLE_32(name) BEE_VERSIONED_HANDLE(name, bee::u32, 24u, 8u)
-#define BEE_VERSIONED_HANDLE_64(name) BEE_VERSIONED_HANDLE(name, bee::u64, 48u, 16u)
+#define BEE_VERSIONED_HANDLE_32(Name) BEE_VERSIONED_HANDLE(Name, bee::u32, 24u, 8u)
+#define BEE_VERSIONED_HANDLE_64(Name) BEE_VERSIONED_HANDLE(Name, bee::u64, 48u, 16u)
 
 
 } // namespace bee

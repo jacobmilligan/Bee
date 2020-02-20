@@ -71,7 +71,7 @@ public:
 
     i32 owning_worker_id() const;
 private:
-    i32                     owning_worker_ { 0 };
+    std::atomic_int32_t     owning_worker_ { 0 };
     std::atomic<JobGroup*>  parent_ { nullptr };
 
     void move_construct(Job& other) noexcept;

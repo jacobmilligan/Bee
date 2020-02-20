@@ -1,9 +1,11 @@
 bee_add_sources(
+    Command.hpp     Command.cpp
     GPU.hpp
     GPULimits.hpp
-    BSC.hpp         BSC.cpp
+#    BSC.hpp         BSC.cpp
     Mesh.hpp        Mesh.cpp
-    Shader.hpp
+    RenderGraph.hpp RenderGraph.cpp
+#    Shader.hpp
 )
 
 if (VULKAN_BACKEND)

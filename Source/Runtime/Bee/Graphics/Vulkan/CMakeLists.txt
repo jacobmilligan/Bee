@@ -10,6 +10,7 @@ if (Vulkan_FOUND)
     bee_add_sources(
         VulkanBackend.hpp
         VulkanBackend.hpp   VulkanBackend.cpp
+        VulkanCommands.cpp
         VulkanConvert.hpp   VulkanConvert.cpp
 
         # volk

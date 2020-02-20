@@ -45,12 +45,12 @@ void JobGroup::add_dependency(JobGroup* child_group)
 
 i32 JobGroup::pending_count()
 {
-    return pending_count_.load(std::memory_order_acquire);
+    return pending_count_.load(std::memory_order_seq_cst);
 }
 
 i32 JobGroup::dependency_count()
 {
-    return dependency_count_.load(std::memory_order_acquire);
+    return dependency_count_.load(std::memory_order_seq_cst);
 }
 
 bool JobGroup::has_pending_jobs()
@@ -75,7 +75,8 @@ void JobGroup::signal(Job* job)
     const auto old_job_count = pending_count_.fetch_sub(1, std::memory_order_release);
     if (old_job_count == 0)
     {
-        pending_count_.store(0, std::memory_order_release);
+        int new_count = -1;
+        pending_count_.compare_exchange_strong(new_count, 0);
     }
 
     // Signal all the groups parents
@@ -84,7 +85,8 @@ void JobGroup::signal(Job* job)
         const auto old_dep_count = parent->dependency_count_.fetch_sub(1, std::memory_order_release);
         if (old_dep_count == 0)
         {
-            parent->dependency_count_.store(0, std::memory_order_release);
+            int new_count = -1;
+            parent->dependency_count_.compare_exchange_strong(new_count, 0, std::memory_order_release);
         }
     }
 
@@ -106,7 +108,7 @@ Job::Job(bee::Job&& other) noexcept
 
 Job::~Job()
 {
-    owning_worker_ = -1;
+    owning_worker_.store(-1);
     parent_.store(nullptr, std::memory_order_release);
 }
 
@@ -119,17 +121,18 @@ Job& Job::operator=(bee::Job&& other) noexcept
 void Job::move_construct(Job& other) noexcept
 {
     parent_.store(other.parent_, std::memory_order_acq_rel);
-    owning_worker_ = other.owning_worker_;
+    owning_worker_.store(other.owning_worker_.load());
 
     other.parent_.store(nullptr, std::memory_order_acq_rel);
-    other.owning_worker_ = -1;
+    other.owning_worker_.store(-1);
 }
 
 void Job::complete()
 {
-    BEE_ASSERT(parent() != nullptr);
-
     execute();
+
+    BEE_ASSERT(parent() != nullptr);
+    BEE_ASSERT(owning_worker_.load() != -1);
 
     // Ensure all parents know about this job finishing
     parent()->signal(this);
@@ -152,7 +155,7 @@ JobGroup* Job::parent() const
 
 i32 Job::owning_worker_id() const
 {
-    return owning_worker_;
+    return owning_worker_.load(std::memory_order_acquire);
 }
 
 void ParallelForJob::init(const i32 iteration_count, const i32 execute_batch_size)

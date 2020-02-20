@@ -42,7 +42,7 @@ public:
         "HandleTable: ResourcePool: Capacity must be less than HandleType::generator_t::index_mask - 1"
     );
 
-    HandleTable();
+    HandleTable() noexcept;
 
     HandleTable(table_t&& other) noexcept;
 

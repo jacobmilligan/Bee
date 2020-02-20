@@ -11,28 +11,21 @@
 namespace bee {
 
 
-int app_init(const AppInitInfo& info, AppContext* ctx)
+int app_run(const AppDescriptor& desc)
 {
-    /*
-     ************************************
-     *
-     * Engine initialization order:
-     *  0. init reflection etc.
-     *  1. platform launch
-     *  2. ctx alloc
-     *  3. input buffer init
-     *  4. gpu init
-     *  5. main window create
-     *
-     ************************************
-     */
-    if (!platform_launch(info.app_name))
+    // Initialize core systems before launching the platform
+    job_system_init(desc.job_system_info);
+
+    if (!platform_launch(desc.app_name))
     {
         return EXIT_FAILURE;
     }
 
+    AppContext ctx{};
+    ctx.user_data = desc.user_data;
+
     // Initialize platform
-    input_buffer_init(&ctx->default_input);
+    input_buffer_init(&ctx.default_input);
 
     // Initialize graphics systems
     if (!gpu_init())
@@ -42,31 +35,28 @@ int app_init(const AppInitInfo& info, AppContext* ctx)
     }
 
     // Create main window
-    ctx->main_window = create_window(info.main_window_config);
-    BEE_ASSERT(ctx->main_window.is_valid());
+    ctx.main_window = create_window(desc.main_window_config);
+    BEE_ASSERT(ctx.main_window.is_valid());
+
+    // Launch the user app
+    const int result = desc.on_launch(&ctx);
+    if (result != EXIT_SUCCESS)
+    {
+        desc.on_shutdown(&ctx);
+        return result;
+    }
 
     /*
-     **********************************
-     *
-     * App initialization order:
-     *  ...
-     *
-     **********************************
+     * Main loop
      */
-    return EXIT_SUCCESS;
-}
+    while (!ctx.quit)
+    {
+        temp_allocator_reset();
+        desc.on_frame(&ctx);
+    }
 
-void app_shutdown()
-{
-    /*
-     *********************************
-     *
-     * Engine shutdown order
-     *  1. GPU destroy
-     *  2. platform shutdown
-     *
-     *********************************
-     */
+    // shutdown the user app first
+    desc.on_shutdown(&ctx);
 
     // Destroy graphics systems
     gpu_destroy();
@@ -76,6 +66,10 @@ void app_shutdown()
         platform_shutdown(); // closes all windows by default
     }
 
+    // Shutdown core systems last
+    job_system_shutdown();
+
+    return EXIT_SUCCESS;
 }
 
 
