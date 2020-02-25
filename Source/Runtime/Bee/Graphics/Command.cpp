@@ -460,6 +460,7 @@ CommandBatcher::LocalCommandPool::~LocalCommandPool()
     gpu_destroy_command_pool(device, handle);
 }
 
+// FIXME(Jacob): this leaks a command buffer about once every 10 or so frames
 GpuCommandBuffer* CommandBatcher::LocalCommandPool::obtain(const QueueType required_queue_type, const FenceHandle& fence)
 {
     const auto frame_index = gpu_get_current_frame(device);

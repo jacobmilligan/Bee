@@ -53,6 +53,10 @@ int app_run(const AppDescriptor& desc)
     {
         temp_allocator_reset();
         desc.on_frame(&ctx);
+        if (job_system_pending_job_count() <= 0)
+        {
+            job_system_clear_pools();
+        }
     }
 
     // shutdown the user app first

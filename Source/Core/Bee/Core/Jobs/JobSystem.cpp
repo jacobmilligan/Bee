@@ -271,6 +271,8 @@ void job_system_shutdown()
     const auto pending_job_count = g_job_system.pending_job_count.load(std::memory_order_seq_cst);
     BEE_ASSERT_F(pending_job_count <= 0, "Tried to shut down the job system with %d jobs still pending", pending_job_count);
 
+    job_system_clear_pools();
+
     g_job_system.is_active.store(false, std::memory_order_release);
     g_job_system.worker_wait_cv.notify_all();
 
@@ -286,6 +288,45 @@ void job_system_shutdown()
     g_job_system.initialized.store(false);
     
     new (&g_job_system) JobSystemContext{};
+}
+
+void job_system_complete_all()
+{
+    auto local_worker = &g_job_system.workers[get_local_job_worker_id()];
+
+    // Try and help execute jobs while we're waiting for all jobs to complete
+    while (g_job_system.pending_job_count.load(std::memory_order_relaxed) > 0)
+    {
+        if (!g_job_system.is_active.load(std::memory_order_acquire))
+        {
+            break;
+        }
+        worker_execute_one_job(local_worker);
+    }
+}
+
+void job_system_clear_pools()
+{
+    job_system_complete_all();
+
+    while (!g_job_system.free_jobs.empty())
+    {
+        g_job_system.free_jobs.pop();
+    }
+
+    while (!g_job_system.allocated_jobs.empty())
+    {
+        auto node = g_job_system.allocated_jobs.pop();
+        if (node != nullptr)
+        {
+            BEE_FREE(system_allocator(), node);
+        }
+    }
+}
+
+i32 job_system_pending_job_count()
+{
+    return g_job_system.pending_job_count.load(std::memory_order_relaxed);
 }
 
 void job_schedule_group(JobGroup* group, Job** dependencies, const i32 dependency_count)

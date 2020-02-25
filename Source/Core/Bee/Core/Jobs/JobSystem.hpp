@@ -36,6 +36,12 @@ BEE_CORE_API bool job_system_init(const JobSystemInitInfo& info);
 
 BEE_CORE_API void job_system_shutdown();
 
+BEE_CORE_API void job_system_complete_all();
+
+BEE_CORE_API void job_system_clear_pools();
+
+BEE_CORE_API i32 job_system_pending_job_count();
+
 BEE_CORE_API void job_schedule(JobGroup* group, Job* job);
 
 BEE_CORE_API void job_schedule_group(JobGroup* group, Job** dependencies, i32 dependency_count);
@@ -54,39 +60,6 @@ BEE_FORCE_INLINE AtomicNode* cast_job_to_node(Job* job)
 {
     return reinterpret_cast<AtomicNode*>(reinterpret_cast<u8*>(job) - sizeof(AtomicNode));
 }
-
-//template <typename JobType, typename... ConstructorArgs>
-//inline JobType* allocate_job(ConstructorArgs&&... args)
-//{
-//    auto job = BEE_NEW(local_job_allocator(), JobType)(std::forward<ConstructorArgs>(args)...);
-//    BEE_ASSERT(job->parent() == nullptr);
-//    return job;
-//}
-//
-//template <typename JobType, typename... ConstructorArgs>
-//inline JobType* allocate_parallel_for(const i32 iteration_count, const i32 execute_batch_size, ConstructorArgs&&... args)
-//{
-//    static_assert(std::is_base_of<ParallelForJob, JobType>, "JobType must derive from ParallelForJob");
-//
-//    auto job = BEE_NEW(local_job_allocator(), JobType)(std::forward<ConstructorArgs>(args)...);
-//
-//    BEE_ASSERT(job->parent() == nullptr);
-//
-//    // use init rather than constructor to setup parallel for parameters to avoid user having to
-//    // re-implement constructor
-//    job->init(iteration_count, execute_batch_size);
-//
-//    return job;
-//}
-//
-//template <typename FunctionType, typename... Args>
-//inline Job* allocate_job(FunctionType&& function, Args&&... args)
-//{
-//    using job_t = CopyArgsJob<decltype(std::bind(function, args...))>;
-//    auto job = BEE_NEW(local_job_allocator(), job_t)(std::bind(function, args...));
-//    BEE_ASSERT(job->parent() == nullptr);
-//    return job;
-//}
 
 template <typename FunctionType, typename... Args>
 Job* create_job(FunctionType&& fn, Args&&... args)
