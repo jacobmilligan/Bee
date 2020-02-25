@@ -117,6 +117,36 @@ TextureHandle RenderGraphExecuteContext::get_texture(const RenderGraphResource& 
  *
  ****************************************
  */
+RenderGraph::RenderGraph(const DeviceHandle& device)
+    : device_(device),
+      command_batcher_(device),
+      per_worker_command_allocators_(get_job_worker_count())
+{
+    for (int i = 0; i < get_job_worker_count(); ++i)
+    {
+        per_worker_command_allocators_.emplace_back(kibibytes(1));
+    }
+}
+
+RenderGraph::~RenderGraph()
+{
+    for (auto& pass : physical_passes_.handles)
+    {
+        gpu_destroy_render_pass(device_, pass);
+    }
+
+    for (auto& buffer : buffers_.resources)
+    {
+        gpu_destroy_buffer(device_, buffer);
+    }
+
+    for (auto& texture : textures_.resources)
+    {
+        gpu_destroy_texture_view(device_, texture.view);
+        gpu_destroy_texture(device_, texture.handle);
+    }
+}
+
 RenderGraphResource RenderGraph::add_active_resource(ActiveResourceList* list, const i32 index, const RenderGraphResourceType& type)
 {
     const auto new_size = ++list->size;
@@ -402,10 +432,10 @@ void RenderGraph::execute(JobGroup *wait_handle)
         pass->physical_pass = obtain_physical_pass(device_, &physical_passes_, pass->info);
         BEE_ASSERT(pass->physical_pass.is_valid());
 
-        auto job = allocate_job<ExecutePassJob>();
-        job->graph = this;
-        job->pass = pass;
-        job_schedule(wait_handle, job);
+//        auto job = allocate_job<ExecutePassJob>();
+//        job->graph = this;
+//        job->pass = pass;
+//        job_schedule(wait_handle, job);
     }
 }
 

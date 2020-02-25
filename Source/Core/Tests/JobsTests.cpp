@@ -20,7 +20,7 @@
 class JobsTests : public ::testing::Test
 {
 protected:
-    void SetUp() override
+    static void SetUpTestSuite()
     {
         bee::JobSystemInitInfo info{};
         info.max_jobs_per_worker_per_chunk = 1024;
@@ -28,7 +28,7 @@ protected:
         bee::job_system_init(info);
     }
 
-    void TearDown() override
+    static void TearDownTestSuite()
     {
         bee::job_system_shutdown();
     }
@@ -37,26 +37,6 @@ protected:
 bool ready = false;
 std::atomic_int32_t done(0);
 int result[1000];
-
-struct CountJob : public bee::Job
-{
-    bee::i32 job_id { -1 };
-
-    CountJob(const bee::i32 job_id)
-        : job_id(job_id)
-    {}
-
-    void execute() override
-    {
-        auto count = 0;
-        for (int i = 0; i < 100000; ++i)
-        {
-            ++count;
-        }
-        result[job_id] = count;
-        ++done;
-    }
-};
 
 std::atomic_int32_t next_job_id(0);
 
@@ -98,7 +78,7 @@ TEST_F(JobsTests, test_count)
     memset(result, 0, sizeof(int) * bee::static_array_length(result));
     for (int j = 0; j < 1000; ++j)
     {
-        jobs[j] = bee::allocate_job(&count_job_function, result);
+        jobs[j] = bee::create_job(&count_job_function, result);
         ASSERT_NE(jobs[j], nullptr);
     }
 
@@ -129,33 +109,6 @@ TEST_F(JobsTests, test_count)
     {
         ASSERT_EQ(result[i], 100000) << "Job: " << i;
     }
-
-    //ASSERT_EQ(bee::get_local_job_allocator_size(), 0);
-
-    done = 0;
-
-    // Reset array
-    memset(result, 0, sizeof(int) * bee::static_array_length(result));
-
-    for (int j = 0; j < 1000; ++j)
-    {
-        jobs[j] = bee::allocate_job<CountJob>(j);
-        ASSERT_NE(jobs[j], nullptr);
-        reinterpret_cast<CountJob*>(jobs[j])->job_id = j;
-    }
-
-    jobs_begin = bee::time::now();
-    bee::job_schedule_group(&group, jobs, bee::static_array_length(jobs));
-    bee::job_wait(&group);
-    jobs_time = bee::TimePoint(bee::time::now() - jobs_begin).total_milliseconds();
-
-    printf("Job struct time: %f. Done: %d\n", jobs_time, done.load());
-
-    ASSERT_EQ(done, 1000);
-    for (int i = 0; i < bee::static_array_length(result); ++i)
-    {
-        ASSERT_EQ(result[i], 100000) << "Job: " << i;
-    }
 }
 
 TEST_F(JobsTests, parallel_for)
@@ -172,7 +125,7 @@ TEST_F(JobsTests, parallel_for)
 
     const auto jobs_begin = bee::time::now();
     bee::JobGroup group{};
-    bee::parallel_for(&group, 1000, 1, [&](const bee::i32 index)
+    bee::parallel_for(&group, 1000, 1, [](const bee::i32 index, ParallelForData* data)
     {
         auto count = 0;
         for (int i = 0; i < 100000; ++i)
@@ -184,7 +137,7 @@ TEST_F(JobsTests, parallel_for)
         data[index].y = count;
         data[index].z = count;
         data[index].w = count;
-    });
+    }, data);
 
     bee::job_wait(&group);
     const auto jobs_time = bee::TimePoint(bee::time::now() - jobs_begin).total_milliseconds();

@@ -6,6 +6,7 @@ bee_test(Bee.Tests.Core
         SOURCES
 
         ArrayTests.cpp
+        ConcurrencyTests.cpp
         MemoryTests.cpp
         RingBufferTests.cpp
         AllocatorTests.cpp
@@ -35,13 +36,18 @@ bee_test(Bee.Tests.Core
         Math/quaternion.cpp
 )
 
-
 bee_test(Bee.Tests.Core.ResourcePoolStressTests
         LINK_LIBRARIES Bee.Core
         SOURCES ResourcePoolStressTests.cpp
 )
 
+bee_relacy_test(Bee.Tests.WorkStealingQueue
+        LINK_LIBRARIES Bee.Core
+        SOURCES WorkStealingQueueTests.cpp
+)
+
 if (BUILD_TESTS)
     bee_reflect(Bee.Tests.Core)
     bee_reflect_link(Bee.Tests.Core)
+    bee_reflect_link(Bee.Tests.WorkStealingQueue)
 endif ()

@@ -9,32 +9,50 @@
 
 
 namespace bee {
+namespace time {
 
 
-const u64 TimePoint::ticks_per_microsecond = time::ticks_per_second() / 1000000;
+u64 ticks_per_microsecond() noexcept
+{
+    static u64 value = time::ticks_per_second() / 1000000;
+    return value;
+}
 
-const u64 TimePoint::ticks_per_millisecond = time::ticks_per_second() / 1000;
+u64 ticks_per_millisecond() noexcept
+{
+    static u64 value = time::ticks_per_second() / 1000;
+    return value;
+}
 
-const u64 TimePoint::ticks_per_second = time::ticks_per_second();
+u64 ticks_per_minute() noexcept
+{
+    static u64 value = time::ticks_per_second() / 60;
+    return value;
+}
 
-const u64 TimePoint::ticks_per_minute = time::ticks_per_second() / 60;
+u64 ticks_per_hour() noexcept
+{
+    static u64 value = (time::ticks_per_second() / 60) / 60;
+    return value;
+}
 
-const u64 TimePoint::ticks_per_hour = (time::ticks_per_second() / 60) / 60;
 
-const double TimePoint::microseconds_per_tick = 1.0 / static_cast<double>(ticks_per_microsecond);
+} // namespace time
 
-const double TimePoint::milliseconds_per_tick = 1.0 / static_cast<double>(ticks_per_millisecond);
+const double TimePoint::microseconds_per_tick = 1.0 / static_cast<double>(time::ticks_per_microsecond());
 
-const double TimePoint::seconds_per_tick = 1.0 / static_cast<double>(ticks_per_second);
+const double TimePoint::milliseconds_per_tick = 1.0 / static_cast<double>(time::ticks_per_millisecond());
 
-const double TimePoint::minutes_per_tick = 1.0 / static_cast<double>(ticks_per_minute);
+const double TimePoint::seconds_per_tick = 1.0 / static_cast<double>(time::ticks_per_second());
 
-const double TimePoint::hours_per_tick = 1.0 / static_cast<double>(ticks_per_hour);
+const double TimePoint::minutes_per_tick = 1.0 / static_cast<double>(time::ticks_per_minute());
+
+const double TimePoint::hours_per_tick = 1.0 / static_cast<double>(time::ticks_per_hour());
 
 TimePoint::TimePoint(const double hours, const double minutes, const double seconds)
 {
     const auto time_total = hours * 3600 + minutes * 60 + seconds;
-    ticks_ = static_cast<u64>(time_total * ticks_per_second);
+    ticks_ = static_cast<u64>(time_total * time::ticks_per_second());
 }
 
 u64 TimePoint::microseconds() const

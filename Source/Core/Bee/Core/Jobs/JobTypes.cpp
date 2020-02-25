@@ -97,45 +97,23 @@ void JobGroup::signal(Job* job)
 }
 
 Job::Job()
-    : owning_worker_(get_local_job_worker_id()),
-      parent_(nullptr)
+    : parent_(nullptr)
 {}
-
-Job::Job(bee::Job&& other) noexcept
-{
-    move_construct(other);
-}
 
 Job::~Job()
 {
-    owning_worker_.store(-1);
     parent_.store(nullptr, std::memory_order_release);
-}
-
-Job& Job::operator=(bee::Job&& other) noexcept
-{
-    move_construct(other);
-    return *this;
-}
-
-void Job::move_construct(Job& other) noexcept
-{
-    parent_.store(other.parent_, std::memory_order_acq_rel);
-    owning_worker_.store(other.owning_worker_.load());
-
-    other.parent_.store(nullptr, std::memory_order_acq_rel);
-    other.owning_worker_.store(-1);
 }
 
 void Job::complete()
 {
     execute();
 
-    BEE_ASSERT(parent() != nullptr);
-    BEE_ASSERT(owning_worker_.load() != -1);
-
     // Ensure all parents know about this job finishing
-    parent()->signal(this);
+    if (parent() != nullptr)
+    {
+        parent()->signal(this);
+    }
 }
 
 void Job::set_group(JobGroup* group)
@@ -151,44 +129,6 @@ void Job::set_group(JobGroup* group)
 JobGroup* Job::parent() const
 {
     return parent_.load(std::memory_order_acquire);
-}
-
-i32 Job::owning_worker_id() const
-{
-    return owning_worker_.load(std::memory_order_acquire);
-}
-
-void ParallelForJob::init(const i32 iteration_count, const i32 execute_batch_size)
-{
-    BEE_ASSERT_F(iteration_count_ == -1 && execute_batch_size_ == -1, "ParallelForJob has already been initialized");
-
-    iteration_count_ = iteration_count;
-    execute_batch_size_ = execute_batch_size;
-}
-
-void ParallelForJob::execute()
-{
-    auto function = [&](const i32 begin, const i32 end)
-    {
-        for (int i = begin; i < end; ++i)
-        {
-            execute(i);
-        }
-    };
-
-    const auto first_batch_size = math::min(iteration_count_, execute_batch_size_);
-
-    for (int batch = first_batch_size; batch < iteration_count_; batch += execute_batch_size_)
-    {
-        const auto batch_end = math::min(iteration_count_, batch + execute_batch_size_);
-        auto loop_job = allocate_job(function, batch, batch_end);
-        job_schedule(parent(), loop_job);
-    }
-
-    for (int i = 0; i < first_batch_size; ++i)
-    {
-        execute(i);
-    }
 }
 
 

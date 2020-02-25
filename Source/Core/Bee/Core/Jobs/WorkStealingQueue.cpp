@@ -6,23 +6,22 @@
  */
 
 #include "Bee/Core/Jobs/WorkStealingQueue.hpp"
-#include "Bee/Core/Jobs/JobTypes.hpp"
 
 namespace bee {
 
 
-WorkStealingQueue::WorkStealingQueue(const i32 job_buffer_capacity, Allocator* allocator)
+WorkStealingQueue::WorkStealingQueue(const i32 capacity, Allocator* allocator) noexcept
     : allocator_(allocator),
-      job_buffer_capacity_(sign_cast<u32>(job_buffer_capacity)),
+      buffer_capacity_(sign_cast<u32>(capacity)),
       bottom_idx_(0),
       top_idx_(0)
 {
     BEE_ASSERT_F(
-        job_buffer_capacity_ >= 2 && math::is_power_of_two(job_buffer_capacity_),
+        buffer_capacity_ >= 2 && math::is_power_of_two(buffer_capacity_),
         "WorkStealingQueue<T>: capacity must be a power of two and >= 2"
     );
-    job_buffer_mask_ = job_buffer_capacity_ - 1u;
-    job_buffer_ = static_cast<Job**>(BEE_MALLOC(allocator_, sizeof(Job*) * job_buffer_capacity));
+    buffer_mask_ = buffer_capacity_ - 1u;
+    buffer_ = static_cast<AtomicNode**>(BEE_MALLOC(allocator_, sizeof(AtomicNode*) * capacity));
 }
 
 WorkStealingQueue::WorkStealingQueue(WorkStealingQueue&& other) noexcept
@@ -43,46 +42,46 @@ WorkStealingQueue& WorkStealingQueue::operator=(WorkStealingQueue&& other) noexc
 
 void WorkStealingQueue::destroy()
 {
-    if (allocator_ == nullptr || job_buffer_ == nullptr)
+    if (allocator_ == nullptr || buffer_ == nullptr)
     {
         return;
     }
 
-    BEE_FREE(allocator_, job_buffer_);
+    BEE_FREE(allocator_, buffer_);
     allocator_ = nullptr;
-    job_buffer_ = nullptr;
+    buffer_ = nullptr;
 }
 
 void WorkStealingQueue::move_construct(WorkStealingQueue&& other) noexcept
 {
     destroy();
     allocator_ = other.allocator_;
-    job_buffer_ = other.job_buffer_;
-    job_buffer_capacity_ = other.job_buffer_capacity_;
-    job_buffer_mask_ = other.job_buffer_mask_;
+    buffer_ = other.buffer_;
+    buffer_capacity_ = other.buffer_capacity_;
+    buffer_mask_ = other.buffer_mask_;
     bottom_idx_.store(other.bottom_idx_, std::memory_order_seq_cst);
     top_idx_.store(other.top_idx_, std::memory_order_seq_cst);
 
     other.allocator_ = nullptr;
-    other.job_buffer_ = nullptr;
-    other.job_buffer_capacity_ = 0;
-    other.job_buffer_mask_ = 0;
+    other.buffer_ = nullptr;
+    other.buffer_capacity_ = 0;
+    other.buffer_mask_ = 0;
 }
 
-void WorkStealingQueue::push(Job* job)
+void WorkStealingQueue::push(AtomicNode* node)
 {
     const auto bottom = bottom_idx_.load(std::memory_order_relaxed);
 
     // implements the `put` operation
-    job_buffer_[bottom & job_buffer_mask_] = job;
+    buffer_[bottom & buffer_mask_] = node;
 
-    // use just a compiler fence here - stop reads before the job has been written
+    // use just a compiler fence here - stop reads before the node has been written
     std::atomic_signal_fence(std::memory_order_release);
 
     bottom_idx_.store(bottom + 1, std::memory_order_relaxed);
 }
 
-Job* WorkStealingQueue::pop()
+AtomicNode* WorkStealingQueue::pop()
 {
     const auto bottom = bottom_idx_.fetch_sub(1, std::memory_order_relaxed) - 1;
 
@@ -97,11 +96,11 @@ Job* WorkStealingQueue::pop()
         return nullptr;
     }
 
-    auto job = job_buffer_[bottom & job_buffer_mask_];
+    auto node = buffer_[bottom & buffer_mask_];
     if (top != bottom)
     {
-        // non-empty queue so just return the job - nothing fancy here
-        return job;
+        // non-empty queue so just return the node - nothing fancy here
+        return node;
     }
 
     auto expected_top = top;
@@ -109,14 +108,14 @@ Job* WorkStealingQueue::pop()
     if (!top_idx_.compare_exchange_strong(expected_top, expected_top + 1, std::memory_order_seq_cst, std::memory_order_relaxed))
     {
         // failed race
-        job = nullptr;
+        node = nullptr;
     }
 
     bottom_idx_.store(top + 1, std::memory_order_relaxed);
-    return job;
+    return node;
 }
 
-Job* WorkStealingQueue::steal()
+AtomicNode* WorkStealingQueue::steal()
 {
     const auto top = top_idx_.load(std::memory_order_acquire);
 
@@ -131,7 +130,7 @@ Job* WorkStealingQueue::steal()
     }
 
     // implements the `get` operation
-    auto item = job_buffer_[top & job_buffer_mask_];
+    auto item = buffer_[top & buffer_mask_];
 
     auto expected_top = top;
     // check for races with a `pop` operation and if successful increment the `top`
@@ -141,7 +140,7 @@ Job* WorkStealingQueue::steal()
         return nullptr;
     }
 
-    job_buffer_[top & job_buffer_mask_] = nullptr;
+    buffer_[top & buffer_mask_] = nullptr;
     return item;
 }
 

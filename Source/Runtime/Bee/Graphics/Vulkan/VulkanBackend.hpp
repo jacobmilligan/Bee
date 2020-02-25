@@ -158,6 +158,7 @@ struct VulkanCommandPool;
 
 struct GpuCommandBuffer
 {
+    i32                     index { -1 };
     i32                     queue { -1 };
     VkCommandBuffer         handle { VK_NULL_HANDLE };
     CommandPoolHandle       pool;

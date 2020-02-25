@@ -36,6 +36,8 @@ struct CommandChunk
 class BEE_RUNTIME_API CommandAllocator
 {
 public:
+    CommandAllocator() = default;
+
     explicit CommandAllocator(const size_t chunk_size);
 
     ~CommandAllocator();
@@ -275,38 +277,19 @@ private:
         GpuCommandBuffer* obtain(const QueueType required_queue_type, const FenceHandle& fence);
     };
 
-    struct RecordJob final : public Job
+    struct CompileCommandsArgs
     {
-        struct Params
-        {
-            CommandBatcher*         batcher {nullptr };
-            FenceHandle             fence;
-            QueueType               queue { QueueType::none };
-            i32                     commands_count { 0 };
-            const GpuCommandHeader* commands {nullptr };
-            GpuCommandBuffer**      output {nullptr };
-        };
-
-        Params params;
-
-        explicit RecordJob(const Params& params_to_use);
-
-        void execute() override;
+        CommandBatcher*         batcher {nullptr };
+        FenceHandle             fence;
+        QueueType               queue { QueueType::none };
+        i32                     commands_count { 0 };
+        const GpuCommandHeader* commands {nullptr };
+        GpuCommandBuffer**      output {nullptr };
     };
 
-    struct CompileCommandsJob final : public Job
-    {
-        CommandBatcher*                 batcher {nullptr };
-        i32                             count { 0 };
-        const CommandBuffer*            command_buffers { nullptr };
-        FixedArray<GpuCommandHeader>    inputs;
-        FixedArray<GpuCommandHeader>    outputs;
-        FenceHandle                     fence;
+    static void compile_commands_job(CompileCommandsArgs* args);
 
-        explicit CompileCommandsJob(CommandBatcher* owning_batcher, const i32 command_buffer_list_size, const CommandBuffer* command_buffer_list, const FenceHandle& fence_handle);
-
-        void execute() override;
-    };
+    static void submit_commands_job(CommandBatcher* batcher, const i32 count, const CommandBuffer* command_buffers, const FenceHandle& fence);
 
     DeviceHandle                    device_;
     JobGroup                        all_jobs_;

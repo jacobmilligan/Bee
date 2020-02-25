@@ -9,6 +9,8 @@
 #include <Bee/Application/AppLoop.hpp>
 #include <Bee/Graphics/GPU.hpp>
 #include <Bee/Graphics/Command.hpp>
+#include <Bee/Core/Memory/MemoryTracker.hpp>
+#include <Bee/Core/Time.hpp>
 
 namespace bee {
 

@@ -323,9 +323,6 @@ void CommandBuffer::end()
  *
  *************************
  */
-CommandBatcher::RecordJob::RecordJob(const Params& params_to_use)
-    : params(params_to_use)
-{}
 
 #define BEE_GPU_CMD(CmdType)                                    \
     case CmdType::command_type:                                 \
@@ -335,16 +332,16 @@ CommandBatcher::RecordJob::RecordJob(const Params& params_to_use)
         break;                                                  \
     }
 
-void CommandBatcher::RecordJob::execute()
+void CommandBatcher::compile_commands_job(CommandBatcher::CompileCommandsArgs* args)
 {
-    auto& pool = params.batcher->per_worker_pools_[get_local_job_worker_id()];
-    auto command_buffer = pool.obtain(params.queue, params.fence);
+    auto& pool = args->batcher->per_worker_pools_[get_local_job_worker_id()];
+    auto command_buffer = pool.obtain(args->queue, args->fence);
 
     gpu_begin_command_buffer(command_buffer);
 
-    for (int cmd = 0; cmd < params.commands_count; ++cmd)
+    for (int cmd = 0; cmd < args->commands_count; ++cmd)
     {
-        auto& header = params.commands[cmd];
+        auto& header = args->commands[cmd];
         switch (header.type)
         {
             BEE_GPU_CMD(CmdBeginRenderPass)
@@ -362,21 +359,10 @@ void CommandBatcher::RecordJob::execute()
 
     gpu_end_command_buffer(command_buffer);
 
-    *params.output = command_buffer;
+    *args->output = command_buffer;
 }
 
-CommandBatcher::CompileCommandsJob::CompileCommandsJob(
-    CommandBatcher* owning_batcher,
-    const i32 command_buffer_list_size,
-    const CommandBuffer* command_buffer_list,
-    const FenceHandle& fence_handle
-) : batcher(owning_batcher),
-    count(command_buffer_list_size),
-    command_buffers(command_buffer_list),
-    fence(fence_handle)
-{}
-
-void CommandBatcher::CompileCommandsJob::execute()
+void CommandBatcher::submit_commands_job(CommandBatcher* batcher, const i32 count, const CommandBuffer* command_buffers, const FenceHandle& fence)
 {
     int command_count = 0;
     for (int cmd = 0; cmd < count; ++cmd)
@@ -384,11 +370,10 @@ void CommandBatcher::CompileCommandsJob::execute()
         command_count += command_buffers[cmd].stream().headers().size();
     }
 
-    inputs = FixedArray<GpuCommandHeader>::with_size(command_count);
-    outputs = FixedArray<GpuCommandHeader>::with_size(command_count);
+    auto inputs = FixedArray<GpuCommandHeader>::with_size(command_count, temp_allocator());
+    auto outputs = FixedArray<GpuCommandHeader>::with_size(command_count, temp_allocator());
 
     int offset = 0;
-
     // Gather the commands into a sortable stream
     for (int cmd = 0; cmd < count; ++cmd)
     {
@@ -397,6 +382,7 @@ void CommandBatcher::CompileCommandsJob::execute()
         offset += stream.headers().size();
     }
 
+
     // Sort them by header sort key
     radix_sort(inputs.data(), outputs.data(), inputs.size(), [](const GpuCommandHeader& header)
     {
@@ -404,9 +390,9 @@ void CommandBatcher::CompileCommandsJob::execute()
     });
 
     // translate N commands per worker - one job per thread
-    const auto translate_job_count = math::max(outputs.size() / get_job_worker_count(), 1);
-    const auto commands_per_job = outputs.size() / translate_job_count;
-    auto queue_masks = FixedArray<QueueType>::with_size(translate_job_count);
+    const auto compile_jobs_count = math::max(outputs.size() / get_job_worker_count(), 1);
+    const auto commands_per_job = outputs.size() / compile_jobs_count;
+    auto queue_masks = FixedArray<QueueType>::with_size(compile_jobs_count, temp_allocator());
 
     // get the overall command queue mask for each jobs range of commands
     //  TODO(Jacob): there has got to be a better way, surely...
@@ -415,21 +401,21 @@ void CommandBatcher::CompileCommandsJob::execute()
         queue_masks[header / commands_per_job] |= outputs[header].queue_type;
     }
 
-    auto gpu_command_buffers = FixedArray<GpuCommandBuffer*>::with_size(translate_job_count);
+    auto gpu_command_buffers = FixedArray<GpuCommandBuffer*>::with_size(compile_jobs_count, temp_allocator());
 
     JobGroup record_wait_handle;
-    RecordJob::Params params{};
-            params.batcher = batcher;
-        params.fence = fence;
-        params.commands_count = outputs.size();
-        params.commands = outputs.data();
+    auto compile_args = FixedArray<CompileCommandsArgs>::with_size(compile_jobs_count, temp_allocator());
 
-    for (int i = 0; i < translate_job_count; ++i)
+    for (int i = 0; i < compile_jobs_count; ++i)
     {
-        params.queue = queue_masks[i];
-        params.output = &gpu_command_buffers[i];
+        compile_args[i].batcher = batcher;
+        compile_args[i].fence = fence;
+        compile_args[i].commands_count = outputs.size();
+        compile_args[i].commands = outputs.data();
+        compile_args[i].queue = queue_masks[i];
+        compile_args[i].output = &gpu_command_buffers[i];
 
-        auto job = allocate_job<RecordJob>(params);
+        auto job = create_job(compile_commands_job, &compile_args[i]);
         job_schedule(&record_wait_handle, job);
     }
 
@@ -592,7 +578,7 @@ FenceHandle CommandBatcher::submit_batch(JobGroup* wait_handle, const i32 count,
         gpu_reset_fence(device_, fence);
     }
 
-    auto job = allocate_job<CompileCommandsJob>(this, count, command_buffers, fence);
+    auto job = create_job(submit_commands_job, this, count, command_buffers, fence);
     job_schedule(wait_handle, job);
 
     return fence;

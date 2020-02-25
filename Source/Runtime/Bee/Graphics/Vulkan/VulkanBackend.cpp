@@ -779,7 +779,7 @@ SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const Sw
     // Get supported formats
     u32 format_count = 0;
     BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device.physical_device, surface, &format_count, nullptr));
-    auto formats = FixedArray<VkSurfaceFormatKHR>::with_size(sign_cast<i32>(format_count), temp_allocator());
+    auto formats = FixedArray<VkSurfaceFormatKHR>::with_size(sign_cast<i32>(format_count), &device.scratch_allocator);
     BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device.physical_device, surface, &format_count, formats.data()));
 
     // Get supported present modes
@@ -843,7 +843,7 @@ SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const Sw
     // Setup the swapchain images
     u32 swapchain_image_count = 0;
     BEE_VK_CHECK(vkGetSwapchainImagesKHR(device.handle, vk_handle, &swapchain_image_count, nullptr));
-    auto swapchain_images = FixedArray<VkImage>::with_size(sign_cast<i32>(swapchain_image_count), temp_allocator());
+    auto swapchain_images = FixedArray<VkImage>::with_size(sign_cast<i32>(swapchain_image_count), &device.scratch_allocator);
     BEE_VK_CHECK(vkGetSwapchainImagesKHR(device.handle, vk_handle, &swapchain_image_count, swapchain_images.data()));
 
     VulkanSwapchain* swapchain = nullptr;
@@ -1756,6 +1756,7 @@ GpuCommandBuffer* gpu_create_command_buffer(const DeviceHandle& device_handle, c
     alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 
     auto cmd_buffer = BEE_NEW(pool->allocator, GpuCommandBuffer);
+    cmd_buffer->index = queue_pool.command_buffers.size();
     cmd_buffer->queue = queue;
     cmd_buffer->pool = pool_handle;
     cmd_buffer->device = &device;
@@ -1773,6 +1774,10 @@ void gpu_destroy_command_buffer(GpuCommandBuffer* command_buffer)
     vkFreeCommandBuffers(command_buffer->device->handle, per_queue_pool.handle, 1, &command_buffer->handle);
 
     BEE_DELETE(pool->allocator, command_buffer);
+
+    std::swap(per_queue_pool.command_buffers.back(), per_queue_pool.command_buffers[command_buffer->index]);
+    per_queue_pool.command_buffers[command_buffer->index]->index = command_buffer->index;
+    per_queue_pool.command_buffers.pop_back();
 }
 
 void gpu_reset_command_buffer(GpuCommandBuffer* command_buffer, const CommandStreamReset hint)
@@ -1910,75 +1915,60 @@ struct QueueSubmit
 };
 
 
-struct SubmitJob final : public Job
+void submit_job(VulkanDevice* device, const FenceHandle& fence, FixedArray<const GpuCommandBuffer*> command_buffers)
 {
-    VulkanDevice*                       device { nullptr };
-    FenceHandle                         fence;
-    FixedArray<const GpuCommandBuffer*> command_buffers;
+    static constexpr VkPipelineStageFlags swapchain_wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-    explicit SubmitJob(VulkanDevice* device_to_submit_on, const SubmitInfo& submit_info)
-        : device(device_to_submit_on),
-          fence(submit_info.fence)
+    QueueSubmit submissions[vk_max_queues];
+    for (auto& submission : submissions)
     {
-        command_buffers = FixedArray<const GpuCommandBuffer*>::with_size(submit_info.command_buffer_count, job_temp_allocator());
-        memcpy(command_buffers.data(), submit_info.command_buffers, sizeof(const GpuCommandBuffer*) * command_buffers.size());
+        new (&submission) QueueSubmit(device, temp_allocator());
     }
 
-    void execute() override
+    // Gather all the command buffers into per-queue submissions
+    for (auto& command_buffer : command_buffers)
     {
-        static constexpr VkPipelineStageFlags swapchain_wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        auto& submission = submissions[command_buffer->queue];
 
-        QueueSubmit submissions[vk_max_queues];
-        for (auto& submission : submissions)
+        // we have to add a semaphore if the command buffer is targeting the swapchain
+        if (command_buffer->target_swapchain.is_valid())
         {
-            new (&submission) QueueSubmit(device, system_allocator());
-        }
+            auto swapchain = device->swapchains[command_buffer->target_swapchain];
 
-        // Gather all the command buffers into per-queue submissions
-        for (auto& command_buffer : command_buffers)
-        {
-            auto& submission = submissions[command_buffer->queue];
-
-            // we have to add a semaphore if the command buffer is targeting the swapchain
-            if (command_buffer->target_swapchain.is_valid())
+            if (BEE_FAIL_F(!swapchain->pending_image_acquire, "Swapchain cannot be rendered to without first acquiring its current texture"))
             {
-                auto swapchain = device->swapchains[command_buffer->target_swapchain];
-
-                if (BEE_FAIL_F(!swapchain->pending_image_acquire, "Swapchain cannot be rendered to without first acquiring its current texture"))
-                {
-                    return;
-                }
-
-                submission.info.waitSemaphoreCount = 1;
-                submission.info.pWaitSemaphores = &swapchain->acquire_semaphore[device->current_frame];
-                submission.info.pWaitDstStageMask = &swapchain_wait_stage;
-                submission.info.signalSemaphoreCount = 1;
-                submission.info.pSignalSemaphores = &swapchain->render_semaphore[device->current_frame];
+                return;
             }
 
-            submission.push_command_buffer(command_buffer);
+            submission.info.waitSemaphoreCount = 1;
+            submission.info.pWaitSemaphores = &swapchain->acquire_semaphore[device->current_frame];
+            submission.info.pWaitDstStageMask = &swapchain_wait_stage;
+            submission.info.signalSemaphoreCount = 1;
+            submission.info.pSignalSemaphores = &swapchain->render_semaphore[device->current_frame];
         }
 
-        auto vk_fence = device->fences[fence];
-
-        for (int queue = 0; queue < vk_max_queues; ++queue)
-        {
-            auto& submission = submissions[queue];
-            if (submission.command_buffers.empty())
-            {
-                continue;
-            }
-
-            /*
-             * vkQueueSubmit can access a queue across multiple threads as long as it's externally
-             * synchronized i.e. with a mutex
-             * see: Vulkan Spec - 2.6. Threading Behavior
-             */
-            scoped_rw_write_lock_t lock(device->queues[queue].mutex);
-            BEE_VK_CHECK(vkQueueSubmit(device->queues[queue].handle, 1, &submission.info, *vk_fence));
-        }
+        submission.push_command_buffer(command_buffer);
     }
-};
+
+    auto vk_fence = device->fences[fence];
+
+    for (int queue = 0; queue < vk_max_queues; ++queue)
+    {
+        auto& submission = submissions[queue];
+        if (submission.command_buffers.empty())
+        {
+            continue;
+        }
+
+        /*
+         * vkQueueSubmit can access a queue across multiple threads as long as it's externally
+         * synchronized i.e. with a mutex
+         * see: Vulkan Spec - 2.6. Threading Behavior
+         */
+        scoped_rw_write_lock_t lock(device->queues[queue].mutex);
+        BEE_VK_CHECK(vkQueueSubmit(device->queues[queue].handle, 1, &submission.info, *vk_fence));
+    }
+}
 
 void gpu_submit(JobGroup* wait_handle, const DeviceHandle& device_handle, const SubmitInfo& info)
 {
@@ -1991,7 +1981,11 @@ void gpu_submit(JobGroup* wait_handle, const DeviceHandle& device_handle, const 
     BEE_ASSERT_F(info.command_buffers != nullptr, "`command_buffers` must point to an array of `command_buffer_count` GpuCommandBuffer pointers");
 
     auto& device = validate_device(device_handle);
-    auto job = allocate_job<SubmitJob>(&device, info);
+
+    auto cmds = FixedArray<const GpuCommandBuffer*>::with_size(info.command_buffer_count, temp_allocator());
+    memcpy(cmds.data(), info.command_buffers, sizeof(GpuCommandBuffer*) * info.command_buffer_count);
+
+    auto job = create_job(submit_job, &device, info.fence, std::move(cmds));
     job_schedule(wait_handle, job);
 }
 

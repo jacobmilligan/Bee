@@ -9,12 +9,10 @@
 
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Handle.hpp"
-#include "Bee/Core/Functional.hpp"
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/Containers/Array.hpp"
+#include "Bee/Core/Atomic.hpp"
 
-#include <atomic>
-#include <mutex>
 
 namespace bee {
 
@@ -53,80 +51,54 @@ private:
 class BEE_CORE_API Job
 {
 public:
-    explicit Job();
-
-    Job(Job&& other) noexcept;
-
-    Job& operator=(Job&& other) noexcept;
+    Job();
 
     virtual ~Job();
 
-    virtual void execute() = 0;
-
     void complete();
-
-    void set_group(JobGroup* group);
 
     JobGroup* parent() const;
 
-    i32 owning_worker_id() const;
-private:
-    std::atomic_int32_t     owning_worker_ { 0 };
+    void set_group(JobGroup* group);
+
+protected:
+#ifdef BEE_ENABLE_RELACY
+    static constexpr size_t alignment = 128;
+#else
+    static constexpr size_t alignment = 64;
+#endif // BEE_ENABLE_RELACY
+
+    static constexpr size_t data_size_ = alignment - sizeof(std::atomic<JobGroup*>);
+
     std::atomic<JobGroup*>  parent_ { nullptr };
+    u8                      data_[data_size_];
 
-    void move_construct(Job& other) noexcept;
+    virtual void execute() = 0;
 };
 
+
 template <typename FunctionType>
-class FunctionJob : public Job
+struct CallableJob final : public Job
 {
-public:
-    explicit FunctionJob(const FunctionType& function)
-        : function_(function)
-    {}
+    static_assert(sizeof(FunctionType) <= data_size_, "CallableJob: too big to fit in buffer");
+
+    explicit CallableJob(const FunctionType& function)
+    {
+        new (data_) FunctionType(function);
+    }
+
+    ~CallableJob() override
+    {
+        auto function = reinterpret_cast<FunctionType*>(data_);
+        destruct(function);
+    }
 
     void execute() override
     {
-        function_();
-    }
-private:
-    FunctionType function_;
-};
-
-class ParallelForJob : public Job
-{
-public:
-    void init(const i32 iteration_count, const i32 execute_batch_size);
-
-    virtual void execute(const i32 index) = 0;
-
-    void execute() final;
-
-private:
-    i32 iteration_count_ { -1 };
-    i32 execute_batch_size_ { -1 };
-};
-
-
-class EmptyJob : public Job
-{
-public:
-    using Job::Job;
-
-    void execute() override
-    {
-        // no-op
+        auto function = reinterpret_cast<FunctionType*>(data_);
+        (*function)();
     }
 };
-
-template <typename FunctionType>
-inline void parallel_for_single_batch(const i32 range_begin, const i32 range_end, const FunctionType& function)
-{
-    for (int i = range_begin; i < range_end; ++i)
-    {
-        function(i);
-    }
-}
 
 
 } // namespace bee

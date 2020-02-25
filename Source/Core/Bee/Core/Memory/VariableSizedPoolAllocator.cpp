@@ -182,6 +182,9 @@ void* VariableSizedPoolAllocator::allocate(const size_t size, const size_t align
     }
 
     allocated_size_ += chunk->data_size;
+
+    BEE_ASSERT(next_available->data == reinterpret_cast<u8*>(next_available) + sizeof(Allocation));
+
     return next_available->data;
 }
 
@@ -223,7 +226,7 @@ void* VariableSizedPoolAllocator::reallocate(void* ptr, const size_t old_size, c
     allocated_size_ -= old_chunk->data_size;
     allocated_size_ += new_chunk->data_size;
 
-    return new_allocation;
+    return new_allocation->data;
 }
 
 void VariableSizedPoolAllocator::deallocate(void* ptr)

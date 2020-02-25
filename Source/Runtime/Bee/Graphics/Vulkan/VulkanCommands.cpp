@@ -110,9 +110,9 @@ void gpu_record_command(GpuCommandBuffer* cmd, const CmdDrawIndexed& data)
 
 void gpu_record_command(GpuCommandBuffer* cmd, const CmdTransitionResources& data)
 {
-    DynamicArray<VkImageMemoryBarrier> image_barriers(job_temp_allocator());
-    DynamicArray<VkBufferMemoryBarrier> buffer_barriers(job_temp_allocator());
-    DynamicArray<VkMemoryBarrier> memory_barriers(job_temp_allocator());
+    DynamicArray<VkImageMemoryBarrier> image_barriers(temp_allocator());
+    DynamicArray<VkBufferMemoryBarrier> buffer_barriers(temp_allocator());
+    DynamicArray<VkMemoryBarrier> memory_barriers(temp_allocator());
 
     VkAccessFlags src_access = 0;
     VkAccessFlags dst_access = 0;

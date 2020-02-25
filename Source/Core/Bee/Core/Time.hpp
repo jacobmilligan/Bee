@@ -25,8 +25,17 @@ namespace time {
 /// Queries the systems high-resolution timer for the current time since startup
 BEE_CORE_API u64 now() noexcept;
 
-/// Returns the number of ticks per second of the current system 
+/// Returns the number of CPU ticks per second of the current system - this is a platform specific call
 BEE_CORE_API u64 ticks_per_second() noexcept;
+
+/// Represents the amount of ticks that occur for every microsecond
+BEE_CORE_API u64 ticks_per_microsecond() noexcept;
+/// Represents the amount of ticks that occur for every millisecond
+BEE_CORE_API u64 ticks_per_millisecond() noexcept;
+/// Represents the amount of ticks that occur for every minute
+BEE_CORE_API u64 ticks_per_minute() noexcept;
+/// Represents the amount of ticks that occur for every hour
+BEE_CORE_API u64 ticks_per_hour() noexcept;
 
 
 } // namespace time
@@ -44,17 +53,6 @@ enum class TimeInterval
 
 class BEE_CORE_API TimePoint {
 public:
-    /// Represents the amount of ticks that occur for every microsecond
-    static const u64 ticks_per_microsecond;
-    /// Represents the amount of ticks that occur for every millisecond
-    static const u64 ticks_per_millisecond;
-    /// Represents the amount of ticks that occur for every second
-    static const u64 ticks_per_second;
-    /// Represents the amount of ticks that occur for every minute
-    static const u64 ticks_per_minute;
-    /// Represents the amount of ticks that occur for every hour
-    static const u64 ticks_per_hour;
-
     TimePoint() = default;
 
     explicit TimePoint(u64 ticks)
@@ -148,31 +146,31 @@ inline TimePoint make_time_point<TimeInterval::ticks>(const u64 ticks)
 template<>
 inline TimePoint make_time_point<TimeInterval::microseconds>(const u64 ticks)
 {
-    return TimePoint(static_cast<u64>(TimePoint::ticks_per_microsecond * ticks));
+    return TimePoint(static_cast<u64>(time::ticks_per_microsecond() * ticks));
 }
 
 template<>
 inline TimePoint make_time_point<TimeInterval::milliseconds>(const u64 ticks)
 {
-    return TimePoint(static_cast<u64>(TimePoint::ticks_per_millisecond * ticks));
+    return TimePoint(static_cast<u64>(time::ticks_per_millisecond() * ticks));
 }
 
 template<>
 inline TimePoint make_time_point<TimeInterval::seconds>(const u64 ticks)
 {
-    return TimePoint(static_cast<u64>(TimePoint::ticks_per_second * ticks));
+    return TimePoint(static_cast<u64>(time::ticks_per_second() * ticks));
 }
 
 template<>
 inline TimePoint make_time_point<TimeInterval::minutes>(const u64 ticks)
 {
-    return TimePoint(static_cast<u64>(TimePoint::ticks_per_minute * ticks));
+    return TimePoint(static_cast<u64>(time::ticks_per_minute() * ticks));
 }
 
 template<>
 inline TimePoint make_time_point<TimeInterval::hours>(const u64 ticks)
 {
-    return TimePoint(static_cast<u64>(TimePoint::ticks_per_hour * ticks));
+    return TimePoint(static_cast<u64>(time::ticks_per_hour() * ticks));
 }
 
 

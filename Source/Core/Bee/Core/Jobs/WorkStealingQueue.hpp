@@ -10,24 +10,22 @@
 #include "Bee/Core/Noncopyable.hpp"
 #include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/Containers/Array.hpp"
-
-#include <atomic>
+#include "Bee/Core/Atomic.hpp"
+#include "Bee/Core/Concurrency.hpp"
 
 namespace bee {
 
-
-class Job;
 
 /*
  * source: 'Dynamic Circular Work-Stealing Deque', Chase D. & Lev Y. 2005
  * http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.170.1097&rep=rep1&type=pdf
  */
-class WorkStealingQueue : Noncopyable
+class BEE_CORE_API WorkStealingQueue : Noncopyable
 {
 public:
     WorkStealingQueue() = default;
 
-    explicit WorkStealingQueue(const i32 job_buffer_capacity, Allocator* allocator = system_allocator());
+    explicit WorkStealingQueue(const i32 capacity, Allocator* allocator = system_allocator()) noexcept;
 
     WorkStealingQueue(WorkStealingQueue&& other) noexcept;
 
@@ -35,11 +33,11 @@ public:
 
     WorkStealingQueue& operator=(WorkStealingQueue&& other) noexcept;
 
-    void push(Job* job);
+    void push(AtomicNode* node);
 
-    Job* pop();
+    AtomicNode* pop();
 
-    Job* steal();
+    AtomicNode* steal();
 
     inline bool empty() const
     {
@@ -50,13 +48,13 @@ public:
 
     inline u32 capacity() const
     {
-        return job_buffer_capacity_;
+        return buffer_capacity_;
     }
 private:
     Allocator*          allocator_ { nullptr };
-    Job**               job_buffer_ { nullptr };
-    u32                 job_buffer_capacity_ { 0 };
-    u32                 job_buffer_mask_ { 0 };
+    AtomicNode**        buffer_ {nullptr };
+    u32                 buffer_capacity_ {0 };
+    u32                 buffer_mask_ {0 };
     std::atomic_int32_t bottom_idx_ { 0 }; // incremented on every `push_bottom`
     std::atomic_int32_t top_idx_ { 0 }; // incremented on every `steal`
 

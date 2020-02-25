@@ -11,6 +11,7 @@
 #include "Bee/Core/Containers/SoA.hpp"
 #include "Bee/Core/Functional.hpp"
 #include "Bee/Graphics/GPU.hpp"
+#include "Bee/Graphics/Command.hpp"
 
 #ifndef BEE_RENDERGRAPH_PASS_MAX_READS
     #define BEE_RENDERGRAPH_PASS_MAX_READS 64
@@ -158,6 +159,10 @@ class JobGroup;
 class BEE_RUNTIME_API RenderGraph
 {
 public:
+    explicit RenderGraph(const DeviceHandle& device);
+
+    ~RenderGraph();
+
     RenderGraphBuilder add_pass(const char* name);
 
     template <typename Fn>
@@ -263,6 +268,8 @@ private:
 
     // GPU resources
     DeviceHandle                                    device_;
+    CommandBatcher                                  command_batcher_;
+    FixedArray<CommandAllocator>                    per_worker_command_allocators_;
 
     // Resources
     SimplePool<BufferHandle, BufferCreateInfo>      buffers_;

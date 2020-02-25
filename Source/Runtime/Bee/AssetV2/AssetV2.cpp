@@ -10,8 +10,7 @@
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Thread.hpp"
 #include "Bee/Core/Containers/ResourcePool.hpp"
-
-#include <atomic>
+#include "Bee/Core/Atomic.hpp"
 
 namespace bee {
 
@@ -82,7 +81,7 @@ static DynamicArray<AssetLocatorInfo>       g_locator_infos;
 static DynamicHashMap<String, GUID>         g_name_map;
 static AssetCache                           g_cache;
 static JobGroup                             g_jobs_in_progress;
-static std::mutex                           g_mutex;
+static RecursiveSpinLock                    g_mutex;
 
 
 i32 find_loader(const u32 hash)
@@ -109,7 +108,7 @@ void assets_init()
 
 void assets_shutdown()
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    scoped_recursive_spinlock_t lock(g_mutex);
 
     job_wait(&g_jobs_in_progress);
     g_loaders.clear();
@@ -315,8 +314,8 @@ bool request_asset_load(const GUID& guid, const Type* requested_type, AssetInfo*
 
     BEE_ASSERT(cached->handle.is_valid());
 
-    auto job = allocate_job<RequestAssetJob>(cached, loader);
-    job_schedule(&g_jobs_in_progress, job);
+//    auto job = allocate_job<RequestAssetJob>(cached, loader);
+//    job_schedule(&g_jobs_in_progress, job);
 
     *info = cached;
     *data = loader->get(requested_type, cached->handle);

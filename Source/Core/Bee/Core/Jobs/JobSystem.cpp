@@ -7,7 +7,7 @@
 
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/Memory/Memory.hpp"
-#include "Bee/Core/Memory/VariableSizedPoolAllocator.hpp"
+#include "Bee/Core/Memory/PoolAllocator.hpp"
 #include "Bee/Core/Memory/LinearAllocator.hpp"
 #include "Bee/Core/Random.hpp"
 #include "Bee/Core/Thread.hpp"
@@ -15,130 +15,13 @@
 #include "Bee/Core/Jobs/JobSystem.hpp"
 #include "Bee/Core/Jobs/WorkStealingQueue.hpp"
 #include "Bee/Core/String.hpp"
+#include "Bee/Core/Atomic.hpp"
 
-#include <atomic>
+#include <mutex>
+#include <condition_variable>
 
 
 namespace bee {
-
-
-//template <typename T>
-//struct AtomicNode
-//{
-//    std::atomic<AtomicNode<T>*> next { nullptr };
-//};
-//
-//template <typename T>
-//class AtomicStack
-//{
-//public:
-//    AtomicStack()
-//    {
-//        BEE_ASSERT(head_.is_lock_free());
-//    }
-//
-//    void push(AtomicNode<T>* item)
-//    {
-//        auto current = head_.load(std::memory_order_relaxed);
-//        TaggedPtr next{};
-//        next.ptr = item;
-//        do
-//        {
-//            next.tag = current.tag + 1;
-//            item->next.store(current.ptr, std::memory_order_relaxed);
-//        } while (!head_.compare_exchange_weak(current, next, std::memory_order_release, std::memory_order_relaxed));
-//    }
-//
-//    AtomicNode<T>* pop()
-//    {
-//        auto current = head_.load(std::memory_order_acquire);
-//        TaggedPtr next{};
-//
-//        while (current.ptr != nullptr)
-//        {
-//            next.ptr = current.ptr->next.load(std::memory_order_relaxed);
-//            next.tag = current.tag + 1;
-//            if (head_.compare_exchange_weak(current, next, std::memory_order_release, std::memory_order_acquire))
-//            {
-//                break;
-//            }
-//        }
-//
-//        return current.ptr;
-//    }
-//private:
-//    struct TaggedPtr
-//    {
-//        std::intptr_t   tag { 0 };
-//        AtomicNode<T>*  ptr { nullptr };
-//    };
-//
-//    std::atomic<TaggedPtr> head_;
-//};
-
-class JobAllocator : public Allocator
-{
-public:
-    JobAllocator() = default;
-
-    JobAllocator(const i32 max_job_size, const i32 max_jobs_per_chunk)
-        : backing_allocator_(sizeof(Job), max_job_size, max_jobs_per_chunk)
-    {}
-
-    JobAllocator(JobAllocator&& other) noexcept
-    {
-        move_construct(other);
-    }
-
-    ~JobAllocator() override = default;
-
-    JobAllocator& operator=(JobAllocator&& other) noexcept
-    {
-        move_construct(other);
-        return *this;
-    }
-
-    i32 allocated_size() const
-    {
-        scoped_lock_t lock(non_local_worker_mutex_);
-        return backing_allocator_.allocated_size();
-    }
-
-    bool is_valid(const void* ptr) const override
-    {
-        scoped_lock_t lock(non_local_worker_mutex_);
-        return backing_allocator_.is_valid(ptr);
-    }
-
-    void* allocate(size_t size, size_t alignment) override
-    {
-        scoped_lock_t lock(non_local_worker_mutex_);
-        return backing_allocator_.allocate(size, alignment);
-    }
-
-    void* reallocate(void* ptr, size_t old_size, size_t new_size, size_t alignment) override
-    {
-        scoped_lock_t lock(non_local_worker_mutex_);
-        return backing_allocator_.reallocate(ptr, old_size, new_size, alignment);
-    }
-
-    void deallocate(void* ptr) override
-    {
-        scoped_lock_t lock(non_local_worker_mutex_);
-        return backing_allocator_.deallocate(ptr);
-    }
-
-private:
-    using scoped_lock_t = std::lock_guard<std::mutex>;
-
-    mutable std::mutex              non_local_worker_mutex_;
-    VariableSizedPoolAllocator      backing_allocator_;
-
-    void move_construct(JobAllocator& other) noexcept
-    {
-        backing_allocator_ = std::move(other.backing_allocator_);
-    }
-};
 
 
 /*
@@ -160,23 +43,21 @@ private:
  *
  ****************************************************************
  */
-struct Worker final : public Noncopyable
+BEE_PUSH_WARNING
+BEE_DISABLE_WARNING_MSVC(4324)
+struct alignas(128) Worker final : public Noncopyable
 {
     Thread                      thread;
     i32                         thread_local_idx { -1 };
     WorkStealingQueue           job_queue;
     Job*                        current_executing_job { nullptr };
     RandomGenerator<Xorshift>   random;
-    VariableSizedPoolAllocator  job_allocator;
-    LinearAllocator             temp_allocator;
 
     Worker() = default;
 
     Worker(const i32 thread_index, const JobSystemInitInfo& info) noexcept
         : thread_local_idx(thread_index),
-          job_queue(info.max_jobs_per_worker_per_chunk),
-          job_allocator(sizeof(Job), info.max_job_size, info.max_jobs_per_worker_per_chunk),
-          temp_allocator(info.per_worker_temp_allocator_capacity, system_allocator())
+          job_queue(info.max_jobs_per_worker_per_chunk)
     {}
 
     Worker(Worker&& other) noexcept
@@ -184,17 +65,16 @@ struct Worker final : public Noncopyable
           thread_local_idx(other.thread_local_idx),
           job_queue(std::move(other.job_queue)),
           current_executing_job(other.current_executing_job),
-          random(other.random),
-          job_allocator(std::move(other.job_allocator)),
-          temp_allocator(std::move(other.temp_allocator))
+          random(other.random)
     {
         other.thread_local_idx = 0;
         other.current_executing_job = nullptr;
     }
 
     // cache-line pad to avoid false sharing
-    char pad[64]{};
+    volatile char pad[128 - sizeof(Thread) - sizeof(i32) - sizeof(WorkStealingQueue) - sizeof(Job*) - sizeof(RandomGenerator<Xorshift>)]{};
 };
+BEE_POP_WARNING
 
 struct WorkerMainParams
 {
@@ -205,35 +85,51 @@ struct WorkerMainParams
 struct JobSystemContext
 {
     std::atomic_bool            initialized { false };
-    Thread::id_t                main_thread_id { 0 };
+    thread_id_t                 main_thread_id { 0 };
     FixedArray<Worker>          workers;
-//    AtomicStack<Job*>           completed_jobs;
 
     // Signal indicating that the system is currently running and active
     std::atomic_bool            is_active { false };
     std::atomic_int32_t         pending_job_count { 0 };
     std::mutex                  worker_wait_mutex;
     std::condition_variable     worker_wait_cv;
+
+    // Job pools
+    AtomicStack                 free_jobs;
+    AtomicStack                 allocated_jobs;
 };
 
-static JobSystemContext g_job_system;
+static JobSystemContext g_job_system; // NOLINT
+
+Job* allocate_job()
+{
+    auto node = g_job_system.free_jobs.pop();
+    if (node == nullptr)
+    {
+        node = static_cast<AtomicNode*>(BEE_MALLOC_ALIGNED(system_allocator(), sizeof(AtomicNode) + sizeof(Job), 64));
+        new (node) AtomicNode{};
+        node->data[0] = reinterpret_cast<u8*>(node) + sizeof(AtomicNode);
+        g_job_system.allocated_jobs.push(node);
+    }
+    return static_cast<Job*>(node->data[0]);
+}
 
 
 void worker_execute_one_job(Worker* local_worker)
 {
-    // check the thread local queue for a job
+    // check the thread local queue for a node
     auto worker_idx = local_worker->thread_local_idx;
-    auto job = local_worker->job_queue.pop();
+    auto node = local_worker->job_queue.pop();
 
-    // Try and steal a job from another local_worker if we couldn't pop one from the local local_worker
-    if (job == nullptr)
+    // Try and steal a node from another local_worker if we couldn't pop one from the local local_worker
+    if (node == nullptr)
     {
         const auto num_workers = g_job_system.workers.size();
         // if there's only one local_worker and one main thread steal that local_worker immediately
         if (num_workers == 1)
         {
             worker_idx = 0;
-            job = g_job_system.workers[worker_idx].job_queue.steal();
+            node = g_job_system.workers[worker_idx].job_queue.steal();
         }
         else
         {
@@ -245,29 +141,22 @@ void worker_execute_one_job(Worker* local_worker)
             }
 
             BEE_ASSERT_F(worker_idx >= 0 && worker_idx < num_workers, "Scheduler: invalid local_worker index");
-            job = g_job_system.workers[worker_idx].job_queue.steal();
+            node = g_job_system.workers[worker_idx].job_queue.steal();
         }
     }
 
     // Found a job
-    if (job != nullptr)
+    if (node != nullptr)
     {
-        // Wait on any dependencies the group the job belongs to might have
-        while (job->parent()->has_dependencies())
+        auto job = static_cast<Job*>(node->data[0]);
+
+        // Wait on any dependencies the group the node belongs to might have
+        while (job->parent() != nullptr && job->parent()->has_dependencies())
         {
             worker_execute_one_job(local_worker);
         }
 
         local_worker->current_executing_job = job;
-
-        // Only safe to reset the local temp allocator if no allocations are in use on any thread
-        if (local_worker->temp_allocator.allocated_size() == 0)
-        {
-            local_worker->temp_allocator.reset(); // HACK(Jacob): this needs to be replaced with a locking stack allocator
-        }
-
-        const auto owning_worker_idx = job->owning_worker_id();
-        BEE_ASSERT(owning_worker_idx >= 0);
 
         // NOTE: This is a blocking call
         job->complete();
@@ -276,10 +165,17 @@ void worker_execute_one_job(Worker* local_worker)
 
         g_job_system.pending_job_count.fetch_sub(1, std::memory_order_release);
 
-        // The job allocator guarantees that this delete is thread safe across non-local threads
-        auto& owning_worker = g_job_system.workers[owning_worker_idx];
+        destruct(job);
 
-        BEE_DELETE(owning_worker.job_allocator, job);
+        g_job_system.free_jobs.push(node);
+
+        /*
+         * NOTE(Jacob): this may look a bit naughty but it's no worse than getting a header from a pointer in
+         * an allocator and is the easiest way to get the atomic node from the node pointer
+         */
+//        const auto job_data_offset = sizeof(AtomicNode) - sizeof(Job);
+//        auto node = reinterpret_cast<AtomicNode*>(reinterpret_cast<u8*>(node) - job_data_offset);
+//        g_job_system.free_jobs.push(node);
     }
 }
 
@@ -403,7 +299,7 @@ void job_schedule_group(JobGroup* group, Job** dependencies, const i32 dependenc
     {
         group->add_job(dependencies[d]);
         g_job_system.pending_job_count.fetch_add(1, std::memory_order_release);
-        local_worker.job_queue.push(dependencies[d]);
+        local_worker.job_queue.push(cast_job_to_node(dependencies[d]));
     }
 
     g_job_system.worker_wait_cv.notify_all();
@@ -437,18 +333,6 @@ bool job_wait(JobGroup* group)
     }
 
     return true;
-}
-
-Allocator* local_job_allocator()
-{
-    const auto worker_idx = get_local_job_worker_id();
-    return &g_job_system.workers[worker_idx].job_allocator;
-}
-
-Allocator* job_temp_allocator()
-{
-    const auto worker_idx = get_local_job_worker_id();
-    return &g_job_system.workers[worker_idx].temp_allocator;
 }
 
 Job* get_local_executing_job()
@@ -493,12 +377,6 @@ i32 get_local_job_worker_id()
 i32 get_job_worker_count()
 {
     return g_job_system.workers.size(); // last 'worker' is the main thread
-}
-
-size_t get_local_job_allocator_size()
-{
-    const auto worker_idx = get_local_job_worker_id();
-    return g_job_system.workers[worker_idx].job_allocator.allocated_size();
 }
 
 

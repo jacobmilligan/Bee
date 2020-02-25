@@ -10,8 +10,7 @@
 
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Jobs/JobTypes.hpp"
-
-#include <atomic>
+#include "Bee/Core/Atomic.hpp"
 
 
 namespace bee {
@@ -21,6 +20,7 @@ namespace bee {
     #define BEE_WORKER_MAX_COMPLETED_JOBS 4096
 #endif // BEE_WORKER_MAX_COMPLETED_JOBS
 
+using job_handle_t = uintptr_t;
 
 struct JobSystemInitInfo
 {
@@ -42,76 +42,98 @@ BEE_CORE_API void job_schedule_group(JobGroup* group, Job** dependencies, i32 de
 
 BEE_CORE_API bool job_wait(JobGroup* group);
 
-BEE_CORE_API Allocator* local_job_allocator();
-
-BEE_CORE_API Allocator* job_temp_allocator();
-
 BEE_CORE_API Job* get_local_executing_job();
 
 BEE_CORE_API i32 get_local_job_worker_id();
 
 BEE_CORE_API i32 get_job_worker_count();
 
-BEE_CORE_API size_t get_local_job_allocator_size();
+BEE_CORE_API Job* allocate_job();
 
-
-template <typename JobType, typename... ConstructorArgs>
-inline JobType* allocate_job(ConstructorArgs&&... args)
+BEE_FORCE_INLINE AtomicNode* cast_job_to_node(Job* job)
 {
-    auto job = BEE_NEW(local_job_allocator(), JobType)(std::forward<ConstructorArgs>(args)...);
-    BEE_ASSERT(job->parent() == nullptr);
-    return job;
+    return reinterpret_cast<AtomicNode*>(reinterpret_cast<u8*>(job) - sizeof(AtomicNode));
 }
 
-template <typename JobType, typename... ConstructorArgs>
-inline JobType* allocate_parallel_for(const i32 iteration_count, const i32 execute_batch_size, ConstructorArgs&&... args)
-{
-    static_assert(std::is_base_of<ParallelForJob, JobType>, "JobType must derive from ParallelForJob");
-
-    auto job = BEE_NEW(local_job_allocator(), JobType)(std::forward<ConstructorArgs>(args)...);
-
-    BEE_ASSERT(job->parent() == nullptr);
-
-    // use init rather than constructor to setup parallel for parameters to avoid user having to
-    // re-implement constructor
-    job->init(iteration_count, execute_batch_size);
-
-    return job;
-}
+//template <typename JobType, typename... ConstructorArgs>
+//inline JobType* allocate_job(ConstructorArgs&&... args)
+//{
+//    auto job = BEE_NEW(local_job_allocator(), JobType)(std::forward<ConstructorArgs>(args)...);
+//    BEE_ASSERT(job->parent() == nullptr);
+//    return job;
+//}
+//
+//template <typename JobType, typename... ConstructorArgs>
+//inline JobType* allocate_parallel_for(const i32 iteration_count, const i32 execute_batch_size, ConstructorArgs&&... args)
+//{
+//    static_assert(std::is_base_of<ParallelForJob, JobType>, "JobType must derive from ParallelForJob");
+//
+//    auto job = BEE_NEW(local_job_allocator(), JobType)(std::forward<ConstructorArgs>(args)...);
+//
+//    BEE_ASSERT(job->parent() == nullptr);
+//
+//    // use init rather than constructor to setup parallel for parameters to avoid user having to
+//    // re-implement constructor
+//    job->init(iteration_count, execute_batch_size);
+//
+//    return job;
+//}
+//
+//template <typename FunctionType, typename... Args>
+//inline Job* allocate_job(FunctionType&& function, Args&&... args)
+//{
+//    using job_t = CopyArgsJob<decltype(std::bind(function, args...))>;
+//    auto job = BEE_NEW(local_job_allocator(), job_t)(std::bind(function, args...));
+//    BEE_ASSERT(job->parent() == nullptr);
+//    return job;
+//}
 
 template <typename FunctionType, typename... Args>
-inline Job* allocate_job(FunctionType&& function, Args&&... args)
+Job* create_job(FunctionType&& fn, Args&&... args)
 {
-    using job_t = FunctionJob<decltype(std::bind(function, args...))>;
-    auto job = BEE_NEW(local_job_allocator(), job_t)(std::bind(function, args...));
-    BEE_ASSERT(job->parent() == nullptr);
+    auto job = allocate_job();
+    auto callable = [=]() { fn(args...); };
+    new (job) CallableJob<decltype(callable)>(callable);
     return job;
 }
 
 template <typename FunctionType>
-inline void __parallel_for_single_batch(const i32 range_begin, const i32 range_end, const FunctionType& function)
+Job* create_job(FunctionType&& fn)
 {
-    for (int i = range_begin; i < range_end; ++i)
-    {
-        function(i);
-    }
+    auto job = allocate_job();
+    auto callable = [=]() { fn(); };
+    new (job) CallableJob<decltype(callable)>(callable);
+    return job;
 }
 
 
 template <typename FunctionType>
-inline void parallel_for(JobGroup* group, const i32 iteration_count, const i32 execute_batch_size, const FunctionType& function)
+inline void parallel_for(JobGroup* group, const i32 iteration_count, const i32 execute_batch_size, FunctionType&& function)
 {
     const auto first_batch_size = math::min(iteration_count, execute_batch_size);
-    auto job = allocate_job(&__parallel_for_single_batch<FunctionType>, 0, first_batch_size, function);
+
+    auto first_job = create_job([&, end=first_batch_size]()
+    {
+        for (int i = 0; i < end; ++i)
+        {
+            function(i);
+        }
+    });
 
     for (int batch = first_batch_size; batch < iteration_count; batch += execute_batch_size)
     {
-        const auto batch_end = math::min(iteration_count, batch + execute_batch_size);
-        auto loop_job = allocate_job(&__parallel_for_single_batch<FunctionType>, batch, batch_end, function);
-        job_schedule(group, loop_job);
+        auto batch_job = create_job([&, begin=batch, end=math::min(iteration_count, batch + execute_batch_size)]()
+        {
+            for (int i = begin; i < end; ++i)
+            {
+                function(i);
+            }
+        });
+
+        job_schedule(group, batch_job);
     }
 
-    job_schedule(group, job);
+    job_schedule(group, first_job);
 }
 
 
