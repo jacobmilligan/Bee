@@ -30,6 +30,14 @@ const char* ReflectionAllocator::allocate_name(const llvm::StringRef& src)
         return empty_string;
     }
 
+    allocations_.emplace_back();
+    allocations_.back().allocator = &name_allocator_;
+    allocations_.back().data = data;
+    allocations_.back().destructor = [](Allocator* allocator, void* data)
+    {
+        BEE_FREE(allocator, data);
+    };
+
     memcpy(data, src.data(), src.size());
     data[src.size()] = '\0';
     return data;

@@ -11,6 +11,7 @@
 #include "Bee/Core/Reflection.hpp"
 #include "Bee/Core/Path.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
+#include "Bee/Core/Memory/SmartPointers.hpp"
 
 #include <llvm/ADT/StringRef.h>
 #include <clang/AST/DeclBase.h>
@@ -166,13 +167,38 @@ public:
     template <typename T, typename... Args>
     T* allocate_storage(Args&&... args)
     {
-        return BEE_NEW(type_allocator_, T)(std::forward<Args>(args)...);
+        auto ptr = BEE_NEW(type_allocator_, T)(std::forward<Args>(args)...);
+
+        allocations_.emplace_back();
+
+        auto& alloc = allocations_.back();
+        alloc.allocator = &type_allocator_;
+        alloc.data = ptr;
+        alloc.destructor = [](Allocator* allocator, void* data)
+        {
+            BEE_DELETE(allocator, static_cast<T*>(data));
+        };
+
+        return ptr;
     }
 
     const char* allocate_name(const llvm::StringRef& src);
 private:
-    LinearAllocator         type_allocator_;
-    LinearAllocator         name_allocator_;
+    struct Allocation
+    {
+        Allocator* allocator { nullptr };
+        void (*destructor)(Allocator*, void*) { nullptr };
+        void* data { nullptr };
+
+        ~Allocation()
+        {
+            destructor(allocator, data);
+        }
+    };
+
+    LinearAllocator             type_allocator_;
+    LinearAllocator             name_allocator_;
+    DynamicArray<Allocation>    allocations_;
 };
 
 
