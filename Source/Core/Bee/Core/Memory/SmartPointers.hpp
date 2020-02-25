@@ -9,8 +9,7 @@
 
 #include "Bee/Core/Memory/Allocator.hpp"
 #include "Bee/Core/NumericTypes.hpp"
-
-#include <atomic>
+#include "Bee/Core/Atomic.hpp"
 
 
 namespace bee {

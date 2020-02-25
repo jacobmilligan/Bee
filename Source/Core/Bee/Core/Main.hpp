@@ -29,9 +29,6 @@ void preinit_main()
     current_thread::set_as_main();
     global_allocators_init();
     temp_allocator_register_thread();
-#if BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
-    memory_tracker::init_tracker(memory_tracker::TrackingMode::disabled);
-#endif // BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
     /*
      * Register logger before handlers so we can print something if anything goes wrong with their initialization.
      * If the logger fails to init and causes an exception well that's just too bad
@@ -42,17 +39,22 @@ void preinit_main()
 #ifdef BEE_ENABLE_REFLECTION
     reflection_init();
 #endif // BEE_ENABLE_REFLECTION
+
+#if BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
+    memory_tracker::init_tracker(memory_tracker::TrackingMode::disabled);
+#endif // BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
 }
 
 // called by all main functions after running bee_main. Essentially does `preinit_main` in reverse order
 void post_main()
 {
-    reflection_destroy();
-    disable_exception_handling();
-    logger_shutdown();
 #if BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
     memory_tracker::destroy_tracker();
 #endif // BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
+
+    reflection_destroy();
+    disable_exception_handling();
+    logger_shutdown();
     temp_allocator_unregister_thread();
     global_allocators_shutdown();
 }

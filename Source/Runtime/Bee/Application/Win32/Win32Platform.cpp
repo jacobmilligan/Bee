@@ -40,7 +40,7 @@ struct Win32Monitor
 struct Win32Window
 {
     HWND            hwnd { nullptr };
-    Thread::id_t    owning_thread { 0 };
+    thread_id_t     owning_thread { 0 };
     bool            is_close_requested { false };
 
     ~Win32Window()

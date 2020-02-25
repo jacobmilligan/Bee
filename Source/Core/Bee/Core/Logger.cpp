@@ -184,6 +184,7 @@ void logger_init()
     if (!recursion_check)
     {
         recursion_check = true;
+        new (&g_log) LogSystem{};
         log_register_callback(default_logger_callback);
         recursion_check = false;
     }

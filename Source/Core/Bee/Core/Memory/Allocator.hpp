@@ -217,12 +217,13 @@ BEE_CORE_API Allocator* system_allocator() noexcept;
  *
  * # Global temporary allocator
  *
- * A simple stack allocator whose offset is reset at the most convenient point for the
+ * A thread-safe linear allocator whose offset is reset at the most convenient point for the
  * application (usually at the beginning of a new frame). Allocations made with this
- * allocator are not guaranteed to last for more than a single frame but **may** remain
- * for 1-3 frames depending on the implementation. In general this should only be used
- * for allocations that will last less than the current frame to guarantee no memory
- * corruption occurs
+ * allocator will remain for up to BEE_CONFIG_TEMP_ALLOCATOR_FRAME_COUNT frames before
+ * being reset and becoming invalid. This makes the temp allocator good for use
+ * for allocations that only last one or a few frames. It can be used for temporary
+ * allocations made in short jobs - the allocator is thread-safe and implemented using
+ * lock-free algorithms so it's use in multithreaded contexts is completely safe
  *
  ****************************************************************************************
  */

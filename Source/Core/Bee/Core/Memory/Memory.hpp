@@ -45,7 +45,7 @@ inline bool is_aligned(const void* ptr, const size_t alignment) noexcept
     return (reinterpret_cast<uintptr_t>(ptr) & (alignment - 1)) == 0;
 }
 
-BEE_FORCE_INLINE size_t round_up(const size_t value, const size_t pow2_byte_boundary)
+constexpr size_t round_up(const size_t value, const size_t pow2_byte_boundary)
 {
     return (value + pow2_byte_boundary - 1) & ~(pow2_byte_boundary - 1);
 }

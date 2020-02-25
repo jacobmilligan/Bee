@@ -18,8 +18,15 @@
     #include <pthread.h>
 #endif // BEE_OS_*
 
+#ifdef BEE_ENABLE_RELACY
+    #include <relacy/context.hpp>
+#endif // BEE_ENABLE_RELACY
+
 
 namespace bee {
+
+
+using thread_id_t = u64;
 
 
 enum class ThreadPriority
@@ -47,7 +54,11 @@ namespace current_thread {
 
 BEE_CORE_API void sleep(u64 ticks_to_sleep);
 
-BEE_CORE_API u64 id();
+#ifndef BEE_ENABLE_RELACY
+    BEE_CORE_API thread_id_t id();
+#else
+    BEE_FORCE_INLINE thread_id_t id() { return static_cast<thread_id_t>(rl::thread_index()); }
+#endif // BEE_ENABLE_RELACY
 
 BEE_CORE_API void set_affinity(i32 cpu);
 
@@ -63,7 +74,7 @@ BEE_CORE_API bool is_main();
 } // namespace current_thread
 
 
-#define BEE_ASSERT_MAIN_THREAD() BEE_ASSERT(::bee::current_thread::is_main())
+    #define BEE_ASSERT_MAIN_THREAD() BEE_ASSERT(::bee::current_thread::is_main())
 
 
 /*
@@ -89,13 +100,12 @@ public:
     static constexpr i32 affinity_none = 0;
 
     using native_thread_t =
-#if BEE_OS_UNIX == 1
+    #if BEE_OS_UNIX == 1
     pthread_t;
-#elif BEE_OS_WINDOWS == 1
+    #elif BEE_OS_WINDOWS == 1
     void*;
-#endif // BEE_OS_*
+    #endif // BEE_OS_*
 
-    using id_t          = u64;
     using user_data_t   = void*;
     using function_t    = void(*)(user_data_t user_data);
 
@@ -147,7 +157,7 @@ public:
 
     void set_priority(ThreadPriority priority);
 
-    id_t id() const;
+    thread_id_t id() const;
 
     inline bool joinable() const
     {
@@ -155,11 +165,11 @@ public:
     }
 private:
 
-#if BEE_OS_UNIX == 1
+    #if BEE_OS_UNIX == 1
     using execute_cb_return_t = void*;
-#elif BEE_OS_WINDOWS == 1
+    #elif BEE_OS_WINDOWS == 1
     using execute_cb_return_t = unsigned long;
-#endif // BEE_OS_*
+    #endif // BEE_OS_*
 
     struct ExecuteParams
     {

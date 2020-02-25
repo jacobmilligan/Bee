@@ -46,7 +46,7 @@ uint64_t id()
 
 void sleep(const uint64_t ticks_to_sleep)
 {
-    const auto milliseconds = ticks_to_sleep / TimePoint::ticks_per_millisecond;
+    const auto milliseconds = ticks_to_sleep / time::ticks_per_millisecond();
     const auto start_time = time::now();
 
     // According to MSDN, a millisecond value of 0 will cause the current thread to relinquish the rest of
@@ -124,7 +124,7 @@ void Thread::set_priority(const ThreadPriority priority)
     BEE_ASSERT_F(success != 0, "Failed to set thread priority: %s", win32_get_last_error_string());
 }
 
-Thread::id_t Thread::id() const
+thread_id_t Thread::id() const
 {
     BEE_ASSERT(native_thread_ != nullptr);
     const auto id = GetThreadId(native_thread_);
@@ -151,6 +151,8 @@ void Thread::create_native_thread(ExecuteParams* params) noexcept
     set_native_thread_name(native_thread_, name_);
 }
 
+#pragma optimize("", off)
+
 Thread::execute_cb_return_t Thread::execute_cb(void* params)
 {
     static constexpr auto access_violation_code = (DWORD)0xC0000005L;
@@ -160,30 +162,31 @@ Thread::execute_cb_return_t Thread::execute_cb(void* params)
         return access_violation_code;
     }
 
-    Thread::ExecuteParams* data = static_cast<Thread::ExecuteParams*>(params);
+    auto data = static_cast<Thread::ExecuteParams*>(params);
     if (BEE_FAIL_F(data->invoker != nullptr, "Invalid thread function given"))
     {
         return access_violation_code;
     }
 
     // register with temp allocator if needed
-    if (data->register_with_temp_allocator)
+    const auto register_with_temp_allocator = data->register_with_temp_allocator;
+    if (register_with_temp_allocator)
     {
         temp_allocator_register_thread();
     }
 
     // run the threads function
     data->invoker(data->function, data->arg);
+    data->destructor(data->function, data->arg);
 
-    if (data->register_with_temp_allocator)
+    if (register_with_temp_allocator)
     {
         temp_allocator_unregister_thread();
     }
-
-    data->destructor(data->function, data->arg);
-
     return 0;
 }
+
+#pragma optimize("", on)
 
 
 }

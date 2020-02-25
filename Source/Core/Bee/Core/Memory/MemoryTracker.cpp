@@ -23,8 +23,8 @@ struct Proxy
     TrackingMode                            tracking_mode { TrackingMode::cannot_track };
     RecursiveSpinLock                       mutex;
     DynamicHashMap<void*, AllocationEvent>  allocations;
-    isize                                   total_allocations { 0 };
-    isize                                   peak_allocations { 0 };
+    size_t                                  total_allocations { 0 };
+    size_t                                  peak_allocations { 0 };
 
     Proxy() = default;
 
@@ -99,8 +99,8 @@ void record_manual_allocation_nolock(void* address, const size_t size, const siz
         event.alignment = alignment;
         capture_stack_trace(&event.stack_trace, Proxy::stack_frame_count, skipped_stack_frames + 1);
 
-        BEE_ASSERT_F(g_proxy.total_allocations + sign_cast<isize>(size) < limits::max<isize>(), "Detected too many allocations");
-        g_proxy.total_allocations += sign_cast<isize>(size);
+        BEE_ASSERT_F(g_proxy.total_allocations + size < limits::max<size_t>(), "Detected too many allocations");
+        g_proxy.total_allocations += size;
     }
     g_proxy.tracking_mode = TrackingMode::enabled;
 }
@@ -209,8 +209,8 @@ void log_tracked_allocations(const LogVerbosity verbosity)
     log_write(
         verbosity,
         "Logging tracked allocations made via bee::Allocator interfaces.\n"
-        "    Total allocated memory: %" PRIxPTR " bytes\n"
-                                                "    Peak allocated memory: %" PRIxPTR " bytes",
+        "    Total allocated memory: %zu bytes\n"
+        "    Peak allocated memory: %zu bytes",
         g_proxy.total_allocations,
         g_proxy.peak_allocations
     );

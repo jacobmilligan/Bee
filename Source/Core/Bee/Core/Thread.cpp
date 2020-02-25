@@ -53,6 +53,8 @@ void Thread::init(const ThreadCreateInfo& create_info, ExecuteParams* params)
     {
         str::copy(name_, max_name_length, "Bee.Thread");
     }
+
+    params->register_with_temp_allocator = create_info.use_temp_allocator;
     create_native_thread(params);
 }
 

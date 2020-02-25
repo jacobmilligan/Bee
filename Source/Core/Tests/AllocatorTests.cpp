@@ -200,14 +200,13 @@ TEST(AllocatorTests, pool_allocator)
 
 TEST(AllocatorTests, ThreadSafeLinearAllocator)
 {
-    constexpr auto max_threads = 8;
-    constexpr auto per_thread_array_size = 100;
-    constexpr auto allocator_capacity = (bee::ThreadSafeLinearAllocator::min_allocation + sizeof(int)) * per_thread_array_size; // add extra for header
+    constexpr auto thread_count = 8;
+    constexpr auto allocations_per_thread = 100;
 
-    std::thread threads[8];
-    bee::ThreadSafeLinearAllocator allocator(max_threads, allocator_capacity);
+    std::thread threads[thread_count];
+    bee::ThreadSafeLinearAllocator allocator(1024 * 32);
 
-    int* per_thread_allocations[8][per_thread_array_size];
+    int* allocations[thread_count][allocations_per_thread];
 
     int index = 0;
     std::atomic_int32_t count(0);
@@ -218,11 +217,9 @@ TEST(AllocatorTests, ThreadSafeLinearAllocator)
     {
         thread = std::thread([&, thread_index = index]()
         {
-            allocator.register_thread();
-
-            for (int i = 0; i < per_thread_array_size; ++i)
+            for (int i = 0; i < allocations_per_thread; ++i)
             {
-                per_thread_allocations[thread_index][i] = BEE_NEW(&allocator, int)(i);
+                allocations[thread_index][i] = BEE_NEW(&allocator, int)(i);
             }
 
             count.fetch_add(1);
@@ -230,26 +227,26 @@ TEST(AllocatorTests, ThreadSafeLinearAllocator)
 
             while (!flag.load()) {}
 
-            for (int i = 0; i < per_thread_array_size; ++i)
+            for (int i = 0; i < allocations_per_thread; ++i)
             {
-                BEE_FREE(&allocator, per_thread_allocations[thread_index][i]);
-                per_thread_allocations[thread_index][i] = nullptr;
+                BEE_FREE(&allocator, allocations[thread_index][i]);
+                allocations[thread_index][i] = nullptr;
             }
 
             barrier.wait();
-
-            allocator.unregister_thread();
         });
         ++index;
     }
 
     while (count.load() < bee::static_array_length(threads)) {};
 
-    ASSERT_EQ(allocator.allocated_size(), allocator.capacity_per_thread() * allocator.max_threads());
+    const auto single_alloc_size = bee::round_up((sizeof(size_t) + sizeof(int)), alignof(int));
 
-    for (auto per_thread : per_thread_allocations)
+    ASSERT_EQ(allocator.allocated_size(), single_alloc_size * allocations_per_thread * thread_count);
+
+    for (auto per_thread : allocations)
     {
-        for (int i = 0; i < per_thread_array_size; ++i)
+        for (int i = 0; i < allocations_per_thread; ++i)
         {
             ASSERT_EQ(i, *per_thread[i]);
         }
@@ -266,9 +263,9 @@ TEST(AllocatorTests, ThreadSafeLinearAllocator)
         }
     }
 
-    for (auto per_thread : per_thread_allocations)
+    for (auto per_thread : allocations)
     {
-        for (int i = 0; i < per_thread_array_size; ++i)
+        for (int i = 0; i < allocations_per_thread; ++i)
         {
             ASSERT_EQ(nullptr, per_thread[i]);
         }

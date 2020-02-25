@@ -8,8 +8,8 @@
 #pragma once
 
 #include "Bee/Core/Memory/Allocator.hpp"
-
-#include <atomic>
+#include "Bee/Core/Handle.hpp"
+#include "Bee/Core/Concurrency.hpp"
 
 namespace bee {
 
@@ -30,14 +30,13 @@ namespace bee {
 class BEE_CORE_API ThreadSafeLinearAllocator final : public Allocator
 {
 private:
-    struct AllocHeader
+    struct Header
     {
         size_t  size { 0 };
-        i32     thread { -1 };
         bool    is_overflow { false };
     };
 public:
-    static constexpr size_t min_allocation = sizeof(AllocHeader);
+    static constexpr size_t min_allocation = sizeof(Header);
 
     using Allocator::allocate;
 
@@ -45,9 +44,9 @@ public:
 
     ThreadSafeLinearAllocator() = default;
 
-    explicit ThreadSafeLinearAllocator(const i32 max_threads, const size_t capacity);
+    explicit ThreadSafeLinearAllocator(const size_t capacity);
 
-    ThreadSafeLinearAllocator(const i32 max_threads, const size_t capacity, Allocator* overflow_allocator);
+    ThreadSafeLinearAllocator(const size_t capacity, Allocator* overflow_allocator);
 
     ThreadSafeLinearAllocator(ThreadSafeLinearAllocator&& other) noexcept;
 
@@ -57,10 +56,6 @@ public:
     }
 
     ThreadSafeLinearAllocator& operator=(ThreadSafeLinearAllocator&& other) noexcept;
-
-    void register_thread();
-
-    void unregister_thread();
 
     void destroy();
 
@@ -74,18 +69,11 @@ public:
 
     void reset();
 
-    const u8* data() const;
-
     size_t offset() const;
 
-    inline size_t capacity_per_thread() const
+    inline size_t capacity() const
     {
         return capacity_;
-    }
-
-    inline i32 max_threads() const
-    {
-        return max_threads_;
     }
 
     inline size_t allocated_size() const
@@ -99,45 +87,29 @@ public:
     }
 
 private:
-    // Per-thread data
-    struct PerThread
-    {
-        u64                 thread_id { limits::max<u64>() };
-        i32*                index_ptr { nullptr };
-        std::atomic_size_t  offset { 0 };
-        u8*                 buffer { nullptr };
-
-        PerThread() = default;
-
-        explicit PerThread(const u64 new_thread_id, const size_t capacity, i32* local_index_ptr);
-
-        ~PerThread();
-
-        inline bool is_valid() const
-        {
-            return index_ptr != nullptr && buffer != nullptr && thread_id != limits::max<u64>();
-        }
-    };
-
-    i32                 max_threads_ { -1 };
     size_t              capacity_ { 0 };
-    Allocator*          overflow_ { nullptr };
     std::atomic_size_t  allocated_size_ { 0 };
-    std::atomic_int32_t next_thread_ { 0 };
-    PerThread*          per_thread_ { nullptr };
-    i32*                per_thread_next_ { nullptr };
+    std::atomic_size_t  offset_ { 0 };
+    u8*                 buffer_ { nullptr };
+
+    Allocator*          overflow_ { nullptr };
+    AtomicStack         overflow_stack_;
 
     void move_construct(ThreadSafeLinearAllocator& other) noexcept;
 
-    static inline AllocHeader* get_header(void* ptr)
+    static inline Header* get_header(void* ptr)
     {
-        return reinterpret_cast<AllocHeader*>(static_cast<u8*>(ptr) - sizeof(AllocHeader));
+        return reinterpret_cast<Header*>(static_cast<u8*>(ptr) - sizeof(Header));
     }
 
-    static inline const AllocHeader* get_header(const void* ptr)
+    static inline const Header* get_header(const void* ptr)
     {
-        return reinterpret_cast<const AllocHeader*>(static_cast<const u8*>(ptr) - sizeof(AllocHeader));
+        return reinterpret_cast<const Header*>(static_cast<const u8*>(ptr) - sizeof(Header));
     }
+
+    bool is_valid(const Header* header) const;
+
+    AtomicNode* allocate_overflow_node(const size_t size, const size_t alignment);
 };
 
 
