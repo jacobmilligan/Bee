@@ -10,7 +10,6 @@
 
 #define CPU_INFO_IMPLEMENTATION
 #include <cpu_info.h>
-#include <mutex>
 
 namespace bee {
 namespace concurrency {
@@ -55,7 +54,7 @@ void SpinLock::unlock()
     lock_.clear(std::memory_order_release);
 }
 
-RecursiveSpinLock::RecursiveSpinLock()
+RecursiveSpinLock::RecursiveSpinLock() noexcept
 {
     unlock_and_reset();
 }
@@ -67,7 +66,7 @@ RecursiveSpinLock::~RecursiveSpinLock()
 
 void RecursiveSpinLock::unlock_and_reset()
 {
-    owner_.store(limits::max<Thread::id_t>(), std::memory_order_release);
+    owner_.store(limits::max<thread_id_t>(), std::memory_order_release);
     lock_count_.store(0, std::memory_order_release);
     lock_.unlock();
 }
@@ -100,6 +99,7 @@ void RecursiveSpinLock::unlock()
         unlock_and_reset();
     }
 }
+
 
 
 } // namespace bee
