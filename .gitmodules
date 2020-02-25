@@ -25,3 +25,6 @@
 [submodule "ThirdParty/SPIRV-Reflect"]
 	path = ThirdParty/SPIRV-Reflect
 	url = https://github.com/chaoticbob/SPIRV-Reflect.git
+[submodule "ThirdParty/relacy"]
+	path = ThirdParty/relacy
+	url = https://github.com/dvyukov/relacy.git

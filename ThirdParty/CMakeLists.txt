@@ -37,14 +37,13 @@ bee_add_sources(SPIRV-Reflect/spirv_reflect.h SPIRV-Reflect/spirv_reflect.c)
 bee_add_include_dirs(SPIRV-Reflect)
 bee_library(SPIRV-Reflect)
 
-
-##############
-#
-# gtest
-#
-##############
-
 if (BUILD_TESTS)
+    ##############
+    #
+    # gtest
+    #
+    ##############
+
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
     # disable pthread on win32 for gtest because why would it even look for them?
@@ -58,6 +57,13 @@ if (BUILD_TESTS)
             EXCLUDE_FROM_ALL
     )
     bee_add_include_dirs("${gtest_SOURCE_DIR}/include")
+
+    ############################
+    #
+    # Relacy Race Detector
+    #
+    ############################
+    bee_add_include_dirs(${CMAKE_CURRENT_SOURCE_DIR}/relacy)
 endif ()
 
 ############################

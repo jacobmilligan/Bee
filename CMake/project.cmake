@@ -17,6 +17,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/compile_flags.cmake)
 
 if (BUILD_TESTS)
     include(GoogleTest)
+    enable_testing()
 endif ()
 
 set(BEE_CMAKE_ROOT ${CMAKE_CURRENT_LIST_DIR})
@@ -298,6 +299,38 @@ function(bee_test name)
         __bee_set_compile_options(${name})
 
         gtest_add_tests(TARGET ${name} ${ARGS_SOURCES})
+
+        bee_new_source_root()
+        bee_add_sources(${cached_sources})
+    endif ()
+endfunction()
+
+function(bee_relacy_test name)
+    if (BUILD_TESTS)
+        cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES;SOURCES" ${ARGN})
+
+        set(cached_sources ${__bee_sources})
+
+        bee_new_source_root()
+        bee_add_sources(${ARGS_SOURCES})
+        bee_exe(${name} LINK_LIBRARIES ${ARGS_LINK_LIBRARIES})
+        if (${BEE_COMPILER_IS_MSVC})
+            target_compile_options(
+                    ${name}
+                    PUBLIC
+                    /wd4456
+                    /wd4595
+                    /wd4311
+                    /wd4302
+                    /wd4312
+                    /wd4003
+            )
+        endif ()
+#        target_compile_definitions(${name} PRIVATE)
+
+        __bee_set_compile_options(${name})
+
+        add_test(${name} ${name})
 
         bee_new_source_root()
         bee_add_sources(${cached_sources})

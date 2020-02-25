@@ -1,7 +1,7 @@
 bee_new_source_root()
 
 bee_add_sources(
-        AtomicCounter.hpp
+        Atomic.hpp
         Bitset.hpp
         CLI.hpp             CLI.cpp
         Concurrency.hpp     Concurrency.cpp
