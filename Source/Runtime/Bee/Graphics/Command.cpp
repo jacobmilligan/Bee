@@ -335,6 +335,8 @@ void CommandBuffer::end()
 void CommandBatcher::compile_commands_job(CommandBatcher::CompileCommandsArgs* args)
 {
     auto& pool = args->batcher->per_worker_pools_[get_local_job_worker_id()];
+    ++pool.version;
+
     auto command_buffer = pool.obtain(args->queue, args->fence);
 
     gpu_begin_command_buffer(command_buffer);
@@ -463,16 +465,7 @@ CommandBatcher::LocalCommandPool::~LocalCommandPool()
 // FIXME(Jacob): this leaks a command buffer about once every 10 or so frames
 GpuCommandBuffer* CommandBatcher::LocalCommandPool::obtain(const QueueType required_queue_type, const FenceHandle& fence)
 {
-    const auto frame_index = gpu_get_current_frame(device);
-
-    if (frame_index != last_frame)
-    {
-        ++version;
-    }
-
-    last_frame = frame_index;
-
-    auto& frame = command_buffers[frame_index];
+    auto& frame = command_buffers[gpu_get_current_frame(device)];
 
     for (auto& cmd : frame)
     {

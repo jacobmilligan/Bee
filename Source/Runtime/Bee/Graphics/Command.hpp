@@ -262,7 +262,6 @@ private:
 
     struct LocalCommandPool
     {
-        i32                                 last_frame { -1 };
         u32                                 version { 0 };
         DeviceHandle                        device;
         CommandPoolHandle                   handle;
