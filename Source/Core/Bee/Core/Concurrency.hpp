@@ -99,7 +99,7 @@ private:
 class BEE_CORE_API ReaderWriterMutex
 {
 public:
-    ReaderWriterMutex();
+    ReaderWriterMutex() noexcept;
 
     void lock_read();
 
@@ -232,6 +232,46 @@ struct AtomicNode
         return *this;
     }
 };
+
+
+template <typename T>
+struct AtomicNodePtr
+{
+    AtomicNode* node { nullptr };
+    T*          data { nullptr };
+};
+
+
+AtomicNode* make_atomic_node(Allocator* allocator, const size_t data_size)
+{
+    auto ptr = static_cast<u8*>(BEE_MALLOC_ALIGNED(allocator, sizeof(AtomicNode) + data_size, 64));
+    auto node = reinterpret_cast<AtomicNode*>(ptr);
+
+    new (node) AtomicNode{};
+
+    node->data[0] = ptr + sizeof(AtomicNode);
+
+    return node;
+}
+
+
+template <typename T, typename... Args>
+AtomicNodePtr<T> make_atomic_node(Allocator* allocator, Args&&... args)
+{
+    auto ptr = static_cast<u8*>(BEE_MALLOC_ALIGNED(allocator, sizeof(AtomicNode) + sizeof(T), 64));
+    auto node = reinterpret_cast<AtomicNode*>(ptr);
+    auto data = reinterpret_cast<T*>(ptr + sizeof(AtomicNode));
+
+    new (node) AtomicNode{};
+    new (data) T(std::forward<Args>(args)...);
+
+    node->data[0] = data;
+
+    AtomicNodePtr<T> wrapper{};
+    wrapper.node = node;
+    wrapper.data = data;
+    return wrapper;
+}
 
 /*
  ****************************************

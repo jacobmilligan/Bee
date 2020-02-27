@@ -8,13 +8,14 @@
 #pragma once
 
 #include "Bee/Core/Reflection.hpp"
-#include "Bee/Core/Jobs/JobSystem.hpp"
 #include "Bee/Core/Path.hpp"
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/GUID.hpp"
 #include "Bee/Core/Serialization/BinarySerializer.hpp"
-
+#include "Bee/Core/Concurrency.hpp"
+#include "Bee/Core/Memory/SmartPointers.hpp"
 #include "Bee/AssetPipeline/AssetPlatform.hpp"
+#include "Bee/Core/Handle.hpp"
 
 
 namespace bee {
@@ -96,39 +97,79 @@ struct AssetCompiler
 {
     virtual ~AssetCompiler() = default;
 
-    virtual AssetCompilerStatus compile(AssetCompilerContext* ctx) = 0;
+    virtual AssetCompilerStatus compile(const i32 thread_index, AssetCompilerContext* ctx) = 0;
 };
 
-void register_asset_compiler(const AssetCompilerKind kind, const Type* type, AssetCompiler*(*allocate_function)());
 
-void unregister_asset_compiler(const Type* type);
+BEE_RAW_HANDLE_I32(AssetCompilerId);
 
-template <typename T>
-inline void register_asset_compiler(const AssetCompilerKind kind)
+
+class BEE_DEVELOP_API AssetCompilerPipeline
 {
-    register_asset_compiler(kind, get_type<T>(), []() -> AssetCompiler*
+public:
+    template <typename T, typename... ConstructorArgs>
+    inline void register_compiler(const AssetCompilerKind kind, ConstructorArgs&&... args)
     {
-        return BEE_NEW(system_allocator(), T)();
-    });
-}
+        scoped_rw_read_lock_t lock(lock_);
 
-template <typename T>
-inline void unregister_asset_compiler()
-{
-    unregister_asset_compiler(get_type<T>());
-}
+        auto type = get_type<T>();
 
-Span<const i32> get_asset_compiler_ids(const StringView& path);
+        // Validate unique compiler
+        if (BEE_FAIL_F(find_compiler(type->hash) < 0, "%s is already a registered asset compiler", type->name))
+        {
+            return;
+        }
 
-Span<const u32> get_asset_compiler_hashes(const StringView& path);
+        auto compiler = make_unique<T>(system_allocator(), std::forward<Args>(args)...);
+        register_compiler(std::move(compiler));
+    }
 
-AssetCompiler* get_default_asset_compiler(const StringView& path);
+    template <typename T>
+    inline void unregister_compiler()
+    {
+        unregister_compiler(get_type<T>());
+    }
 
-AssetCompiler* get_asset_compiler(const i32 id);
+    Span<const AssetCompilerId> get_compiler_ids(const StringView& path);
 
-AssetCompiler* get_asset_compiler(const u32 hash);
+    Span<const u32> get_compiler_hashes(const StringView& path);
 
-const Type* get_asset_compiler_options_type(const u32 compiler_hash);
+    AssetCompiler* get_default_compiler(const StringView& path);
+
+    AssetCompiler* get_compiler(const AssetCompilerId& id);
+
+    AssetCompiler* get_compiler(const u32 hash);
+
+    const Type* get_options_type(const AssetCompilerId& id);
+
+    const Type* get_options_type(const u32 hash);
+
+private:
+    struct CompilerInfo
+    {
+        const Type*                 type { nullptr };
+        const Type*                 options_type { nullptr };
+        UniquePtr<AssetCompiler>    compiler { nullptr };
+        DynamicArray<u32>           extensions;
+    };
+
+    struct FileTypeMapping
+    {
+        StaticString<32>                extension;
+        DynamicArray<AssetCompilerId>   compiler_ids;
+        DynamicArray<u32>               compiler_hashes;
+    };
+
+    ReaderWriterMutex                       mutex_;
+    DynamicArray<CompilerInfo>              compilers_;
+    DynamicHashMap<u32, FileTypeMapping>    filetype_map_;
+
+    void register_compiler(const AssetCompilerKind kind, const Type* type, UniquePtr<AssetCompiler>&& compiler);
+
+    void unregister_compiler(const Type* type);
+
+    AssetCompilerId find_compiler(const u32 hash);
+};
 
 
 } // namespace bee

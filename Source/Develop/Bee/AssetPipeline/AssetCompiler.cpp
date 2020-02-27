@@ -21,25 +21,6 @@ BEE_TRANSLATION_TABLE(asset_compiler_status_to_string, AssetCompilerStatus, cons
 )
 
 
-struct AssetCompilerInfo
-{
-    const Type*                     type { nullptr };
-    const Type*                     options_type { nullptr };
-    DynamicArray<u32>               extensions;
-    DynamicArray<AssetCompiler*>    per_thread;
-};
-
-struct AssetFileType
-{
-    String                extension;
-    DynamicArray<i32>     compiler_ids;
-    DynamicArray<u32>     compiler_hashes;
-};
-
-static DynamicArray<AssetCompilerInfo>      g_compilers;
-static DynamicHashMap<u32, AssetFileType>   g_filetype_map;
-
-
 AssetCompilerContext::AssetCompilerContext(const AssetPlatform platform, const StringView& location, const TypeInstance& options, Allocator* allocator)
     : platform_(platform),
       location_(location),
@@ -67,34 +48,27 @@ u32 get_extension_hash(const StringView& ext)
     return ext[0] == '.' ? get_hash(StringView(ext.data() + 1, ext.size() - 1)) : get_hash(ext);
 }
 
-i32 find_compiler(const u32 hash)
+AssetCompilerId AssetCompilerPipeline::find_compiler(const u32 hash)
 {
-    return container_index_of(g_compilers, [&](const AssetCompilerInfo& info)
+    const auto index = container_index_of(compilers_, [&](const CompilerInfo& info)
     {
         return info.type->hash == hash;
     });
+
+    return AssetCompilerId(index);
 }
 
-void register_asset_compiler(const AssetCompilerKind kind, const Type* type, AssetCompiler*(*allocate_function)())
+void AssetCompilerPipeline::register_compiler(const AssetCompilerKind kind, const Type* type, UniquePtr<AssetCompiler>&& compiler)
 {
-    if (BEE_FAIL_F(current_thread::is_main(), "Asset compilers must be registered on the main thread"))
-    {
-        return;
-    }
+    scoped_rw_write_lock_t lock(mutex_);
 
-    // Validate unique compiler
-    if (BEE_FAIL_F(find_compiler(type->hash) < 0, "%s is already a registered asset compiler", type->name))
-    {
-        return;
-    }
+    compilers_.emplace_back();
 
-    g_compilers.emplace_back();
-
-    auto& info = g_compilers.back();
+    auto& info = compilers_.back();
     info.type = type;
     info.options_type = get_type<UnknownType>();
 
-    const auto compiler_id = g_compilers.size() - 1;
+    const AssetCompilerId compiler_id(compilers_.size() - 1);
 
     // Validate that no compilers have been registered with the supported extensions
     for (const Attribute& attr : type->as<RecordType>()->attributes)
@@ -124,13 +98,12 @@ void register_asset_compiler(const AssetCompilerKind kind, const Type* type, Ass
             continue;
         }
 
-        auto filetype_mapping = g_filetype_map.find(ext_hash);
+        auto filetype_mapping = filetype_map_.find(ext_hash);
         if (filetype_mapping == nullptr)
         {
-            filetype_mapping = g_filetype_map.insert(ext_hash, AssetFileType());
+            filetype_mapping = filetype_map_.insert(ext_hash, FileTypeMapping());
             filetype_mapping->value.extension = ext;
         }
-
 
         if (kind == AssetCompilerKind::default_compiler)
         {
@@ -146,35 +119,29 @@ void register_asset_compiler(const AssetCompilerKind kind, const Type* type, Ass
 
         info.extensions.push_back(ext_hash);
     }
-
-    // One pool allocator for options per thread - we'll lock
-    for (int i = 0; i < get_job_worker_count(); ++i)
-    {
-        info.per_thread.push_back(allocate_function());
-    }
 }
 
-void unregister_asset_compiler(const Type* type)
+void AssetCompilerPipeline::unregister_compiler(const Type* type)
 {
     if (BEE_FAIL_F(current_thread::is_main(), "Asset compilers must be unregistered on the main thread"))
     {
         return;
     }
 
-    auto compiler_index = find_compiler(type->hash);
-    if (BEE_FAIL_F(compiler_index >= 0, "Cannot unregister asset compiler: no compiler registered with name \"%s\"", type->name))
+    auto id = find_compiler(type->hash);
+    if (BEE_FAIL_F(id.is_valid(), "Cannot unregister asset compiler: no compiler registered with name \"%s\"", type->name))
     {
         return;
     }
 
-    for (const auto hash : g_compilers[compiler_index].extensions)
+    for (const auto hash : compilers_[id.id].extensions)
     {
-        auto extension_mapping = g_filetype_map.find(hash);
+        auto extension_mapping = filetype_map_.find(hash);
         if (extension_mapping != nullptr)
         {
-            const auto compiler_mapping_idx = container_index_of(extension_mapping->value.compiler_ids, [&](const i32 index)
+            const auto compiler_mapping_idx = container_index_of(extension_mapping->value.compiler_ids, [&](const AssetCompilerId index)
             {
-                return index == compiler_index;
+                return index == id;
             });
 
             if (compiler_mapping_idx >= 0)
@@ -184,31 +151,31 @@ void unregister_asset_compiler(const Type* type)
 
                 if (extension_mapping->value.compiler_ids.empty())
                 {
-                    g_filetype_map.erase(hash);
+                    filetype_map_.erase(hash);
                 }
             }
         }
     }
 
-    g_compilers.erase(compiler_index);
+    compilers_.erase(id.id);
 }
 
-Span<const i32> get_asset_compiler_ids(const StringView& path)
+Span<const AssetCompilerId> AssetCompilerPipeline::get_compiler_ids(const StringView& path)
 {
     const auto ext_hash = get_extension_hash(path_get_extension(path));
-    const auto file_type_mapping = g_filetype_map.find(ext_hash);
+    const auto file_type_mapping = filetype_map_.find(ext_hash);
     if (file_type_mapping == nullptr)
     {
-        return Span<const i32>{};
+        return Span<const AssetCompilerId>{};
     }
 
     return file_type_mapping->value.compiler_ids.const_span();
 }
 
-Span<const u32> get_asset_compiler_hashes(const StringView& path)
+Span<const u32> AssetCompilerPipeline::get_compiler_hashes(const StringView& path)
 {
     const auto ext_hash = get_extension_hash(path_get_extension(path));
-    const auto file_type_mapping = g_filetype_map.find(ext_hash);
+    const auto file_type_mapping = filetype_map_.find(ext_hash);
     if (file_type_mapping == nullptr)
     {
         return Span<const u32>{};
@@ -217,35 +184,43 @@ Span<const u32> get_asset_compiler_hashes(const StringView& path)
     return file_type_mapping->value.compiler_hashes.const_span();
 }
 
-AssetCompiler* get_default_asset_compiler(const StringView& path)
+AssetCompiler* AssetCompilerPipeline::get_default_compiler(const StringView& path)
 {
-    const auto compiler_ids = get_asset_compiler_ids(path);
-    return compiler_ids.empty() ? nullptr : g_compilers[compiler_ids[0]].per_thread[get_local_job_worker_id()];
+    const auto compiler_ids = get_compiler_ids(path);
+    return compiler_ids.empty() ? nullptr : compilers_[compiler_ids[0].id].compiler.get();
 }
 
-AssetCompiler* get_asset_compiler(const i32 id)
+AssetCompiler* AssetCompilerPipeline::get_compiler(const AssetCompilerId& id)
 {
-    if (id < 0 || id >= g_compilers.size())
+    if (id.is_valid() || id.id >= compilers_.size())
     {
         return nullptr;
     }
 
-    return g_compilers[id].per_thread[get_local_job_worker_id()];
+    return compilers_[id.id].compiler.get();
 }
 
-AssetCompiler* get_asset_compiler(const u32 hash)
+AssetCompiler* AssetCompilerPipeline::get_compiler(const u32 hash)
 {
-    const auto compiler_index = find_compiler(hash);
-    return compiler_index < 0 ? nullptr : g_compilers[compiler_index].per_thread[get_local_job_worker_id()];
+    const auto id = find_compiler(hash);
+    return !id.is_valid() ? nullptr : compilers_[id.id].compiler.get();
 }
 
-const Type* get_asset_compiler_options_type(const u32 compiler_hash)
+const Type* AssetCompilerPipeline::get_options_type(const AssetCompilerId& id)
 {
-    const auto compiler = find_compiler(compiler_hash);
-    return compiler >= 0 ? g_compilers[compiler].options_type : get_type<UnknownType>();
+    if (id.is_valid() || id.id >= compilers_.size())
+    {
+        return get_type<UnknownType>();
+    }
+
+    return compilers_[id.id].options_type;
 }
 
-
+const Type* AssetCompilerPipeline::get_options_type(const u32 hash)
+{
+    const auto id = find_compiler(hash);
+    return !id.is_valid() ? get_type<UnknownType>() : compilers_[id.id].options_type;
+}
 
 
 } // namespace bee

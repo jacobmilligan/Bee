@@ -11,7 +11,7 @@
 namespace bee {
 
 
-JobGroup::JobGroup(Allocator* allocator)
+JobGroup::JobGroup(Allocator* allocator) noexcept
     : parents_(allocator)
 {}
 

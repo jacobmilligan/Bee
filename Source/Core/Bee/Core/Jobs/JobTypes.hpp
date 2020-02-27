@@ -24,7 +24,7 @@ class Job;
 class BEE_CORE_API JobGroup
 {
 public:
-    explicit JobGroup(Allocator* allocator = system_allocator());
+    explicit JobGroup(Allocator* allocator = system_allocator()) noexcept;
 
     ~JobGroup();
 
@@ -80,7 +80,7 @@ protected:
 template <typename FunctionType>
 struct CallableJob final : public Job
 {
-    static_assert(sizeof(FunctionType) <= data_size_, "CallableJob: too big to fit in buffer");
+    static_assert(sizeof(FunctionType) <= data_size_, "CallableJob: the jobs arguments are too big to fit in its storage");
 
     explicit CallableJob(const FunctionType& function)
     {

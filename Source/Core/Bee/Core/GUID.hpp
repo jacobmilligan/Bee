@@ -51,7 +51,7 @@ i32 guid_format_length(const GUIDFormat format);
  *
  ************************************************************************************************************
  */
-struct BEE_REFLECT(serializable, use_builder) GUID
+struct BEE_REFLECT(serializable, use_builder) GUID // NOLINT
 {
     static constexpr size_t sizeof_data = 16 * sizeof(u8);
 

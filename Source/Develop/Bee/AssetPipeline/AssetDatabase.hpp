@@ -18,6 +18,9 @@ struct MDB_txn;
 namespace bee {
 
 
+BEE_RAW_HANDLE_I32(AssetDBHandle);
+
+
 struct BEE_REFLECT(serializable, version = 1) AssetMeta
 {
     BEE_REFLECT(id = 1, added = 1)
@@ -27,13 +30,13 @@ struct BEE_REFLECT(serializable, version = 1) AssetMeta
     u128                    content_hash;
 
     BEE_REFLECT(id = 3, added = 1)
-    StaticString<512>       source;
+    u32                     compiler { 0 };
 
     BEE_REFLECT(id = 4, added = 1)
-    StaticString<512>       name;
+    StaticString<128>       name;
 
     BEE_REFLECT(id = 5, added = 1)
-    u32                     compiler { 0 };
+    StaticString<512>       source;
 
     BEE_REFLECT(id = 6, nonserialized)
     StaticString<512>       location;
@@ -244,7 +247,7 @@ private:
 
 
 
-BEE_DEVELOP_API void assetdb_open(const Path& root);
+BEE_DEVELOP_API void assetdb_open(const Path& root, AssetCompilerPipeline* compiler_pipeline);
 
 BEE_DEVELOP_API void assetdb_close();
 

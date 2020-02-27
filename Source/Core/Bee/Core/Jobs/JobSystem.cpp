@@ -106,9 +106,7 @@ Job* allocate_job()
     auto node = g_job_system.free_jobs.pop();
     if (node == nullptr)
     {
-        node = static_cast<AtomicNode*>(BEE_MALLOC_ALIGNED(system_allocator(), sizeof(AtomicNode) + sizeof(Job), 64));
-        new (node) AtomicNode{};
-        node->data[0] = reinterpret_cast<u8*>(node) + sizeof(AtomicNode);
+        node = make_atomic_node(system_allocator(), sizeof(Job));
         g_job_system.allocated_jobs.push(node);
     }
     return static_cast<Job*>(node->data[0]);

@@ -43,7 +43,7 @@ enum class AssetLocationType
 BEE_VERSIONED_HANDLE_32(AssetHandle);
 
 
-struct AssetInfo
+struct AssetInfo // NOLINT
 {
     GUID        guid;
     const Type* type { nullptr };
@@ -153,8 +153,7 @@ private:
 struct BEE_RUNTIME_API AssetLoader
 {
     virtual ~AssetLoader() = default;
-    virtual AssetHandle allocate(const Type* type) = 0;
-    virtual AssetData get(const Type* type, const AssetHandle& handle) = 0;
+    virtual void* allocate(const Type* type) = 0;
     virtual AssetStatus load(AssetData* dst_data, io::Stream* src_stream) = 0;
     virtual AssetStatus unload(AssetData* data, const AssetUnloadType unload_type) = 0;
 };

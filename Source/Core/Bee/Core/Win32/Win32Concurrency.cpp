@@ -14,21 +14,21 @@ namespace bee {
 Semaphore::Semaphore(const i32 initial_count, const i32 max_count)
     : sem_(nullptr)
 {
-    sem_ = CreateSemaphore(NULL, static_cast<LONG>(initial_count), static_cast<LONG>(max_count), NULL);
+    sem_ = CreateSemaphore(nullptr, static_cast<LONG>(initial_count), static_cast<LONG>(max_count), nullptr);
 }
 
 Semaphore::Semaphore(const i32 initial_count, const i32 max_count, const char* name)
     : sem_(nullptr)
 {
-    sem_ = CreateSemaphore(NULL, static_cast<LONG>(initial_count), static_cast<LONG>(max_count), name);
+    sem_ = CreateSemaphore(nullptr, static_cast<LONG>(initial_count), static_cast<LONG>(max_count), name);
 }
 
 Semaphore::~Semaphore()
 {
-    if (sem_ != NULL)
+    if (sem_ != nullptr)
     {
         ::CloseHandle(sem_);
-        sem_ = NULL;
+        sem_ = nullptr;
     }
 }
 
@@ -44,12 +44,12 @@ void Semaphore::acquire()
 
 void Semaphore::release()
 {
-    ::ReleaseSemaphore(sem_, 1, NULL);
+    ::ReleaseSemaphore(sem_, 1, nullptr);
 }
 
 void Semaphore::release(const i32 count)
 {
-    ::ReleaseSemaphore(sem_, static_cast<LONG>(count), NULL);
+    ::ReleaseSemaphore(sem_, static_cast<LONG>(count), nullptr);
 }
 
 
@@ -57,7 +57,7 @@ Barrier::Barrier(const i32 thread_count)
     : Barrier(thread_count, -1)
 {}
 
-Barrier::Barrier(const i32 thread_count, const i32 spin_count)
+Barrier::Barrier(const i32 thread_count, const i32 spin_count) // NOLINT
 {
     const auto success = ::InitializeSynchronizationBarrier(&barrier_, static_cast<LONG>(thread_count), static_cast<LONG>(spin_count));
 }
@@ -73,7 +73,7 @@ void Barrier::wait()
 }
 
 
-ReaderWriterMutex::ReaderWriterMutex() // NOLINT
+ReaderWriterMutex::ReaderWriterMutex() noexcept // NOLINT
 {
     ::InitializeSRWLock(&mutex_);
 }

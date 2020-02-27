@@ -28,17 +28,28 @@ struct AssetLocatorInfo
     u32                     name_hash { 0 };
 };
 
+
+struct AssetCacheEntry
+{
+    AssetInfo   info;
+    void*       asset_ptr { nullptr };
+};
+
+
 struct AssetCache
 {
-    ResourcePool<AssetHandle, AssetInfo>    data { sizeof(AssetInfo) * 64 };
-    DynamicHashMap<GUID, AssetHandle>       lookup;
+    ReaderWriterMutex                           mutex;
+    ResourcePool<AssetHandle, AssetCacheEntry>  data;
+    DynamicHashMap<GUID, AssetHandle>           lookup;
 
-    AssetCache()
+    AssetCache() noexcept
         : data(sizeof(AssetInfo) * 64)
     {}
 
-    AssetInfo* find(const GUID& guid)
+    AssetCacheEntry* find(const GUID& guid)
     {
+        scoped_rw_read_lock_t lock(mutex);
+
         auto existing_data = lookup.find(guid);
         if (existing_data != nullptr)
         {
@@ -47,21 +58,27 @@ struct AssetCache
         return nullptr;
     }
 
-    AssetInfo* insert(const GUID& guid, const Type* type, const i32 loader)
+    AssetCacheEntry* insert(void* asset_ptr, const GUID& guid, const Type* type, const i32 loader)
     {
+        scoped_rw_write_lock_t lock(mutex);
+
         BEE_ASSERT(lookup.find(guid) == nullptr);
         const auto handle = data.allocate();
         auto cached = &data[handle];
-        cached->status = AssetStatus::unloaded;
-        cached->type = type;
-        cached->guid = guid;
-        cached->loader = loader;
+        cached->info.handle = handle;
+        cached->info.status = AssetStatus::unloaded;
+        cached->info.type = type;
+        cached->info.guid = guid;
+        cached->info.loader = loader;
+        cached->asset_ptr = asset_ptr;
         lookup.insert(guid, handle);
         return cached;
     }
 
     void erase(const GUID& guid)
     {
+        scoped_rw_write_lock_t lock(mutex);
+
         auto existing_data = lookup.find(guid);
         if (existing_data == nullptr)
         {
@@ -81,7 +98,6 @@ static DynamicArray<AssetLocatorInfo>       g_locator_infos;
 static DynamicHashMap<String, GUID>         g_name_map;
 static AssetCache                           g_cache;
 static JobGroup                             g_jobs_in_progress;
-static RecursiveSpinLock                    g_mutex;
 
 
 i32 find_loader(const u32 hash)
@@ -108,9 +124,10 @@ void assets_init()
 
 void assets_shutdown()
 {
-    scoped_recursive_spinlock_t lock(g_mutex);
+    complete_jobs_main_thread();
 
-    job_wait(&g_jobs_in_progress);
+    // TODO(Jacob): unload all loaded assets
+
     g_loaders.clear();
     g_locators.clear();
     g_cache.data.clear();
@@ -217,75 +234,60 @@ bool asset_name_to_guid(const char* name, GUID* dst_guid)
     return true;
 }
 
-struct RequestAssetJob final : public Job
+
+void load_asset_job(void* asset_ptr, AssetInfo* info, AssetLoader* loader)
 {
-    AssetInfo*      info { nullptr };
-    AssetLoader*    loader { nullptr };
+    info->status = AssetStatus::loading;
 
-    RequestAssetJob(AssetInfo* req_info, AssetLoader* req_loader)
-        : info(req_info),
-          loader(req_loader)
-    {}
+    AssetLocation location;
 
-    void execute() override
+    for (AssetLocator* locator : g_locators)
     {
-        info->status = AssetStatus::loading;
-
-        AssetLocation location;
-
-        for (AssetLocator* locator : g_locators)
+        if (locator->locate(info->guid, &location))
         {
-            if (locator->locate(info->guid, &location))
-            {
-                break;
-            }
-        }
-
-        if (location.type == AssetLocationType::invalid)
-        {
-            log_error("Failed to locate asset %s", guid_to_string(info->guid, GUIDFormat::digits, temp_allocator()).c_str());
-            return;
-        }
-
-        auto data = loader->get(info->type, info->handle);
-
-        switch (location.type)
-        {
-            case AssetLocationType::in_memory:
-            {
-                io::MemoryStream stream(location.read_only_buffer, location.read_only_buffer_size);
-                info->status = loader->load(&data, &stream);
-                break;
-            }
-            case AssetLocationType::file:
-            {
-                io::FileStream stream(location.file_path, "rb");
-                info->status = loader->load(&data, &stream);
-                break;
-            }
-            default:
-            {
-                BEE_UNREACHABLE("Invalid asset location type");
-            }
+            break;
         }
     }
-};
+
+    if (location.type == AssetLocationType::invalid)
+    {
+        log_error("Failed to locate asset %s", guid_to_string(info->guid, GUIDFormat::digits, temp_allocator()).c_str());
+        return;
+    }
+
+    AssetData data(info->type, asset_ptr);
+
+    switch (location.type)
+    {
+        case AssetLocationType::in_memory:
+        {
+            io::MemoryStream stream(location.read_only_buffer, location.read_only_buffer_size);
+            info->status = loader->load(&data, &stream);
+            break;
+        }
+        case AssetLocationType::file:
+        {
+            io::FileStream stream(location.file_path, "rb");
+            info->status = loader->load(&data, &stream);
+            break;
+        }
+        default:
+        {
+            BEE_UNREACHABLE("Invalid asset location type");
+        }
+    }
+}
+
 
 bool request_asset_load(const GUID& guid, const Type* requested_type, AssetInfo** info, AssetData* data)
 {
-    if (!current_thread::is_main())
-    {
-        log_error("Asset requests must be kicked from the main thread");
-        return false;
-    }
-
     auto cached = g_cache.find(guid);
     if (cached != nullptr)
     {
-        if (cached->status == AssetStatus::loaded || cached->status == AssetStatus::loading)
+        if (cached->info.status == AssetStatus::loaded || cached->info.status == AssetStatus::loading)
         {
-            *info = cached;
-            *data = g_loaders[cached->loader]->get(cached->type, cached->handle);
+            *info = &cached->info;
+            *data = AssetData(cached->info.type, cached->asset_ptr);
             return true;
         }
     }
@@ -296,29 +298,28 @@ bool request_asset_load(const GUID& guid, const Type* requested_type, AssetInfo*
         return container_index_of(info.supported_types, [&](const Type* type) { return type == requested_type; }) >= 0;
     });
 
-    if (BEE_FAIL_F(loader_idx >= 0, "Failed to load asset: no loaders are registered type %s", requested_type->name))
+    if (BEE_FAIL_F(loader_idx >= 0, "Failed to load asset: no loaders are registered for type %s", requested_type->name))
     {
         return false;
     }
 
+    // add to cache if missing
+    auto loader = g_loaders[loader_idx];
     if (cached == nullptr)
     {
-        cached = g_cache.insert(guid, requested_type, loader_idx);
+        auto new_asset_ptr = loader->allocate(requested_type);
+        cached = g_cache.insert(new_asset_ptr, guid, requested_type, loader_idx);
     }
 
-    auto loader = g_loaders[loader_idx];
-    if (!cached->handle.is_valid())
-    {
-        cached->handle = loader->allocate(requested_type);
-    }
+    BEE_ASSERT(cached->info.handle.is_valid());
 
-    BEE_ASSERT(cached->handle.is_valid());
+    *info = &cached->info;
+    *data = AssetData(cached->info.type, cached->asset_ptr);
 
-//    auto job = allocate_job<RequestAssetJob>(cached, loader);
-//    job_schedule(&g_jobs_in_progress, job);
+    // Kick the load job
+    auto job = create_job(load_asset_job, cached->asset_ptr, &cached->info, loader);
+    job_schedule(&g_jobs_in_progress, job);
 
-    *info = cached;
-    *data = loader->get(requested_type, cached->handle);
     return true;
 }
 
@@ -326,13 +327,7 @@ void unload_asset(AssetInfo* info, const AssetUnloadType unload_type)
 {
     BEE_ASSERT(info->loader >= 0);
 
-    if (!current_thread::is_main())
-    {
-        log_error("Asset unloads must be called from the main thread");
-        return;
-    }
-
-    auto data = g_loaders[info->loader]->get(info->type, info->handle);
+    AssetData data(info->type, g_cache.data[info->handle].asset_ptr);
     info->status = g_loaders[info->loader]->unload(&data, unload_type);
     if (info->status == AssetStatus::unloaded)
     {

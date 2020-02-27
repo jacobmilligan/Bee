@@ -35,13 +35,35 @@ static constexpr auto g_assets_dbi_name = "Assets";
 static constexpr auto g_namemap_dbi_name = "NameMap";
 static constexpr auto g_invalid_dbi = limits::max<u32>();
 
-static Path             g_path;
-static Path             g_artifacts_path;
-static MDB_env*         g_env { nullptr };
-static MDB_dbi          g_assets_dbi { 0 };
-static MDB_dbi          g_namemap_dbi { 0 };
-static MDB_dbi          g_artifacts_dbi { 0 };
-static JobGroup         g_compile_jobs;
+static Path                     g_path; // NOLINT
+static Path                     g_artifacts_path; // NOLINT
+static MDB_env*                 g_env { nullptr };
+static MDB_dbi                  g_assets_dbi { 0 };
+static MDB_dbi                  g_namemap_dbi { 0 };
+static MDB_dbi                  g_artifacts_dbi { 0 };
+static JobGroup                 g_compile_jobs;
+static AtomicStack              g_asset_meta_pool;
+static AssetCompilerPipeline*   g_compiler_pipeline { nullptr };
+
+AtomicNodePtr<AssetMeta> get_or_create_asset_meta()
+{
+    auto node = g_asset_meta_pool.pop();
+    if (node != nullptr)
+    {
+        AtomicNodePtr<AssetMeta> ptr;
+        ptr.node = node;
+        ptr.data = static_cast<AssetMeta*>(node->data[0]);
+        return ptr;
+    }
+    return make_atomic_node<AssetMeta>(system_allocator());
+}
+
+void release_asset_meta(AtomicNodePtr<AssetMeta>* ptr)
+{
+    g_asset_meta_pool.push(ptr->node);
+    ptr->node = nullptr;
+    ptr->data = nullptr;
+}
 
 struct SerializedOptionsSizeCache
 {
@@ -355,7 +377,7 @@ bool mdb_get_name(MDB_txn* txn, const StringView& name, GUID* guid)
  *
  **************************
  */
-void assetdb_open(const Path& root)
+void assetdb_open(const Path& root, AssetCompilerPipeline* compiler_pipeline)
 {
     if (BEE_FAIL_F(current_thread::is_main(), "AssetDB can only be opened from the main thread"))
     {
@@ -427,6 +449,8 @@ void assetdb_open(const Path& root)
     }
 
     BEE_LMDB_ASSERT(mdb_txn_commit(txn));
+
+    g_compiler_pipeline = compiler_pipeline;
 }
 
 void assetdb_close()
@@ -489,11 +513,11 @@ void import(const AssetMeta& meta)
     asset_file.meta = meta;
     asset_file.meta.guid = generate_guid();
 
-    auto options_type = get_asset_compiler_options_type(asset_file.meta.compiler);
+    auto options_type = g_compiler_pipeline->get_options_type(asset_file.meta.compiler);
 
     if (!options_type->is(TypeKind::unknown))
     {
-        asset_file.options = std::move(options_type->create_instance(job_temp_allocator()));
+        asset_file.options = std::move(options_type->create_instance(temp_allocator()));
     }
 
     asset_file.meta.content_hash = assetdb_get_content_hash(default_asset_platform, asset_file);
@@ -505,16 +529,16 @@ void import(const AssetMeta& meta)
         return;
     }
 
-    write_asset_file(&asset_file, job_temp_allocator());
+    write_asset_file(&asset_file, temp_allocator());
 
     if (!mdb_put_asset(txn.ptr, asset_file.meta, asset_file.options.is_valid() ? &asset_file.options : nullptr))
     {
         return;
     }
 
-    auto compiler = get_asset_compiler(asset_file.meta.compiler);
-    AssetCompilerContext ctx(default_asset_platform, meta.location.view(), asset_file.options, job_temp_allocator());
-    const auto result = compiler->compile(&ctx);
+    auto compiler = g_compiler_pipeline->get_compiler(asset_file.meta.compiler);
+    AssetCompilerContext ctx(default_asset_platform, meta.location.view(), asset_file.options, temp_allocator());
+    const auto result = compiler->compile(get_local_job_worker_id(), &ctx);
     ctx.calculate_hashes();
 
     if (result != AssetCompilerStatus::success)
@@ -525,8 +549,8 @@ void import(const AssetMeta& meta)
 
     mdb_put_artifacts(txn.ptr, asset_file.meta.content_hash, ctx.artifacts().const_span());
 
-    Path artifact_path(job_temp_allocator());
-    String artifact_hash(job_temp_allocator());
+    Path artifact_path(temp_allocator());
+    String artifact_hash(temp_allocator());
 
     for (const AssetCompilerContext::Artifact& artifact : ctx.artifacts())
     {
@@ -550,16 +574,6 @@ void import(const AssetMeta& meta)
     txn.commit();
 }
 
-struct AssetImportJob final : public Job
-{
-    AssetMeta   meta;
-
-    void execute() override
-    {
-        import(meta);
-    }
-};
-
 void assetdb_import(const StringView& name, const Path& source_path, const Path& target_folder, JobGroup* wait_group)
 {
     // ensure the relative_source file exists
@@ -581,23 +595,29 @@ void assetdb_import(const StringView& name, const Path& source_path, const Path&
         return;
     }
 
-    const auto compilers = get_asset_compiler_hashes(source_path.view());
+    const auto compilers = g_compiler_pipeline->get_compiler_hashes(source_path.view());
     if (BEE_FAIL_F(!compilers.empty(), "Failed to import asset: no asset compilers were registered for file type with extension \"%" BEE_PRIsv "\"", BEE_FMT_SV(source_path.extension())))
     {
         return;
     }
 
     // We only handle GUID generation in the import function in case the job gets cancelled etc.
-    auto allocator = wait_group != nullptr ? job_temp_allocator() : system_allocator();
-    const auto relative_source = source_path.relative_to(target_folder, allocator);
+    const auto relative_source = source_path.relative_to(target_folder, temp_allocator());
 
     if (wait_group != nullptr)
     {
-        auto job = allocate_job<AssetImportJob>();
-        job->meta.source = relative_source.view();
-        job->meta.name = name;
-        job->meta.location = dst_path.view();
-        job->meta.compiler = compilers[0];
+        auto meta = get_or_create_asset_meta();
+        meta.data->source = relative_source.view();
+        meta.data->name = name;
+        meta.data->location = dst_path.view();
+        meta.data->compiler = compilers[0];
+
+        auto job = create_job([=]() mutable
+        {
+            import(*meta.data);
+            release_asset_meta(&meta);
+        });
+
         job_schedule(wait_group, job);
     }
     else
@@ -725,7 +745,7 @@ void AssetDBTxn::commit()
     file.options = std::move(options_); // move the options - we don't need them anymore
 
     // Persist the .asset file to disk
-    write_asset_file(&file, job_temp_allocator());
+    write_asset_file(&file, temp_allocator());
 
     kind_ = Kind::invalid;
     destroy();
