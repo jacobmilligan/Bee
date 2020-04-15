@@ -1,1 +1,0 @@
-bee_add_sources(AssetV2.hpp AssetV2.cpp)

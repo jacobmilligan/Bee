@@ -33,7 +33,7 @@ enum class BuiltinAttributeKind
     format,
     serializer_function,
     use_builder,
-    ignore
+    ignored
 };
 
 struct BuiltinAttribute
@@ -41,7 +41,7 @@ struct BuiltinAttribute
     u32                     hash { 0 };
     BuiltinAttributeKind    kind { BuiltinAttributeKind::unknown };
 
-    BuiltinAttribute(const char* name, const BuiltinAttributeKind attr_kind)
+    BuiltinAttribute(const char* name, const BuiltinAttributeKind attr_kind) noexcept
         : hash(get_type_hash(name)),
           kind(attr_kind)
     {}
@@ -58,7 +58,7 @@ BuiltinAttribute g_builtin_attributes[] =
     { "format", BuiltinAttributeKind::format },
     { "serializer", BuiltinAttributeKind::serializer_function },
     { "use_builder", BuiltinAttributeKind::use_builder },
-    { "ignore", BuiltinAttributeKind::ignore }
+    { "ignored", BuiltinAttributeKind::ignored }
 };
 
 
@@ -631,7 +631,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
         }
     }
 
-    // We need to parse the attributes before allocating storage to ensure ignored fields aren't reflected
+    // We need to parse the attributes before allocating storage to ensure ignoredd fields aren't reflected
     DynamicArray<Attribute> tmp_attributes(temp_allocator());
     SerializationInfo serialization_info{};
     if (!attr_parser.parse(&tmp_attributes, &serialization_info, allocator))
@@ -810,9 +810,10 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
 
     clang::QualType original_type;
     auto type_ptr = desugared_type.getTypePtrOrNull();
+    const auto is_ptr_or_ref = type_ptr != nullptr && (type_ptr->isPointerType() || type_ptr->isLValueReferenceType());
 
     // Check if reference or pointer and get the pointee and const-qualified info before removing qualifications
-    if (type_ptr != nullptr && (type_ptr->isPointerType() || type_ptr->isLValueReferenceType()))
+    if (is_ptr_or_ref)
     {
         const auto pointee = type_ptr->getPointeeType();
 
@@ -835,8 +836,8 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
 
     if (original_type->isRecordType())
     {
-        auto as_cxx_record_decl = qual_type->getAsCXXRecordDecl();
-        if (as_cxx_record_decl->getTemplateSpecializationKind() != clang::TSK_Undeclared)
+        auto as_cxx_record_decl = !is_ptr_or_ref ? qual_type->getAsCXXRecordDecl() : type_ptr->getPointeeType()->getAsCXXRecordDecl();
+        if (as_cxx_record_decl != nullptr && as_cxx_record_decl->getTemplateSpecializationKind() != clang::TSK_Undeclared)
         {
             const auto specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(as_cxx_record_decl);
             BEE_ASSERT(specialization != nullptr);
@@ -1224,7 +1225,7 @@ bool AttributeParser::parse_attribute(DynamicArray<Attribute>* dst_attributes, S
             serialization_info->flags |= SerializationFlags::uses_builder;
             break;
         }
-        case BuiltinAttributeKind::ignore:
+        case BuiltinAttributeKind::ignored:
         {
             // returning false will cause parsing to fail which will cause the type to not be reflected
             return false;

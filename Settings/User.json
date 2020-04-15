@@ -2,7 +2,7 @@
     "cmake_options": {
         "VULKAN_BACKEND": "ON",
         "BUILD_CLANG_TOOLS": "ON",
-        "LLVM_INSTALL_DIR": "C:/Dev/llvm-project/install/Release",
+        "LLVM_INSTALL_DIR": "D:/Code/llvm-project/install/Release",
         "FORCE_ASSERTIONS_ENABLED": "ON",
         "FORCE_MEMORY_TRACKING": "OFF",
         "BUILD_TESTS": "ON"

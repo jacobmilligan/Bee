@@ -10,7 +10,7 @@ bee_add_sources(
     xxHash/xxh3.h
 )
 bee_add_include_dirs(xxHash)
-bee_library(xxHash)
+bee_library(xxHash STATIC)
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
     target_compile_options(xxHash PRIVATE /wd4204 /wd4146)
 endif ()
@@ -35,7 +35,7 @@ bee_add_include_dirs(VulkanMemoryAllocator/src)
 bee_new_source_root()
 bee_add_sources(SPIRV-Reflect/spirv_reflect.h SPIRV-Reflect/spirv_reflect.c)
 bee_add_include_dirs(SPIRV-Reflect)
-bee_library(SPIRV-Reflect)
+bee_library(SPIRV-Reflect STATIC)
 
 if (BUILD_TESTS)
     ##############
@@ -52,7 +52,7 @@ if (BUILD_TESTS)
     endif ()
 
     add_subdirectory(
-            ${CMAKE_CURRENT_SOURCE_DIR}/googletest
+            ${BEE_THIRD_PARTY}/googletest
             ${CMAKE_CURRENT_BINARY_DIR}/googletest
             EXCLUDE_FROM_ALL
     )
@@ -63,7 +63,7 @@ if (BUILD_TESTS)
     # Relacy Race Detector
     #
     ############################
-    bee_add_include_dirs(${CMAKE_CURRENT_SOURCE_DIR}/relacy)
+    bee_add_include_dirs(${BEE_THIRD_PARTY}/relacy)
 endif ()
 
 ############################
@@ -71,15 +71,24 @@ endif ()
 # DirectX Shader Compiler
 #
 ############################
-set(dxc_dir ${CMAKE_CURRENT_SOURCE_DIR}/Binaries/DirectXShaderCompiler)
-bee_add_include_dirs(${dxc_dir}/include)
-function(copy_dxc_binaries target_name)
-    file(GLOB dxc_binaries ${dxc_dir}/*.dll ${dxc_dir}/*.pdb ${dxc_dir}/*.exe ${dxc_dir}/*.lib)
+bee_add_include_dirs(${BEE_THIRD_PARTY}/Binaries/DirectXShaderCompiler/include)
+
+function(copy_binaries third_party_dir target_name)
+    set(binary_dir ${BEE_THIRD_PARTY}/Binaries/${third_party_dir})
+    set(output_dir $<TARGET_FILE_DIR:${target_name}>)
+    file(GLOB binaries ${binary_dir}/*.dll ${binary_dir}/*.pdb ${binary_dir}/*.exe ${binary_dir}/*.lib)
+
+    set(command_message "${target_name}: copied third party binaries to output directory:")
+    foreach(bin ${binaries})
+        file(RELATIVE_PATH rel_path ${BEE_THIRD_PARTY}/Binaries ${bin})
+        set(command_message "${command_message}\n  - ${rel_path}")
+    endforeach()
+
     add_custom_command(
         TARGET ${target_name}
         POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${dxc_binaries} ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "${target_name}: Copying DXC binaries to ${CMAKE_CURRENT_BINARY_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy ${binaries} ${output_dir}
+        COMMENT "${command_message}"
     )
 endfunction()
 
@@ -98,7 +107,7 @@ function(lmdb_configure target)
     endif ()
 endfunction()
 
-set(lmdb_root "${CMAKE_CURRENT_SOURCE_DIR}/lmdb/libraries/liblmdb")
+set(lmdb_root "${BEE_THIRD_PARTY}/lmdb/libraries/liblmdb")
 
 bee_new_source_root()
 bee_add_sources(
@@ -107,7 +116,7 @@ bee_add_sources(
     ${lmdb_root}/midl.h
     ${lmdb_root}/midl.c
 )
-bee_library(lmdb)
+bee_library(lmdb STATIC)
 bee_add_include_dirs(${lmdb_root})
 lmdb_configure(lmdb)
 

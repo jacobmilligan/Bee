@@ -28,3 +28,7 @@
 [submodule "ThirdParty/relacy"]
 	path = ThirdParty/relacy
 	url = https://github.com/dvyukov/relacy.git
+[submodule "ThirdParty/imgui"]
+	path = ThirdParty/imgui
+	url = https://github.com/ocornut/imgui.git
+	branch = docking

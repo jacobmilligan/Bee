@@ -1,0 +1,7 @@
+{
+    "shader": "Triangle",
+    "pipeline_state": "default",
+    "parameters": {
+        "main_tex": "e47139bf000100000001bc9bf8010000"
+    }
+}

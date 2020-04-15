@@ -864,7 +864,7 @@ void generate_typelist(const Path& target_dir, const llvm::ArrayRef<std::string>
         for (const auto& dep : enumerate(included_target_deps))
         {
             const auto dep_as_ident = get_target_name_as_ident({ dep.value.c_str(), static_cast<i32>(dep.value.size()) });
-            codegen.write_line("    %s_TYPE_REGISTRATION", dep_as_ident.c_str());
+            codegen.write("    %s_TYPE_REGISTRATION", dep_as_ident.c_str());
             if (dep.index < included_target_deps.size() - 1)
             {
                 codegen.append_line(" \\");

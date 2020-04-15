@@ -38,7 +38,7 @@ struct TextureLoader final : bee::AssetLoader
         return bee::AssetStatus::loaded;
     }
 
-    bee::AssetStatus unload(bee::AssetData* data, const bee::AssetUnloadType unload_type) override
+    bee::AssetStatus unload(bee::AssetData* data, const bee::AssetUnloadKind unload_type) override
     {
         bee::log_info("Unloading texture...");
         data->as<bee::Texture>()->loaded = false;

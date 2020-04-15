@@ -10,7 +10,7 @@
 #include <Bee/AssetPipeline/AssetPipeline.hpp>
 #include <Bee/Core/Filesystem.hpp>
 #include <Bee/Asset/Asset.hpp>
-#include <Bee/ShaderCompiler/ShaderCompiler.hpp>
+#include <Bee/ShaderCompiler/Compile.hpp>
 #include <Bee/Graphics/Shader.hpp>
 
 
@@ -28,7 +28,7 @@ public:
         pipeline_.init(pipeline_info);
         pipeline_.register_asset_compiler<bee::ShaderCompiler>();
 
-        bee::AssetCompileRequest req("Shaders/Triangle.bsc", bee::asset_platform_default(), bee::ShaderCompilerSettings{true});
+        bee::AssetCompileRequest req("Shaders/BSCTestShader.bsc", bee::asset_platform_default(), bee::ShaderCompilerSettings{true});
 
         bee::JobGroup group{};
         pipeline_.import_assets(&group, 1, &req);

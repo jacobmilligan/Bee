@@ -18,20 +18,23 @@ struct BEE_REFLECT(serializable) Texture
     bool loaded { false };
 };
 
-struct BEE_REFLECT(serializable) TextureCompilerOptions
+struct BEE_REFLECT(serializable) TextureOptions
 {
     bool mipmap { false };
 };
 
-struct BEE_REFLECT(options = bee::TextureCompilerOptions, ext = "png", ext = "jpg", ext = "jpeg", ext = "tga")
-TextureCompiler final : public bee::AssetCompiler
+struct BEE_REFLECT(options = bee::TextureOptions, ext = "png", ext = "jpg", ext = "jpeg", ext = "tga")
+TextureCompiler final : public AssetCompiler
 {
-    AssetCompilerStatus compile(AssetCompilerContext* ctx) override
+    AssetCompilerStatus compile(const i32 thread_index, AssetCompilerContext* ctx) override
     {
-        auto& options = ctx->options<TextureCompilerOptions>();
         log_info("compiling texture...");
+
+        auto& options = ctx->options<TextureOptions>();
         auto stream = ctx->add_artifact();
+
         stream.write(&options.mipmap, sizeof(bool));
+
         return AssetCompilerStatus::success;
     }
 };

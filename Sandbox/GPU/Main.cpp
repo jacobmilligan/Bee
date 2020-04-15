@@ -5,12 +5,12 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include <Bee/Core/Main.hpp>
-#include <Bee/Application/AppLoop.hpp>
-#include <Bee/Graphics/GPU.hpp>
-#include <Bee/Graphics/Command.hpp>
+#include <Bee/Application/Application.hpp>
+#include <Bee/Core/Bee.hpp>
 #include <Bee/Core/Memory/MemoryTracker.hpp>
 #include <Bee/Core/Time.hpp>
+#include <Bee/Graphics/Command.hpp>
+#include <Bee/Graphics/GPU.hpp>
 
 namespace bee {
 
@@ -24,7 +24,7 @@ struct GPUApp
     CommandBatcher                  cmd_context;
     CommandAllocator                cmd_allocator;
     CommandBuffer                   cmd;
-    FixedArray<GpuCommandBuffer*>   gpu_cmd;
+    FixedArray<CommandBuffer*>   gpu_cmd;
     FenceHandle                     frame_fence;
 
     /*

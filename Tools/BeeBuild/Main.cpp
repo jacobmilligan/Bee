@@ -5,15 +5,15 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Core/Filesystem.hpp"
-#include "Bee/Core/Process.hpp"
+#include "Bee/Core/Bee.hpp"
 #include "Bee/Core/CLI.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
-#include "Bee/Core/String.hpp"
+#include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/IO.hpp"
-#include "Bee/Core/Logger.hpp"
-#include "Bee/Core/Main.hpp"
 #include "Bee/Core/JSON/JSON.hpp"
+#include "Bee/Core/Logger.hpp"
+#include "Bee/Core/Process.hpp"
+#include "Bee/Core/String.hpp"
 
 namespace bee {
 

@@ -8,19 +8,16 @@
 
 //#include "ClangParser.hpp"
 //
-#include "Frontend.hpp"
-#include "CodeGen.hpp"
-
-#include "Bee/Core/IO.hpp"
+#include "Bee/Core/Bee.hpp"
 #include "Bee/Core/Filesystem.hpp"
-#include "Bee/Core/Main.hpp"
+#include "Bee/Core/IO.hpp"
+#include "CodeGen.hpp"
+#include "Frontend.hpp"
 
-#include <llvm/Support/CommandLine.h>
 #include <clang/Tooling/CommonOptionsParser.h>
 #include <clang/Tooling/Tooling.h>
-
+#include <llvm/Support/CommandLine.h>
 #include <unordered_set>
-
 
 int bee_main(int argc, char** argv)
 {

@@ -22,9 +22,8 @@ endif ()
 
 set(BEE_CMAKE_ROOT ${CMAKE_CURRENT_LIST_DIR})
 set(BEE_PROJECT_ROOT ${PROJECT_SOURCE_DIR})
-set(BEE_CORE_ROOT ${BEE_PROJECT_ROOT}/Source/Core)
-set(BEE_RUNTIME_ROOT ${BEE_PROJECT_ROOT}/Source/Runtime)
-set(BEE_DEVELOP_ROOT ${BEE_PROJECT_ROOT}/Source/Develop)
+set(BEE_SOURCES_ROOT ${BEE_PROJECT_ROOT}/Source)
+set(BEE_TESTS_ROOT ${BEE_PROJECT_ROOT}/Tests)
 set(BEE_THIRD_PARTY ${BEE_PROJECT_ROOT}/ThirdParty)
 set(BEE_BUILD_ROOT ${BEE_PROJECT_ROOT}/Build)
 set(BEE_DEBUG_BINARY_DIR ${BEE_BUILD_ROOT}/Debug)
@@ -97,8 +96,9 @@ endfunction()
 #
 ################################################################################
 function(bee_begin)
-    set(__bee_include_dirs ${BEE_CORE_ROOT} ${BEE_RUNTIME_ROOT} ${BEE_DEVELOP_ROOT} CACHE INTERNAL "")
+    set(__bee_include_dirs ${BEE_SOURCES_ROOT} CACHE INTERNAL "")
     set(__bee_libraries "" CACHE INTERNAL "")
+    set(__bee_plugins "" CACHE INTERNAL "")
     set(__bee_current_source_root "" CACHE INTERNAL "")
     bee_new_source_root()
 endfunction()
@@ -161,17 +161,17 @@ function(bee_add_include_dirs)
 endfunction()
 
 
-function(__bee_finalize_target name)
+function(__bee_finalize_target name output_directory)
     target_include_directories(${name} PUBLIC ${__bee_include_dirs})
     __bee_set_compile_options(${name})
     set_target_properties(${name}
         PROPERTIES
-        ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${BEE_DEBUG_BINARY_DIR}
-        LIBRARY_OUTPUT_DIRECTORY_DEBUG ${BEE_DEBUG_BINARY_DIR}
-        RUNTIME_OUTPUT_DIRECTORY_DEBUG ${BEE_DEBUG_BINARY_DIR}
-        ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${BEE_RELEASE_BINARY_DIR}
-        LIBRARY_OUTPUT_DIRECTORY_RELEASE ${BEE_RELEASE_BINARY_DIR}
-        RUNTIME_OUTPUT_DIRECTORY_RELEASE ${BEE_RELEASE_BINARY_DIR}
+        ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${BEE_DEBUG_BINARY_DIR}/${output_directory}"
+        LIBRARY_OUTPUT_DIRECTORY_DEBUG "${BEE_DEBUG_BINARY_DIR}/${output_directory}"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${BEE_DEBUG_BINARY_DIR}/${output_directory}"
+        ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${BEE_RELEASE_BINARY_DIR}/${output_directory}"
+        LIBRARY_OUTPUT_DIRECTORY_RELEASE "${BEE_RELEASE_BINARY_DIR}/${output_directory}"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${BEE_RELEASE_BINARY_DIR}/${output_directory}"
     )
 
     if (${BEE_COMPILER_IS_MSVC})
@@ -179,6 +179,13 @@ function(__bee_finalize_target name)
     endif ()
 
     foreach (dep ${__bee_libraries})
+        if (NOT "${dep}" STREQUAL "${name}")
+            __bee_get_api_macro(${dep} api_macro)
+            target_compile_definitions(${name} PRIVATE ${api_macro}=BEE_IMPORT_SYMBOL)
+        endif ()
+    endforeach ()
+
+    foreach (dep ${__bee_plugins})
         if (NOT "${dep}" STREQUAL "${name}")
             __bee_get_api_macro(${dep} api_macro)
             target_compile_definitions(${name} PRIVATE ${api_macro}=BEE_IMPORT_SYMBOL)
@@ -237,7 +244,7 @@ function(bee_exe name)
         target_link_libraries(${name} PUBLIC ${ARGS_LINK_LIBRARIES})
     endif ()
 
-    __bee_finalize_target(${name})
+    __bee_finalize_target(${name} "")
 endfunction()
 
 
@@ -247,22 +254,22 @@ endfunction()
 # specified in `link_libraries`
 #
 # OPTIONAL ARGS:
-#   * `SHARED` - adds target as SHARED library (i.e. .dll on windows),
-#     otherwise it will be STATIC
+#   * `STATIC` - adds target as STATIC library otherwise it will be SHARED
+#     (i.e. .dll on windows)
 #   * `LINK_LIBRARIES` - a series of library names to link via
 #     `target_link_libraries`
 #
 ################################################################################
 function(bee_library name)
-    cmake_parse_arguments(ARGS "SHARED" "" "LINK_LIBRARIES" ${ARGN})
+    cmake_parse_arguments(ARGS "STATIC" "" "LINK_LIBRARIES" ${ARGN})
 
     __bee_get_api_macro(${name} api_macro)
 
-    if (ARGS_SHARED AND NOT MONOLITHIC_BUILD)
+    if (ARGS_STATIC OR MONOLITHIC_BUILD)
+        add_library(${name} STATIC ${__bee_sources})
+    else()
         add_library(${name} SHARED ${__bee_sources})
         target_compile_definitions(${name} PRIVATE BEE_DLL)
-    else()
-        add_library(${name} STATIC ${__bee_sources})
     endif ()
 
     target_compile_definitions(${name} PRIVATE ${api_macro}=BEE_EXPORT_SYMBOL)
@@ -273,9 +280,41 @@ function(bee_library name)
 
     set(__bee_libraries ${__bee_libraries} ${name} CACHE INTERNAL "")
 
-    __bee_finalize_target(${name})
+    __bee_finalize_target(${name} "")
 endfunction()
 
+################################################################################
+#
+# Adds a new plugin target with the given name, linking against the libraries
+# specified in `link_libraries`
+#
+# OPTIONAL ARGS:
+#   * `LINK_LIBRARIES` - a series of library names to link via
+#     `target_link_libraries`
+#
+################################################################################
+function(bee_plugin name)
+    cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES" ${ARGN})
+
+    __bee_get_api_macro(${name} api_macro)
+
+    if (MONOLITHIC_BUILD)
+        add_library(${name} STATIC ${__bee_sources})
+    else()
+        add_library(${name} SHARED ${__bee_sources})
+        target_compile_definitions(${name} PRIVATE BEE_DLL)
+    endif ()
+
+    target_compile_definitions(${name} PRIVATE ${api_macro}=BEE_EXPORT_SYMBOL)
+
+    if (ARGS_LINK_LIBRARIES)
+        target_link_libraries(${name} PUBLIC ${ARGS_LINK_LIBRARIES})
+    endif ()
+
+    set(__bee_plugins ${__bee_plugins} ${name} CACHE INTERNAL "")
+
+    __bee_finalize_target(${name} "Plugins")
+endfunction()
 
 ################################################################################
 #
@@ -292,7 +331,7 @@ function(bee_test name)
         set(cached_sources ${__bee_sources})
 
         bee_new_source_root()
-        bee_add_sources(${BEE_CORE_ROOT}/TestMain.cpp ${ARGS_SOURCES})
+        bee_add_sources(${BEE_TESTS_ROOT}/TestMain.cpp ${ARGS_SOURCES})
         bee_exe(${name} LINK_LIBRARIES ${ARGS_LINK_LIBRARIES} gtest)
         target_compile_definitions(${name} PRIVATE GTEST_BREAK_ON_FAILURE)
 
