@@ -5,72 +5,68 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
+#include "Bee/Bee.hpp"
+
 #include "Bee/Core/Main.hpp"
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
 #include "Bee/Core/Filesystem.hpp"
-#include "Bee/Editor/EditorApp.hpp"
+#include "Bee/Graphics/GPU.hpp"
 
+
+using namespace bee;
 
 int bee_main(int argc, char** argv)
 {
-    // Ensure plugin registry is initialized before anything else
-    bee::init_plugin_registry();
-    bee::add_plugin_search_path(bee::fs::get_appdata().binaries_root.join("Plugins"));
-
-    // Initialize core systems before launching the platform
+    // Initialize core systems before launching the platform and plugin registry
     bee::JobSystemInitInfo job_system_info{};
     job_system_init(job_system_info);
 
-    if (!platform_launch(desc.app_name))
-    {
-        return EXIT_FAILURE;
-    }
-
-    AppContext ctx{};
-    ctx.user_data = desc.user_data;
-
-    // Initialize platform
-    input_buffer_init(&ctx.default_input);
-
     // Initialize graphics systems
-    if (!gpu_init())
+    if (!bee::gpu_init())
     {
-        log_error("Failed to initialize GPU backend");
+        bee::log_error("Failed to initialize GPU backend");
         return EXIT_FAILURE;
     }
 
-    // Create main window
-    ctx.main_window = create_window(desc.main_window_config);
-    BEE_ASSERT(ctx.main_window.is_valid());
+    // Ensure plugin registry is initialized before anything else
+    bee::PluginRegistry plugin_registry;
+    plugin_registry.add_search_path(bee::fs::get_appdata().binaries_root.join("Plugins"), RegisterPluginMode::auto_load);
 
-    // Launch the user app
-    const int result = desc.on_launch(&ctx);
-    if (result != EXIT_SUCCESS)
+    auto* app = plugin_registry.get_module<ApplicationModule>(BEE_APPLICATION_MODULE_NAME);
+
+    if (app->launch == nullptr)
     {
-        // do a failure callback if launch was not successful instead of a normal app shutdown
-        log_error("Failed to launch %s. Shutting down application.", desc.app_name);
-        desc.on_fail(&ctx);
+        bee::log_error("Couldn't find an application module to execute");
+        return EXIT_FAILURE;
     }
-    else
-    {
-        /*
-        * Main loop
-        */
-        while (!ctx.quit)
-        {
-            app_frame(desc, &ctx);
-        }
 
-        // shutdown the user app first
-        desc.on_shutdown(&ctx);
+    const auto launch_result = app->launch(app->instance, argc, argv);
+
+    if (launch_result != EXIT_SUCCESS)
+    {
+        app->fail(app->instance);
+        return launch_result;
+    }
+
+    while (true)
+    {
+        plugin_registry.refresh_plugins();
+
+        const auto state = app->tick(app->instance);
+
+        if (state == ApplicationState::quit_requested)
+        {
+            app->shutdown(app->instance);
+            break;
+        }
     }
 
     /*
      * shutdown plugin registry before core systems to ensure that all core systems are available
      * if a plugin has to use one in its unload function
      */
-    destroy_plugin_registry();
+    bee::destruct(&plugin_registry);
 
     // Destroy graphics systems
     gpu_destroy();
@@ -83,5 +79,5 @@ int bee_main(int argc, char** argv)
     // Shutdown core systems last
     job_system_shutdown();
 
-    return result;
+    return EXIT_SUCCESS;
 }
