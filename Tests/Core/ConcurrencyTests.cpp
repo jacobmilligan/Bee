@@ -15,8 +15,8 @@
 
 TEST(ConcurrencyTests, atomic_ptr_stack_works_as_stack)
 {
-    bee::AtomicStack<int> stack;
-    bee::AtomicNode<int> nodes[5];
+    bee::AtomicStack stack;
+    bee::AtomicNode nodes[5];
 
     // ensure empty stack
     ASSERT_EQ(stack.pop(), nullptr);
@@ -25,7 +25,7 @@ TEST(ConcurrencyTests, atomic_ptr_stack_works_as_stack)
     int val = 1;
     for (auto& node : nodes)
     {
-        node.data = val;
+        node.data[0] = new int(val);
         val *= 2;
         stack.push(&node);
     }
@@ -38,6 +38,11 @@ TEST(ConcurrencyTests, atomic_ptr_stack_works_as_stack)
         ASSERT_EQ(node, &nodes[i]);
         ASSERT_EQ(node->data, nodes[i].data);
     }
+
+    for (auto& node : nodes)
+    {
+        delete static_cast<int*>(node.data[0]);
+    }
 }
 
 TEST(ConcurrencyTests, atomic_ptr_stack_stress_test)
@@ -45,15 +50,15 @@ TEST(ConcurrencyTests, atomic_ptr_stack_stress_test)
     constexpr int node_count = 100000;
     constexpr int thread_count = 64;
 
-    bee::AtomicStack<int> stack{};
-    auto nodes = bee::FixedArray<bee::AtomicNode<int>>::with_size(node_count);
+    bee::AtomicStack stack{};
+    auto nodes = bee::FixedArray<bee::AtomicNode>::with_size(node_count);
     int results[node_count] { 0 };
     std::thread threads[thread_count];
 
     int index = 0;
     for (auto& node : nodes)
     {
-        node.data = index;
+        node.data[0] = new int(index);
         results[index] = 0;
         stack.push(&node);
         ++index;
@@ -93,7 +98,8 @@ TEST(ConcurrencyTests, atomic_ptr_stack_stress_test)
         {
             continue;
         }
-        ++results[node->data];
+        const auto result_index = *static_cast<int*>(node->data[0]);
+        ++results[result_index];
         ++count;
     }
 
@@ -104,5 +110,10 @@ TEST(ConcurrencyTests, atomic_ptr_stack_stress_test)
     {
         ASSERT_EQ(result, 1) << "index: " << index;
         ++index;
+    }
+
+    for (auto& node : nodes)
+    {
+        delete static_cast<int*>(node.data[0]);
     }
 }

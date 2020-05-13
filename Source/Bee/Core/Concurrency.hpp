@@ -10,6 +10,7 @@
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Thread.hpp"
 #include "Bee/Core/Atomic.hpp"
+#include "Bee/Core/Time.hpp"
 
 #if BEE_OS_WINDOWS == 1
     #include "Bee/Core/Win32/Win32Concurrency.hpp"
@@ -30,12 +31,13 @@ BEE_CORE_API u32 logical_core_count();
 } // namespace concurrency
 
 
-class BEE_CORE_API Semaphore final
+struct BEE_CORE_API Semaphore
 {
-public:
-    Semaphore(const i32 initial_count, const i32 max_count);
+    native_semaphore_t native_handle;
 
-    Semaphore(const i32 initial_count, const i32 max_count, const char* name);
+    Semaphore(const i32 initial_count, const i32 max_count) noexcept;
+
+    Semaphore(const i32 initial_count, const i32 max_count, const char* name) noexcept;
 
     ~Semaphore();
 
@@ -46,29 +48,24 @@ public:
     void release();
 
     void release(const i32 count);
-
-private:
-    native_semaphore_t sem_;
 };
 
 
-class BEE_CORE_API Barrier
+struct BEE_CORE_API Barrier
 {
-public:
-    explicit Barrier(const i32 thread_count);
+    native_barrier_t native_handle;
 
-    Barrier(const i32 thread_count, const i32 spin_count);
+    explicit Barrier(const i32 thread_count) noexcept;
+
+    Barrier(const i32 thread_count, const i32 spin_count) noexcept;
 
     ~Barrier();
 
     void wait();
-
-private:
-    native_barrier_t barrier_;
 };
 
 
-class BEE_CORE_API SpinLock
+struct BEE_CORE_API SpinLock
 {
 public:
     void lock();
@@ -96,9 +93,10 @@ private:
     void unlock_and_reset();
 };
 
-class BEE_CORE_API ReaderWriterMutex
+struct BEE_CORE_API ReaderWriterMutex
 {
-public:
+    native_rw_mutex_t native_handle;
+
     ReaderWriterMutex() noexcept;
 
     void lock_read();
@@ -112,8 +110,36 @@ public:
     bool try_lock_write();
 
     void unlock_write();
-private:
-    native_rw_mutex_t mutex_;
+};
+
+struct BEE_CORE_API Mutex
+{
+    native_mutex_t native_handle;
+
+    Mutex() noexcept;
+
+    ~Mutex();
+
+    void lock();
+
+    void unlock();
+
+    bool try_lock();
+};
+
+struct BEE_CORE_API RecursiveMutex
+{
+    native_recursive_mutex_t native_handle;
+
+    RecursiveMutex() noexcept;
+
+    ~RecursiveMutex();
+
+    void lock();
+
+    void unlock();
+
+    bool try_lock();
 };
 
 
@@ -135,6 +161,12 @@ public:
     }
 
     ScopedLock& operator=(const ScopedLock&) = delete;
+
+    inline MutexType* mutex() const noexcept
+    {
+        return &mutex_;
+    }
+
 private:
     MutexType& mutex_;
 };
@@ -157,6 +189,12 @@ public:
     }
 
     ScopedReaderLock& operator=(const ScopedReaderLock&) = delete;
+
+    inline MutexType* mutex() const noexcept
+    {
+        return &mutex_;
+    }
+
 private:
     MutexType& mutex_;
 };
@@ -179,14 +217,73 @@ public:
     }
 
     ScopedWriterLock& operator=(const ScopedWriterLock&) = delete;
+
+    inline MutexType* mutex() const noexcept
+    {
+        return &mutex_;
+    }
+
 private:
     MutexType& mutex_;
 };
 
 using scoped_spinlock_t = ScopedLock<SpinLock>;
+using scoped_lock_t = ScopedLock<Mutex>;
+using scoped_recursive_lock_t = ScopedLock<RecursiveMutex>;
 using scoped_recursive_spinlock_t = ScopedLock<RecursiveSpinLock>;
 using scoped_rw_read_lock_t = ScopedReaderLock<ReaderWriterMutex>;
 using scoped_rw_write_lock_t = ScopedWriterLock<ReaderWriterMutex>;
+
+
+struct BEE_CORE_API ConditionVariable
+{
+    native_condition_variable_t native_handle{};
+
+    ConditionVariable() noexcept;
+
+    ~ConditionVariable() noexcept = default;
+
+    void notify_one() noexcept;
+
+    void notify_all() noexcept;
+
+    void wait(ScopedLock<Mutex>& lock);
+
+    template <typename Pred>
+    void wait(ScopedLock<Mutex>& lock, Pred predicate)
+    {
+        while (!predicate())
+        {
+            wait(lock);
+        }
+    }
+
+    bool wait_for(ScopedLock<Mutex>& lock, const TimePoint& duration);
+
+    template <typename Pred>
+    bool wait_for(ScopedLock<Mutex>& lock, const TimePoint& duration, Pred predicate)
+    {
+        while (!predicate())
+        {
+            if (!wait_for(lock, duration))
+            {
+                return predicate();
+            }
+        }
+
+        return predicate();
+    }
+
+    bool wait_until(ScopedLock<Mutex>& lock, const TimePoint& abs_time);
+
+    template <typename Pred>
+    bool wait_until(ScopedLock<Mutex>& lock, const TimePoint& abs_time, Pred predicate)
+    {
+        const TimePoint now(time::now());
+        const auto relative_time = abs_time - now;
+        return now < abs_time ? wait_for(lock, relative_time, predicate) : false;
+    }
+};
 
 
 /*
