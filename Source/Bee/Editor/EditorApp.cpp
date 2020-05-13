@@ -7,65 +7,120 @@
 
 #include "Bee/Editor/EditorApp.hpp"
 
-#include "Bee/Application/Application.hpp"
-#include "Bee/AssetPipeline/AssetPipeline.hpp"
+#include "Bee/Bee.hpp"
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/Serialization/JSONSerializer.hpp"
 #include "Bee/Core/Time.hpp"
-#include "Bee/Plugins/DefaultAssets/DefaultAssets.hpp"
+#include "Bee/Plugins/AssetPipeline/AssetPipeline.hpp"
 #include "Bee/Plugins/ImGui/ImGui.hpp"
+#include "Bee/Core/CLI.hpp"
 
 namespace bee {
 
 
 static constexpr auto g_beeproj_extension = ".beeproj";
-static Path g_config_path = fs::get_appdata().data_root.join("Editor.json");
 
 
-bool read_editor_config(EditorConfig* config)
+struct Application // NOLINT
 {
-    if (!g_config_path.exists())
+    WindowHandle        main_window;
+    InputBuffer         input_buffer;
+};
+
+struct Editor
+{
+    Path                config_path;
+    EditorConfig        config;
+    Project             project;
+    bool                is_project_open { false };
+    Path                project_location;
+};
+
+static Editor*              g_editor { nullptr };
+static ImGuiModule*         g_imgui { nullptr };
+static AssetPipelineModule* g_asset_pipeline { nullptr };
+
+
+bool read_editor_config()
+{
+    if (!g_editor->config_path.exists())
     {
         return true;
     }
 
-    auto contents = fs::read(g_config_path, temp_allocator());
+    auto contents = fs::read(g_editor->config_path, temp_allocator());
     JSONSerializer serializer(contents.data(), rapidjson::ParseFlag::kParseInsituFlag, temp_allocator());
-    serialize(SerializerMode::reading, &serializer, config);
+    serialize(SerializerMode::reading, &serializer, &g_editor->config);
     return true;
 }
 
-bool save_editor_config(const EditorConfig& config)
+bool save_editor_config()
 {
     JSONSerializer serializer(temp_allocator());
-    serialize(SerializerMode::writing, &serializer, const_cast<EditorConfig*>(&config));
-    return fs::write(g_config_path, serializer.c_str());
+    serialize(SerializerMode::writing, &serializer, &g_editor->config);
+    return fs::write(g_editor->config_path, serializer.c_str());
 }
 
+bool close_project();
 
-bool init_project(const Project& project)
+bool init_project(const Path& location, const AssetPlatform force_platform)
 {
-    if (BEE_FAIL(project.platform != AssetPlatform::unknown))
+    if (g_editor->is_project_open)
     {
         return false;
     }
 
-    if (BEE_FAIL(!project.name.empty()))
+    g_editor->project_location.clear();
+    g_editor->project_location.append(location);
+
+    auto& project = g_editor->project;
+
+    if (force_platform != AssetPlatform::unknown)
+    {
+        project.platform = force_platform;
+    }
+
+    BEE_ASSERT(project.platform != AssetPlatform::unknown);
+
+    AssetPipelineInitInfo info{};
+    info.platform = project.platform;
+    info.project_root = g_editor->project_location;
+    info.cache_directory = project.cache_directory;
+    info.asset_database_name = "AssetDB";
+
+    if (!g_asset_pipeline->init(info))
     {
         return false;
     }
 
-    if (BEE_FAIL(project.location.parent().exists()))
+    g_editor->is_project_open = true;
+
+    return save_editor_config();
+}
+
+bool create_project(const ProjectDescriptor& desc, const Path& directory, Project* dst)
+{
+    if (BEE_FAIL(desc.platform != AssetPlatform::unknown))
     {
         return false;
     }
 
-    if (!project.location.exists())
+    if (BEE_FAIL(!desc.name.empty()))
     {
-        fs::mkdir(project.location);
+        return false;
     }
 
-    for (const auto& file : fs::read_dir(project.location))
+    if (BEE_FAIL(directory.parent_path().exists()))
+    {
+        return false;
+    }
+
+    if (!directory.exists())
+    {
+        fs::mkdir(directory);
+    }
+
+    for (const auto& file : fs::read_dir(directory))
     {
         if (file.extension() == g_beeproj_extension)
         {
@@ -74,29 +129,38 @@ bool init_project(const Project& project)
         }
     }
 
+    dst->description.clear();
+    dst->asset_directories.clear();
+    dst->source_directories.clear();
+    dst->cache_directory.clear();
+
+    dst->name = desc.name;
+    dst->engine_version = BEE_VERSION;
+    dst->platform = desc.platform;
+    dst->description.append(desc.description);
+    dst->cache_directory.append(desc.cache_root);
+
     JSONSerializer serializer(temp_allocator());
-    serialize(SerializerMode::writing, &serializer, const_cast<Project*>(&project));
+    serialize(SerializerMode::writing, &serializer, dst);
 
-    const auto proj_file_path = project.location.join(project.name.view()).append_extension(g_beeproj_extension);
+    const auto proj_file_path = directory.join(desc.name).append_extension(g_beeproj_extension);
 
-    if (BEE_FAIL_F(fs::write(proj_file_path, serializer.c_str()), "Cannot init project: failed to write %s file", g_beeproj_extension))
+    if (BEE_FAIL_F(fs::write(proj_file_path, serializer.c_str()), "Cannot init desc: failed to write %s file", g_beeproj_extension))
     {
         return false;
     }
 
-    const auto assets_path = project.location.join(project.assets_root);
-    const auto sources_path = project.location.join(project.sources_root);
-    const auto cache_path = project.location.join(project.cache_root);
+    const auto cache_path = directory.join(desc.cache_root, temp_allocator());
 
-    if (!assets_path.exists())
-    {
-        fs::mkdir(assets_path);
-    }
-
-    if (!sources_path.exists())
-    {
-        fs::mkdir(sources_path);
-    }
+//    if (!assets_path.exists())
+//    {
+//        fs::mkdir(assets_path);
+//    }
+//
+//    if (!sources_path.exists())
+//    {
+//        fs::mkdir(sources_path);
+//    }
 
     if (!cache_path.exists())
     {
@@ -106,57 +170,105 @@ bool init_project(const Project& project)
     return true;
 }
 
-
-bool open_project(Project* project, const Path& path, const AssetPlatform force_platform)
+bool create_and_open_project(const ProjectDescriptor& desc, const Path& directory)
 {
-    if (project->is_open)
+    if (g_editor->is_project_open)
     {
-        close_project(project);
+        if (!close_project())
+        {
+            return false;
+        }
     }
-    
+
+    if (!create_project(desc, directory, &g_editor->project))
+    {
+        return false;
+    }
+
+    return init_project(directory, desc.platform);
+}
+
+bool delete_project(const Path& root)
+{
+    if (!root.exists())
+    {
+        return false;
+    }
+
+    if (!fs::rmdir(root, true))
+    {
+        return false;
+    }
+
+    const auto index = container_index_of(g_editor->config.projects, [&](const Path& p)
+    {
+        return p == root;
+    });
+
+    if (index >= 0)
+    {
+        g_editor->config.projects.erase(index);
+        g_editor->config.most_recent_project = g_editor->config.projects.empty() ? -1 : 0;
+
+        if (!save_editor_config())
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool open_project(const Path& path, const AssetPlatform force_platform)
+{
+    if (g_editor->is_project_open)
+    {
+        close_project();
+    }
+
     if (BEE_FAIL_F(path.exists() && path.extension() == g_beeproj_extension, "%s is not a .beeproj file", path.c_str()))
     {
         return false;
     }
 
-    for (const auto& file : fs::read_dir(path.parent()))
+    for (const auto& file : fs::read_dir(path.parent_view()))
     {
         if (file.extension() == g_beeproj_extension)
         {
-            if (BEE_CHECK_F(project->location.empty(), "Unable to read project file: There are multiple %s files at %s", g_beeproj_extension, path.c_str()))
+            if (BEE_CHECK_F(g_editor->project_location.empty(), "Unable to read project file: There are multiple %s files at %s", g_beeproj_extension, path.c_str()))
             {
-                project->location = file;
-                project->location.make_generic();
+                g_editor->project_location = file;
+                break;
             }
         }
     }
 
-    if (BEE_FAIL_F(!project->location.empty(), "Could not find a valid %s file at %s", g_beeproj_extension, path.parent().c_str()))
+    if (BEE_FAIL_F(!g_editor->project_location.empty(), "Could not find a valid %s file at %" BEE_PRIsv, g_beeproj_extension, BEE_FMT_SV(path.parent_view())))
     {
         return false;
     }
 
-    auto contents = fs::read(project->location, temp_allocator());
+    auto& project = g_editor->project;
+    auto contents = fs::read(g_editor->project_location, temp_allocator());
     JSONSerializer serializer(contents.data(), rapidjson::ParseFlag::kParseInsituFlag, temp_allocator());
-    serialize(SerializerMode::reading, &serializer, project);
+    serialize(SerializerMode::reading, &serializer, &project);
 
-    project->is_open = true;
-    if (force_platform != AssetPlatform::unknown)
-    {
-        project->platform = force_platform;
-    }
-    return true;
+    return init_project(path, force_platform);
 }
 
-bool close_project(Project* project)
+bool close_project()
 {
-    if (!project->is_open)
+    if (!g_editor->is_project_open)
     {
         return false;
     }
 
-    destruct(project);
-    project->is_open = false;
+    g_asset_pipeline->destroy();
+
+    destruct(&g_editor->project);
+
+    g_editor->is_project_open = false;
+
     return true;
 }
 
@@ -167,139 +279,156 @@ bool close_project(Project* project)
  *
  *********************
  */
-int editor_on_launch(AppContext* ctx)
+int launch_application(Application* app, int argc, char** argv)
 {
-    auto* editor = static_cast<EditorContext*>(ctx->user_data);
-    const auto& launch = editor->launch_params;
-    auto& project = editor->project;
-    auto& config = editor->config;
-
-    if (BEE_FAIL(read_editor_config(&editor->config)))
+    if (g_asset_pipeline->init == nullptr)
     {
+        log_error("Asset Pipeline plugin is required but not registered");
         return EXIT_FAILURE;
     }
 
-    // Handle the launch modes
-    if (launch.mode == EditorLaunchMode::existing_project)
+    if (g_editor->config_path.empty())
     {
-        if (!open_project(&editor->project, launch.project_path, launch.platform))
-        {
-            return EXIT_FAILURE;
-        }
+        g_editor->config_path = bee::fs::get_appdata().data_root.join("Editor.json");
     }
-    else if (launch.mode == EditorLaunchMode::new_project)
-    {
-        project.engine_version = BEE_VERSION;
-        project.name = launch.project_name;
-        project.location.append(launch.project_path).append(launch.project_name);
-        project.platform = launch.platform;
-        project.assets_root = "Assets";
-        project.sources_root = "Source";
-        project.cache_root = "Cache";
 
-        if (!init_project(project))
+    /*
+     * positionals & options common to all project subcommands
+     */
+    cli::Positional positionals[] =
+    {
+        { "location", "Full path to the folder containing the .beeproj.json file to open" }
+    };
+
+    cli::Option options[] =
+    {
+        { 'p', "platform", false, "The platform to use for the project", 1 }
+    };
+
+    cli::ParserDescriptor cmd_parser("bee", positionals, options);
+
+    const auto parser = cli::parse(argc, argv, cmd_parser);
+
+    if (parser.help_requested && argc != 1)
+    {
+        log_info("%s", parser.requested_help_string);
+        return EXIT_FAILURE;
+    }
+
+    // Handle open command
+
+    if (!parser.positionals.empty())
+    {
+        const auto* project_location = cli::get_positional(parser, 0);
+
+        auto platform = AssetPlatform::unknown;
+
+        if (cli::has_option(parser, "platform"))
         {
+            platform = enum_from_string<AssetPlatform>(cli::get_option(parser, "platform"));
+        }
+
+        if (!open_project(project_location, platform))
+        {
+            log_error("Failed to open project %s", project_location);
             return EXIT_FAILURE;
         }
     }
     else
     {
-        // use standard mode - open the last known project
-        if (config.most_recent_project >= 0 && config.most_recent_project < config.projects.size())
-        {
-            if (!open_project(&project, config.projects[config.most_recent_project]))
-            {
-                return EXIT_FAILURE;
-            }
-        }
-        else
-        {
-            log_error("Bee: no valid project specified or found in the recent projects cache");
-            return EXIT_FAILURE;
-        }
+        AssetPipelineInitInfo asset_pipeline_info{};
+        asset_pipeline_info.project_root = fs::get_appdata().data_root;
+        asset_pipeline_info.cache_directory = "Cache";
+        asset_pipeline_info.asset_database_name = "AssetDB";
+        asset_pipeline_info.platform = default_asset_platform;
+        g_asset_pipeline->init(asset_pipeline_info);
     }
 
-    // init asset pipeline before loading any plugins etc.
-    AssetPipelineInitInfo asset_pipeline_info{};
-    asset_pipeline_info.platform = project.platform;
-    asset_pipeline_info.assets_source_root = project.location.join(project.assets_root);
-    asset_pipeline_info.asset_database_name = "AssetDB";
-    asset_pipeline_info.asset_database_directory = project.location.join(project.cache_root);
+    if (BEE_FAIL(read_editor_config()))
+    {
+        return EXIT_FAILURE;
+    }
 
-    editor->asset_pipeline.init(asset_pipeline_info);
+    if (!platform_launch("Bee Editor"))
+    {
+        return EXIT_FAILURE;
+    }
 
-    // load the default assets plugin
-    load_plugin(BEE_DEFAULT_ASSETS_PIPELINE_PLUGIN_NAME);
+    // Initialize input
+    input_buffer_init(&app->input_buffer);
 
-    // Load the ImGui plugin
-    load_plugin(BEE_IMGUI_ASSET_PIPELINE_PLUGIN_NAME);
-    load_plugin(BEE_IMGUI_PLUGIN_NAME);
+    // Create main window
+    WindowConfig window_config{};
+    window_config.title = "Bee";
+    app->main_window = create_window(window_config);
 
-    return save_editor_config(config) ? EXIT_SUCCESS : EXIT_FAILURE;
+    return app->main_window.is_valid() ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-void editor_on_frame(AppContext* ctx)
+ApplicationState tick_application(Application* app)
 {
-    poll_input(&ctx->default_input);
+    poll_input(&app->input_buffer);
 
-    if (is_window_close_requested(ctx->main_window))
+    g_asset_pipeline->refresh();
+
+    if (is_window_close_requested(app->main_window))
     {
-        ctx->quit = true;
-        return;
+        return ApplicationState::quit_requested;
     }
 
     current_thread::sleep(make_time_point<TimeInterval::milliseconds>(8).ticks());
+    return ApplicationState::running;
 }
 
-void editor_on_shutdown(AppContext* ctx)
+void shutdown_application(Application* app)
 {
-    auto* editor = static_cast<EditorContext*>(ctx->user_data);
+    destroy_window(app->main_window);
 
-    unload_plugin(BEE_IMGUI_ASSET_PIPELINE_PLUGIN_NAME);
-
-    if (editor->project.is_open)
+    if (g_editor->is_project_open)
     {
-        close_project(&editor->project);
+        close_project();
+    }
+}
+
+void fail_application(Application* app)
+{
+    if (app->main_window.is_valid())
+    {
+        destroy_window(app->main_window);
     }
 
-    // destroy asset pipeline last in case plugins need to use it when unloading
-    editor->asset_pipeline.destroy();
-}
-
-void editor_on_fail(AppContext* ctx)
-{
-    auto* editor = static_cast<EditorContext*>(ctx->user_data);
-
-    if (editor->project.is_open)
+    if (g_editor->is_project_open)
     {
-        close_project(&editor->project);
+        close_project();
     }
-
-    editor->asset_pipeline.destroy();
-}
-
-/*
- **************************
- *
- * Editor initialization
- *
- **************************
- */
-int editor_app_run(const EditorLaunchParameters& params)
-{
-    EditorContext editor;
-    editor.launch_params = params;
-
-    AppDescriptor desc{};
-    desc.app_name = "Bee Editor";
-    desc.user_data = &editor;
-    desc.on_launch = editor_on_launch;
-    desc.on_frame = editor_on_frame;
-    desc.on_shutdown = editor_on_shutdown;
-    desc.on_fail = editor_on_fail;
-
-    return app_run(desc);
 }
 
 
 } // namespace bee
+
+
+static bee::ApplicationModule g_app_interface{};
+static bee::EditorModule g_editor_interface{};
+
+
+BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::PluginState state)
+{
+    bee::g_asset_pipeline = registry->get_module<bee::AssetPipelineModule>(BEE_ASSET_PIPELINE_MODULE_NAME);
+
+    bee::g_imgui = registry->get_module<bee::ImGuiModule>(BEE_IMGUI_MODULE_NAME);
+
+    g_app_interface.instance = registry->get_or_create_persistent<bee::Application>("BeeEditorApplication");
+    g_app_interface.launch = bee::launch_application;
+    g_app_interface.shutdown = bee::shutdown_application;
+    g_app_interface.tick = bee::tick_application;
+    g_app_interface.fail = bee::fail_application;
+
+    bee::g_editor = registry->get_or_create_persistent<bee::Editor>("BeeEditorData");
+    g_editor_interface.create_project = bee::create_project;
+    g_editor_interface.delete_project = bee::delete_project;
+    g_editor_interface.open_project = bee::open_project;
+    g_editor_interface.close_project = bee::close_project;
+
+    registry->toggle_module(state, BEE_APPLICATION_MODULE_NAME, &g_app_interface);
+    registry->toggle_module(state, BEE_EDITOR_MODULE_NAME, &g_editor_interface);
+}

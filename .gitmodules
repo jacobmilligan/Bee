@@ -32,3 +32,9 @@
 	path = ThirdParty/imgui
 	url = https://github.com/ocornut/imgui.git
 	branch = docking
+[submodule "ThirdParty/SPIRV-Tools"]
+	path = ThirdParty/SPIRV-Tools
+	url = https://github.com/KhronosGroup/SPIRV-Tools.git
+[submodule "ThirdParty/SPIRV-Headers"]
+	path = ThirdParty/SPIRV-Headers
+	url = https://github.com/KhronosGroup/SPIRV-Headers.git

@@ -9,12 +9,14 @@
 
 #include "Bee/Core/Containers/Array.hpp"
 #include "Bee/Core/Path.hpp"
-#include "Bee/AssetPipeline/AssetPipeline.hpp"
+#include "Bee/Plugins/AssetPipeline/AssetPipeline.hpp"
 #include "Bee/Core/Plugin.hpp"
 
 
 namespace bee {
 
+
+struct EditorState;
 
 struct BEE_REFLECT(serializable, version = 1) EditorConfig
 {
@@ -29,43 +31,41 @@ struct BEE_REFLECT(serializable, version = 1) Project
     StaticString<256>               name;
     String                          description;
     AssetPlatform                   platform { AssetPlatform::unknown };
-    Path                            assets_root;
-    Path                            sources_root;
-    Path                            cache_root;
 
-    BEE_REFLECT(nonserialized)
-    bool                            is_open { false };
-
-    BEE_REFLECT(nonserialized)
-    Path                            location;
+    /// Paths relative to the projects root directory
+    DynamicArray<Path>              asset_directories;
+    DynamicArray<Path>              source_directories;
+    Path                            cache_directory;
 };
 
-
-enum class EditorLaunchMode
+struct ProjectDescriptor
 {
-    standard,
-    new_project,
-    existing_project
+    StringView      name;
+    StringView      description;
+    StringView      cache_root;
+    AssetPlatform   platform { AssetPlatform::unknown };
 };
 
-struct EditorLaunchParameters
+#define BEE_EDITOR_MODULE_NAME "BEE_EDITOR_MODULE"
+
+struct EditorModule
 {
-    EditorLaunchMode    mode { EditorLaunchMode::standard };
-    AssetPlatform       platform { default_asset_platform };
-    const char*         project_path { nullptr };
-    const char*         project_name { nullptr };
+    bool (*create_project)(const ProjectDescriptor& desc, const Path& directory, Project* dst) { nullptr };
+
+    bool (*create_and_open_project)(const ProjectDescriptor& desc, const Path& directory) { nullptr };
+
+    bool (*delete_project)(const Path& root) { nullptr };
+
+    bool (*open_project)(const Path& root, const AssetPlatform platform) { nullptr };
+
+    bool (*close_project)() { nullptr };
+
+    const Project& (*get_project)() { nullptr };
 };
-
-struct ImGuiApi;
-
-struct EditorContext
-{
-    EditorLaunchParameters  launch_params;
-    EditorConfig            config;
-    AssetPipeline           asset_pipeline;
-    Project                 project;
-};
-
 
 
 } // namespace bee
+
+#ifdef BEE_ENABLE_REFLECTION
+    #include "Bee.Editor/EditorApp.generated.inl"
+#endif // BEE_ENABLE_REFLECTION
