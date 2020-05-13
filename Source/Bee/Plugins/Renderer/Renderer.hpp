@@ -12,29 +12,33 @@
 namespace bee {
 
 
-#define BEE_RENDER_MODULE_API_NAME "BEE_RENDER_MODULE_API"
+struct RenderStageData;
 
-struct RenderModuleApi
+struct RenderStage
 {
-    const char* (*get_name)() { nullptr };
+    RenderStageData* data {nullptr };
 
-    void (*create_resources)(const DeviceHandle& device) { nullptr };
+    void (*init)(const DeviceHandle& device, RenderStageData* data) {nullptr };
 
-    void (*destroy_resources)(const DeviceHandle& device) { nullptr };
+    void (*destroy)(const DeviceHandle& device, RenderStageData* data) {nullptr };
 
-    void (*execute)(const DeviceHandle& device) { nullptr };
+    void (*execute)(const DeviceHandle& device, RenderStageData* data) {nullptr };
 };
 
 
-#define BEE_RENDERER_API_NAME "BEE_RENDERER_API"
+#define BEE_RENDERER_MODULE_NAME "BEE_RENDERER_MODULE"
 
-struct RendererApi
+struct RendererModule
 {
     bool (*init)(const DeviceCreateInfo& device_info) { nullptr };
 
     void (*destroy)() { nullptr };
 
     void (*frame)() { nullptr };
+
+    void (*add_stage)(const u32 id, RenderStage* stage) {nullptr };
+
+    void (*remove_stage)(RenderStage* stage) {nullptr };
 };
 
 
