@@ -260,7 +260,7 @@ PlatformSize get_window_framebuffer_size(const WindowHandle& handle)
 
 bool is_window_close_requested(const WindowHandle& handle)
 {
-    auto window = g_platform.windows[handle];
+    auto* window = g_platform.windows[handle];
     return window->is_close_requested;
 }
 

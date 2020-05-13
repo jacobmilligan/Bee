@@ -83,7 +83,7 @@ LONG top_level_exception_filter(PEXCEPTION_POINTERS ex_info)
 
 #if BEE_CONFIG_ENABLE_ASSERTIONS == 1
 
-    detail::__bee_abort_handler();
+    detail::bee_abort_handler();
 
 #endif // BEE_CONFIG_ENABLE_ASSERTIONS == 1
 
@@ -122,20 +122,12 @@ BOOL WINAPI win32_ctrl_handler(DWORD ctrl_type)
 
         case CTRL_C_EVENT:
         {
-            detail::__bee_abort_handler();
+            detail::bee_abort_handler();
             return TRUE;
         }
 
         case CTRL_BREAK_EVENT:
-        {
-            return FALSE;
-        }
-
         case CTRL_LOGOFF_EVENT:
-        {
-            return FALSE;
-        }
-
         case CTRL_SHUTDOWN_EVENT:
         {
             return FALSE;
@@ -156,6 +148,10 @@ void init_signal_handler()
     }
 }
 
+bool is_debugger_attached()
+{
+    return ::IsDebuggerPresent() == TRUE;
+}
 
 
 } // namespace bee

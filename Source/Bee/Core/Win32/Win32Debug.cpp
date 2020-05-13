@@ -107,7 +107,7 @@ struct Win32DbgHelp
     bool                                    initialized { false };
     RecursiveSpinLock                       mutex;
 
-    Win32DbgHelp()
+    Win32DbgHelp() noexcept
     {
         if (initialized)
         {
@@ -171,11 +171,6 @@ struct Win32DbgHelp
 // Statically initialized to avoid having to explicitly call `init_stacktracing` or similar
 static Win32DbgHelp g_dbghelp;
 
-
-bool is_debugger_attached()
-{
-    return IsDebuggerPresent() != 0;
-}
 
 bool refresh_debug_symbols()
 {

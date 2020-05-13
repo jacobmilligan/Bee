@@ -35,9 +35,44 @@ String from_wchar(const wchar_t* wchar_str, Allocator* allocator)
         nullptr     // we don't need to know if a default char has been used
     );
 
-    String utf8_string(byte_count - 1, '\0', allocator);
-    WideCharToMultiByte(CP_UTF8, 0, wchar_str, -1, utf8_string.data(), utf8_string.size(), nullptr, nullptr);
-    return utf8_string;
+    // process whole string to get length - assumes null-termination
+    return from_wchar(wchar_str, byte_count, allocator);
+}
+
+String from_wchar(const wchar_t* wchar_str, const i32 byte_size, Allocator* allocator)
+{
+    String result(allocator);
+    from_wchar(&result, wchar_str, byte_size);
+    return std::move(result);
+}
+
+void from_wchar(String* dst, const wchar_t* wchar_str, const i32 byte_size)
+{
+    int length = 0;
+    for (int i = 0; i < byte_size; ++i)
+    {
+        if (wchar_str[i] == '\0')
+        {
+            break;
+        }
+        ++length;
+    }
+
+    const auto offset = dst->size();
+    dst->insert(offset, byte_size, '\0');
+
+    const auto utf8_size = WideCharToMultiByte(
+        CP_UTF8,                        // utf-8 codepage
+        0,                              // no flags
+        wchar_str,                      // utf16 string
+        length,                         // utf16 string length
+        dst->data() + offset,           // utf8 string
+        byte_size,                      // utf8 string capacity
+        nullptr,                        // default char
+        nullptr                         // was the default char used?
+    );
+
+    dst->resize(utf8_size);
 }
 
 

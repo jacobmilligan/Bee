@@ -174,7 +174,7 @@ String read_process(const ProcessHandle& process)
     BEE_ASSERT_PROCESS(process);
     BEE_ASSERT(process.read_pipe != nullptr);
 
-    DWORD bytes_available;
+    DWORD bytes_available{};
     auto success = PeekNamedPipe(process.read_pipe, nullptr, 0, nullptr, &bytes_available, nullptr);
     if (success == 0 || bytes_available <= 0)
     {
@@ -206,6 +206,26 @@ i32 write_process(const ProcessHandle& process, const StringView& data)
     }
 
     return sign_cast<i32>(bytes_written);
+}
+
+bool get_environment_variable(const char* variable, String* dst)
+{
+    const auto size = GetEnvironmentVariable(variable, nullptr, 0);
+
+    if (size == 0)
+    {
+        return false;
+    }
+
+    dst->resize(size);
+    GetEnvironmentVariable(variable, dst->data(), dst->size());
+    return true;
+}
+
+i32 get_environment_variable(const char* variable, char* buffer, const i32 buffer_length)
+{
+    const auto size = GetEnvironmentVariable(variable, buffer, buffer_length);
+    return size == 0 ? -1 : size;
 }
 
 

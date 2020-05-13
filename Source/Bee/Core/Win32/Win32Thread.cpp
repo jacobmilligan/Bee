@@ -14,15 +14,15 @@
 namespace bee {
 
 
-void set_native_thread_name(HANDLE native_thread, const char* name)
+void set_native_thread_name(HANDLE native_thread, const StringView& name)
 {
-    WCHAR wc_name[Thread::max_name_length]{ 0 };
-    const auto convert_success = mbstowcs(wc_name, name, Thread::max_name_length);
+    WCHAR wc_name[BEE_THREAD_MAX_NAME]{ 0 };
+    const auto convert_success = mbstowcs(wc_name, name.c_str(), static_cast<size_t>(name.size()));
 
-    if (BEE_CHECK_F(convert_success != static_cast<size_t>(-1), "Thread: unable to convert thread name '%s' to wide string", name))
+    if (BEE_CHECK_F(convert_success != static_cast<size_t>(-1), "Thread: unable to convert thread name '%" BEE_PRIsv "' to wide string", BEE_FMT_SV(name)))
     {
         const auto result = SetThreadDescription(native_thread, wc_name);
-        BEE_ASSERT_F(result >= 0, "Thread: couldn't set thread name to '%s': %s", name, win32_get_last_error_string());
+        BEE_ASSERT_F(result >= 0, "Thread: couldn't set thread name to '%" BEE_PRIsv "': %s", BEE_FMT_SV(name), win32_get_last_error_string());
     }
 }
 
@@ -101,7 +101,7 @@ void Thread::join()
     const auto join_success = WaitForSingleObject(native_thread_, INFINITE);
     BEE_ASSERT_F(join_success != WAIT_FAILED, "Thread: failed to join thread: Win32 error code: %lu", GetLastError());
     native_thread_ = nullptr;
-    memset(name_, 0, static_array_length(name_));
+    name_.clear();
 }
 
 void Thread::detach()
@@ -148,10 +148,8 @@ void Thread::create_native_thread(ExecuteParams* params) noexcept
 
     BEE_ASSERT_F(native_thread_ != nullptr, "Thread: unable to create native thread: Win32 error code: %lu", GetLastError());
 
-    set_native_thread_name(native_thread_, name_);
+    set_native_thread_name(native_thread_, name_.view());
 }
-
-#pragma optimize("", off)
 
 Thread::execute_cb_return_t Thread::execute_cb(void* params)
 {
@@ -162,7 +160,7 @@ Thread::execute_cb_return_t Thread::execute_cb(void* params)
         return access_violation_code;
     }
 
-    auto data = static_cast<Thread::ExecuteParams*>(params);
+    auto* data = static_cast<Thread::ExecuteParams*>(params);
     if (BEE_FAIL_F(data->invoker != nullptr, "Invalid thread function given"))
     {
         return access_violation_code;
@@ -185,8 +183,6 @@ Thread::execute_cb_return_t Thread::execute_cb(void* params)
     }
     return 0;
 }
-
-#pragma optimize("", on)
 
 
 }
