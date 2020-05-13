@@ -11,4 +11,3 @@ bee_test(Bee.Tests.Runtime
 )
 
 #    bee_reflect(Bee.Tests.Runtime)
-bee_reflect_link(Bee.Tests.Runtime)

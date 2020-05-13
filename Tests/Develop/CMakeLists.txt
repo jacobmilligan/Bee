@@ -10,4 +10,3 @@ bee_test(Bee.Tests.BSC
         BSCTests.cpp
 )
 
-bee_reflect_link(Bee.Tests.BSC)

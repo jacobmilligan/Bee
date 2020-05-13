@@ -45,7 +45,7 @@ struct Diagnostics
 
     void init(clang::DiagnosticsEngine* diag_engine);
 
-    clang::DiagnosticBuilder Report(clang::SourceLocation location, unsigned diag_id);
+    clang::DiagnosticBuilder Report(clang::SourceLocation location, unsigned diag_id) const;
 };
 
 
@@ -84,7 +84,7 @@ struct AttributeParser
 
     bool advance_on_char(char c);
 
-    bool is_value_end();
+    bool is_value_end() const;
 
     void skip_whitespace();
 

@@ -28,6 +28,7 @@ set(BEE_THIRD_PARTY ${BEE_PROJECT_ROOT}/ThirdParty)
 set(BEE_BUILD_ROOT ${BEE_PROJECT_ROOT}/Build)
 set(BEE_DEBUG_BINARY_DIR ${BEE_BUILD_ROOT}/Debug)
 set(BEE_RELEASE_BINARY_DIR ${BEE_BUILD_ROOT}/Release)
+set(BEE_GENERATED_ROOT ${BEE_BUILD_ROOT}/Generated)
 
 # Setup compiler variables
 set(BEE_COMPILER_IS_MSVC FALSE)
@@ -59,6 +60,9 @@ if (NOT BEE_PLATFORM)
         set(BEE_PLATFORM Linux)
     endif ()
 endif ()
+
+# Setup tool invocations
+set(BB_COMMAND "${BEE_RELEASE_BINARY_DIR}/bb.exe")
 
 # remove assertions in all release builds no matter what
 set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS
@@ -96,7 +100,7 @@ endfunction()
 #
 ################################################################################
 function(bee_begin)
-    set(__bee_include_dirs ${BEE_SOURCES_ROOT} CACHE INTERNAL "")
+    set(__bee_include_dirs ${BEE_SOURCES_ROOT} ${BEE_GENERATED_ROOT} CACHE INTERNAL "")
     set(__bee_libraries "" CACHE INTERNAL "")
     set(__bee_plugins "" CACHE INTERNAL "")
     set(__bee_current_source_root "" CACHE INTERNAL "")
@@ -104,6 +108,11 @@ function(bee_begin)
 endfunction()
 
 function(bee_end)
+    add_custom_target(All_Plugins
+        ALL
+        DEPENDS ${__bee_plugins}
+    )
+
     if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
         add_custom_target(NatVis SOURCES ${BEE_CMAKE_ROOT}/Bee.natvis)
     endif ()
@@ -189,7 +198,7 @@ function(__bee_finalize_target name output_directory)
         if (NOT "${dep}" STREQUAL "${name}")
             __bee_get_api_macro(${dep} api_macro)
             target_compile_definitions(${name} PRIVATE ${api_macro}=BEE_IMPORT_SYMBOL)
-        endif ()
+        endif()
     endforeach ()
 
     target_compile_definitions(${name} PUBLIC ${__bee_defines})
@@ -294,7 +303,7 @@ endfunction()
 #
 ################################################################################
 function(bee_plugin name)
-    cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES" ${ARGN})
+    cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES;PLUGIN_DEPENDENCIES" ${ARGN})
 
     __bee_get_api_macro(${name} api_macro)
 
@@ -311,7 +320,21 @@ function(bee_plugin name)
         target_link_libraries(${name} PUBLIC ${ARGS_LINK_LIBRARIES})
     endif ()
 
+    if (ARGS_PLUGIN_DEPENDENCIES)
+        add_dependencies(${name} ${ARGS_PLUGIN_DEPENDENCIES})
+    endif ()
+
     set(__bee_plugins ${__bee_plugins} ${name} CACHE INTERNAL "")
+
+    if (WIN32)
+        set(lib_path "${BEE_DEBUG_BINARY_DIR}/${output_directory}/${name}")
+        add_custom_command(
+                TARGET ${name} PRE_BUILD
+                COMMAND ${BB_COMMAND} prepare-plugin ${lib_path}
+                COMMENT "Preparing plugin ${lib_path} to enable hot reloading on Windows"
+                VERBATIM
+        )
+    endif ()
 
     __bee_finalize_target(${name} "Plugins")
 endfunction()
@@ -391,14 +414,19 @@ function(bee_reflect target)
         return()
     endif ()
 
-    cmake_parse_arguments(ARGS "INCLUDE_NON_HEADERS" "" "EXCLUDE" ${ARGN})
+    cmake_parse_arguments(ARGS "INCLUDE_NON_HEADERS;INLINE" "" "EXCLUDE" ${ARGN})
 
-    set(output_dir ${PROJECT_SOURCE_DIR}/Build/DevData/Generated)
+    set(output_dir ${PROJECT_SOURCE_DIR}/Build/Generated)
 
     get_target_property(source_list ${target} SOURCES)
 
     if (NOT ARGS_INCLUDE_NON_HEADERS)
         list(FILTER source_list EXCLUDE REGEX ".*\\.(cpp|cxx|c|inl)$")
+    endif ()
+
+    set(generated_extension cpp)
+    if (ARGS_INLINE)
+        set(generated_extension inl)
     endif ()
 
     set(excluded_files)
@@ -439,7 +467,7 @@ function(bee_reflect target)
             if (position GREATER_EQUAL 0)
                 # All good - we can include this file in the reflection generation
                 get_filename_component(filename ${src} NAME_WE)
-                list(APPEND expected_output "${output_dir}/${target}/${filename}.generated.cpp")
+                list(APPEND expected_output "${output_dir}/${target}/${filename}.generated.${generated_extension}")
                 list(APPEND reflected_sources "${src}")
             endif ()
         endif ()
@@ -502,53 +530,23 @@ function(bee_reflect target)
     )
     list(APPEND defines ${build_type_define})
 
-    get_target_property(linked_targets ${target} LINK_LIBRARIES)
-    string(REPLACE ";" "," linked_targets "${linked_targets}")
+    set(inline_opt)
+    if (ARGS_INLINE)
+        set(inline_opt --inline)
+    endif ()
+
+    set(bee_reflect_command ${bee_reflect_program} ${inline_opt} ${reflected_sources} --output ${output_dir}/${target} -- ${defines} ${include_dirs} ${system_include_dirs})
 
     add_custom_command(
             DEPENDS ${reflected_sources} ${bee_reflect_program}
             OUTPUT ${expected_output}
-            COMMAND ${bee_reflect_program} generate ${reflected_sources} --output ${PROJECT_SOURCE_DIR}/Build/DevData/Generated/${target} --target-dependencies ${linked_targets} -- ${defines} ${include_dirs} ${system_include_dirs}
+            COMMAND ${bee_reflect_command}
             USES_TERMINAL
             COMMENT "Running bee-reflect on header files: generating ${expected_output}"
     )
 
-    set_source_files_properties(${expected_output} PROPERTIES GENERATED 1)
-    target_sources(${target} PRIVATE ${expected_output})
+    set(generated_sources ${expected_output} "${output_dir}/${target}/TypeList.init.cpp")
+    set_source_files_properties(${generated_sources} PROPERTIES GENERATED 1)
+    target_sources(${target} PRIVATE ${generated_sources})
     target_include_directories(${target} PUBLIC ${output_dir}/${target})
-endfunction()
-
-function(bee_reflect_link target)
-    if (DISABLE_REFLECTION)
-        return()
-    endif ()
-
-    set(generated_root ${PROJECT_SOURCE_DIR}/Build/DevData/Generated)
-    set(output_dir ${generated_root}/${target})
-    file(GLOB_RECURSE typelist_files "${output_dir}/TypeList.generated.hpp")
-
-    get_target_property(linked_targets ${target} LINK_LIBRARIES)
-    set(linked_dirs)
-
-    foreach (dep ${linked_targets})
-        list(APPEND linked_dirs "${generated_root}/${dep}")
-        file(GLOB_RECURSE dep_files "${generated_root}/${dep}/TypeList.generated.hpp")
-        list(APPEND typelist_files ${dep_files})
-    endforeach ()
-
-    list(LENGTH typelist_files typelist_files_length)
-    if (${typelist_files_length} LESS_EQUAL 0)
-        return()
-    endif ()
-
-    add_custom_command(
-            PRE_BUILD
-            DEPENDS ${typelist_files} ${bee_reflect_program}
-            OUTPUT ${output_dir}/Reflection.init.cpp
-            COMMAND ${bee_reflect_program} link "${output_dir}" ${linked_dirs} --output ${output_dir}/Reflection.init.cpp --
-            USES_TERMINAL
-            COMMENT "Running the bee-reflect linker on ${target}"
-    )
-
-    target_sources(${target} PUBLIC ${output_dir}/Reflection.init.cpp)
 endfunction()

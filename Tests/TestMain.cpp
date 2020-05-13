@@ -9,7 +9,7 @@
 //  Copyright (c) 2019 Jacob Milligan. All rights reserved.
 //
 
-#include <Bee/Core/Bee.hpp>
+#include <Bee/Core/Main.hpp>
 #include <gtest/gtest.h>
 
 // Bee logging callback to ensure logging is detected by GTest Death tests etc.

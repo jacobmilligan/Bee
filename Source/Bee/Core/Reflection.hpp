@@ -968,11 +968,6 @@ struct TypeTag
     using type = T;
 };
 
-
-extern void reflection_init();
-
-BEE_CORE_API void reflection_destroy();
-
 template <typename T>
 const Type* get_type(const TypeTag<T>& tag);
 
@@ -997,6 +992,7 @@ BEE_CORE_API void reflection_register_builtin_types();
 
 // NOT THREAD SAFE - should only ever be done at initialization by `reflection_init`
 BEE_CORE_API void register_type(const Type* type);
+BEE_CORE_API void unregister_type(const Type* type);
 
 BEE_CORE_API const Attribute* find_attribute(const Type* type, const char* attribute_name);
 
@@ -1061,6 +1057,6 @@ const char* reflection_dump_flags(const FlagType flag)
 } // namespace bee
 
 #ifdef BEE_ENABLE_REFLECTION
-#include "ReflectedTemplates/Array.generated.inl"
-#include "ReflectedTemplates/String.generated.inl"
+#include "Bee.Core/ReflectedTemplates/Array.generated.inl"
+#include "Bee.Core/ReflectedTemplates/String.generated.inl"
 #endif // BEE_ENABLE_REFLECTION

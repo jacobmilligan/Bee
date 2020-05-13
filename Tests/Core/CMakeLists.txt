@@ -46,6 +46,6 @@ bee_relacy_test(Bee.Tests.WorkStealingQueue
         SOURCES WorkStealingQueueTests.cpp
 )
 
+target_include_directories(Bee.Tests.Core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
 bee_reflect(Bee.Tests.Core)
-bee_reflect_link(Bee.Tests.Core)
-bee_reflect_link(Bee.Tests.WorkStealingQueue)

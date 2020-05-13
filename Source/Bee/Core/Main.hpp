@@ -36,9 +36,6 @@ void preinit_main()
     logger_init();
     enable_exception_handling();
     init_signal_handler();
-#ifdef BEE_ENABLE_REFLECTION
-    reflection_init();
-#endif // BEE_ENABLE_REFLECTION
 
 #if BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
     memory_tracker::init_tracker(memory_tracker::TrackingMode::disabled);
@@ -52,7 +49,6 @@ void post_main()
     memory_tracker::destroy_tracker();
 #endif // BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
 
-    reflection_destroy();
     disable_exception_handling();
     logger_shutdown();
     temp_allocator_unregister_thread();

@@ -154,6 +154,7 @@ struct EnumTypeStorage
 
 struct ArrayTypeStorage
 {
+    const char* element_type_name { nullptr };
     bool        is_generated { false };
     ArrayType   type;
 };

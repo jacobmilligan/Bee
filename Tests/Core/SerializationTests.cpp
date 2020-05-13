@@ -5,7 +5,7 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include "Tests/SerializationTestsTypes.hpp"
+#include "SerializationTestsTypes.hpp"
 
 #include <Bee/Core/Serialization/Serialization.hpp>
 #include <Bee/Core/Serialization/JSONSerializer.hpp>

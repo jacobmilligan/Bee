@@ -149,7 +149,7 @@ public:
 
         if ((field_type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
         {
-            SerializationBuilder builder(serializer_, field_type->as<RecordType>());
+            SerializationBuilder builder(serializer_, field_type->as<RecordType>(), allocator_);
             serialize_type(&builder, field);
         }
         else
@@ -181,7 +181,7 @@ public:
 
         if ((field_type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
         {
-            SerializationBuilder builder(serializer_, field_type->as<RecordType>());
+            SerializationBuilder builder(serializer_, field_type->as<RecordType>(), allocator_);
             serialize_type(&builder, &removed_data);
         }
         else
@@ -300,9 +300,13 @@ inline void serialize_type(SerializationBuilder* builder, TypeInstance* instance
     if (builder->mode() == SerializerMode::reading)
     {
         const Type* type = get_type(type_hash);
-        BEE_ASSERT(!type->is(TypeKind::unknown));
 
-        auto allocator = instance->allocator() != nullptr ? instance->allocator() : system_allocator();
+        if (type->is(TypeKind::unknown))
+        {
+            return;
+        }
+
+        auto* allocator = instance->allocator() != nullptr ? instance->allocator() : system_allocator();
         *instance = std::move(type->create_instance(allocator));
     }
 
@@ -310,7 +314,7 @@ inline void serialize_type(SerializationBuilder* builder, TypeInstance* instance
     {
         BEE_ASSERT(instance->data() != nullptr);
 
-        auto data = static_cast<u8*>(const_cast<void*>(instance->data()));
+        auto* data = static_cast<u8*>(const_cast<void*>(instance->data()));
         serialize_type_append(builder->serializer(), instance->type(), nullptr, data);
     }
 }

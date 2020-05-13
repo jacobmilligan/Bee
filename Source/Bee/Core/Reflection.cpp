@@ -280,21 +280,31 @@ bool TypeInstance::validate_type(const Type* type) const
  */
 static DynamicHashMap<u32, const Type*> g_type_map;
 
-void reflection_destroy()
+
+void register_type(const Type* type)
 {
-    destruct(&g_type_map);
+    if (g_type_map.find(type->hash) == nullptr)
+    {
+        g_type_map.insert(type->hash, type);
+    }
 }
 
+void unregister_type(const Type* type)
+{
+    if (g_type_map.find(type->hash) != nullptr)
+    {
+        g_type_map.erase(type->hash);
+    }
+}
 
 u32 get_type_hash(const StringView& type_name)
 {
     return get_hash(type_name.data(), type_name.size(), 0xb12e92e);
 }
 
-
 const Type* get_type(const u32 hash)
 {
-    auto type = g_type_map.find(hash);
+    auto* type = g_type_map.find(hash);
     if (type != nullptr)
     {
         return type->value;
@@ -312,14 +322,6 @@ BEE_CORE_API void reflection_register_builtin_types()
     for (auto& type : builtin_types)
     {
         register_type(type);
-    }
-}
-
-void register_type(const Type* type)
-{
-    if (g_type_map.find(type->hash) == nullptr)
-    {
-        g_type_map.insert(type->hash, type);
     }
 }
 

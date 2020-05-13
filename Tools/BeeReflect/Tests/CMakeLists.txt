@@ -6,5 +6,4 @@ bee_add_sources(
 )
 bee_exe(BeeReflectTest LINK_LIBRARIES Bee.Core)
 bee_reflect(BeeReflectTest)
-bee_reflect_link(BeeReflectTest)
 target_include_directories(BeeReflectTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
