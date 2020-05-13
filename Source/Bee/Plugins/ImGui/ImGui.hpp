@@ -11,8 +11,12 @@
 namespace bee {
 
 
-#define BEE_IMGUI_PLUGIN_NAME "Bee.ImGui"
-#define BEE_IMGUI_ASSET_PIPELINE_PLUGIN_NAME "Bee.ImGui.AssetPipeline"
+#define BEE_IMGUI_MODULE_NAME "BEE_IMGUI_MODULE"
+
+struct ImGuiModule
+{
+
+};
 
 
 } // namespace bee

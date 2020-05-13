@@ -1,0 +1,100 @@
+RenderPass DefaultPass
+{                 
+    Attachment MainColor
+    {
+        type: color
+        format: rgba16i
+        load_op: clear
+        store_op: store
+        samples: 4
+    }
+
+    SubPass DefaultSubPass
+    {
+        color_attachments: [ MainColor ]
+    }
+}
+
+RasterState DefaultRasterState
+{
+    front_face_ccw: true
+    cull_mode: back
+}
+
+PipelineState DefaultPipelineState
+{
+    primitive_type: triangle
+    render_pass: DefaultPass
+    subpass: DefaultSubPass
+    raster_state: DefaultRasterState
+    depth_stencil_state: DefaultDSS
+    multisample_state: DefaultMSS
+    vertex_stage: TriangleShader
+    fragment_stage: TriangleShader
+}
+
+DepthStencilState DefaultDSS
+{
+    front_face_stencil: 
+    {
+        fail_op: zero
+        pass_op: replace
+        read_mask: 2
+    }
+
+    depth_test_enabled: true
+}
+
+MultisampleState DefaultMSS
+{
+    sample_count: 2
+    sample_shading_enabled: true
+    sample_shading: 1.0
+    sample_mask: 2
+    alpha_to_coverage_enabled: true
+    alpha_to_one_enabled: true
+}
+
+Shader TriangleShader
+{
+    vertex: vert
+    fragment: frag
+    code:
+    {
+        cbuffer Params : register(b0) 
+        {
+            float4x4 view_proj;
+        };
+
+        Texture2D<float4> main_tex: register(t0);
+        sampler main_sampler: register(s0);
+
+        struct AppData 
+        {
+            float4 position: POSITION;
+            float4 color: COLOR;
+            float2 texcoord: TEXCOORD0;
+        };
+
+        struct FragIn 
+        {
+            float4 position: SV_POSITION;
+            float4 color: COLOR;
+            float2 texcoord: TEXCOORD0;
+        };
+
+        FragIn vert(AppData IN)
+        {
+            FragIn OUT;
+            OUT.position = mul(view_proj, IN.position);
+            OUT.color = IN.color;
+            OUT.texcoord = IN.texcoord;
+            return OUT;
+        }
+
+        float4 frag(FragIn IN): SV_TARGET
+        {
+            return main_tex.Sample(main_sampler, IN.texcoord) * IN.color;
+        }
+    }
+}
