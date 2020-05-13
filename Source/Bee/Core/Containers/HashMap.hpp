@@ -840,5 +840,5 @@ constexpr bool HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::implicit_gro
 } // namespace bee
 
 #ifdef BEE_ENABLE_REFLECTION
-#include "ReflectedTemplates/HashMap.generated.inl"
+#include "Bee.Core/ReflectedTemplates/HashMap.generated.inl"
 #endif // BEE_ENABLE_REFLECTION

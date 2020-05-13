@@ -93,6 +93,12 @@ struct BEE_CORE_API CreateProcessInfo
     const char*         command_line { nullptr };
 };
 
+#if BEE_OS_WINDOWS == 1
+    static constexpr char environment_path_delimiter = ';';
+#else
+    #error "Platform not supported"
+#endif // BEE_OS_WINDOWS == 1
+
 BEE_CORE_API bool create_process(const CreateProcessInfo& info, const Path& working_directory = Path::current_working_directory());
 
 BEE_CORE_API void destroy_process(const ProcessHandle& process);
@@ -106,6 +112,10 @@ BEE_CORE_API void wait_for_process(const ProcessHandle& process);
 BEE_CORE_API String read_process(const ProcessHandle& process);
 
 BEE_CORE_API i32 write_process(const ProcessHandle& process, const StringView& data);
+
+BEE_CORE_API bool get_environment_variable(const char* variable, String* dst);
+
+BEE_CORE_API i32 get_environment_variable(const char* variable, char* buffer, const i32 buffer_length);
 
 
 } // namespace bee

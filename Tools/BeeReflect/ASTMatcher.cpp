@@ -64,7 +64,7 @@ BuiltinAttribute g_builtin_attributes[] =
 
 Qualifier get_qualifier(const clang::QualType& type)
 {
-    const auto type_ptr = type.getTypePtrOrNull();
+    const auto* type_ptr = type.getTypePtrOrNull();
 
     auto qualifier = Qualifier::none
         | get_flag_if_true(type.isConstQualified(), Qualifier::cv_const)
@@ -118,14 +118,14 @@ i32 get_attribute_index(const DynamicArray<Attribute>& attributes, const char* n
 
 bool has_reflect_attribute(const clang::Decl& decl)
 {
-    for (auto& attribute : decl.attrs())
+    for (const auto& attribute : decl.attrs())
     {
         if (attribute->getKind() != clang::attr::Annotate)
         {
             continue;
         }
 
-        auto annotation_decl = llvm::dyn_cast<clang::AnnotateAttr>(attribute);
+        auto* annotation_decl = llvm::dyn_cast<clang::AnnotateAttr>(attribute);
         if (annotation_decl != nullptr && annotation_decl->getAnnotation().startswith("bee-reflect"))
         {
             return true;
@@ -183,7 +183,7 @@ void Diagnostics::init(clang::DiagnosticsEngine* diag_engine)
     );
 }
 
-clang::DiagnosticBuilder Diagnostics::Report(clang::SourceLocation location, unsigned diag_id)
+clang::DiagnosticBuilder Diagnostics::Report(clang::SourceLocation location, unsigned diag_id) const
 {
     return engine->Report(location, diag_id);
 }
@@ -203,21 +203,21 @@ ASTMatcher::ASTMatcher(TypeMap* type_map_to_use, ReflectionAllocator* allocator_
 
 void ASTMatcher::run(const clang::ast_matchers::MatchFinder::MatchResult& result)
 {
-    auto as_record = result.Nodes.getNodeAs<clang::CXXRecordDecl>("id");
+    const auto* as_record = result.Nodes.getNodeAs<clang::CXXRecordDecl>("id");
     if (as_record != nullptr)
     {
         reflect_record(*as_record);
         return;
     }
 
-    auto as_enum = result.Nodes.getNodeAs<clang::EnumDecl>("id");
+    const auto* as_enum = result.Nodes.getNodeAs<clang::EnumDecl>("id");
     if (as_enum != nullptr)
     {
         reflect_enum(*as_enum);
         return;
     }
 
-    auto as_function = result.Nodes.getNodeAs<clang::FunctionDecl>("id");
+    const auto* as_function = result.Nodes.getNodeAs<clang::FunctionDecl>("id");
     if (as_function != nullptr)
     {
         reflect_function(*as_function);
@@ -261,8 +261,8 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
     }
 
     const auto name = str::format("%" BEE_PRIsv, BEE_FMT_SV(print_name(decl)));
-    auto storage = allocator->allocate_storage<RecordTypeStorage>(&decl);
-    auto type = &storage->type;
+    auto* storage = allocator->allocate_storage<RecordTypeStorage>(&decl);
+    auto* type = &storage->type;
 
     // Get all the base class names
     for (const auto& base : decl.bases())
@@ -272,19 +272,19 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
             continue;
         }
 
-        auto base_type_ptr = base.getType().getTypePtrOrNull();
+        const auto* base_type_ptr = base.getType().getTypePtrOrNull();
         if (base_type_ptr == nullptr || !has_reflect_attribute(*base_type_ptr->getAsCXXRecordDecl()))
         {
             continue;
         }
 
-        auto base_name = allocator->allocate_name(print_qualtype_name(base.getType(), decl.getASTContext()));
+        const auto* base_name = allocator->allocate_name(print_qualtype_name(base.getType(), decl.getASTContext()));
         storage->base_type_names.push_back(base_name);
     }
 
     if (!decl.isDependentType())
     {
-        auto& layout = decl.getASTContext().getASTRecordLayout(&decl);
+        const auto& layout = decl.getASTContext().getASTRecordLayout(&decl);
         type->size = layout.getSize().getQuantity();
         type->alignment = layout.getAlignment().getQuantity();
     }
@@ -316,7 +316,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
     type->hash = get_type_hash(name.view());
 
     // Gather template parameters
-    auto class_template = decl.getDescribedClassTemplate();
+    auto* class_template = decl.getDescribedClassTemplate();
     if (class_template != nullptr)
     {
         type->kind |= TypeKind::template_decl;
@@ -328,7 +328,7 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
 
         int param_index = 0;
         const auto param_count = static_cast<int>(class_template->getTemplateParameters()->size());
-        for (const auto clang_param : *class_template->getTemplateParameters())
+        for (auto* clang_param : *class_template->getTemplateParameters())
         {
             TemplateParameter param{};
             param.name = allocator->allocate_name(clang_param->getName());
@@ -336,11 +336,11 @@ void ASTMatcher::reflect_record(const clang::CXXRecordDecl& decl, RecordTypeStor
             param.hash = get_type_hash(param.name);
 
             // Default template args need to be removed so we can specialize `get_type` properly
-            if (auto ttp = llvm::dyn_cast<clang::TemplateTypeParmDecl>(clang_param))
+            if (auto* ttp = llvm::dyn_cast<clang::TemplateTypeParmDecl>(clang_param))
             {
                 ttp->removeDefaultArgument();
             }
-            else if (auto nttp = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(clang_param))
+            else if (auto* nttp = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(clang_param))
             {
                 param.type_name = allocator->allocate_name(print_qualtype_name(nttp->getType(), decl.getASTContext()));
                 nttp->removeDefaultArgument();
@@ -417,7 +417,7 @@ void ASTMatcher::reflect_record_children(const clang::CXXRecordDecl &decl, Recor
         {
             case clang::Decl::Kind::CXXRecord:
             {
-                const auto child_record = llvm::dyn_cast<clang::CXXRecordDecl>(child);
+                const auto *const child_record = llvm::dyn_cast<clang::CXXRecordDecl>(child);
                 if (child_record != nullptr)
                 {
                     reflect_record(*child_record, storage);
@@ -426,7 +426,7 @@ void ASTMatcher::reflect_record_children(const clang::CXXRecordDecl &decl, Recor
             }
             case clang::Decl::Kind::Enum:
             {
-                const auto child_enum = llvm::dyn_cast<clang::EnumDecl>(child);
+                const auto* child_enum = llvm::dyn_cast<clang::EnumDecl>(child);
                 if (child_enum != nullptr)
                 {
                     reflect_enum(*child_enum, storage);
@@ -436,7 +436,7 @@ void ASTMatcher::reflect_record_children(const clang::CXXRecordDecl &decl, Recor
             case clang::Decl::Kind::Field:
             {
                 const auto old_field_count = storage->fields.size();
-                const auto child_field = llvm::dyn_cast<clang::FieldDecl>(child);
+                const auto* child_field = llvm::dyn_cast<clang::FieldDecl>(child);
 
                 if (child_field != nullptr)
                 {
@@ -452,7 +452,7 @@ void ASTMatcher::reflect_record_children(const clang::CXXRecordDecl &decl, Recor
             case clang::Decl::Kind::Function:
             case clang::Decl::Kind::CXXMethod:
             {
-                const auto child_method = llvm::dyn_cast<clang::FunctionDecl>(child);
+                const auto* child_method = llvm::dyn_cast<clang::FunctionDecl>(child);
                 if (child_method != nullptr)
                 {
                     reflect_function(*child_method, storage);
@@ -504,7 +504,7 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* pa
     const auto underlying = decl.getIntegerType().getCanonicalType();
     // Get the associated types hash so we can look it up later
     const auto underlying_name = print_qualtype_name(underlying, ast_context);
-    const auto underlying_type = get_type(get_type_hash({
+    const auto* underlying_type = get_type(get_type_hash({
         underlying_name.c_str(),
         static_cast<i32>(underlying_name.size())
     }));
@@ -516,8 +516,8 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* pa
     }
 
     const auto name = print_name(decl);
-    auto storage = allocator->allocate_storage<EnumTypeStorage>();
-    auto type = &storage->type;
+    auto* storage = allocator->allocate_storage<EnumTypeStorage>();
+    auto* type = &storage->type;
     type->kind = TypeKind::enum_decl;
     type->size = ast_context.getTypeSize(underlying) / 8;
     type->alignment = ast_context.getTypeAlign(underlying) / 8;
@@ -588,8 +588,8 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
         const auto hash = get_type_hash({ array_type_name.data(), static_cast<i32>(array_type_name.size()) });
         if (type_map->find_type(hash) == nullptr)
         {
-            auto clang_type = llvm::dyn_cast<clang::ConstantArrayType>(qualtype);
-            auto array_storage = allocator->allocate_storage<ArrayTypeStorage>();
+            const auto* clang_type = llvm::dyn_cast<clang::ConstantArrayType>(qualtype);
+            auto* array_storage = allocator->allocate_storage<ArrayTypeStorage>();
             const auto element_type = clang_type->getElementType().getCanonicalType();
 
             auto& new_array_type = array_storage->type;
@@ -602,6 +602,8 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
             new_array_type.serialized_version = 1;
 
             const auto element_type_name = print_qualtype_name(element_type, decl.getASTContext());
+            array_storage->element_type_name = allocator->allocate_name(element_type_name);
+
             const auto element_type_hash = get_type_hash({ element_type_name.data(), static_cast<i32>(element_type_name.size()) });
             new_array_type.element_type = type_map->find_type(element_type_hash);
 
@@ -612,8 +614,8 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
 
             if (new_array_type.element_type != nullptr)
             {
-                new_array_type.size = new_array_type.element_type->size * new_array_type.element_count; // functions only have size when used as function pointer
-                new_array_type.alignment = new_array_type.element_type->alignment;
+                new_array_type.size = decl.getASTContext().getTypeSize(element_type) * new_array_type.element_count;
+                new_array_type.alignment = decl.getASTContext().getTypeAlign(element_type);
             }
             else
             {
@@ -727,8 +729,8 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, RecordTypeSto
     llvm::raw_svector_ostream type_name_stream(type_name);
     decl.printQualifiedName(type_name_stream);
 
-    auto storage = allocator->allocate_storage<FunctionTypeStorage>();
-    auto type = &storage->type;
+    auto* storage = allocator->allocate_storage<FunctionTypeStorage>();
+    auto* type = &storage->type;
     type->hash = get_type_hash({ type_name.data(), static_cast<i32>(type_name.size()) });
     type->name = allocator->allocate_name(type_name);
     type->size = sizeof(void*); // functions only have size when used as function pointer
@@ -744,14 +746,14 @@ void ASTMatcher::reflect_function(const clang::FunctionDecl& decl, RecordTypeSto
     storage->add_invoker_type_arg(print_qualtype_name(decl.getReturnType(), decl.getASTContext()));
 
     // If this is a method type then we need to skip the implicit `this` parameter
-    auto params_begin = decl.parameters().begin();
-    auto params_end = decl.parameters().end();
+    const auto* params_begin = decl.parameters().begin();
+    const auto* params_end = decl.parameters().end();
     if (is_member_function && !decl.parameters().empty())
     {
         ++params_begin;
     }
 
-    for (auto& param : clang::ArrayRef<clang::ParmVarDecl*>(params_begin, params_end))
+    for (const auto& param : clang::ArrayRef<clang::ParmVarDecl*>(params_begin, params_end))
     {
         auto param_storage = create_field(param->getName(), param->getFunctionScopeIndex(), param->getASTContext(), nullptr, parent, param->getType(), param->getLocation());
         auto& field = param_storage.field;
@@ -809,7 +811,7 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
     }
 
     clang::QualType original_type;
-    auto type_ptr = desugared_type.getTypePtrOrNull();
+    const auto* type_ptr = desugared_type.getTypePtrOrNull();
     const auto is_ptr_or_ref = type_ptr != nullptr && (type_ptr->isPointerType() || type_ptr->isLValueReferenceType());
 
     // Check if reference or pointer and get the pointee and const-qualified info before removing qualifications
@@ -836,23 +838,27 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
 
     if (original_type->isRecordType())
     {
-        auto as_cxx_record_decl = !is_ptr_or_ref ? qual_type->getAsCXXRecordDecl() : type_ptr->getPointeeType()->getAsCXXRecordDecl();
+        auto* as_cxx_record_decl = !is_ptr_or_ref ? qual_type->getAsCXXRecordDecl() : type_ptr->getPointeeType()->getAsCXXRecordDecl();
         if (as_cxx_record_decl != nullptr && as_cxx_record_decl->getTemplateSpecializationKind() != clang::TSK_Undeclared)
         {
-            const auto specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(as_cxx_record_decl);
+            const auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(as_cxx_record_decl);
             BEE_ASSERT(specialization != nullptr);
 
             for (const clang::TemplateArgument& arg : specialization->getTemplateArgs().asArray())
             {
-                if (arg.getKind() != clang::TemplateArgument::Type)
+                const auto is_type = arg.getKind() == clang::TemplateArgument::Type;
+                const auto is_integral = arg.getKind() == clang::TemplateArgument::Integral;
+
+                if (!is_type && !is_integral)
                 {
                     storage.template_arguments.push_back(get_type<UnknownType>());
                     continue;
                 }
 
-                const auto templ_type_name = print_qualtype_name(arg.getAsType(), specialization->getASTContext());
+                const auto arg_qualtype = is_type ? arg.getAsType() : arg.getIntegralType();
+                const auto templ_type_name = print_qualtype_name(arg_qualtype, specialization->getASTContext());
                 const auto arg_type_hash = get_type_hash(templ_type_name.c_str());
-                auto arg_type = type_map->find_type(arg_type_hash);
+                const auto* arg_type = type_map->find_type(arg_type_hash);
 
                 if (arg_type == nullptr)
                 {
@@ -870,7 +876,7 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
             original_type = original_type.getCanonicalType();
 
             // We want to lookup the type using the unspecialized type name from the template decl
-            const auto template_decl = specialization->getInstantiatedFrom().dyn_cast<clang::ClassTemplateDecl*>();
+            const auto* template_decl = specialization->getInstantiatedFrom().dyn_cast<clang::ClassTemplateDecl*>();
             if (template_decl == nullptr)
             {
                 type_hash = 0;
@@ -883,7 +889,7 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
         }
     }
 
-    auto type = type_map->find_type(type_hash);
+    const auto* type = type_map->find_type(type_hash);
     if (type == nullptr)
     { 
         /*
@@ -938,7 +944,7 @@ bool AttributeParser::advance_on_char(char c)
     return false;
 }
 
-bool AttributeParser::is_value_end()
+bool AttributeParser::is_value_end() const
 {
     return current == end || *current == ',' || str::is_space(*current) || *current == ']';
 }
@@ -968,7 +974,7 @@ bool AttributeParser::parse_string(Attribute* attribute)
         return false;
     }
 
-    const auto begin = current;
+    const auto* begin = current;
 
     while (current != end && *current != '\"')
     {
@@ -988,7 +994,7 @@ bool AttributeParser::parse_string(Attribute* attribute)
 
 bool AttributeParser::parse_number(bee::Attribute* attribute)
 {
-    const auto begin = current;
+    const auto* begin = current;
 
     while (!is_value_end())
     {
@@ -1033,7 +1039,7 @@ bool AttributeParser::parse_symbol(bee::Attribute* attribute)
         return false;
     }
 
-    const auto begin = current;
+    const auto* begin = current;
     auto colon_count = 0;
 
     while (!is_value_end())
@@ -1249,7 +1255,7 @@ bool AttributeParser::parse(DynamicArray<Attribute>* dst_attributes, Serializati
     {
         allocator = refl_allocator;
 
-        const auto begin = current;
+        const auto* begin = current;
 
         while (current != end && *current != ']')
         {
@@ -1309,14 +1315,14 @@ bool AttributeParser::init(const clang::Decl& decl, Diagnostics* new_diagnostics
     llvm::StringRef annotation_str;
     diagnostics = new_diagnostics;
 
-    for (auto& attribute : decl.attrs())
+    for (const auto& attribute : decl.attrs())
     {
         if (attribute->getKind() != clang::attr::Annotate)
         {
             continue;
         }
 
-        auto annotation_decl = llvm::dyn_cast<clang::AnnotateAttr>(attribute);
+        auto* annotation_decl = llvm::dyn_cast<clang::AnnotateAttr>(attribute);
         if (annotation_decl == nullptr)
         {
             continue;

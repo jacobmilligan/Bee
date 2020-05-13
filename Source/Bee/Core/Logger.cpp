@@ -167,12 +167,12 @@ void default_logger_callback(const LogVerbosity verbosity, const char* fmt, va_l
     {
         case LogVerbosity::info:
         {
-            stream.write("[info] ");
+            stream.write("[info]  ");
             break;
         }
         case LogVerbosity::warn:
         {
-            stream.write("[warning] ");
+            stream.write("[warn]  ");
             break;
         }
         case LogVerbosity::error:

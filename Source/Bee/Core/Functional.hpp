@@ -150,7 +150,7 @@ public:
     Function() noexcept = default;
 
     template <typename CallableType, typename = enable_if_callable_t<CallableType>>
-    Function(CallableType&& callable) noexcept
+    Function(CallableType&& callable) noexcept // NOLINT
     {
         using decayed_callable_t = std::decay_t<CallableType>;
 
