@@ -47,11 +47,15 @@ bool is_main()
 
 void Thread::init(const ThreadCreateInfo& create_info, ExecuteParams* params)
 {
-    const auto name_len = str::length(create_info.name);
-    str::copy(name_, max_name_length, create_info.name, name_len);
-    if (name_len == 0)
+    const auto name_length = str::length(create_info.name);
+
+    if (name_length <= 0)
     {
-        str::copy(name_, max_name_length, "Bee.Thread");
+        name_ = "Bee.Thread";
+    }
+    else
+    {
+        name_ = StringView(create_info.name, math::min(BEE_THREAD_MAX_NAME, name_length));
     }
 
     params->register_with_temp_allocator = create_info.use_temp_allocator;
@@ -85,7 +89,7 @@ void Thread::move_construct(Thread& other) noexcept
         return;
     }
 
-    str::copy(name_, max_name_length, other.name_);
+    name_ = std::move(other.name_);
     native_thread_ = other.native_thread_;
 
     other.native_thread_ = nullptr;

@@ -11,8 +11,8 @@
 #include "Bee/Core/Noncopyable.hpp"
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Memory/Memory.hpp"
+#include "Bee/Core/String.hpp"
 
-#include <string>
 
 #if BEE_OS_UNIX == 1
     #include <pthread.h>
@@ -74,7 +74,15 @@ BEE_CORE_API bool is_main();
 } // namespace current_thread
 
 
-    #define BEE_ASSERT_MAIN_THREAD() BEE_ASSERT(::bee::current_thread::is_main())
+#define BEE_ASSERT_MAIN_THREAD() BEE_ASSERT(::bee::current_thread::is_main())
+
+#ifndef BEE_THREAD_MAX_NAME
+    #if BEE_OS_WINDOWS == 1
+        #define BEE_THREAD_MAX_NAME 64
+    #else
+        #define BEE_THREAD_MAX_NAME 16 // 16: based on the limit for pthread platforms
+    #endif // BEE_OS_WINDOWS == 1
+#endif // BEE_THREAD_MAX_NAME
 
 
 /*
@@ -83,20 +91,17 @@ BEE_CORE_API bool is_main();
 
 struct ThreadCreateInfo
 {
-    static constexpr i32    max_name_length = 16; // based on the limit for pthread platforms
-
-    char                    name[max_name_length] {};
-    ThreadPriority          priority { ThreadPriority::normal };
+    const char*     name { nullptr };
+    ThreadPriority  priority { ThreadPriority::normal };
 
     // automatically registers the thread with the global temp allocator and unregisters when done
-    bool                    use_temp_allocator { false };
+    bool            use_temp_allocator { false };
 };
 
 
 class BEE_CORE_API Thread : public Noncopyable
 {
 public:
-    static constexpr i32 max_name_length = ThreadCreateInfo::max_name_length;
     static constexpr i32 affinity_none = 0;
 
     using native_thread_t =
@@ -114,26 +119,52 @@ public:
     template <typename CallableType, typename ArgType>
     Thread(const ThreadCreateInfo& create_info, CallableType&& callable, const ArgType& data)
     {
-        const auto params_size = sizeof(ExecuteParams) + sizeof(CallableType) + round_up(sizeof(ArgType), 64);
+        using decayed_callable_t = std::decay_t<CallableType>;
+        const auto params_size = sizeof(ExecuteParams) + sizeof(decayed_callable_t) + round_up(sizeof(ArgType), 64);
         auto params = static_cast<ExecuteParams*>(BEE_MALLOC(system_allocator(), params_size));
 
         params->invoker = [](void* function, void* arg)
         {
-            (*static_cast<CallableType*>(function))(*static_cast<ArgType*>(arg));
+            (*static_cast<decayed_callable_t*>(function))(*static_cast<ArgType*>(arg));
         };
 
         params->destructor = [](void* function, void* arg)
         {
-            static_cast<CallableType*>(function)->~CallableType();
+            static_cast<decayed_callable_t*>(function)->~decayed_callable_t();
             static_cast<ArgType*>(arg)->~ArgType();
         };
 
         auto params_bytes = reinterpret_cast<u8*>(params);
         params->function = params_bytes + sizeof(ExecuteParams);
-        params->arg = params_bytes + sizeof(ExecuteParams) + sizeof(CallableType);
+        params->arg = params_bytes + sizeof(ExecuteParams) + sizeof(decayed_callable_t);
 
-        new (params->function) CallableType(callable);
+        new (params->function) decayed_callable_t { std::forward<CallableType>(callable) };
         new (params->arg) ArgType(data);
+
+        init(create_info, params);
+    }
+
+    template <typename CallableType>
+    Thread(const ThreadCreateInfo& create_info, CallableType&& callable)
+    {
+        using decayed_callable_t = std::decay_t<CallableType>;
+        const auto params_size = sizeof(ExecuteParams) + sizeof(decayed_callable_t);
+        auto params = static_cast<ExecuteParams*>(BEE_MALLOC(system_allocator(), params_size));
+
+        params->invoker = [](void* function, void* /* arg */)
+        {
+            (*static_cast<decayed_callable_t*>(function))();
+        };
+
+        params->destructor = [](void* function, void* /* arg */)
+        {
+            static_cast<decayed_callable_t*>(function)->~decayed_callable_t();
+        };
+
+        auto params_bytes = reinterpret_cast<u8*>(params);
+        params->function = params_bytes + sizeof(ExecuteParams);
+
+        new (params->function) decayed_callable_t { std::forward<CallableType>(callable) };
 
         init(create_info, params);
     }
@@ -146,7 +177,7 @@ public:
 
     inline const char* name() const
     {
-        return name_;
+        return name_.c_str();
     }
 
     void join();
@@ -181,8 +212,8 @@ private:
         bool    register_with_temp_allocator { false };
     };
 
-    char                name_[max_name_length]{};
-    native_thread_t     native_thread_ { nullptr };
+    StaticString<BEE_THREAD_MAX_NAME>   name_;
+    native_thread_t                     native_thread_ { nullptr };
 
     void init(const ThreadCreateInfo& create_info, ExecuteParams* params);
 
