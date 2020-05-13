@@ -37,6 +37,33 @@ bee_add_sources(SPIRV-Reflect/spirv_reflect.h SPIRV-Reflect/spirv_reflect.c)
 bee_add_include_dirs(SPIRV-Reflect)
 bee_library(SPIRV-Reflect STATIC)
 
+##################################
+#
+# SPIRV-Tools & SPIRV-headers
+#
+##################################
+set(SPIRV_SKIP_TESTS ON)
+set(SPIRV_SKIP_EXECUTABLES ON)
+set(SPIRV-Headers_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Headers)
+
+add_subdirectory(SPIRV-Tools EXCLUDE_FROM_ALL)
+
+set_target_properties(SPIRV-Tools
+    PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${BEE_DEBUG_BINARY_DIR}
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG ${BEE_DEBUG_BINARY_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${BEE_DEBUG_BINARY_DIR}
+    ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${BEE_RELEASE_BINARY_DIR}
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE ${BEE_RELEASE_BINARY_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${BEE_RELEASE_BINARY_DIR}
+)
+
+
+##############
+#
+# Tests
+#
+##############
 if (BUILD_TESTS)
     ##############
     #

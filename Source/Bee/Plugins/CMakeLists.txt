@@ -1,4 +1,5 @@
+add_subdirectory(AssetPipeline)
+#add_subdirectory(AssetRegistry)
 add_subdirectory(ImGui)
-add_subdirectory(DefaultAssets)
-add_subdirectory(AssetRegistry)
 add_subdirectory(Renderer)
+add_subdirectory(ShaderPipeline)

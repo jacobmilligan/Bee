@@ -76,6 +76,11 @@ protected:
     virtual void execute() = 0;
 };
 
+struct NullJob final : public Job
+{
+    void execute() override {};
+};
+
 
 template <typename FunctionType>
 struct CallableJob final : public Job

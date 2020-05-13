@@ -1,4 +1,4 @@
-// include: Triangle.bsc
+// include: Triangle.bsc       
 
 RenderPass DefaultPass
 {
@@ -56,6 +56,11 @@ MultisampleState DefaultMSS
     alpha_to_coverage_enabled: true
     alpha_to_one_enabled: true
 }
+
+
+
+
+
 
 Shader TriangleShader
 {

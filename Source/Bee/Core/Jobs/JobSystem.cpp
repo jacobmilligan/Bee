@@ -72,7 +72,7 @@ struct alignas(128) Worker final : public Noncopyable
     }
 
     // cache-line pad to avoid false sharing
-    volatile char pad[128 - sizeof(Thread) - sizeof(i32) - sizeof(WorkStealingQueue) - sizeof(Job*) - sizeof(RandomGenerator<Xorshift>)]{};
+    volatile char pad[256 - sizeof(Thread) - sizeof(i32) - sizeof(WorkStealingQueue) - sizeof(Job*) - sizeof(RandomGenerator<Xorshift>)]{};
 };
 BEE_POP_WARNING
 
@@ -112,6 +112,12 @@ Job* allocate_job()
     return static_cast<Job*>(node->data[0]);
 }
 
+NullJob* create_null_job()
+{
+    auto* job = reinterpret_cast<NullJob*>(allocate_job());
+    new (job) NullJob{};
+    return job;
+}
 
 void worker_execute_one_job(Worker* local_worker)
 {
@@ -166,14 +172,6 @@ void worker_execute_one_job(Worker* local_worker)
         destruct(job);
 
         g_job_system.free_jobs.push(node);
-
-        /*
-         * NOTE(Jacob): this may look a bit naughty but it's no worse than getting a header from a pointer in
-         * an allocator and is the easiest way to get the atomic node from the node pointer
-         */
-//        const auto job_data_offset = sizeof(AtomicNode) - sizeof(Job);
-//        auto node = reinterpret_cast<AtomicNode*>(reinterpret_cast<u8*>(node) - job_data_offset);
-//        g_job_system.free_jobs.push(node);
     }
 }
 
@@ -230,10 +228,13 @@ bool job_system_init(const JobSystemInitInfo& info)
     WorkerMainParams worker_params{};
     worker_params.ready_counter = &ready_counter;
 
+    StaticString<BEE_THREAD_MAX_NAME> thread_name;
+
     for (int current_cpu_idx = 0; current_cpu_idx < worker_count_with_main_thread; ++current_cpu_idx)
     {
         // Setup a name for debugging
-        str::format_buffer(thread_info.name, Thread::max_name_length, "sky::jobs(%d)", current_cpu_idx + 1);
+        str::format_buffer(&thread_name, "Bee.Jobs.Worker%d", current_cpu_idx + 1);
+        thread_info.name = thread_name.c_str();
 
         // Initialize the worker data
         worker_params.worker = &g_job_system.workers[current_cpu_idx];
@@ -251,7 +252,7 @@ bool job_system_init(const JobSystemInitInfo& info)
         }
         else
         {
-            current_thread::set_name("sky::main");
+            current_thread::set_name("Bee.Main");
             // current_thread::set_affinity(current_cpu_idx); NOTE(Jacob): disabled for PC
         }
     }

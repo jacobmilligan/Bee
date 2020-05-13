@@ -9,69 +9,42 @@
 #include <dxc/Support/WinIncludes.h>
 
 #include "Bee/Core/Filesystem.hpp"
-#include "Bee/Plugins/DefaultAssets/ShaderCompiler/Compile.hpp"
+#include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Serialization/BinarySerializer.hpp"
 #include "Bee/Core/Serialization/JSONSerializer.hpp"
 #include "Bee/Graphics/Mesh.hpp"
-#include "Bee/Plugins/DefaultAssets/ShaderCompiler/Lex.hpp"
+#include "Bee/Plugins/ShaderPipeline/Compiler.hpp"
+#include "Bee/Plugins/ShaderPipeline/Parse.hpp"
+#include "Bee/Plugins/AssetPipeline/AssetPipeline.hpp"
 
 #include <dxc/dxcapi.h>
 #include <spirv_reflect.h>
+#include <spirv-tools/libspirv.h>
 #include <algorithm>
 
 
 namespace bee {
 
 
-void ShaderCompiler::init(const i32 thread_count)
+struct PerThread
 {
-    per_thread_.reserve(thread_count);
+    IDxcCompiler*   compiler {nullptr };
+    IDxcLibrary*    library {nullptr };
+    BscParser       parser;
 
-    auto dxc_path = fs::get_appdata().binaries_root.join("dxcompiler");
-#if BEE_OS_WINDOWS == 1
-    dxc_path.set_extension(".dll");
-#else
-    #error Unsupported platform
-#endif // BEE_OS_WINDOWS == 1
+    PerThread(IDxcCompiler* new_compiler, IDxcLibrary* new_library, Allocator* json_allocator)
+        : compiler(new_compiler),
+          library(new_library)
+    {}
+};
 
-    dxc_dll_ = load_library(dxc_path.c_str());
-
-    auto fp_DxcCreateInstance_ = (DxcCreateInstanceProc)get_library_symbol(dxc_dll_, "DxcCreateInstance");
-    BEE_ASSERT(fp_DxcCreateInstance_ != nullptr);
-
-    // Create one DXC context per thread for asset compile jobs
-    for (int i = 0; i < thread_count; ++i)
-    {
-        IDxcCompiler* compiler = nullptr;
-        IDxcLibrary* library = nullptr;
-        fp_DxcCreateInstance_(CLSID_DxcCompiler, __uuidof(IDxcCompiler), (void**)&compiler);
-        fp_DxcCreateInstance_(CLSID_DxcLibrary, __uuidof(IDxcLibrary), (void**)&library);
-
-        BEE_ASSERT(compiler != nullptr && library != nullptr);
-
-        per_thread_.emplace_back(compiler, library, system_allocator());
-    }
-}
-
-void ShaderCompiler::destroy()
+struct AssetCompilerData
 {
-    for (auto& ctx : per_thread_)
-    {
-        if (ctx.compiler != nullptr)
-        {
-            ctx.compiler->Release();
-            ctx.compiler = nullptr;
-        }
-
-        if (ctx.library != nullptr)
-        {
-            ctx.library->Release();
-            ctx.library = nullptr;
-        }
-    }
-
-    per_thread_.clear();
-}
+    FixedArray<IDxcCompiler*>   dxc_compilers {nullptr };
+    FixedArray<IDxcLibrary*>    dxc_libraries {nullptr };
+    FixedArray<BscParser>       bsc_parsers;
+    DynamicLibrary              dxc_dll;
+};
 
 
 BscTarget platform_to_target(const AssetPlatform platform)
@@ -86,11 +59,6 @@ BEE_TRANSLATION_TABLE(shader_type_short_str, ShaderStageIndex, const wchar_t*, S
     L"gs",  // geometry
     L"cs"   // compute
 )
-//
-//BEE_TRANSLATION_TABLE(shader_type_to_gpu_stage, BscShaderType, ShaderStage, BscShaderType::count,
-//    ShaderStage::vertex,  // vertex
-//    ShaderStage::fragment   // fragment
-//)
 
 //BEE_TRANSLATION_TABLE(shader_type_execution_model, BscShaderType, spv::ExecutionModel, BscShaderType::count,
 //  spv::ExecutionModelVertex,    // vertex
@@ -283,7 +251,7 @@ Shader::Range reflect_subshader(Shader* shader, VertexDescriptor* reflected_vert
 
     // spvReflectGetCode returns a *word* array but spvReflectGetCodeSize returns the size in *bytes*
     const auto spv_code_size = sign_cast<i32>(spvReflectGetCodeSize(&reflect_module));
-    const auto spv_code = reinterpret_cast<const u8*>(spvReflectGetCode(&reflect_module));
+    const auto* spv_code = reinterpret_cast<const u8*>(spvReflectGetCode(&reflect_module));
 
     // Copy reflected to result
     const auto range = shader->add_code(spv_code, spv_code_size);
@@ -302,7 +270,7 @@ Shader::Range reflect_subshader(Shader* shader, VertexDescriptor* reflected_vert
  *
  **********************************************
  */
-AssetCompilerStatus compile_subshader(IDxcCompiler* compiler, IDxcLibrary* library, Shader* shader, const i32 subshader_index, const StringView& code, VertexDescriptor* reflected_vertex_descriptor, Allocator* allocator)
+AssetCompilerStatus compile_subshader(AssetCompilerContext* ctx, IDxcCompiler* compiler, IDxcLibrary* library, Shader* shader, const i32 subshader_index, const StringView& code, VertexDescriptor* reflected_vertex_descriptor)
 {
     auto& subshader = shader->subshaders[subshader_index];
 
@@ -314,23 +282,24 @@ AssetCompilerStatus compile_subshader(IDxcCompiler* compiler, IDxcLibrary* libra
         &source_blob
     );
 
-    auto module_name = str::to_wchar(subshader.name.view(), allocator);
+    auto module_name = str::to_wchar(subshader.name.view(), ctx->temp_allocator());
 
     for (int stage_index = 0; stage_index < gpu_shader_stage_count; ++stage_index)
     {
         // empty name == unused stage
         if (subshader.stage_entries[stage_index].empty())
         {
+            subshader.stage_code_ranges[stage_index] = Shader::Range{};
             continue;
         }
 
-        const auto profile_str = shader_type_short_str(static_cast<ShaderStageIndex>(stage_index));
+        const auto* profile_str = shader_type_short_str(static_cast<ShaderStageIndex>(stage_index));
 
         // Create a base wchar array for shader profile string without explicit stage specified
         wchar_t shader_profile_str[8];
         swprintf(shader_profile_str, static_array_length(shader_profile_str), L"%ls_6_0", profile_str);
 
-        auto entry_name = str::to_wchar(subshader.stage_entries[stage_index].view(), allocator);
+        auto entry_name = str::to_wchar(subshader.stage_entries[stage_index].view(), ctx->temp_allocator());
 
         LPCWSTR dxc_args[] = {
             L"-T", shader_profile_str,
@@ -356,7 +325,7 @@ AssetCompilerStatus compile_subshader(IDxcCompiler* compiler, IDxcLibrary* libra
             &compilation_result
         );
 
-        HRESULT compilation_status;
+        HRESULT compilation_status = 0;
         compilation_result->GetStatus(&compilation_status);
 
         if (!SUCCEEDED(compilation_status))
@@ -369,7 +338,7 @@ AssetCompilerStatus compile_subshader(IDxcCompiler* compiler, IDxcLibrary* libra
                 sign_cast<i32>(error_blob->GetBufferSize())
             );
 
-            log_error("ShaderCompiler: DXC: %" BEE_PRIsv "", BEE_FMT_SV(error_message));
+            log_error("DXC error: %" BEE_PRIsv "", BEE_FMT_SV(error_message));
 
             return AssetCompilerStatus::fatal_error;
         }
@@ -388,7 +357,7 @@ AssetCompilerStatus compile_subshader(IDxcCompiler* compiler, IDxcLibrary* libra
             reflected_vertex_descriptor,
             stage_index,
             { static_cast<u8*>(spirv_blob->GetBufferPointer()), sign_cast<i32>(spirv_blob->GetBufferSize()) },
-            allocator
+            ctx->temp_allocator()
         );
 
         if (subshader.stage_code_ranges[stage_index].size < 0)
@@ -408,17 +377,81 @@ AssetCompilerStatus compile_subshader(IDxcCompiler* compiler, IDxcLibrary* libra
  *
  ***********************************
  */
-AssetCompilerStatus bee::ShaderCompiler::compile(const i32 thread_index, AssetCompilerContext* ctx)
+void init_shader_compiler(AssetCompilerData* data, const i32 thread_count)
+{
+    data->dxc_compilers.resize(thread_count);
+    data->dxc_libraries.resize(thread_count);
+    data->bsc_parsers.resize(thread_count);
+
+    auto dxc_path = fs::get_appdata().binaries_root.join("dxcompiler");
+#if BEE_OS_WINDOWS == 1
+    dxc_path.set_extension(".dll");
+#else
+    #error Unsupported platform
+#endif // BEE_OS_WINDOWS == 1
+
+    data->dxc_dll = load_library(dxc_path.c_str());
+
+    auto fp_DxcCreateInstance_ = (DxcCreateInstanceProc)get_library_symbol(data->dxc_dll, "DxcCreateInstance");
+    BEE_ASSERT(fp_DxcCreateInstance_ != nullptr);
+
+    // Create one DXC context per thread for asset compile jobs
+    for (int i = 0; i < thread_count; ++i)
+    {
+        IDxcCompiler* compiler = nullptr;
+        IDxcLibrary* library = nullptr;
+        fp_DxcCreateInstance_(CLSID_DxcCompiler, __uuidof(IDxcCompiler), (void**)&compiler);
+        fp_DxcCreateInstance_(CLSID_DxcLibrary, __uuidof(IDxcLibrary), (void**)&library);
+
+        BEE_ASSERT(compiler != nullptr && library != nullptr);
+
+        data->dxc_compilers[i] = compiler;
+        data->dxc_libraries[i] = library;
+    }
+}
+
+void destroy_shader_compiler(AssetCompilerData* data)
+{
+    for (int i = 0; i < data->dxc_compilers.size(); ++i)
+    {
+        auto& compiler = data->dxc_compilers[i];
+        auto& library = data->dxc_libraries[i];
+
+        if (compiler != nullptr)
+        {
+            compiler->Release();
+            compiler = nullptr;
+        }
+
+        if (library != nullptr)
+        {
+            library->Release();
+            library = nullptr;
+        }
+    }
+
+    data->dxc_compilers.clear();
+    data->dxc_libraries.clear();
+    data->bsc_parsers.clear();
+
+    if (data->dxc_dll.handle != nullptr)
+    {
+        unload_library(data->dxc_dll);
+        data->dxc_dll.handle = nullptr;
+    }
+}
+
+AssetCompilerStatus compile_shader(AssetCompilerData* data, const i32 thread_index, AssetCompilerContext* ctx)
 {
     const auto src_path = Path(ctx->location(), ctx->temp_allocator());
-    auto& bsc = per_thread_[thread_index];
+    auto& bsc = data->bsc_parsers[thread_index];
     auto file_contents = fs::read(src_path, ctx->temp_allocator());
 
     // Parse the file into a BscModule
     BscModule asset(ctx->temp_allocator());
-    if (!bsc.parser.parse(file_contents.view(), &asset))
+    if (!bsc.parse(file_contents.view(), &asset))
     {
-        const auto error = bsc.parser.get_error().to_string(ctx->temp_allocator());
+        const auto error = bsc.get_error().to_string(ctx->temp_allocator());
         log_error("%s", error.c_str());
         return AssetCompilerStatus::invalid_source_format;
     }
@@ -465,13 +498,13 @@ AssetCompilerStatus bee::ShaderCompiler::compile(const i32 thread_index, AssetCo
     for (int index = 0; index < result.subshaders.size(); ++index)
     {
         const auto status = compile_subshader(
-            bsc.compiler,
-            bsc.library,
+            ctx,
+            data->dxc_compilers[thread_index],
+            data->dxc_libraries[thread_index],
             &result,
             index,
             asset.shaders[index].data.code,
-            &reflected_vertex_descs[index],
-            ctx->temp_allocator()
+            &reflected_vertex_descs[index]
         );
 
         if (status != AssetCompilerStatus::success)
@@ -482,25 +515,108 @@ AssetCompilerStatus bee::ShaderCompiler::compile(const i32 thread_index, AssetCo
         ++index;
     }
 
-    DynamicArray<u8> buffer(ctx->temp_allocator());
-    BinarySerializer serializer(&buffer);
+    auto& artifact = ctx->add_artifact();
+    BinarySerializer serializer(&artifact.buffer);
     serialize(SerializerMode::writing, &serializer, &result, ctx->temp_allocator());
 
-    ctx->add_artifact(buffer.size(), buffer.data());
-
-    auto options = ctx->options<ShaderCompilerOptions>();
-
-    if (options.output_debug_artifacts)
+    // auto options = ctx->options<ShaderCompilerOptions>();
+    if (/*options->output_debug*/true)
     {
-        JSONSerializer debug_serializer(ctx->temp_allocator());
-        serialize(SerializerMode::writing, &debug_serializer, &result, ctx->temp_allocator());
+        auto* spv_context = spvContextCreate(SPV_ENV_VULKAN_1_1);
+        spv_text spv_text_dest = nullptr;
+        spv_diagnostic spv_diagnostic_dest = nullptr;
 
-//        auto debug_dir = Path(ctx->cache_directory(), ctx->temp_allocator());
-//        debug_dir.append("ShaderArtifacts").append(src_path.filename());
-//        fs::write()
+        String debug_output(ctx->temp_allocator());
+        io::StringStream debug_stream(&debug_output);
+
+        debug_stream.write_fmt("// original file: %s\n\n", src_path.c_str());
+
+        for (auto& subshader : result.subshaders)
+        {
+            debug_stream.write_fmt("// Subshader %s\n\n", subshader.name.c_str());
+
+            for (int stage = 0; stage < static_array_length(subshader.stage_entries); ++stage)
+            {
+                auto& entry = subshader.stage_entries[stage];
+                if (entry.empty())
+                {
+                    continue;
+                }
+
+                const auto& code_range = subshader.stage_code_ranges[stage];
+                // Translate the SPIR-V to string text format for debugging
+                auto spv_error = spvBinaryToText(
+                    spv_context,
+                    reinterpret_cast<const u32*>(result.code.data() + code_range.offset),
+                    static_cast<size_t>(code_range.size / sizeof(u32)),
+                    SPV_BINARY_TO_TEXT_OPTION_NONE | SPV_BINARY_TO_TEXT_OPTION_INDENT | SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES,
+                    &spv_text_dest,
+                    &spv_diagnostic_dest
+                );
+
+                debug_stream.write("// Stage: ");
+                enum_to_string(&debug_stream, static_cast<ShaderStageIndex>(stage));
+                debug_stream.write("\n\n");
+
+                if (spv_error != SPV_SUCCESS)
+                {
+                    log_error("ShaderCompiler failed to convert spirv IR to text: %s", spv_diagnostic_dest->error);
+                }
+                else
+                {
+                    debug_stream.write(spv_text_dest->str, spv_text_dest->length);
+                    debug_stream.write("\n\n");
+                }
+            }
+        }
+
+        auto& debug_artifact = ctx->add_artifact();
+        debug_artifact.buffer.resize(debug_output.size());
+        memcpy(debug_artifact.buffer.data(), debug_output.data(), debug_artifact.buffer.size());
     }
 
     return AssetCompilerStatus::success;
+}
+
+const char* get_shader_compiler_name()
+{
+    return "Bee Shader Compiler";
+}
+
+const Type* shader_compiler_options_type()
+{
+    return get_type<ShaderCompilerOptions>();
+}
+
+Span<const char* const> shader_compiler_file_type()
+{
+    static constexpr const char* filetypes[] = { ".bsc" };
+    return Span<const char* const>(filetypes);
+}
+
+
+static AssetCompiler g_compiler{};
+
+void load_compiler(bee::PluginRegistry* registry, const bee::PluginState state)
+{
+    g_compiler.data = registry->get_or_create_persistent<AssetCompilerData>("BeeShaderCompilerData");
+    g_compiler.init = init_shader_compiler;
+    g_compiler.destroy = destroy_shader_compiler;
+    g_compiler.compile = compile_shader;
+    g_compiler.get_name = get_shader_compiler_name;
+    g_compiler.options_type = shader_compiler_options_type;
+    g_compiler.supported_file_types = shader_compiler_file_type;
+
+    auto* asset_pipeline = registry->get_module<AssetPipelineModule>(BEE_ASSET_PIPELINE_MODULE_NAME);
+
+    if (state == bee::PluginState::loading)
+    {
+        asset_pipeline->register_compiler(&g_compiler);
+    }
+    else
+    {
+        asset_pipeline->unregister_compiler(&g_compiler);
+    }
 }
 
 

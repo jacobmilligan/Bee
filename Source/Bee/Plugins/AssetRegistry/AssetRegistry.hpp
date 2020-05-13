@@ -37,14 +37,19 @@ enum class AssetLocationKind
 
 class AssetLoaderContext;
 struct AssetLocation;
-struct AssetRegistryApi;
-struct AssetLoaderApi;
+struct AssetRegistryModule;
+struct AssetLoader;
 template <typename T>
 class Asset;
 
 
 BEE_VERSIONED_HANDLE_64(AssetId);
 
+struct AssetLoadArg
+{
+    const Type* type { get_type<UnknownType>() };
+    const void* data { nullptr };
+};
 
 struct AssetData
 {
@@ -53,7 +58,7 @@ struct AssetData
     GUID                    guid;
     AssetId                 id;
     AssetStatus             status { AssetStatus::invalid };
-    AssetLoaderApi*         loader { nullptr };
+    AssetLoader*            loader { nullptr };
     std::atomic_int32_t     refcount { 0 };
     const Type*             type { nullptr };
     void*                   ptr { nullptr };
@@ -69,12 +74,11 @@ struct AssetLocation
     size_t      offset { 0 };
 };
 
-
-#define BEE_ASSET_LOADER_API_NAME "BEE_ASSET_LOADER_API"
-
-struct AssetLoaderApi
+struct AssetLoader
 {
     void (*get_supported_types)(DynamicArray<const Type*>* types) { nullptr };
+
+    const Type* (*get_parameter_type)() { nullptr };
 
     void* (*allocate)(const Type* type) { nullptr };
 
@@ -83,32 +87,78 @@ struct AssetLoaderApi
     AssetStatus (*unload)(AssetLoaderContext* ctx) { nullptr };
 };
 
-
-#define BEE_ASSET_LOCATOR_API_NAME "BEE_ASSET_LOCATOR_API"
-
-struct AssetLocatorApi
+struct AssetLocator
 {
     bool (*locate)(const GUID& guid, AssetLocation* location) { nullptr };
+
+    bool (*locate_by_name)(const StringView& name, GUID* dst, AssetLocation* location) { nullptr };
 };
 
 
-#define BEE_ASSET_REGISTRY_API_NAME "BEE_ASSET_REGISTRY_API"
+#define BEE_ASSET_REGISTRY_MODULE_NAME "BEE_ASSET_REGISTRY_MODULE"
 
-struct AssetRegistryApi
+struct AssetRegistryModule
 {
-    AssetData* (*load_asset_data)(const GUID& guid, const Type* type) { nullptr };
+    void (*init)() { nullptr };
+
+    void (*destroy)() { nullptr };
+
+    AssetData* (*load_asset_data)(const GUID& guid, const Type* type, const AssetLoadArg& arg) { nullptr };
 
     void (*unload_asset_data)(AssetData* asset, const UnloadAssetMode unload_kind) { nullptr };
 
     bool (*find_guid)(GUID* dst, const StringView& name, const Type* type) { nullptr };
 
-    void (*add_loader)(AssetLoaderApi* loader) { nullptr };
+    void (*add_loader)(AssetLoader* loader) { nullptr };
 
-    void (*remove_loader)(AssetLoaderApi* loader) { nullptr };
+    void (*remove_loader)(AssetLoader* loader) { nullptr };
 
-    void (*add_locator)(AssetLocatorApi* locator) { nullptr };
+    void (*add_locator)(AssetLocator* locator) { nullptr };
 
-    void (*remove_locator)(AssetLocatorApi* locator) { nullptr };
+    void (*remove_locator)(AssetLocator* locator) { nullptr };
+
+    template <typename T>
+    inline Asset<T> load_asset(const GUID& guid)
+    {
+        return Asset<T>(load_asset_data(guid, get_type<T>(), {}));
+    }
+
+    template <typename T, typename ArgType>
+    inline Asset<T> load_asset(const GUID& guid, const T& arg)
+    {
+        AssetLoadArg load_arg{};
+        load_arg.type = get_type<ArgType>();
+        load_arg.data = &arg;
+        return Asset<T>(load_asset_data(guid, get_type<T>(), load_arg), this);
+    }
+
+    template <typename T>
+    inline Asset<T> load_asset(const StringView& name)
+    {
+        GUID guid{};
+        if (!find_guid(&guid, name, get_type<T>()))
+        {
+            return Asset<T>(nullptr, this);
+        }
+
+        return Asset<T>(load_asset_data(guid, get_type<T>(), {}), this);
+    }
+
+    template <typename T, typename ArgType>
+    inline Asset<T> load_asset(const StringView& name, const T& arg)
+    {
+        AssetLoadArg load_arg{};
+        load_arg.type = get_type<ArgType>();
+        load_arg.data = &arg;
+
+        GUID guid{};
+        if (!find_guid(&guid, name, get_type<T>()))
+        {
+            return Asset<T>(nullptr, this);
+        }
+
+        return Asset<T>(load_asset_data(guid, get_type<T>(), load_arg), this);
+    }
 };
 
 
@@ -161,7 +211,7 @@ class Asset
 public:
     Asset() = default;
 
-    Asset(AssetData* data, AssetRegistryApi* registry)
+    Asset(AssetData* data, AssetRegistryModule* registry)
         : data_(data),
           registry_(registry)
     {
@@ -204,29 +254,10 @@ public:
     }
 
 private:
-    T*                  ptr_ { nullptr };
-    AssetData*          data_ { nullptr };
-    AssetRegistryApi*   registry_ { nullptr };
+    T*                      ptr_ { nullptr };
+    AssetData*              data_ { nullptr };
+    AssetRegistryModule*    registry_ { nullptr };
 };
-
-
-template <typename T>
-inline Asset<T> load_asset(AssetRegistryApi* registry, const GUID& guid)
-{
-    return Asset<T>(registry->load_asset_data(guid, get_type<T>()));
-}
-
-template <typename T>
-inline Asset<T> load_asset(AssetRegistryApi* registry, const StringView& name)
-{
-    GUID guid{};
-    if (!registry->find_guid(&guid, name, get_type<T>()))
-    {
-        return Asset<T>(nullptr, registry);
-    }
-
-    return Asset<T>(registry->load_asset_data(guid, get_type<T>()), registry);
-}
 
 
 } // namespace bee

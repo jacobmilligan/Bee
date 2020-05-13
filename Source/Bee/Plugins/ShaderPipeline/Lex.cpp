@@ -5,7 +5,7 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Plugins/DefaultAssets/ShaderCompiler/Lex.hpp"
+#include "Bee/Plugins/ShaderPipeline/Lex.hpp"
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Math/Math.hpp"
 

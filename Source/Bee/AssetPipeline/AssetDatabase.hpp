@@ -39,7 +39,7 @@ struct BEE_REFLECT(serializable, version = 1) AssetFile
     Path                location;
 
     BEE_REFLECT(id = 5, added = 1)
-    DynamicArray<u128>  artifact_hashes;
+    DynamicArray<u128>  artifacts;
 
     BEE_REFLECT(id = 6, added = 1)
     TypeInstance        options;
@@ -48,7 +48,7 @@ struct BEE_REFLECT(serializable, version = 1) AssetFile
         : name(allocator),
           source(allocator),
           location(allocator),
-          artifact_hashes(allocator)
+          artifacts(allocator)
     {}
 };
 

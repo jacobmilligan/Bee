@@ -7,9 +7,9 @@
 
 #pragma once
 
-#include "Bee/Plugins/DefaultAssets/ShaderCompiler/Lex.hpp"
+#include "Bee/Plugins/ShaderPipeline/Lex.hpp"
+#include "Bee/Plugins/ShaderPipeline/Shader.hpp"
 #include "Bee/Graphics/GPU.hpp"
-#include "Bee/Graphics/Shader.hpp"
 
 
 namespace bee {
@@ -166,7 +166,7 @@ void bsc_log_resolve_error(const BscResolveError& error);
 class BscParser
 {
 public:
-    explicit BscParser(Allocator* allocator = system_allocator());
+    explicit BscParser() = default;
 
     bool parse(const StringView& source, BscModule* ast);
 

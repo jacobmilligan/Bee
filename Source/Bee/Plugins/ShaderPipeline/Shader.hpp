@@ -16,13 +16,17 @@
 namespace bee {
 
 
-class BEE_REFLECT(serializable, version = 1) Shader
+struct BEE_REFLECT(serializable, version = 1) Shader
 {
-public:
-    struct BEE_REFLECT(serializable) Range
+    struct BEE_REFLECT(serializable, version = 1) Range
     {
         i32 offset { -1 };
         i32 size { -1 };
+
+        inline bool empty() const
+        {
+            return offset < 0 || size <= 0;
+        }
     };
 
     struct BEE_REFLECT(serializable, version = 1) Pass
@@ -34,9 +38,9 @@ public:
         RenderPassHandle    gpu_handle;
     };
 
-    struct BEE_REFLECT(serializable, version = 1) Pipeline
+    struct BEE_REFLECT(serializable, version = 1) Pipeline // NOLINT
     {
-        PipelineStateCreateInfo     info;
+        PipelineStateCreateInfo     info; // contains everything except the renderpass and shader handles
         i32                         pass { -1 };
         i32                         shaders[gpu_shader_stage_count];
 
@@ -97,8 +101,22 @@ public:
 
         return range;
     }
+
+    ShaderHandle get_shader(const i32 pipeline, const ShaderStageIndex stage)
+    {
+        BEE_ASSERT(pipeline < pipelines.size());
+
+        const auto subshader = pipelines[pipeline].shaders[underlying_t(stage)];
+
+        BEE_ASSERT(subshader < subshaders.size());
+
+        return subshaders[subshader].stage_handles[underlying_t(stage)];
+    }
 };
 
 
-
 } // namespace bee
+
+#ifdef BEE_ENABLE_REFLECTION
+    #include "Bee.ShaderPipeline/Shader.generated.inl"
+#endif // BEE_ENABLE_REFLECTION

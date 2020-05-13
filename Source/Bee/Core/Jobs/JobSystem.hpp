@@ -56,6 +56,8 @@ BEE_CORE_API i32 get_job_worker_count();
 
 BEE_CORE_API Job* allocate_job();
 
+BEE_CORE_API NullJob* create_null_job();
+
 BEE_FORCE_INLINE AtomicNode* cast_job_to_node(Job* job)
 {
     return reinterpret_cast<AtomicNode*>(reinterpret_cast<u8*>(job) - sizeof(AtomicNode));

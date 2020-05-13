@@ -78,7 +78,7 @@ TEST_F(JobsTests, test_count)
     memset(result, 0, sizeof(int) * bee::static_array_length(result));
     for (int j = 0; j < 1000; ++j)
     {
-        jobs[j] = bee::create_job(&count_job_function, result);
+        jobs[j] = bee::create_job(&count_job_function, &result[0]);
         ASSERT_NE(jobs[j], nullptr);
     }
 
@@ -125,7 +125,7 @@ TEST_F(JobsTests, parallel_for)
 
     const auto jobs_begin = bee::time::now();
     bee::JobGroup group{};
-    bee::parallel_for(&group, 1000, 1, [](const bee::i32 index, ParallelForData* data)
+    bee::parallel_for(&group, 1000, 1, [&](const bee::i32 index)
     {
         auto count = 0;
         for (int i = 0; i < 100000; ++i)
@@ -137,7 +137,7 @@ TEST_F(JobsTests, parallel_for)
         data[index].y = count;
         data[index].z = count;
         data[index].w = count;
-    }, data);
+    });
 
     bee::job_wait(&group);
     const auto jobs_time = bee::TimePoint(bee::time::now() - jobs_begin).total_milliseconds();

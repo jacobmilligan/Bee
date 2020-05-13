@@ -102,6 +102,11 @@ Job::Job()
 
 Job::~Job()
 {
+    if (parent() != nullptr)
+    {
+        parent()->signal(this);
+    }
+
     parent_.store(nullptr, std::memory_order_release);
 }
 

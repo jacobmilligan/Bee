@@ -11,6 +11,7 @@
 #include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/Handle.hpp"
 #include "Bee/Core/Containers/Array.hpp"
+#include "Bee/Core/Concurrency.hpp"
 
 namespace bee {
 
@@ -351,78 +352,78 @@ public:
     template <typename... ConstructorArgs>
     HandleType allocate(ConstructorArgs&&... args)
     {
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         return pool_.allocate(std::forward<ConstructorArgs>(args)...);
     }
 
     void deallocate(const HandleType& handle)
     {
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         pool_.deallocate(handle);
     }
 
     void clear()
     {
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         pool_.clear();
     }
 
     inline bool is_active(const HandleType& handle) const
     {
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         return pool_.is_active(handle);
     }
 
     inline id_t size() const
     {
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         return resource_count_;
     }
 
     inline id_t chunk_count() const
     {
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         return chunk_count_;
     }
 
     inline size_t allocated_size() const
     {
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         return chunk_byte_size_ * chunk_count_;
     }
 
     inline ResourceType& operator[](const HandleType& handle)
     {
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         return pool_[handle];
     }
 
     inline const ResourceType& operator[](const HandleType& handle) const
     {
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         return pool_[handle];
     }
 
     inline iterator_t begin()
     {
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         return iterator_t(this, 0);
     }
 
     inline iterator_t end()
     {
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         return iterator_t(this, chunk_count_ * chunk_capacity_);
     }
 
     inline iterator_t get_iterator(const HandleType& handle)
     {
         BEE_ASSERT(handle.is_valid());
-        scoped_recursive_spinlock_t lock(mutex_);
+        scoped_lock_t lock(mutex_);
         return iterator_t(this, handle.index());
     }
 private:
-    RecursiveSpinLock                       mutex_;
+    Mutex                                   mutex_;
     ResourcePool<HandleType, ResourceType>  pool_;
 };
 

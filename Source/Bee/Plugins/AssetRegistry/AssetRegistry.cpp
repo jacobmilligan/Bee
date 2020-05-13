@@ -10,6 +10,7 @@
 #include "Bee/Core/Containers/ResourcePool.hpp"
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
+#include "Bee/Core/Jobs/JobDependencyCache.hpp"
 
 
 namespace bee {
@@ -20,6 +21,7 @@ struct AssetCache
     RecursiveSpinLock                   mutex;
     ResourcePool<AssetId, AssetData>    cache;
     DynamicHashMap<GUID, AssetId>       guid_to_id;
+    DynamicHashMap<u32, GUID>           name_to_guid;
 
     AssetCache() noexcept
         : cache(sizeof(AssetData) * 64)
@@ -51,6 +53,20 @@ struct AssetCache
         return nullptr;
     }
 
+    AssetData* find(const StringView& name)
+    {
+        scoped_recursive_spinlock_t lock(mutex);
+
+        auto* guid = name_to_guid.find(get_hash(name));
+
+        if (guid == nullptr)
+        {
+            return nullptr;
+        }
+
+        return find(guid->value);
+    }
+
     AssetData* insert(const GUID& guid)
     {
         scoped_recursive_spinlock_t lock(mutex);
@@ -68,6 +84,19 @@ struct AssetCache
         guid_to_id.insert(guid, id);
 
         return data;
+    }
+
+    AssetData* insert(const StringView& name, const GUID& guid)
+    {
+        scoped_recursive_spinlock_t lock(mutex);
+
+        const auto name_hash = get_hash(name);
+
+        BEE_ASSERT(name_to_guid.find(name_hash) == nullptr);
+
+        name_to_guid.insert(name_hash, guid);
+
+        return insert(guid);
     }
 
     void erase(const AssetId& id)
@@ -99,66 +128,42 @@ struct AssetCache
 
 struct RegisteredLoader
 {
-    AssetLoaderApi*             api { nullptr };
+    AssetLoader*                instance { nullptr };
+    const Type*                 parameter_type { get_type<UnknownType>() };
     DynamicArray<const Type*>   supported_types;
 };
 
+struct AssetRegistry
+{
+    JobDependencyCache                  job_deps;
+    AssetCache                          cache;
+    DynamicHashMap<u32, AssetLoader*>   type_hash_to_loader;
+    DynamicArray<RegisteredLoader>      loaders;
+    DynamicArray<AssetLocator*>         locators;
+};
 
-static JobGroup                                 g_load_jobs;
-static AssetCache                               g_cache;
-static DynamicHashMap<u32, AssetLoaderApi*>     g_type_hash_to_loader;
-static DynamicArray<RegisteredLoader>           g_loaders;
-static DynamicArray<AssetLocatorApi*>           g_locators;
-static AssetRegistryApi                         g_api;
+static AssetRegistry* g_registry { nullptr };
 
 
-void add_loader(AssetLoaderApi* loader);
-void remove_loader(AssetLoaderApi* loader);
-void add_locator(AssetLocatorApi* locator);
-void remove_locator(AssetLocatorApi* locator);
+void add_loader(AssetLoader* loader);
+void remove_loader(AssetLoader* loader);
+void add_locator(AssetLocator* locator);
+void remove_locator(AssetLocator* locator);
 bool locate_asset(const GUID& guid, AssetLocation* location);
-void unload_asset(const AssetData* asset, const UnloadAssetMode kind);
+void unload_asset_data(const AssetData* asset, const UnloadAssetMode kind);
 
 
-void asset_registry_destroy()
+void init_registry()
 {
-    job_wait(&g_load_jobs);
-    g_cache.clear();
+
 }
 
-void loader_observer(const PluginEventType event, const char* plugin_name, void* interface, void* user_data)
+void destroy_registry()
 {
-    auto* registry = static_cast<AssetRegistryApi*>(user_data);
-    auto* loader = static_cast<AssetLoaderApi*>(interface);
 
-    if (event == PluginEventType::add_interface)
-    {
-        registry->add_loader(loader);
-    }
-
-    if (event == PluginEventType::remove_interface)
-    {
-        registry->remove_loader(loader);
-    }
 }
 
-void locator_observer(const PluginEventType event, const char* plugin_name, void* interface, void* user_data)
-{
-    auto* registry = static_cast<AssetRegistryApi*>(user_data);
-    auto* locator = static_cast<AssetLocatorApi*>(interface);
-
-    if (event == PluginEventType::add_interface)
-    {
-        registry->add_locator(locator);
-    }
-
-    if (event == PluginEventType::remove_interface)
-    {
-        registry->remove_locator(locator);
-    }
-}
-
-void load_asset_job(AssetData* asset, AssetLoaderApi* loader)
+void load_asset_job(AssetData* asset, AssetLoader* loader)
 {
     AssetLocation location{};
 
@@ -193,9 +198,10 @@ void load_asset_job(AssetData* asset, AssetLoaderApi* loader)
     }
 }
 
-AssetData* get_or_load_asset(const GUID& guid, const Type* type)
+AssetData* get_or_load_asset_data(const GUID& guid, const Type* type, const AssetLoadArg& arg)
 {
-    auto* cached = g_cache.find(guid);
+    auto& cache = g_registry->cache;
+    auto* cached = cache.find(guid);
 
     // Check if the requested type is the same as the type that loaded successfully previously
     if (cached != nullptr && cached->type != type)
@@ -211,7 +217,7 @@ AssetData* get_or_load_asset(const GUID& guid, const Type* type)
     }
 
     // Try and find a loader for the requested type
-    auto* loader = g_type_hash_to_loader.find(type->hash);
+    auto* loader = g_registry->type_hash_to_loader.find(type->hash);
 
     if (loader == nullptr)
     {
@@ -222,7 +228,7 @@ AssetData* get_or_load_asset(const GUID& guid, const Type* type)
     // Now that we know we have a valid loader for the type we can add a new cache entry if needed
     if (cached == nullptr)
     {
-        cached = g_cache.insert(guid);
+        cached = cache.insert(guid);
     }
 
     cached->loader = loader->value;
@@ -234,6 +240,15 @@ AssetData* get_or_load_asset(const GUID& guid, const Type* type)
         return cached;
     }
 
+    if (arg.type != cached->type)
+    {
+        log_error("Invalid argument given to load_asset_data: expected %s but got %s", cached->type->name, arg.type->name);
+        return nullptr;
+    }
+
+    // Copy the load parameter to this asset
+    memcpy(cached->parameter_storage, arg.data, arg.type->size);
+
     // Allocate new data if we're not reloading
     if (cached->ptr == nullptr)
     {
@@ -241,14 +256,16 @@ AssetData* get_or_load_asset(const GUID& guid, const Type* type)
     }
 
     auto* job = create_job(load_asset_job, cached, cached->loader);
-    job_schedule(&g_load_jobs, job);
+    g_registry->job_deps.write(guid, job);
 
     return cached;
 }
 
-void unload_asset(AssetData* asset, const UnloadAssetMode kind)
+void unload_asset_data(AssetData* asset, const UnloadAssetMode kind)
 {
-    if (g_cache.get(asset->id) == nullptr)
+    auto& cache = g_registry->cache;
+
+    if (cache.get(asset->id) == nullptr)
     {
         log_error("No such asset with id %" PRIu64, asset->id.id);
         return;
@@ -262,19 +279,21 @@ void unload_asset(AssetData* asset, const UnloadAssetMode kind)
         return;
     }
 
+    g_registry->job_deps.write(asset->guid, create_null_job());
+
     // unload and deallocate the asset if last ref or otherwise explicitly requested
     AssetLoaderContext ctx(asset);
     asset->status = asset->loader->unload(&ctx);
 
     if (asset->status == AssetStatus::unloaded)
     {
-        g_cache.erase(asset->id);
+        cache.erase(asset->id);
     }
 }
 
 bool locate_asset(const GUID& guid, AssetLocation* location)
 {
-    for (auto& locator : g_locators)
+    for (auto& locator : g_registry->locators)
     {
         if (locator->locate(guid, location))
         {
@@ -285,13 +304,24 @@ bool locate_asset(const GUID& guid, AssetLocation* location)
     return false;
 }
 
-void add_loader(AssetLoaderApi* loader)
+void add_loader(AssetLoader* loader)
 {
-    job_wait(&g_load_jobs);
-
-    const auto existing_index = container_index_of(g_loaders, [&](const RegisteredLoader& l)
+    const auto* parameter_type = loader->get_parameter_type();
+    if (parameter_type == nullptr)
     {
-        return l.api == loader;
+        parameter_type = get_type<UnknownType>();
+    }
+
+    if (BEE_FAIL_F(parameter_type->size >= AssetData::load_parameter_capacity, "Failed to add loader: parameter type is too large"))
+    {
+        return;
+    }
+
+    g_registry->job_deps.wait_all();
+
+    const auto existing_index = container_index_of(g_registry->loaders, [&](const RegisteredLoader& l)
+    {
+        return l.instance == loader;
     });
 
     if (existing_index >= 0)
@@ -300,16 +330,17 @@ void add_loader(AssetLoaderApi* loader)
         return;
     }
 
-    g_loaders.emplace_back();
+    g_registry->loaders.emplace_back();
 
-    auto& registered = g_loaders.back();
-    registered.api = loader;
-    registered.api->get_supported_types(&registered.supported_types);
+    auto& registered = g_registry->loaders.back();
+    registered.instance = loader;
+    registered.parameter_type = parameter_type;
+    registered.instance->get_supported_types(&registered.supported_types);
 
     // Add mappings for all the supported types to the loader API
     for (const auto& type : registered.supported_types)
     {
-        auto* type_mapping = g_type_hash_to_loader.find(type->hash);
+        auto* type_mapping = g_registry->type_hash_to_loader.find(type->hash);
 
         if (type_mapping != nullptr)
         {
@@ -317,17 +348,17 @@ void add_loader(AssetLoaderApi* loader)
             continue;
         }
 
-        g_type_hash_to_loader.insert(type->hash, registered.api);
+        g_registry->type_hash_to_loader.insert(type->hash, registered.instance);
     }
 }
 
-void remove_loader(AssetLoaderApi* loader)
+void remove_loader(AssetLoader* loader)
 {
-    job_wait(&g_load_jobs);
+    g_registry->job_deps.wait_all();
 
-    const auto index = container_index_of(g_loaders, [&](const RegisteredLoader& l)
+    const auto index = container_index_of(g_registry->loaders, [&](const RegisteredLoader& l)
     {
-        return l.api == loader;
+        return l.instance == loader;
     });
 
     if (index < 0)
@@ -336,19 +367,19 @@ void remove_loader(AssetLoaderApi* loader)
         return;
     }
 
-    for (const auto& type : g_loaders[index].supported_types)
+    for (const auto& type : g_registry->loaders[index].supported_types)
     {
-        g_type_hash_to_loader.erase(type->hash);
+        g_registry->type_hash_to_loader.erase(type->hash);
     }
 
-    g_loaders.erase(index);
+    g_registry->loaders.erase(index);
 }
 
-void add_locator(AssetLocatorApi* locator)
+void add_locator(AssetLocator* locator)
 {
-    job_wait(&g_load_jobs);
+    g_registry->job_deps.wait_all();
 
-    const auto existing_index = container_index_of(g_locators, [&](const AssetLocatorApi* l)
+    const auto existing_index = container_index_of(g_registry->locators, [&](const AssetLocator* l)
     {
         return l == locator;
     });
@@ -359,14 +390,14 @@ void add_locator(AssetLocatorApi* locator)
         return;
     }
 
-    g_locators.push_back(locator);
+    g_registry->locators.emplace_back(locator);
 }
 
-void remove_locator(AssetLocatorApi* locator)
+void remove_locator(AssetLocator* locator)
 {
-    job_wait(&g_load_jobs);
+    g_registry->job_deps.wait_all();
 
-    const auto index = container_index_of(g_locators, [&](const AssetLocatorApi* l)
+    const auto index = container_index_of(g_registry->locators, [&](const AssetLocator* l)
     {
         return l == locator;
     });
@@ -377,26 +408,52 @@ void remove_locator(AssetLocatorApi* locator)
         return;
     }
 
-    g_locators.erase(index);
+    g_registry->locators.erase(index);
+}
+
+bool find_guid(GUID* dst, const StringView& name, const Type* type)
+{
+    auto* cached = g_registry->cache.find(name);
+    if (cached != nullptr)
+    {
+        *dst = cached->guid;
+        return true;
+    }
+
+    AssetLocation location{};
+
+    for (auto& locator : g_registry->locators)
+    {
+        if (locator->locate_guid_by_name(name, dst, &location))
+        {
+            g_registry->cache.insert(name, *dst);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 
 } // namespace bee
 
 
-BEE_PLUGIN_API void load_plugin(bee::PluginRegistry* registry)
+static bee::AssetRegistryModule g_module{};
+
+
+BEE_PLUGIN_API void load_plugin(bee::PluginRegistry* registry, const bee::PluginState state)
 {
-    bee::g_api.load_asset_data = bee::get_or_load_asset;
-    bee::g_api.unload_asset_data = bee::unload_asset;
+    bee::g_registry = registry->get_or_create_persistent<bee::AssetRegistry>("BeeAssetRegistry");
 
-    add_plugin_observer(BEE_ASSET_LOADER_API_NAME, bee::loader_observer);
-    add_plugin_observer(BEE_ASSET_LOCATOR_API_NAME, bee::locator_observer);
-}
+    g_module.init = bee::init_registry;
+    g_module.destroy = bee::destroy_registry;
+    g_module.load_asset_data = bee::get_or_load_asset_data;
+    g_module.unload_asset_data = bee::unload_asset_data;
+    g_module.find_guid = bee::find_guid;
+    g_module.add_loader = bee::add_loader;
+    g_module.remove_loader = bee::remove_loader;
+    g_module.add_locator = bee::add_locator;
+    g_module.remove_locator = bee::remove_locator;
 
-BEE_PLUGIN_API void unload_plugin(bee::PluginRegistry* registry)
-{
-    remove_plugin_observer(BEE_ASSET_LOADER_API_NAME, bee::loader_observer);
-    remove_plugin_observer(BEE_ASSET_LOCATOR_API_NAME, bee::locator_observer);
-
-    bee::asset_registry_destroy();
+    registry->toggle_module(state, BEE_ASSET_REGISTRY_MODULE_NAME, &g_module);
 }

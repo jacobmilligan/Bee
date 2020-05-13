@@ -37,8 +37,8 @@ struct AssetPipelineModule
 struct AssetPipelineInitInfo
 {
     AssetPlatform   platform { AssetPlatform::unknown };
-    Path            assets_source_root;
-    Path            asset_database_directory;
+    Path            asset_root;
+    Path            cache_directory;
     const char*     asset_database_name { nullptr };
 };
 
@@ -46,6 +46,8 @@ struct AssetPipelineInitInfo
 class BEE_DEVELOP_API AssetPipeline
 {
 public:
+    AssetPipeline() = default;
+
     ~AssetPipeline();
 
     void init(const AssetPipelineInitInfo& info);

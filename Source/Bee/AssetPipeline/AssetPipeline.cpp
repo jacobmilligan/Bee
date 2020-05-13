@@ -37,7 +37,7 @@ void AssetPipeline::module_observer(const PluginEventType type, const char* plug
     auto* pipeline = static_cast<AssetPipeline*>(user_data);
     auto* module = static_cast<AssetPipelineModule*>(interface);
 
-    if (type == PluginEventType::add_interface)
+    if (type == PluginEventType::add_module)
     {
         // register compilers first in case the import_assets call needs to use one from the plugin
         if (module->register_compilers != nullptr)
@@ -57,7 +57,7 @@ void AssetPipeline::module_observer(const PluginEventType type, const char* plug
         }
     }
 
-    if (type == PluginEventType::remove_interface)
+    if (type == PluginEventType::remove_module)
     {
         if (module->unregister_compilers != nullptr)
         {
@@ -87,13 +87,13 @@ void AssetPipeline::init(const AssetPipelineInitInfo& info)
         db_.close();
     }
 
-    assets_root_ = info.assets_source_root;
+    assets_root_ = info.asset_root;
     platform_ = info.platform;
-    cache_root_ = info.asset_database_directory;
+    cache_root_ = info.cache_directory;
 
     db_.open(cache_root_, info.asset_database_name);
 
-    add_plugin_observer(BEE_ASSET_PIPELINE_MODULE_NAME, module_observer, this);
+    //add_plugin_observer(BEE_ASSET_PIPELINE_MODULE_NAME, module_observer, this);
 }
 
 void AssetPipeline::destroy()
@@ -103,7 +103,7 @@ void AssetPipeline::destroy()
         return;
     }
 
-    remove_plugin_observer(BEE_ASSET_PIPELINE_MODULE_NAME, module_observer);
+    //remove_plugin_observer(BEE_ASSET_PIPELINE_MODULE_NAME, module_observer);
 
     job_wait(&import_jobs_);
     compilers_.clear();
@@ -253,7 +253,7 @@ void AssetPipeline::import_job(AssetPipeline* pipeline, const Path& src, const P
     auto txn = pipeline->db_.write();
 
     // Delete any mismatching artifacts from the existing asset if it has any
-    for (auto& hash : asset.artifact_hashes)
+    for (auto& hash : asset.artifacts)
     {
         const auto index = container_index_of(ctx.artifacts(), [&](const AssetArtifact& artifact)
         {
@@ -266,13 +266,13 @@ void AssetPipeline::import_job(AssetPipeline* pipeline, const Path& src, const P
         }
     }
 
-    asset.artifact_hashes.clear();
+    asset.artifacts.clear();
 
     // Put the new artifacts
     for (const auto& artifact : ctx.artifacts())
     {
         txn.put_artifact(artifact);
-        asset.artifact_hashes.push_back(artifact.hash);
+        asset.artifacts.push_back(artifact.hash);
     }
 
     // Write the asset file to the database and then persist json to disk

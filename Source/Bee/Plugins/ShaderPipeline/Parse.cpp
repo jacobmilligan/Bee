@@ -5,7 +5,7 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Plugins/DefaultAssets/ShaderCompiler/Parse.hpp"
+#include "Bee/Plugins/ShaderPipeline/Parse.hpp"
 
 namespace bee {
 
@@ -252,9 +252,9 @@ BscResolveError bsc_resolve_module(const BscModule& module, Shader* output)
 
                 subshader.name = shader.identifier;
 
-                for (auto entry : enumerate(subshader.stage_entries))
+                for (int entry_index = 0; entry_index < static_array_length(shader.data.stages); ++entry_index)
                 {
-                    entry.value = shader.data.stages[entry.index];
+                    subshader.stage_entries[entry_index] = shader.data.stages[entry_index];
                 }
 
 //                // store the code in the subshaders first index for compilation later
@@ -318,8 +318,6 @@ String BscResolveError::to_string(Allocator* allocator) const
  *
  ************************************
  */
-BscParser::BscParser(Allocator* allocator)
-{}
 
 bool BscParser::report_error(const BscErrorCode code, const BscLexer* lexer)
 {

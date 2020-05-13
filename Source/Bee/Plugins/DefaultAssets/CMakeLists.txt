@@ -1,6 +1,0 @@
-bee_new_source_root()
-add_subdirectory(ShaderCompiler)
-bee_add_sources(DefaultAssets_AssetPipeline.cpp)
-bee_plugin(Bee.DefaultAssets.AssetPipeline LINK_LIBRARIES Bee.Develop)
-bee_reflect(Bee.DefaultAssets.AssetPipeline)
-copy_binaries(DirectXShaderCompiler Bee.DefaultAssets.AssetPipeline)
