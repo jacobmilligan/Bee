@@ -153,7 +153,7 @@ StringView Path::extension() const
     const auto last_dot = str::last_index_of(data_, '.');
     if (last_dot == -1)
     {
-        return "";
+        return {};
     }
 
     return str::substring(data_, last_dot);
@@ -184,26 +184,28 @@ Path& Path::append_extension(const StringView& ext)
 
 Path& Path::set_extension(const StringView& ext)
 {
-    if (ext.empty())
-    {
-        return *this;
-    }
-
     auto dotpos = str::last_index_of(data_, '.');
+    const auto is_dot_slash = data_.size() > dotpos && (is_slash(data_.c_str() + dotpos + 1));
+    const auto is_dot_dot = data_.size() > dotpos && data_[dotpos + 1] == '.';
     const auto empty_dot = ext.empty() || (ext[0] == '.' && ext.size() < 2);
+
+    if (is_dot_dot || is_dot_slash)
+    {
+        dotpos = -1;
+    }
 
     // If it's an empty extension we just want to end the string at the last dot position
     if (empty_dot)
     {
         if (dotpos != -1)
         {
-            data_[dotpos] = '\0';
+            data_.resize(dotpos);
         }
 
         return *this;
     }
 
-    auto ext_without_dot = ext.c_str();
+    const auto* ext_without_dot = ext.c_str();
     if (ext[0] == '.')
     {
         // don't use the dot that the user supplies - we'll append one manually later if it's missing
@@ -268,11 +270,6 @@ Path& Path::remove_filename()
     return *this;
 }
 
-Path& Path::replace_filename(const Path& replacement)
-{
-    return replace_filename(replacement.view());
-}
-
 Path& Path::replace_filename(const StringView& replacement)
 {
     remove_filename();
@@ -295,15 +292,20 @@ StringView Path::stem() const
     return str::substring(data_, last_slash, last_dot - last_slash);
 }
 
-Path Path::parent(Allocator* allocator) const
+StringView Path::parent_view() const
 {
     auto last_slash = get_last_slash();
     if (last_slash == -1)
     {
-        return *this;
+        return view();
     }
 
-    return Path(str::substring(data_, 0, last_slash), allocator);
+    return str::substring(data_, 0, last_slash);
+}
+
+Path Path::parent_path(Allocator* allocator) const
+{
+    return Path(parent_view(), allocator);
 }
 
 StringView Path::view() const
@@ -402,6 +404,11 @@ Path Path::relative_to(const Path& other, Allocator* allocator) const
         result.append("..");
     }
 
+    if (result.empty())
+    {
+        result.append(".");
+    }
+
     for (; this_iter != end(); ++this_iter)
     {
         result.append(*this_iter);
@@ -454,11 +461,31 @@ i32 path_compare_impl(const StringView& lhs, const StringView& rhs)
 
         const auto lhs_is_slash = is_slash(lhs.data() + lhs_index);
         const auto rhs_is_slash = is_slash(rhs.data() + rhs_index);
+
         if (lhs_is_slash != rhs_is_slash)
         {
-            const auto lhs_slash_pos = next_slash_pos(lhs, lhs_index);
-            const auto rhs_slash_pos = next_slash_pos(rhs, rhs_index);
-            return lhs_slash_pos - rhs_slash_pos;
+            return next_slash_pos(lhs, lhs_index) - next_slash_pos(rhs, rhs_index);
+        }
+
+        // Skip all the slashes
+        while (lhs_index < lhs.size() && is_slash(lhs.data() + lhs_index))
+        {
+            ++lhs_index;
+        }
+
+        while (rhs_index < rhs.size() && is_slash(rhs.data() + rhs_index))
+        {
+            ++rhs_index;
+        }
+
+        if (lhs[lhs_index] != rhs[rhs_index])
+        {
+            if (lhs_index == rhs_index)
+            {
+                return lhs[lhs_index] - rhs[rhs_index];
+            }
+
+            break;
         }
 
         ++lhs_index;

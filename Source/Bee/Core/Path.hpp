@@ -113,14 +113,14 @@ public:
 
     Path& remove_filename();
 
-    Path& replace_filename(const Path& replacement);
-
     Path& replace_filename(const StringView& replacement);
 
     /// @brief Gets the absolute parent directory of the filename component, i.e. given
     /// `/usr/local/bin/ls` this function would return `bin`
     /// @return
-    Path parent(Allocator* allocator = system_allocator()) const;
+    StringView parent_view() const;
+
+    Path parent_path(Allocator* allocator = system_allocator()) const;
 
     /// @brief Gets the filename component of the path without the extension, i.e. given `File.txt`
     /// this function would return `File`

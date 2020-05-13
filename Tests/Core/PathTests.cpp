@@ -13,10 +13,10 @@ TEST(PathTests, path_returns_correct_executable_path)
 {
     // "../Build/Debug/Tests/"
     bee::Path exe("C:/A/Path/To/Build/DebugOrRelease");
-    auto parent = bee::Path(exe.parent());
+    auto parent = bee::Path(exe.parent_path());
     ASSERT_STREQ(parent.filename().c_str(), "Build");
-    ASSERT_STREQ(parent.parent().filename().c_str(), "To");
-    ASSERT_STREQ(parent.parent().parent().filename().c_str(), "Path");
+    ASSERT_STREQ(parent.parent_path().filename().c_str(), "To");
+    ASSERT_STREQ(parent.parent_path().parent_path().filename().c_str(), "Path");
 }
 
 TEST(PathTests, appending_one_path_to_another_returns_correct_string)
@@ -55,7 +55,7 @@ TEST(PathTests, make_real_removes_symlinks)
     auto exe_path = bee::Path(bee::StringView(exe_path_str.c_str(), last_slash_pos));
     auto test_path = exe_path.join("..").join("..");
     test_path.normalize();
-    auto expected_path = bee::Path(exe_path.parent()).parent();
+    auto expected_path = bee::Path(exe_path.parent_path()).parent_path();
 
     ASSERT_STREQ(test_path.c_str(), expected_path.c_str());
 }
@@ -96,11 +96,11 @@ TEST(PathTests, path_returns_filename_for_dots)
 TEST(PathTests, path_returns_correct_parent_directory)
 {
     bee::Path path("/This/Is/A/Test/Path");
-    auto parent = path.parent();
+    auto parent = path.parent_path();
     ASSERT_STREQ(parent.c_str(), "/This/Is/A/Test");
 
     bee::Path path2("/Users/Jacob/Dev/Repos/Bee/Build/Debug/Tests/Static/Platform/PlatformTests");
-    auto parent2 = path2.parent();
+    auto parent2 = path2.parent_path();
     ASSERT_STREQ(parent2.c_str(), "/Users/Jacob/Dev/Repos/Bee/Build/Debug/Tests/Static/Platform");
 }
 
@@ -196,4 +196,19 @@ TEST(PathTests, relative_to)
     path = "D:\\Root\\test.txt";
     relative = path.relative_to("D:\\Root\\Another\\Path");
     ASSERT_STREQ(relative.c_str(), "..\\..\\test.txt");
+}
+
+TEST(PathTests, string_view_comparison)
+{
+    bee::StringView sv = "Bee.AssetPipeline.dll";
+    bee::Path sv_path = "Bee.AssetPipeline.dll";
+    bee::Path path = "Bee.AssetPipeline.pdb";
+    bee::Path path_with_slashes = "Bee.Asset/Pipel/ine.pdb";
+    bee::Path path_with_repeated_slashes = "Bee.Asset////////Pipel//////////ine.pdb";
+    bee::Path path_with_slashes2 = "Bee.Asset/Pipel/ine.dll";
+    ASSERT_NE(sv_path, path);
+    ASSERT_NE(sv, path);
+    ASSERT_NE(path_with_slashes, path);
+    ASSERT_NE(path_with_slashes, path_with_slashes2);
+    ASSERT_EQ(path_with_slashes, path_with_repeated_slashes);
 }
