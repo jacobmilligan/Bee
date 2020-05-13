@@ -1,0 +1,13 @@
+{
+    "bee::version": 1,
+    "bee::flags": 1,
+    "guid": "74de94b5ca634ed6977a150c54b05b9c",
+    "content_hash": "aac6a96b9faaed00afdf82bf6de6aa69",
+    "is_directory": true,
+    "name": "",
+    "source": "../../Assets/Materials",
+    "artifacts": [],
+    "options": {
+        "bee::type": 0
+    }
+}

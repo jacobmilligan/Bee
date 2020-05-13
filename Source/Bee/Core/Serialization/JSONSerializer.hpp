@@ -97,8 +97,15 @@ private:
     inline void end_read_scope()
     {
         BEE_ASSERT(!stack_.empty());
-        stack_.pop_back();
-        next_element_if_array();
+        if (stack_.back()->IsArray())
+        {
+            BEE_ASSERT(!element_iter_stack_.empty());
+            ++element_iter_stack_.back();
+        }
+        else
+        {
+            stack_.pop_back();
+        }
     }
 
     inline rapidjson::Value::MemberIterator& current_member_iter()
@@ -109,6 +116,22 @@ private:
     inline i32 current_element()
     {
         return element_iter_stack_.back();
+    }
+
+    inline rapidjson::Value* current_value()
+    {
+        if (stack_.empty())
+        {
+            return nullptr;
+        }
+
+        if (stack_.back()->IsArray())
+        {
+            BEE_ASSERT(element_iter_stack_.back() < sign_cast<i32>(stack_.back()->GetArray().Size()));
+            return &stack_.back()->GetArray()[element_iter_stack_.back()];
+        }
+
+        return stack_.back();
     }
 };
 

@@ -1,0 +1,19 @@
+{
+    "bee::version": 1,
+    "bee::flags": 1,
+    "guid": "7a258cf76e5f46ccb77a8e0bf33fae5f",
+    "content_hash": "bf4964fbc8d0da3ba54b16c9e37cd79d",
+    "is_directory": false,
+    "name": "",
+    "source": "../../Assets/Shaders/ImGui.bsc",
+    "artifacts": [
+        "067012e97e8b286d6965be4fa656836b",
+        "480ced4d68784a42ff25bfe00219a6ba"
+    ],
+    "options": {
+        "bee::type": 489810508,
+        "bee::version": 1,
+        "bee::flags": 1,
+        "output_debug_artifacts": false
+    }
+}

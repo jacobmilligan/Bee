@@ -129,7 +129,7 @@ void JSONSerializer::begin_record(const RecordType* /* type */)
 
     if (stack_.back()->IsArray())
     {
-        auto element = &stack_.back()->GetArray()[current_element()];
+        auto* element = &stack_.back()->GetArray()[current_element()];
         stack_.push_back(element);
     }
 
@@ -194,8 +194,8 @@ void JSONSerializer::end_array()
     }
 
     json_validate_type(rapidjson::kArrayType, stack_.back());
-    end_read_scope();
     element_iter_stack_.pop_back();
+    stack_.pop_back();
 }
 
 void JSONSerializer::serialize_field(const char* name)
@@ -290,9 +290,9 @@ void JSONSerializer::serialize_fundamental(bool* data)
         return;
     }
 
-    if (json_validate_type<bool>(stack_.back()))
+    if (json_validate_type<bool>(current_value()))
     {
-        *data = stack_.back()->GetBool();
+        *data = current_value()->GetBool();
         end_read_scope();
     }
 }
@@ -305,9 +305,9 @@ void JSONSerializer::serialize_fundamental(i8* data)
         return;
     }
 
-    if (json_validate_type<int>(stack_.back()))
+    if (json_validate_type<int>(current_value()))
     {
-        *data = sign_cast<i8>(stack_.back()->GetInt());
+        *data = sign_cast<i8>(current_value()->GetInt());
         end_read_scope();
     }
 }
@@ -320,9 +320,9 @@ void JSONSerializer::serialize_fundamental(i16* data)
         return;
     }
 
-    if (json_validate_type<int>(stack_.back()))
+    if (json_validate_type<int>(current_value()))
     {
-        *data = sign_cast<i16>(stack_.back()->GetInt());
+        *data = sign_cast<i16>(current_value()->GetInt());
         end_read_scope();
     }
 }
@@ -335,9 +335,9 @@ void JSONSerializer::serialize_fundamental(i32* data)
         return;
     }
 
-    if (json_validate_type<int>(stack_.back()))
+    if (json_validate_type<int>(current_value()))
     {
-        *data = stack_.back()->GetInt();
+        *data = current_value()->GetInt();
         end_read_scope();
     }
 }
@@ -350,9 +350,9 @@ void JSONSerializer::serialize_fundamental(i64* data)
         return;
     }
 
-    if (json_validate_type<int64_t>(stack_.back()))
+    if (json_validate_type<int64_t>(current_value()))
     {
-        *data = stack_.back()->GetInt64();
+        *data = current_value()->GetInt64();
         end_read_scope();
     }
 }
@@ -365,9 +365,9 @@ void JSONSerializer::serialize_fundamental(u8* data)
         return;
     }
 
-    if (json_validate_type<unsigned>(stack_.back()))
+    if (json_validate_type<unsigned>(current_value()))
     {
-        *data = sign_cast<u8>(stack_.back()->GetUint());
+        *data = sign_cast<u8>(current_value()->GetUint());
         end_read_scope();
     }
 }
@@ -380,9 +380,9 @@ void JSONSerializer::serialize_fundamental(u16* data)
         return;
     }
 
-    if (json_validate_type<unsigned>(stack_.back()))
+    if (json_validate_type<unsigned>(current_value()))
     {
-        *data = sign_cast<u16>(stack_.back()->GetUint());
+        *data = sign_cast<u16>(current_value()->GetUint());
         end_read_scope();
     }
 }
@@ -395,9 +395,9 @@ void JSONSerializer::serialize_fundamental(u32* data)
         return;
     }
 
-    if (json_validate_type<uint32_t>(stack_.back()))
+    if (json_validate_type<uint32_t>(current_value()))
     {
-        *data = stack_.back()->GetUint();
+        *data = current_value()->GetUint();
         end_read_scope();
     }
 }
@@ -410,9 +410,9 @@ void JSONSerializer::serialize_fundamental(u64* data)
         return;
     }
 
-    if (json_validate_type<uint64_t>(stack_.back()))
+    if (json_validate_type<uint64_t>(current_value()))
     {
-        *data = stack_.back()->GetUint64();
+        *data = current_value()->GetUint64();
         end_read_scope();
     }
 }
@@ -425,9 +425,9 @@ void JSONSerializer::serialize_fundamental(char* data)
         return;
     }
 
-    if (json_validate_type(rapidjson::kStringType, stack_.back()))
+    if (json_validate_type(rapidjson::kStringType, current_value()))
     {
-        memcpy(data, stack_.back()->GetString(), math::min(stack_.back()->GetStringLength(), 1u));
+        memcpy(data, current_value()->GetString(), math::min(current_value()->GetStringLength(), 1u));
         end_read_scope();
     }
 }
@@ -440,9 +440,9 @@ void JSONSerializer::serialize_fundamental(float* data)
         return;
     }
 
-    if (json_validate_type<float>(stack_.back()))
+    if (json_validate_type<float>(current_value()))
     {
-        *data = sign_cast<float>(stack_.back()->GetDouble());
+        *data = sign_cast<float>(current_value()->GetDouble());
         end_read_scope();
     }
 }
@@ -455,10 +455,9 @@ void JSONSerializer::serialize_fundamental(double* data)
         return;
     }
 
-    if (json_validate_type<double>(stack_.back()))
+    if (json_validate_type<double>(current_value()))
     {
-        *data = stack_.back()->GetDouble();
-        end_read_scope();
+        *data = current_value()->GetDouble();
     }
 }
 
@@ -473,9 +472,9 @@ void JSONSerializer::serialize_fundamental(u128* data)
         return;
     }
 
-    if (json_validate_type(rapidjson::kStringType, stack_.back()))
+    if (json_validate_type(rapidjson::kStringType, current_value()))
     {
-        str::to_u128(StringView(stack_.back()->GetString(), stack_.back()->GetStringLength()), data);
+        str::to_u128(StringView(current_value()->GetString(), current_value()->GetStringLength()), data);
         end_read_scope();
     }
 }

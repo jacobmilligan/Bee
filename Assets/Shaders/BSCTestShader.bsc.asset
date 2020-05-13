@@ -1,0 +1,19 @@
+{
+    "bee::version": 1,
+    "bee::flags": 1,
+    "guid": "36376fa956cc4525a91d269c55495fd5",
+    "content_hash": "379ee0bdcd729d17ce38b9576281933a",
+    "is_directory": false,
+    "name": "",
+    "source": "../../Assets/Shaders/BSCTestShader.bsc",
+    "artifacts": [
+        "067012e97e8b286d6965be4fa656836b",
+        "ad5ad3ba1fef0822934e698ffc376097"
+    ],
+    "options": {
+        "bee::type": 489810508,
+        "bee::version": 1,
+        "bee::flags": 1,
+        "output_debug_artifacts": false
+    }
+}
