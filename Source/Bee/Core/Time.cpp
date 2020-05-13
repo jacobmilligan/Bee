@@ -149,32 +149,32 @@ TimePoint& TimePoint::operator/=(const TimePoint& other)
     return *this;
 }
 
-bool TimePoint::operator==(const TimePoint& other)
+bool TimePoint::operator==(const TimePoint& other) const
 {
     return ticks_ == other.ticks_;
 }
 
-bool TimePoint::operator!=(const TimePoint& other)
+bool TimePoint::operator!=(const TimePoint& other) const
 {
     return ticks_ != other.ticks_;
 }
 
-bool TimePoint::operator>(const TimePoint& other)
+bool TimePoint::operator>(const TimePoint& other) const
 {
     return ticks_ > other.ticks_;
 }
 
-bool TimePoint::operator<(const TimePoint& other)
+bool TimePoint::operator<(const TimePoint& other) const
 {
     return ticks_ < other.ticks_;
 }
 
-bool TimePoint::operator>=(const TimePoint& other)
+bool TimePoint::operator>=(const TimePoint& other) const
 {
     return ticks_ >= other.ticks_;
 }
 
-bool TimePoint::operator<=(const TimePoint& other)
+bool TimePoint::operator<=(const TimePoint& other) const
 {
     return ticks_ <= other.ticks_;
 }

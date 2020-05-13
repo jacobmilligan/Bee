@@ -107,17 +107,17 @@ public:
 
     TimePoint& operator/=(const TimePoint& other);
 
-    bool operator==(const TimePoint& other);
+    bool operator==(const TimePoint& other) const;
 
-    bool operator!=(const TimePoint& other);
+    bool operator!=(const TimePoint& other) const;
 
-    bool operator>(const TimePoint& other);
+    bool operator>(const TimePoint& other) const;
 
-    bool operator<(const TimePoint& other);
+    bool operator<(const TimePoint& other) const;
 
-    bool operator>=(const TimePoint& other);
+    bool operator>=(const TimePoint& other) const;
 
-    bool operator<=(const TimePoint& other);
+    bool operator<=(const TimePoint& other) const;
 private:
     /// The fraction of a microsecond that each system tick is worth
     static const double microseconds_per_tick;
