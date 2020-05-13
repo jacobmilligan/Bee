@@ -9,13 +9,6 @@ add_subdirectory(Graphics)
 bee_library(Bee.Runtime LINK_LIBRARIES Bee.Core)
 bee_reflect(Bee.Runtime)
 
-# Bee.Develop
-# Make a new target for tools
-bee_new_source_root()
-#add_subdirectory(AssetPipeline)
-#bee_library(Bee.Develop LINK_LIBRARIES Bee.Core Bee.Runtime lmdb SPIRV-Reflect)
-#bee_reflect(Bee.Develop)
-
 # Non-framework subdirs must come after Core, Runtime & Develop
 add_subdirectory(Engine)
 add_subdirectory(Plugins)

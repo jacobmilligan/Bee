@@ -251,7 +251,7 @@ public:
         assets_->emplace_back(allocator_);
     }
 
-    AssetArtifact& add_artifact()
+//    AssetArtifact& add_artifact()
 
     inline AssetPlatform platform() const
     {

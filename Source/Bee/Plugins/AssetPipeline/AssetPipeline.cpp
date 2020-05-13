@@ -189,8 +189,11 @@ bool init(const AssetPipelineInitInfo& info)
         return false;
     }
 
-    // Add the builtin assets directory to be watched
-    g_pipeline->asset_watcher.add_directory(fs::get_appdata().assets_root);
+    // Add all the subdirectories under Assets/ in the project root as asset directories
+    for (auto& dir : fs::read_dir(fs::get_appdata().assets_root))
+    {
+        g_pipeline->asset_watcher.add_directory(dir);
+    }
 
     for (const auto& dir : g_pipeline->asset_watcher.watched_directories())
     {
