@@ -21,7 +21,7 @@ namespace bee {
 * Container interface - can be either dynamic or fixed in size
 */
 
-enum class ContainerMode
+enum class BEE_REFLECT(serializable) ContainerMode
 {
     fixed_capacity,
     dynamic_capacity
@@ -129,7 +129,7 @@ inline constexpr T* begin(T(&array)[Size])
 }
 
 template <typename T, i32 Size>
-inline constexpr T* begin(const T(&array)[Size])
+inline constexpr const T* begin(const T(&array)[Size])
 {
     return array;
 }
@@ -141,7 +141,7 @@ inline constexpr T* end(T(&array)[Size])
 }
 
 template <typename T, i32 Size>
-inline constexpr T* end(const T(&array)[Size])
+inline constexpr const T* end(const T(&array)[Size])
 {
     return array + Size;
 }
@@ -262,6 +262,21 @@ inline constexpr i32 container_index_of(const ContainerType& container, Predicat
     for (const auto& value : container)
     {
         if (pred(value))
+        {
+            return index;
+        }
+        ++index;
+    }
+    return -1;
+}
+
+template <typename ContainerType, typename T>
+inline constexpr i32 container_find_index(const ContainerType& container, const T& to_find)
+{
+    int index = 0;
+    for (const auto& value : container)
+    {
+        if (value == to_find)
         {
             return index;
         }

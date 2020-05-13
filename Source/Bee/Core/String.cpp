@@ -26,7 +26,7 @@ namespace bee {
  * `String` implementation
  */
 
-String::String(Allocator* allocator)
+String::String(Allocator* allocator) noexcept
     : allocator_(allocator)
 {}
 
@@ -398,6 +398,11 @@ i32 system_snprintf(char* buffer, size_t buffer_size, const char* format, va_lis
  */
 i32 compare_n(const char* lhs, const i32 lhs_compare_count, const char* rhs, const i32 rhs_compare_count)
 {
+    if (lhs_compare_count == 0 || rhs_compare_count == 0)
+    {
+        return lhs_compare_count - rhs_compare_count;
+    }
+
     int char_idx = 0;
     for (; char_idx < rhs_compare_count; ++char_idx)
     {
@@ -1154,6 +1159,20 @@ String& trim(String* src, char character)
 {
     trim_start(src, character);
     return trim_end(src, character);
+}
+
+void split(const StringView& src, DynamicArray<StringView>* dst, char delimiter)
+{
+    auto begin = 0;
+
+    for (int current = 0; current < src.size(); ++current)
+    {
+        if (src[current] == delimiter || current == src.size() - 1)
+        {
+            dst->push_back(StringView(src.c_str() + begin, current - begin));
+            begin = current + 1;
+        }
+    }
 }
 
 

@@ -13,9 +13,9 @@ if NOT EXIST .\Build\Release\bb.exe (
     echo Running bootstrap build...
     echo.
 
-    %CMAKE_EXE% . -B %BUILD_DIR% -G "Visual Studio 15 2017 Win64" -DMONOLITHIC_BUILD=ON -DBUILD_TESTS=OFF -DENABLE_MEMORY_TRACKING=OFF -DDISABLE_REFLECTION=ON
+    %CMAKE_EXE% . -B %BUILD_DIR% -G "Visual Studio 15 2017 Win64" -DCMAKE_BUILD_TYPE=Release -DMONOLITHIC_BUILD=ON -DBUILD_TESTS=OFF -DENABLE_MEMORY_TRACKING=OFF -DDISABLE_REFLECTION=ON
     %CMAKE_EXE% --build %BUILD_DIR% --target bb --config Release
-    rmdir /s /q %BUILD_DIR%
+    REM rmdir /s /q %BUILD_DIR%
 )
 
 .\Build\Release\bb.exe %*

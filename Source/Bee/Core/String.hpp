@@ -12,6 +12,8 @@
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Span.hpp"
 
+#include <stdarg.h>
+
 
 namespace bee {
 
@@ -154,7 +156,7 @@ private:
 class BEE_REFLECT(serializable, use_builder) BEE_CORE_API String
 {
 public:
-    explicit String(Allocator* allocator = system_allocator());
+    explicit String(Allocator* allocator = system_allocator()) noexcept;
 
     String(i32 count, char fill_char, Allocator* allocator = system_allocator());
 
@@ -322,7 +324,7 @@ template <i32 Capacity>
 class BEE_REFLECT(serializable) StaticString
 {
 public:
-    StaticString()
+    StaticString() noexcept
         : size_(0)
     {
         buffer_[0] = '\0';
@@ -661,6 +663,28 @@ BEE_CORE_API String format(const char* format, ...) BEE_PRINTFLIKE(1, 2);
 
 BEE_CORE_API i32 format_buffer(char* buffer, i32 buffer_size, const char* format, ...) BEE_PRINTFLIKE(3, 4);
 
+template <i32 Capacity>
+inline i32 format_buffer(StaticString<Capacity>* string, const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+
+    const auto length = system_snprintf(nullptr, 0, format, args);
+
+    if (length > Capacity)
+    {
+        return length;
+    }
+
+    string->resize(length);
+    // include null-terminator
+    system_snprintf(string->data(), sign_cast<size_t>(string->size() + 1), format, args);
+
+    va_end(args);
+    return length;
+}
+
+
 
 /**
  * `last_index_of` - finds the last occurence of a character or substring in the `src` string. Returns -1 if not found
@@ -770,6 +794,10 @@ using wchar_array_t = DynamicArray<wchar_t>;
 
 BEE_CORE_API String from_wchar(const wchar_t* wchar_str, Allocator* allocator = system_allocator());
 
+BEE_CORE_API String from_wchar(const wchar_t* wchar_str, const i32 byte_size, Allocator* allocator = system_allocator());
+
+BEE_CORE_API void from_wchar(String* dst, const wchar_t* wchar_str, const i32 byte_size);
+
 BEE_CORE_API wchar_array_t to_wchar(const StringView& src, Allocator* allocator = system_allocator());
 
 /**
@@ -808,6 +836,11 @@ BEE_CORE_API String& trim_start(String* src, char character);
 BEE_CORE_API String& trim_end(String* src, char character);
 
 BEE_CORE_API String& trim(String* src, char character);
+
+/*
+ * `split` - split a StringView using the delimiter character into an array of substrings
+ */
+BEE_CORE_API void split(const StringView& src, DynamicArray<StringView>* dst, char delimiter);
 
 
 } // namespace str

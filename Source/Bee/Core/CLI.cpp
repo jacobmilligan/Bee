@@ -398,6 +398,21 @@ String make_help_string(const char* program_name, const ParserDescriptor& desc)
         }
     }
 
+    if (desc.subparser_count > 0)
+    {
+        io::write_fmt(&result, "\nCommands:\n");
+
+        for (int cmd_idx = 0; cmd_idx < desc.subparser_count; ++cmd_idx)
+        {
+            io::write_fmt(&result, "%s", desc.subparsers[cmd_idx].command_name);
+
+            if (cmd_idx < desc.subparser_count - 1)
+            {
+                io::write_fmt(&result, ", ");
+            }
+        }
+    }
+
     return result;
 }
 

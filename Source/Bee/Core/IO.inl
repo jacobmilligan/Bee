@@ -24,7 +24,7 @@ inline i32 write_fmt(String* dst, const char* format, ...)
 
     const auto length = str::system_snprintf(nullptr, 0, format, args);
     const auto old_dst_size = dst->size();
-    dst->insert(old_dst_size, length, '\0');
+    dst->resize(old_dst_size + length);
     // include null-terminator
     str::system_snprintf(dst->data() + old_dst_size, sign_cast<size_t>(length + 1), format, args);
 

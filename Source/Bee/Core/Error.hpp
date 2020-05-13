@@ -33,7 +33,7 @@ namespace detail {
 /// @param expr String representing the assertion that failed
 /// @param msgformat The message format string
 /// @param ... Format arguments
-BEE_CORE_API void __bee_assert_handler(
+BEE_CORE_API void bee_assert_handler(
     const char* file,
     int line,
     const char* expr,
@@ -41,16 +41,16 @@ BEE_CORE_API void __bee_assert_handler(
     ...
 ) BEE_PRINTFLIKE(4, 5);
 
-BEE_CORE_API void __bee_assert_handler(const char* file, int line, const char* expr);
+BEE_CORE_API void bee_assert_handler(const char* file, int line, const char* expr);
 
-BEE_CORE_API void __bee_unreachable_handler(
+BEE_CORE_API void bee_unreachable_handler(
     const char* file,
     int line,
     const char* msgformat,
     ...
 ) BEE_PRINTFLIKE(3, 4);
 
-BEE_CORE_API void __bee_check_handler(
+BEE_CORE_API void bee_check_handler(
     const char* file,
     int line,
     const char* expr,
@@ -59,9 +59,9 @@ BEE_CORE_API void __bee_check_handler(
 ) BEE_PRINTFLIKE(4, 5);
 
 
-[[noreturn]] BEE_CORE_API void __bee_abort();
+[[noreturn]] BEE_CORE_API void bee_abort();
 
-BEE_CORE_API void __bee_abort_handler();
+BEE_CORE_API void bee_abort_handler();
 
 
 }  // namespace detail
@@ -86,13 +86,13 @@ BEE_CORE_API void __bee_abort_handler();
  * Defines a line of code as one that should never be reached - this will always abort and g_log an error
  * even with BEE_CONFIG_ENABLE_ASSERTIONS turned off
  */
-#define BEE_UNREACHABLE(msgformat, ...)                                                     \
-        BEE_BEGIN_MACRO_BLOCK                                                               \
-            bee::detail::__bee_unreachable_handler(                                         \
-                __FILE__, __LINE__, msgformat, ##__VA_ARGS__                                \
-            );                                                                              \
-            BEE_DEBUG_BREAK();                                                              \
-            bee::detail::__bee_abort();                                                     \
+#define BEE_UNREACHABLE(msgformat, ...)                             \
+        BEE_BEGIN_MACRO_BLOCK                                       \
+            bee::detail::bee_unreachable_handler(                   \
+                __FILE__, __LINE__, msgformat, ##__VA_ARGS__        \
+            );                                                      \
+            if (bee::is_debugger_attached()) BEE_DEBUG_BREAK();     \
+            bee::detail::bee_abort();                               \
         BEE_END_MACRO_BLOCK
 
 
@@ -103,39 +103,39 @@ BEE_CORE_API void __bee_abort_handler();
  */
 #if BEE_CONFIG_ENABLE_ASSERTIONS == 1
 
-    #define BEE_ASSERT(expr)                                                                            \
-        BEE_BEGIN_MACRO_BLOCK                                                                           \
-            if(BEE_UNLIKELY(!(expr))) {                                                                 \
-                bee::detail::__bee_assert_handler(__FILE__, __LINE__, #expr);                           \
-                BEE_DEBUG_BREAK();                                                                      \
-                bee::detail::__bee_abort();                                                             \
-            }                                                                                           \
+    #define BEE_ASSERT(expr)                                                            \
+        BEE_BEGIN_MACRO_BLOCK                                                           \
+            if(BEE_UNLIKELY(!(expr))) {                                                 \
+                bee::detail::bee_assert_handler(__FILE__, __LINE__, #expr);             \
+                if (bee::is_debugger_attached()) BEE_DEBUG_BREAK();                     \
+                bee::detail::bee_abort();                                               \
+            }                                                                           \
         BEE_END_MACRO_BLOCK
 
-    #define BEE_ASSERT_NO_DEBUG_BREAK(expr)                                                             \
-        BEE_BEGIN_MACRO_BLOCK                                                                           \
-            if(BEE_UNLIKELY(!(expr))) {                                                                 \
-                bee::detail::__bee_assert_handler(__FILE__, __LINE__, #expr);                           \
-                bee::detail::__bee_abort();                                                             \
-            }                                                                                           \
+    #define BEE_ASSERT_NO_DEBUG_BREAK(expr)                                 \
+        BEE_BEGIN_MACRO_BLOCK                                               \
+            if(BEE_UNLIKELY(!(expr))) {                                     \
+                bee::detail::bee_assert_handler(__FILE__, __LINE__, #expr); \
+                bee::detail::bee_abort();                                   \
+            }                                                               \
         BEE_END_MACRO_BLOCK
 
-    #define BEE_ASSERT_F(expr, msgformat, ...)                                              \
-        BEE_BEGIN_MACRO_BLOCK                                                               \
-            if(BEE_UNLIKELY(!(expr))) {                                                     \
-                bee::detail::__bee_assert_handler(__FILE__, __LINE__,                       \
-                                            #expr, msgformat, ##__VA_ARGS__);               \
-                BEE_DEBUG_BREAK();                                                          \
-                bee::detail::__bee_abort();                                                 \
-            }                                                                               \
+    #define BEE_ASSERT_F(expr, msgformat, ...)                                      \
+        BEE_BEGIN_MACRO_BLOCK                                                       \
+            if(BEE_UNLIKELY(!(expr))) {                                             \
+                bee::detail::bee_assert_handler(__FILE__, __LINE__,                 \
+                                            #expr, msgformat, ##__VA_ARGS__);       \
+                if (bee::is_debugger_attached()) BEE_DEBUG_BREAK();                 \
+                bee::detail::bee_abort();                                           \
+            }                                                                       \
         BEE_END_MACRO_BLOCK
 
     #define BEE_ASSERT_F_NO_DEBUG_BREAK(expr, msgformat, ...)                               \
         BEE_BEGIN_MACRO_BLOCK                                                               \
             if(BEE_UNLIKELY(!(expr))) {                                                     \
-                bee::detail::__bee_assert_handler(__FILE__, __LINE__,                       \
+                bee::detail::bee_assert_handler(__FILE__, __LINE__,                       \
                                             #expr, msgformat, ##__VA_ARGS__);               \
-                bee::detail::__bee_abort();                                                 \
+                bee::detail::bee_abort();                                                 \
             }                                                                               \
         BEE_END_MACRO_BLOCK
 
@@ -174,37 +174,37 @@ BEE_CORE_API void __bee_abort_handler();
 
 
 #define BEE_CHECK(expr) (BEE_LIKELY((expr))                                                                 \
-    || (bee::detail::__bee_check_handler(__FILE__, __LINE__, #expr, nullptr, nullptr),   \
-        BEE_DEBUG_BREAK(), bee::detail::__bee_abort_handler(), false))
+    || (bee::detail::bee_check_handler(__FILE__, __LINE__, #expr, nullptr, nullptr),   \
+        !bee::is_debugger_attached() || (BEE_DEBUG_BREAK(), true), bee::detail::bee_abort_handler(), false))
 
 #define BEE_CHECK_F(expr, msg, ...) (BEE_LIKELY((expr))                                                     \
-    || (bee::detail::__bee_check_handler(__FILE__, __LINE__, #expr, msg, ##__VA_ARGS__), \
-        BEE_DEBUG_BREAK(), bee::detail::__bee_abort_handler(), false))
+    || (bee::detail::bee_check_handler(__FILE__, __LINE__, #expr, msg, ##__VA_ARGS__), \
+        !bee::is_debugger_attached() || (BEE_DEBUG_BREAK(), true), bee::detail::bee_abort_handler(), false))
 
 #define BEE_FAIL(expr) !(BEE_UNLIKELY((expr))                                                               \
-    || (bee::detail::__bee_check_handler(__FILE__, __LINE__, #expr, nullptr, nullptr),   \
-        BEE_DEBUG_BREAK(), bee::detail::__bee_abort_handler(), false))
+    || (bee::detail::bee_check_handler(__FILE__, __LINE__, #expr, nullptr, nullptr),   \
+        !bee::is_debugger_attached() || (BEE_DEBUG_BREAK(), true), bee::detail::bee_abort_handler(), false))
 
 #define BEE_FAIL_F(expr, msg, ...) !(BEE_UNLIKELY((expr))                                                   \
-    || (bee::detail::__bee_check_handler(__FILE__, __LINE__, #expr, msg, ##__VA_ARGS__), \
-        BEE_DEBUG_BREAK(), bee::detail::__bee_abort_handler(), false))
+    || (bee::detail::bee_check_handler(__FILE__, __LINE__, #expr, msg, ##__VA_ARGS__), \
+        !bee::is_debugger_attached() || (BEE_DEBUG_BREAK(), true), bee::detail::bee_abort_handler(), false))
 
 #else
 
 #define BEE_CHECK(expr) (BEE_LIKELY((expr))                                                                 \
-    || (bee::detail::__bee_check_handler(__FILE__, __LINE__, #expr, nullptr, nullptr),   \
+    || (bee::detail::bee_check_handler(__FILE__, __LINE__, #expr, nullptr, nullptr),   \
         false))
 
 #define BEE_CHECK_F(expr, msg, ...) (BEE_LIKELY((expr))                                                     \
-    || (bee::detail::__bee_check_handler(__FILE__, __LINE__, #expr, msg, ##__VA_ARGS__), \
+    || (bee::detail::bee_check_handler(__FILE__, __LINE__, #expr, msg, ##__VA_ARGS__), \
         false))
 
 #define BEE_FAIL(expr) !(BEE_UNLIKELY((expr))                                                               \
-    || (bee::detail::__bee_check_handler(__FILE__, __LINE__, #expr, nullptr, nullptr),   \
+    || (bee::detail::bee_check_handler(__FILE__, __LINE__, #expr, nullptr, nullptr),   \
         false))
 
 #define BEE_FAIL_F(expr, msg, ...) !(BEE_UNLIKELY((expr))                                                   \
-    || (bee::detail::__bee_check_handler(__FILE__, __LINE__, #expr, msg, ##__VA_ARGS__), \
+    || (bee::detail::bee_check_handler(__FILE__, __LINE__, #expr, msg, ##__VA_ARGS__), \
         false))
 
 #endif // BEE_CONFIG_ENABLE_ASSERTIONS == 1
@@ -229,6 +229,11 @@ BEE_CORE_API void disable_exception_handling();
  * Initializes the console signal handler for graceful terminations in console apps
  */
 BEE_CORE_API void init_signal_handler();
+
+/**
+ * Returns true if a debugger is attached to the executable being run
+ */
+BEE_CORE_API bool is_debugger_attached();
 
 
 } // namespace bee

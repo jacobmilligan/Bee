@@ -53,8 +53,6 @@ struct DebugSymbol
     char    function_name[name_size];
 };
 
-BEE_CORE_API bool is_debugger_attached();
-
 BEE_CORE_API bool refresh_debug_symbols();
 
 /**

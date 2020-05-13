@@ -75,14 +75,14 @@ void log_assert_message(
 }
 
 
-void __bee_assert_handler(const char* file, const int line, const char* expr)
+void bee_assert_handler(const char* file, const int line, const char* expr)
 {
     BEE_RECURSION_GUARD;
     log_assert_message("Assertion failed", file, line, expr, nullptr, nullptr);
 }
 
 
-void __bee_assert_handler(
+void bee_assert_handler(
     const char* file,
     const int line,
     const char* expr,
@@ -98,7 +98,7 @@ void __bee_assert_handler(
     va_end(args);
 }
 
-void __bee_unreachable_handler(const char* file, int line, const char* msgformat, ...)
+void bee_unreachable_handler(const char* file, int line, const char* msgformat, ...)
 {
     BEE_RECURSION_GUARD;
 
@@ -109,7 +109,7 @@ void __bee_unreachable_handler(const char* file, int line, const char* msgformat
     va_end(args);
 }
 
-void __bee_check_handler(const char* file, const int line, const char* expr, const char* msgformat, ...)
+void bee_check_handler(const char* file, const int line, const char* expr, const char* msgformat, ...)
 {
     BEE_RECURSION_GUARD;
 
@@ -119,12 +119,12 @@ void __bee_check_handler(const char* file, const int line, const char* expr, con
     va_end(args);
 }
 
-[[noreturn]] void __bee_abort()
+[[noreturn]] void bee_abort()
 {
     abort();
 }
 
-void __bee_abort_handler()
+void bee_abort_handler()
 {
 BEE_PUSH_WARNING
 BEE_DISABLE_WARNING_MSVC(4702)
