@@ -10,6 +10,9 @@
 #include "Bee/Core/Path.hpp"
 #include "Bee/Core/Handle.hpp"
 #include "Bee/Core/Atomic.hpp"
+#include "Bee/Core/Thread.hpp"
+#include "Bee/Core/Concurrency.hpp"
+#include "Bee/Core/Memory/SmartPointers.hpp"
 
 
 namespace bee {
@@ -19,7 +22,6 @@ namespace fs {
 enum class FileAction
 {
     none,
-    renamed,
     added,
     removed,
     modified
@@ -73,35 +75,68 @@ private:
 
 struct FileNotifyInfo
 {
+    u32         hash { 0 };
     FileAction  action { FileAction::none };
     Path        file;
 };
 
-class BEE_CORE_API DirectoryWatcher
+
+struct WatchedDirectory;
+struct NativeDirectoryWatcher;
+
+class BEE_CORE_API DirectoryWatcher final : public Noncopyable
 {
 public:
+    explicit DirectoryWatcher(const bool recursive = false);
 
     ~DirectoryWatcher();
 
-    void start();
+    void start(const char* name);
 
     void stop();
 
-    void add_directory(const Path& path);
+    void suspend();
 
-    inline bool is_watching() const
+    void resume();
+
+    bool add_directory(const Path& path);
+
+    void remove_directory(const Path& path);
+
+    DynamicArray<FileNotifyInfo> pop_events();
+
+    inline bool is_running() const
     {
-        return watching_.load(std::memory_order_relaxed);
+        return is_running_.load(std::memory_order_relaxed);
     }
+
+    inline Span<const Path> watched_directories() const
+    {
+        return watched_paths_.const_span();
+    }
+
 private:
-    struct Entry;
+    bool                                        recursive_ { false };
+    std::atomic_bool                            is_running_ { false };
+    std::atomic_bool                            is_suspended_ { false };
+    DynamicArray<FileNotifyInfo>                events_;
+    DynamicArray<UniquePtr<WatchedDirectory>>   entries_;
+    DynamicArray<Path>                          watched_paths_;
+    void*                                       native_ {nullptr };
+    Thread                                      thread_;
+    Mutex                                       mutex_;
+    ConditionVariable                           start_thread_cv_;
 
-    std::atomic_bool                watching_ { false };
-    DynamicArray<FileNotifyInfo>    notifications_;
-    DynamicArray<Entry*>            entries_;
-    void*                           native_handle_ { nullptr };
+    static void watch_loop(DirectoryWatcher* watcher);
+
+    void init(const ThreadCreateInfo& thread_info);
+
+    void add_event(const FileAction action, const StringView& relative_path, const i32 entry);
+
+    i32 find_entry(const Path& path);
+
+    void finalize_removal(const i32 index);
 };
-
 
 struct AppData
 {
@@ -112,23 +147,12 @@ struct AppData
     Path    config_root;
 };
 
-struct Timestamp
-{
-    u64 year { 0 };
-    u64 month { 0 };
-    u64 day { 0 };
-    u64 hour { 0 };
-    u64 minute { 0 };
-    u64 second { 0 };
-    u64 millisecond { 0 };
-};
-
 
 BEE_CORE_API bool is_dir(const Path& path);
 
 BEE_CORE_API bool is_file(const Path& path);
 
-BEE_CORE_API bool last_modified(const Path& path, Timestamp* timestamp);
+BEE_CORE_API u64 last_modified(const Path& path);
 
 BEE_CORE_API String read(const Path& filepath, Allocator* allocator = system_allocator());
 
@@ -141,6 +165,8 @@ BEE_CORE_API bool write(const Path& filepath, const Span<const u8>& bytes_to_wri
 BEE_CORE_API bool write_v(const Path& filepath, const char* fmt_string, va_list fmt_args);
 
 BEE_CORE_API bool remove(const Path& filepath);
+
+BEE_CORE_API bool move(const Path& current_path, const Path& new_path);
 
 BEE_CORE_API bool copy(const Path& src_filepath, const Path& dst_filepath, bool overwrite = false);
 
@@ -167,5 +193,17 @@ BEE_CORE_API Path user_local_appdata_path();
 
 
 } // namespace fs
+
+
+template <>
+struct Hash<fs::FileNotifyInfo>
+{
+    inline u32 operator()(const fs::FileNotifyInfo& key) const
+    {
+        return key.hash;
+    }
+};
+
+
 }  // namespace bee
 

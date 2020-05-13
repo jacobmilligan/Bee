@@ -20,7 +20,7 @@ TEST(FilesystemTests, appdata)
     const auto local_appdata = bee::fs::user_local_appdata_path();
 #if BEE_OS_WINDOWS == 1
     ASSERT_STREQ(local_appdata.filename().c_str(), "Local");
-    ASSERT_STREQ(local_appdata.parent().filename().c_str(), "AppData");
+    ASSERT_STREQ(local_appdata.parent_path().filename().c_str(), "AppData");
 #endif // BEE_OS_WINDOWS == 1
 }
 

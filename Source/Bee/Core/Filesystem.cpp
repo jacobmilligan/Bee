@@ -7,6 +7,7 @@
 
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/Error.hpp"
+#include "Bee/Core/Logger.hpp"
 
 #include <stdio.h>
 #include <fstream>
@@ -55,13 +56,94 @@ DirectoryIterator& DirectoryIterator::operator++()
 /*
  *****************************************
  *
+ * DirectoryWatcher - implementation
+ *
+ *****************************************
+ */
+void DirectoryWatcher::start(const char* name)
+{
+    if (is_running())
+    {
+        log_warning("DirectoryWatcher is already running");
+        return;
+    }
+
+    is_running_.store(true, std::memory_order_relaxed);
+
+    ThreadCreateInfo thread_info{};
+    thread_info.name = name == nullptr ? "Bee.DirectoryWatcher" : name;
+    init(thread_info);
+}
+
+void DirectoryWatcher::suspend()
+{
+    is_suspended_.store(true, std::memory_order_relaxed);
+
+}
+
+void DirectoryWatcher::resume()
+{
+    is_suspended_.store(false, std::memory_order_relaxed);
+}
+
+void DirectoryWatcher::add_event(const FileAction action, const StringView& relative_path, const i32 entry)
+{
+    BEE_ASSERT(entry < watched_paths_.size());
+
+    // Need to re-init the array if it was moved previously via `pop_events`
+    if (events_.allocator() == nullptr)
+    {
+        new (&events_) DynamicArray<FileNotifyInfo>{};
+    }
+
+    auto full_path = watched_paths_[entry].join(relative_path);
+    const auto hash = get_hash(full_path);
+
+    // On platforms like windows change notifications can sometimes fire multiple times
+    const auto existing_index = container_index_of(events_, [&](const FileNotifyInfo& info)
+    {
+        return hash == info.hash;
+    });
+
+    if (existing_index < 0)
+    {
+        events_.emplace_back();
+        events_.back().hash = hash;
+        events_.back().action = action;
+        events_.back().file = std::move(full_path);
+    }
+}
+
+i32 DirectoryWatcher::find_entry(const Path &path)
+{
+    return container_index_of(watched_paths_, [&](const Path& p)
+    {
+        return p == path;
+    });
+}
+
+DynamicArray<FileNotifyInfo> DirectoryWatcher::pop_events()
+{
+    if (!mutex_.try_lock())
+    {
+        return {};
+    }
+
+    auto events = std::move(events_);
+    mutex_.unlock();
+    return std::move(events);
+}
+
+/*
+ *****************************************
+ *
  * Filesystem functions - implementation
  *
  *****************************************
  */
 String read(const Path& filepath, Allocator* allocator)
 {
-    auto file = fopen(filepath.c_str(), "rb");
+    auto* file = fopen(filepath.c_str(), "rb");
     if (BEE_FAIL_F(file != nullptr, "No such file found with the specified name %s", filepath.c_str()))
     {
         return "";
@@ -82,7 +164,7 @@ String read(const Path& filepath, Allocator* allocator)
 
 FixedArray<u8> read_bytes(const Path& filepath, Allocator* allocator)
 {
-    auto file = fopen(filepath.c_str(), "rb");
+    auto* file = fopen(filepath.c_str(), "rb");
     if (BEE_FAIL_F(file != nullptr, "No such file found with the specified name %s", filepath.c_str()))
     {
         return {};
@@ -108,7 +190,7 @@ bool write(const Path& filepath, const String& string_to_write)
 
 bool write(const Path& filepath, const StringView& string_to_write)
 {
-    auto file = fopen(filepath.c_str(), "wb");
+    auto* file = fopen(filepath.c_str(), "wb");
     if (BEE_FAIL_F(file != nullptr, "Unable to open or write to file: %s", filepath.c_str()))
     {
         return false;
@@ -121,7 +203,7 @@ bool write(const Path& filepath, const StringView& string_to_write)
 
 bool write(const Path& filepath, const Span<const u8>& bytes_to_write)
 {
-    auto file = fopen(filepath.c_str(), "wb");
+    auto* file = fopen(filepath.c_str(), "wb");
     if (BEE_FAIL_F(file != nullptr, "Unable to open or write to file: %s", filepath.c_str()))
     {
         return false;
@@ -134,7 +216,7 @@ bool write(const Path& filepath, const Span<const u8>& bytes_to_write)
 
 bool write_v(const Path& filepath, const char* fmt_string, va_list fmt_args)
 {
-    auto file = fopen(filepath.c_str(), "wb");
+    auto* file = fopen(filepath.c_str(), "wb");
     if (BEE_FAIL_F(file != nullptr, "Unable to open or write to file: %s", filepath.c_str()))
     {
         return false;
@@ -154,7 +236,7 @@ bool rmdir(const Path& directory_path, const bool recursive)
         return native_rmdir_non_recursive(directory_path);
     }
 
-    bool rmdir_success;
+    bool rmdir_success = false;
     for (const auto& path : read_dir(directory_path))
     {
         if (is_dir(path))
@@ -208,12 +290,12 @@ const AppData& get_appdata()
     }
 
     // Determine if we're running from an installed build or a dev build
-    const auto editor_exe_path = Path::executable_path().parent();
+    const auto editor_exe_path = Path(Path::executable_path().parent_path());
     bool is_installed_build = editor_exe_path.filename() != "Debug" && editor_exe_path.filename() != "Release";
 
     appdata.data_root = is_installed_build
                       ? fs::user_local_appdata_path().join("Bee").join(BEE_VERSION)
-                      : editor_exe_path.parent().join("DevData");
+                      : editor_exe_path.parent_path().join("DevData");
 
     if (!appdata.data_root.exists())
     {
@@ -237,13 +319,13 @@ const AppData& get_appdata()
      * C:/Program Files (x86)/Bee/1.0.0/Assets
      */
     appdata.assets_root = is_installed_build
-                        ? appdata.binaries_root.parent().join("Assets")
-                        : appdata.binaries_root.parent().parent().join("Assets");
+                        ? appdata.binaries_root.parent_path().join("Assets")
+                        : appdata.binaries_root.parent_path().parent_path().join("Assets");
 
     // Installed builds have a /Config subdirectory whereas dev build output configs to /Build/<Build type>/../Config
     appdata.config_root = is_installed_build
                           ? appdata.binaries_root.join("Config")
-                          : appdata.binaries_root.parent().join("Config");
+                          : appdata.binaries_root.parent_path().join("Config");
 
     return appdata;
 }

@@ -8,30 +8,37 @@
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/Time.hpp"
+#include "Bee/Core/Logger.hpp"
+#include "Bee/Core/Debug.hpp"
+
+#include <algorithm>
+#include <inttypes.h>
 
 namespace bee {
 
 #if BEE_OS_WINDOWS == 1
-    static constexpr auto plugin_extension = "dll";
+    static constexpr auto g_plugin_extension = ".dll";
 #elif BEE_OS_MACOS == 1
-    static constexpr auto plugin_extension = "dylib";
+    static constexpr auto g_plugin_extension = ".dylib";
 #elif BEE_OS_LINUX == 1
-    static constexpr auto plugin_extension = "so";
+    static constexpr auto g_plugin_extension = ".so";
 #else
     #error Unsupported platform
 #endif // BEE_OS_WINDOWS == 1
 
+static constexpr auto g_pdb_extension = ".pdb";
+
 static constexpr auto load_function_name = "bee_load_plugin";
 static constexpr auto unload_function_name = "bee_unload_plugin";
 
-static DynamicHashMap<String, StaticPluginAutoRegistration*> g_static_plugins;
-static StaticPluginAutoRegistration* g_static_plugin_pending_registrations { nullptr };
+static DynamicHashMap<u32, StaticPluginAutoRegistration*>   g_static_plugins;
+static StaticPluginAutoRegistration*                        g_static_plugin_pending_registrations { nullptr };
 
-StaticPluginAutoRegistration::StaticPluginAutoRegistration(const char* name, load_plugin_function_t load_function, load_plugin_function_t unload_function)
-    : load_plugin(load_function),
-      unload_plugin(unload_function)
+StaticPluginAutoRegistration::StaticPluginAutoRegistration(const char* name, load_plugin_function_t load_function)
+    : load_plugin(load_function)
 {
-    auto* existing = g_static_plugins.find(name);
+    const auto name_hash = get_hash(name);
+    auto* existing = g_static_plugins.find(name_hash);
     if (existing != nullptr)
     {
         log_error("Plugin \"%s\" was registered multiple times", name);
@@ -47,533 +54,567 @@ StaticPluginAutoRegistration::StaticPluginAutoRegistration(const char* name, loa
         g_static_plugin_pending_registrations->next = this;
     }
 
-    g_static_plugins.insert(String(name), this);
+    g_static_plugins.insert(name_hash, this);
 }
 
 
 /*
  ************************************
  *
- * Plugin storage
+ * PluginRegistry - implementation
  *
  ************************************
  */
-struct Plugin
+PluginRegistry::PluginRegistry()
 {
-    u64                         timestamp { 0 };
-    String                      name;
-    Path                        library_path;
-    DynamicLibrary              library;
-    load_plugin_function_t      load_function { nullptr };
-    load_plugin_function_t      unload_function { nullptr };
-};
+    directory_watcher_.start("PluginWatcher");
+}
 
-struct Interface
+PluginRegistry::~PluginRegistry()
 {
-    String  api;
-    i32     index {-1 };
-    void*   ptr { nullptr };
+    if (directory_watcher_.is_running())
+    {
+        directory_watcher_.stop();
+    }
 
-    Interface() = default;
+    for (auto& plugin : plugins_)
+    {
+        unload_plugin(&plugin.value);
+    }
 
-    explicit Interface(void* interface_ptr)
-        : ptr(interface_ptr)
-    {}
-};
+    for (auto& module : modules_)
+    {
+        destroy_module(module);
+    }
+}
 
-struct Observer
+bool PluginRegistry::add_search_path(const Path &path, const RegisterPluginMode register_mode)
 {
-    plugin_observer_t   callback { nullptr };
-    void*               user_data { nullptr };
+    if (search_paths_.find(path) == nullptr)
+    {
+        search_paths_.insert(path, {});
+    }
 
-    Observer() = default;
+    if (!register_plugins_at_path(path, path, register_mode))
+    {
+        return false;
+    }
 
-    Observer(plugin_observer_t new_callback, void* new_user_data)
-        : callback(new_callback),
-          user_data(new_user_data)
-    {}
-};
+    return directory_watcher_.add_directory(path);
+}
 
-
-struct Api
+void PluginRegistry::remove_search_path(const Path& path)
 {
-    DynamicArray<void*>    interfaces;
-    DynamicArray<Observer> observers;
+    auto* search_path = search_paths_.find(path);
 
-    i32 find_interface(const void* interface) const
+    if (search_path == nullptr)
     {
-        return container_index_of(interfaces, [&](const void* i)
-        {
-            return i == interface;
-        });
+        log_error("%s is not a registered plugin search path", path.c_str());
+        return;
     }
 
-    i32 find_or_add_interface(void* interface)
+    directory_watcher_.remove_directory(path);
+
+    for (auto& name_hash : search_path->value)
     {
-        const auto interface_index = find_interface(interface);
-        if (interface_index >= 0)
+        auto* registered = plugins_.find(name_hash);
+
+        if (registered == nullptr)
         {
-            return interface_index;
-        }
-
-        interfaces.push_back(interface);
-        return interfaces.size() - 1;
-    }
-
-    i32 find_observer(const plugin_observer_t observer) const
-    {
-        return container_index_of(observers, [&](const Observer& o)
-        {
-            return o.callback == observer;
-        });
-    }
-};
-
-struct PluginEvent
-{
-    PluginEventType     type {PluginEventType::none };
-    const char*         plugin_name { nullptr };
-    const char*         api_name { nullptr };
-    void*               interface { nullptr };
-};
-
-struct PluginCache
-{
-    bool                                initialized { false };
-    RecursiveSpinLock                   mutex;
-    DynamicArray<Interface>             interfaces;
-    DynamicHashMap<String, Api>         apis;
-    DynamicHashMap<String, Plugin>      plugins;
-    DynamicArray<PluginEvent>           pending_events;
-    DynamicArray<Path>                  search_paths;
-
-    i32 find_interface(const void* interface) const
-    {
-        return container_index_of(interfaces, [&](const Interface& i)
-        {
-            return i.ptr == interface;
-        });
-    }
-
-    Api& find_or_add_api(const char* name)
-    {
-        auto* api = apis.find(name);
-
-        if (api != nullptr)
-        {
-            return api->value;
-        }
-
-        return apis.insert(String(name), Api())->value;
-    }
-
-    i32 find_or_add_interface(void* interface)
-    {
-        const auto interface_index = find_interface(interface);
-        if (interface_index >= 0)
-        {
-            return interface_index;
-        }
-
-        interfaces.emplace_back(interface);
-        return interfaces.size() - 1;
-    }
-
-    Span<void*> enumerate_api(const char* name)
-    {
-        auto* api = apis.find(name);
-        if (BEE_FAIL_F(api != nullptr, "\"%s\" is not a registered plugin API", name))
-        {
-            return Span<void*>{};
-        }
-
-        return api->value.interfaces.span();
-    }
-
-    void add_search_path(const Path& path)
-    {
-        if (!fs::is_dir(path))
-        {
-            log_error("Plugin search path %s is not a directory", path.c_str());
+            log_error("Unable to find plugin with hash %u", name_hash);
             return;
         }
 
-        const auto index = container_index_of(search_paths, [&](const Path& p)
-        {
-            return p == path;
-        });
+        auto& plugin = registered->value;
 
-        if (index >= 0)
+        if (plugin.is_loaded)
         {
-            log_warning("Plugin search path %s was added multiple times", path.c_str());
-            return;
+            unload_plugin(&plugin);
         }
 
-        search_paths.push_back(path);
+        plugins_.erase(name_hash);
     }
-};
 
-static PluginCache g_plugins;
-
-
-void add_plugin_event_threadsafe(const PluginEventType type, const char* plugin_name, const char* api_name, void* interface)
-{
-    scoped_recursive_spinlock_t lock(g_plugins.mutex);
-
-    PluginEvent event{};
-    event.type = type;
-    event.plugin_name = plugin_name;
-    event.api_name = api_name;
-    event.interface = interface;
-
-    g_plugins.pending_events.push_back(event);
+    search_paths_.erase(path);
 }
 
-/*
- *****************************************
- *
- * # Plugin API context - implementation
- *
- * None of these functions should lock
- * because they're all called from
- * within a scoped-locked context
- *
- *****************************************
- */
-PluginRegistry::PluginRegistry(PluginCache* plugins, const char* plugin_name, const bool is_reloading)
-    : plugins_(plugins),
-      plugin_name_(plugin_name),
-      reloading_(is_reloading)
-{}
-
-void PluginRegistry::add_interface(const char* api_name, void* interface_ptr)
+bool PluginRegistry::load_plugin(const StringView& name)
 {
-    add_plugin_event_threadsafe(PluginEventType::add_interface, plugin_name_, api_name, interface_ptr);
-}
+    const auto name_hash = get_hash(name);
+    auto* plugin = plugins_.find(name_hash);
 
-void PluginRegistry::remove_interface(void* interface_ptr)
-{
-    add_plugin_event_threadsafe(PluginEventType::remove_interface, plugin_name_, nullptr, interface_ptr);
-}
-
-Span<void*> PluginRegistry::enumerate_api(const char* name)
-{
-    return plugins_->enumerate_api(name);
-}
-
-
-/*
- *****************************************
- *
- * Plugin implementation
- *
- *****************************************
- */
-void unload_plugin_nolock(Plugin* plugin)
-{
-    BEE_ASSERT(plugin->unload_function != nullptr);
-    BEE_ASSERT(plugin->library.handle != nullptr);
-
-    PluginRegistry ctx(&g_plugins, plugin->name.c_str(), false);
-    plugin->unload_function(&ctx);
-
-    // unload the dyn lib if this isn't a static plugin
-    if (plugin->library.handle != nullptr)
+    if (plugin == nullptr)
     {
-        unload_library(plugin->library);
+        log_error("Could not find a registered plugin for \"%" BEE_PRIsv "\"", BEE_FMT_SV(name));
+        return false;
+    }
+
+    if (plugin->value.is_loaded)
+    {
+        log_error("Plugin \"%" BEE_PRIsv "\" is already loaded", BEE_FMT_SV(name));
+        return false;
+    }
+
+    load_plugin(&plugin->value);
+    return true;
+}
+
+bool PluginRegistry::unload_plugin(const StringView& name)
+{
+    const auto name_hash = get_hash(name);
+    auto* plugin = plugins_.find(name_hash);
+
+    if (plugin == nullptr)
+    {
+        log_error("Could not find a registered plugin for \"%" BEE_PRIsv "\"", BEE_FMT_SV(name));
+        return false;
+    }
+
+    if (!plugin->value.is_loaded)
+    {
+        log_error("Plugin \"%" BEE_PRIsv "\" is already unloaded", BEE_FMT_SV(name));
+        return false;
+    }
+
+    unload_plugin(&plugin->value);
+    return true;
+}
+
+void PluginRegistry::refresh_plugins()
+{
+    // Refresh the list of plugins and sort alphabetically before handling the pending events
+    auto file_events = directory_watcher_.pop_events();
+    std::sort(file_events.begin(), file_events.end(), [&](const fs::FileNotifyInfo& lhs, const fs::FileNotifyInfo& rhs)
+    {
+        return lhs.file < rhs.file;
+    });
+
+    for (auto& event : file_events)
+    {
+        const auto ext = event.file.extension();
+        if (ext != g_plugin_extension)
+        {
+            continue;
+        }
+
+        switch (event.action)
+        {
+            case fs::FileAction::added:
+            {
+                register_plugin(event.file, RegisterPluginMode::manual_load);
+                break;
+            }
+            case fs::FileAction::removed:
+            {
+                unregister_plugin(event.file);
+                break;
+            }
+            case fs::FileAction::modified:
+            {
+                auto* plugin = plugins_.find(get_hash(event.file.stem()));
+                BEE_ASSERT(plugin != nullptr);
+                load_plugin(&plugin->value);
+                break;
+            }
+            default: break;
+        }
     }
 }
 
-void process_load_event(const PluginEvent& event)
+bool PluginRegistry::is_plugin_loaded(const StringView &name)
 {
-    // see if the plugin is registered as a static one first
-    Plugin plugin;
-    plugin.name = event.plugin_name;
+    return plugins_.find(get_hash(name)) != nullptr;
+}
 
-    auto* static_plugin = g_static_plugins.find(event.plugin_name);
-
-    if (static_plugin != nullptr)
+void PluginRegistry::add_observer(plugin_observer_t observer, void* user_data)
+{
+    const auto index = container_index_of(observers_, [&](const Observer& o)
     {
-        plugin.load_function = static_plugin->value->load_plugin;
-        plugin.unload_function = static_plugin->value->unload_plugin;
+        return o.callback == observer;
+    });
+
+    if (index >= 0)
+    {
+        log_error("Observer %p is already registered", observer);
+        return;
+    }
+
+    observers_.emplace_back(observer, user_data);
+}
+
+void PluginRegistry::remove_observer(plugin_observer_t observer)
+{
+    const auto index = container_index_of(observers_, [&](const Observer& o)
+    {
+        return o.callback == observer;
+    });
+
+    if (index < 0)
+    {
+        log_error("Observer %p is not registered", observer);
+        return;
+    }
+
+    observers_.erase(index);
+}
+
+void PluginRegistry::require_module(const StringView &module_name, module_observer_t observer, void *user_data)
+{
+    auto& module = get_or_create_module(module_name);
+
+    // call the observer immediately if the module is already loaded
+    if (module.current != nullptr)
+    {
+        observer(module.storage, user_data);
     }
     else
     {
-        // Dynamic plugin - register via loading the DLL/dylib/so
-        plugin.library_path = fs::get_appdata().binaries_root.join(event.plugin_name);
-        plugin.library_path.append_extension(plugin_extension);
+        module.on_add_observers.emplace_back(observer, user_data);
+    }
+}
 
-        plugin.library = load_library(plugin.library_path.c_str());
+PluginRegistry::Module& PluginRegistry::get_or_create_module(const StringView& name)
+{
+    const auto hash = get_hash(name);
+    auto index = container_index_of(modules_, [&](const Module* m)
+    {
+        return m->hash == hash;
+    });
 
-        if (BEE_FAIL_F(plugin.library.handle != nullptr, "Failed to load plugin at path: %s", plugin.library_path.c_str()))
+    // Reserve the module if it hasn't been added yet
+    if (index >= 0)
+    {
+        return *modules_[index];
+    }
+
+    modules_.push_back(create_module(hash, name));
+
+    return *modules_.back();
+}
+
+void PluginRegistry::add_module(const StringView& name, const void* interface_ptr, const size_t size)
+{
+    if (BEE_FAIL_F(size <= module_storage_capacity_, "Module interface struct is too large to store in plugin registry"))
+    {
+        return;
+    }
+
+    auto& module = get_or_create_module(name);
+
+    module.current = interface_ptr;
+    memcpy(module.storage, interface_ptr, size);
+
+    // notify the once-off module-specific load callbacks
+    for (auto& observer : module.on_add_observers)
+    {
+        observer.callback(module.storage, observer.user_data);
+    }
+
+    module.on_add_observers.clear();
+
+    // notify observers of the new interface
+    for (auto& observer : observers_)
+    {
+        observer.callback(PluginEventType::add_module, module.name.view(), module.storage, observer.user_data);
+    }
+}
+
+void PluginRegistry::remove_module(const void* interface_ptr)
+{
+    auto index = container_index_of(modules_, [&](const Module* m)
+    {
+        return m->current == interface_ptr;
+    });
+
+    if (index < 0)
+    {
+        return;
+    }
+
+    // notify observers of the removed interface
+    for (auto& observer : observers_)
+    {
+        observer.callback(PluginEventType::remove_module, modules_[index]->name.view(), modules_[index]->storage, observer.user_data);
+    }
+
+    destroy_module(modules_[index]);
+    modules_.erase(index);
+}
+
+
+void* PluginRegistry::get_module(const StringView& name)
+{
+    return get_or_create_module(name).storage;
+}
+
+bool PluginRegistry::register_plugins_at_path(const Path& search_root, const Path& root, const RegisterPluginMode register_mode)
+{
+    for (const auto& path : fs::read_dir(root))
+    {
+        if (fs::is_dir(path))
+        {
+            if (!register_plugins_at_path(search_root, root, register_mode))
+            {
+                return false;
+            }
+
+            continue;
+        }
+
+        register_plugin(path, register_mode);
+    }
+
+    return true;
+}
+
+bool is_temp_hot_reload_file(const Path& path)
+{
+    const auto name = path.stem();
+    const auto timestamp_begin = str::last_index_of(name, '.') + 1;
+
+    for (int i = timestamp_begin; i < name.size(); ++i)
+    {
+        if (!str::is_digit(name[i]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void PluginRegistry::register_plugin(const Path& path, const RegisterPluginMode register_mode)
+{
+    const auto ext = path.extension();
+    const auto is_plugin = ext == g_plugin_extension;
+    const auto is_pdb = ext == g_pdb_extension;
+
+    if (!is_plugin && !is_pdb)
+    {
+        return;
+    }
+
+    if (is_temp_hot_reload_file(path))
+    {
+        directory_watcher_.suspend();
+        fs::remove(path);
+        directory_watcher_.resume();
+        return;
+    }
+
+    if (is_plugin)
+    {
+        // Register the plugin
+        const auto name = path.stem();
+        const auto name_hash = get_hash(name);
+        auto* existing = plugins_.find(name_hash);
+
+        if (existing != nullptr)
+        {
+            log_error("A plugin is already registered with the name \"%" BEE_PRIsv "\"", BEE_FMT_SV(name));
+            return;
+        }
+
+        existing = plugins_.insert(name_hash, Plugin(path, name));
+
+        auto* search_path = search_paths_.find(path.parent_view());
+        BEE_ASSERT(search_path != nullptr);
+        search_path->value.push_back(name_hash);
+
+        if (register_mode == RegisterPluginMode::auto_load)
+        {
+            load_plugin(&existing->value);
+        }
+    }
+}
+
+void PluginRegistry::unregister_plugin(const Path& path)
+{
+    const auto name_hash = get_hash(path.stem());
+    auto* plugin = plugins_.find(name_hash);
+    auto* search_path = search_paths_.find(path.parent_view());
+
+    BEE_ASSERT(search_path != nullptr);
+
+    if (plugin != nullptr)
+    {
+        const auto search_index = container_index_of(search_path->value, [&](const u32 nh)
+        {
+            return nh == name_hash;
+        });
+
+        search_path->value.erase(search_index);
+
+        if (plugin->value.is_loaded)
+        {
+            unload_plugin(&plugin->value);
+        }
+
+        plugins_.erase(plugin->value.name_hash);
+    }
+}
+
+void PluginRegistry::load_plugin(Plugin* plugin)
+{
+    static thread_local StaticString<64> timestamp_buffer;
+
+    // find as static plugin
+    auto* static_plugin = g_static_plugins.find(plugin->name_hash);
+
+    DynamicLibrary new_library{};
+    load_plugin_function_t new_load_function = nullptr;
+
+    if (static_plugin != nullptr)
+    {
+        new_load_function = static_plugin->value->load_plugin;
+    }
+    else
+    {
+        /*
+         * Dynamic plugin - register via loading the DLL/dylib/so
+         *
+         * First we need to copy the OG file to a random path and instead load from *that* file
+         * to get around windows .dll locking woes
+         */
+        timestamp_buffer.resize(timestamp_buffer.capacity());
+        const auto size = str::format_buffer(timestamp_buffer.data(), timestamp_buffer.size(), "%" PRIu64, time::now());
+        timestamp_buffer.resize(size);
+
+        plugin->current_version_path.clear();
+        plugin->current_version_path.append(plugin->library_path);
+        plugin->current_version_path.set_extension(timestamp_buffer.view());
+        plugin->current_version_path.append_extension(plugin->library_path.extension());
+
+        directory_watcher_.suspend();
+        const auto copy_success = fs::copy(plugin->library_path, plugin->current_version_path);
+        directory_watcher_.resume();
+
+        if (!copy_success)
         {
             return;
         }
 
-        plugin.load_function = reinterpret_cast<load_plugin_function_t>(get_library_symbol(plugin.library, load_function_name));
+        new_library = load_library(plugin->current_version_path.c_str());
 
-        if (BEE_FAIL_F(plugin.load_function != nullptr, "Failed to get load function symbol `%s` for plugin at path: %s", load_function_name, plugin.library_path.c_str()))
+        if (BEE_FAIL_F(new_library.handle != nullptr, "Failed to load plugin at path: %s", plugin->library_path.c_str()))
         {
-            unload_library(plugin.library);
             return;
         }
 
-        plugin.unload_function = reinterpret_cast<load_plugin_function_t>(get_library_symbol(plugin.library, unload_function_name));
+        new_load_function = reinterpret_cast<load_plugin_function_t>(get_library_symbol(new_library, load_function_name));
 
-        if (BEE_FAIL_F(plugin.unload_function != nullptr, "Failed to get unload function symbol `%s` for plugin at path: %s", unload_function_name, plugin.library_path.c_str()))
+        if (BEE_FAIL_F(new_load_function != nullptr, "Failed to get load function symbol `%s` for plugin at path: %s", load_function_name, plugin->library_path.c_str()))
         {
-            unload_library(plugin.library);
+            unload_library(new_library);
             return;
         }
     }
 
     if (!refresh_debug_symbols())
     {
-        unload_plugin_nolock(&plugin);
-        return;
+        log_error("Failed to refresh debug symbols after loading plugin at path: %s", plugin->library_path.c_str());
     }
 
-    auto* loaded_plugin = g_plugins.plugins.find(event.plugin_name);
-    const bool reload = loaded_plugin != nullptr;
+    // Load the new plugin version
 
-    // If the plugin is already loaded then we can reload it
-    if (loaded_plugin == nullptr)
+    new_load_function(this, PluginState::loading);
+
+    if (plugin->is_loaded && static_plugin == nullptr)
     {
-        loaded_plugin = g_plugins.plugins.insert(String(event.plugin_name), plugin);
-    }
+        plugin->load_function(this, PluginState::unloading);
+        unload_library(plugin->library);
 
-    PluginRegistry ctx(&g_plugins, event.plugin_name, reload);
-    plugin.load_function(&ctx);
-}
-
-void process_unload_event(const PluginEvent& event)
-{
-    auto* plugin = g_plugins.plugins.find(event.plugin_name);
-
-    if (BEE_FAIL_F(plugin != nullptr, "Plugin \"%s\" is not loaded or registered as a static plugin", event.plugin_name))
-    {
-        return;
-    }
-
-    unload_plugin_nolock(&plugin->value);
-
-    if (plugin->value.library.handle != nullptr)
-    {
-        unload_library(plugin->value.library);
-    }
-
-    g_plugins.plugins.erase(event.plugin_name);
-}
-
-void process_add_interface_event(const PluginEvent& event)
-{
-    auto& api = g_plugins.find_or_add_api(event.api_name);
-
-    // Add new interface entry for this pointer if not already added
-    auto interface_index = g_plugins.find_or_add_interface(event.interface);
-    auto& interface = g_plugins.interfaces[interface_index];
-    interface.api = event.api_name;
-
-    // Add interface to the API entry if it wasn't already added
-    interface.index = api.find_or_add_interface(g_plugins.interfaces[interface_index].ptr);
-
-    // notify observers of the new interface
-    for (auto& observer : api.observers)
-    {
-        observer.callback(PluginEventType::add_interface, event.plugin_name, event.interface, observer.user_data);
-    }
-}
-
-void process_remove_interface_event(const PluginEvent& event)
-{
-    const auto index = g_plugins.find_interface(event.interface);
-
-    if (BEE_FAIL_F(index >= 0, "No such plugin interface"))
-    {
-        return;
-    }
-
-    auto& interface = g_plugins.interfaces[index];
-    auto* api = g_plugins.apis.find(interface.api);
-
-    BEE_ASSERT(api != nullptr);
-
-    // Notify observers before removing the interface
-    for (auto& observer : api->value.observers)
-    {
-        observer.callback(PluginEventType::remove_interface, event.plugin_name, event.interface, observer.user_data);
-    }
-
-    api->value.interfaces.erase(interface.index);
-    g_plugins.interfaces.erase(index);
-}
-
-/*
- *****************************************
- *
- * Plugin API
- *
- *****************************************
- */
-void init_plugin_registry()
-{
-    scoped_recursive_spinlock_t lock(g_plugins.mutex);
-    BEE_ASSERT_F(!g_plugins.initialized, "Plugin Registry is already initialized");
-    g_plugins.initialized = true;
-}
-
-void destroy_plugin_registry()
-{
-    scoped_recursive_spinlock_t lock(g_plugins.mutex);
-
-    BEE_ASSERT_F(g_plugins.initialized, "Plugin Registry is not initialized");
-
-    for (auto& plugin : g_plugins.plugins)
-    {
-        unload_plugin_nolock(&plugin.value);
-    }
-
-    destruct(&g_plugins);
-    g_plugins.initialized = false;
-}
-
-void add_plugin_search_path(const Path& path)
-{
-    scoped_recursive_spinlock_t lock(g_plugins.mutex);
-    g_plugins.add_search_path(path);
-}
-
-bool load_plugin(const char* name)
-{
-    if (is_plugin_loaded(name))
-    {
-        log_warning("Plugin \"%s\" is already loaded", name);
-        return true;
-    }
-
-    add_plugin_event_threadsafe(PluginEventType::load_plugin, name, nullptr, nullptr);
-    return true;
-}
-
-bool unload_plugin(const char* name)
-{
-    if (BEE_FAIL_F(is_plugin_loaded(name), "Plugin \"%s\" is not loaded or registered as a static plugin", name))
-    {
-        return false;
-    }
-
-    add_plugin_event_threadsafe(PluginEventType::unload_plugin, name, nullptr, nullptr);
-    return true;
-}
-
-void reload_plugins(const Path& root_dir)
-{
-    for (auto entry : fs::read_dir(root_dir))
-    {
-        if (entry.extension() == plugin_extension)
+        if (!refresh_debug_symbols())
         {
-
-        }
-    }
-}
-
-void refresh_plugins()
-{
-    scoped_recursive_spinlock_t lock(g_plugins.mutex);
-
-    // Refresh the list of plugins before handling the pending events
-    for (auto& path : g_plugins.search_paths)
-    {
-        reload_plugins(path);
-    }
-
-    while (!g_plugins.pending_events.empty())
-    {
-        auto event = g_plugins.pending_events[0];
-        g_plugins.pending_events.erase(0);
-
-        switch (event.type)
-        {
-            case PluginEventType::add_interface:
-            {
-                process_add_interface_event(event);
-                break;
-            }
-            case PluginEventType::remove_interface:
-            {
-                process_remove_interface_event(event);
-                break;
-            }
-            case PluginEventType::load_plugin:
-            {
-                process_load_event(event);
-                break;
-            }
-            case PluginEventType::unload_plugin:
-            {
-                process_unload_event(event);
-                break;
-            }
-            default: break;
-        }
-
-        if (event.type == PluginEventType::load_plugin || event.type == PluginEventType::unload_plugin)
-        {
-            if (!refresh_debug_symbols())
-            {
-                log_error("Failed to refresh debug symbols after unloading plugins");
-            }
+            log_error("Failed to refresh debug symbols after loading plugin at path: %s", plugin->library_path.c_str());
         }
     }
 
-    g_plugins.pending_events.clear();
-}
+    const auto reload = plugin->is_loaded;
 
-bool is_plugin_loaded(const char* name)
-{
-    scoped_recursive_spinlock_t lock(g_plugins.mutex);
+    plugin->is_loaded = true;
+    plugin->library = new_library;
+    plugin->load_function = new_load_function;
 
-    return g_plugins.plugins.find(name) != nullptr;
-}
-
-
-void add_plugin_observer(const char* api_name, plugin_observer_t observer, void* user_data)
-{
-    scoped_recursive_spinlock_t lock(g_plugins.mutex);
-
-    BEE_ASSERT(g_plugins.initialized);
-
-    auto& api = g_plugins.find_or_add_api(api_name);
-
-    if (api.find_observer(observer) >= 0)
+    // Delete the old version of the dll if any exist
+    if (!plugin->old_version_path.empty())
     {
-        return;
+        directory_watcher_.suspend();
+        fs::remove(plugin->old_version_path);
+
+        // Remove the old PDB if one exists
+        plugin->old_version_path.set_extension(".pdb");
+        if (plugin->old_version_path.exists())
+        {
+            fs::remove(plugin->old_version_path);
+        }
+
+        directory_watcher_.resume();
+
+        plugin->old_version_path = plugin->current_version_path;
     }
 
-    api.observers.emplace_back(observer, user_data);
+    log_info("%s plugin: %s", reload ? "Reloaded" : "Loaded", plugin->name.c_str());
 }
 
-void remove_plugin_observer(const char* api_name, plugin_observer_t observer)
+void PluginRegistry::unload_plugin(Plugin* plugin)
 {
-    scoped_recursive_spinlock_t lock(g_plugins.mutex);
+    BEE_ASSERT(plugin->load_function != nullptr);
 
-    if (!g_plugins.initialized)
+    plugin->load_function(this, PluginState::unloading);
+
+    // unload the dyn lib if this isn't a static plugin
+    if (plugin->library.handle != nullptr)
     {
-        return;
+        unload_library(plugin->library);
     }
 
-    auto* api = g_plugins.apis.find(api_name);
-
-    BEE_ASSERT(api != nullptr);
-
-    const auto index = api->value.find_observer(observer);
-
-    if (BEE_FAIL_F(index >= 0, "No such observer registered to %s", api_name))
+    if (plugin->current_version_path.exists())
     {
-        return;
+        fs::remove(plugin->current_version_path);
     }
 
-    api->value.observers.erase(index);
+    if (plugin->old_version_path.exists())
+    {
+        fs::remove(plugin->old_version_path);
+    }
+
+    plugin->is_loaded = false;
+
+    log_info("Unloaded plugin: %s", plugin->name.c_str());
+}
+
+void* PluginRegistry::get_or_create_persistent(const u32 unique_hash, const size_t size)
+{
+    void* ptr = nullptr;
+    if (!get_or_create_persistent(unique_hash, size, &ptr))
+    {
+        memset(ptr, 0, size);
+    }
+    return ptr;
+}
+
+bool PluginRegistry::get_or_create_persistent(const u32 unique_hash, const size_t size, void** out_data)
+{
+    BEE_ASSERT(out_data != nullptr);
+
+    auto* keyval = persistent_.find(unique_hash);
+    const auto create = keyval == nullptr;
+
+    if (create)
+    {
+        keyval = persistent_.insert(unique_hash, {});
+    }
+
+    auto& persistent = keyval->value;
+
+    if (size > persistent.size())
+    {
+        persistent.append(size - persistent.size(), 0);
+    }
+
+    *out_data = persistent.data();
+    return !create;
 }
 
 
