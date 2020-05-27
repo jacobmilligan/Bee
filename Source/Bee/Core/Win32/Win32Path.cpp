@@ -7,6 +7,7 @@
 
 #include "Bee/Core/Path.hpp"
 #include "Bee/Core/Win32/MinWindows.h"
+#include "Bee/Core/Filesystem.hpp"
 
 namespace bee {
 
@@ -79,16 +80,38 @@ bool Path::exists() const
     return true;
 }
 
+bool path_has_root_name(const StringView& path)
+{
+    // see: https://docs.microsoft.com/en-us/dotnet/standard/io/file-path-formats
+    // TODO(Jacob): Ignore UNC paths for now
+    return path.size() >= 3 && isalpha(path[0]) && path[1] == ':';
+}
+
+StringView get_root_name(const StringView& path)
+{
+    if (!path_has_root_name(path))
+    {
+        return StringView{};
+    }
+    return StringView(path.data(), 3);
+}
+
+StringView Path::root_name() const
+{
+    return get_root_name(data_.view());
+}
+
 bool Path::is_absolute(const StringView& path) const
 {
     // see: https://docs.microsoft.com/en-us/dotnet/standard/io/file-path-formats
+    // if the path has a drive and a directory name
+    if (!has_root_path())
+    {
+        return false;
+    }
 
-    // TODO(Jacob): Ignore UNC paths for now
-
-    /* If in the format eg. 'C:\' it's absolute from the drive */
-    return path.size() >= 3 && isalpha(path[0]) && path[1] == ':' && (path[2] == preferred_slash || path[2] == generic_slash);
+    return fs::is_file(*this);
 }
-
 
 
 } // namespace bee

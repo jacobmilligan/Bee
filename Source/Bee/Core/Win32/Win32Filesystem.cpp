@@ -324,6 +324,11 @@ void DirectoryWatcher::watch_loop(DirectoryWatcher* watcher)
 
         auto* entry = reinterpret_cast<WatchedDirectory*>(completion_key);
 
+        if (entry == nullptr)
+        {
+            continue;
+        }
+
         if (entry->scheduled_for_removal)
         {
             watcher->finalize_removal(entry->index);
