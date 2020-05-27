@@ -148,6 +148,30 @@ Path& Path::append(const StringView& src)
     return *this;
 }
 
+Path& Path::prepend(const StringView& src)
+{
+    if (src.empty())
+    {
+        return *this;
+    }
+
+    if (data_.size() > 1 && data_[0] == '.' && is_slash(data_.begin() + 1))
+    {
+        data_.remove(0, 1); // paths with the form ./Path but not ../Path
+    }
+
+    // Overwrite any slashes in the current path with the last slashes in src
+    if (is_slash(src.data() + src.size() - 1))
+    {
+        str::trim_start(&data_, preferred_slash);
+        str::trim_start(&data_, generic_slash);
+    }
+
+    // Always prepend the src even if its absolute
+    data_.insert(0, src);
+    return *this;
+}
+
 StringView Path::extension() const
 {
     const auto last_dot = str::last_index_of(data_, '.');
@@ -171,7 +195,7 @@ Path& Path::append_extension(const StringView& ext)
         data_ += ".";
     }
 
-    if (ext.size() > 0 && ext[0] == '.')
+    if (!ext.empty() && ext[0] == '.')
     {
         data_.append(ext.data() + 1);
     }
@@ -280,6 +304,53 @@ Path& Path::replace_filename(const StringView& replacement)
     return *this;
 }
 
+bool Path::has_root_name() const
+{
+    return !root_name().empty();
+}
+
+bool Path::has_root_directory() const
+{
+    return !root_directory().empty();
+}
+
+bool Path::has_root_path() const
+{
+    return has_root_name() && has_root_directory();
+}
+
+StringView Path::root_directory() const
+{
+    const auto root_name_size = root_name().size();
+
+    if (root_name_size >= data_.size() || !is_slash(data_.begin() + root_name_size))
+    {
+        return StringView{};
+    }
+
+    int root_dir_size = 0;
+    const auto* root_dir_begin = data_.begin() + root_name_size;
+
+    while (is_slash(root_dir_begin + root_dir_size))
+    {
+        ++root_dir_size;
+    }
+
+    return StringView(root_dir_begin, root_dir_size);
+}
+
+StringView Path::root_path() const
+{
+    const auto root_path_size = root_name().size() + root_directory().size();
+
+    if (root_path_size <= 0)
+    {
+        return StringView{};
+    }
+
+    return StringView(data_.begin(), root_path_size);
+}
+
 StringView Path::stem() const
 {
     const auto last_dot = str::last_index_of(data_, '.');
@@ -368,15 +439,33 @@ String Path::preferred_string(Allocator* allocator) const
     return preferred_str;
 }
 
+Path& Path::make_preferred()
+{
+    for (auto& c : data_)
+    {
+        if (c == generic_slash)
+        {
+            c = preferred_slash;
+        }
+    }
+    return *this;
+}
+
 Path Path::relative_path(Allocator* allocator) const
 {
+    return Path(relative_view(), allocator);
+}
+
+StringView Path::relative_view() const
+{
     const auto first_slash = get_first_slash();
+
     if (first_slash < 0)
     {
-        return *this;
+        return view();
     }
 
-    return Path(str::substring(data_, first_slash + 1), allocator);
+    return str::substring(data_, first_slash + 1);
 }
 
 Path Path::relative_to(const Path& other, Allocator* allocator) const
@@ -415,6 +504,20 @@ Path Path::relative_to(const Path& other, Allocator* allocator) const
     }
 
     return result;
+}
+
+bool Path::is_relative_to(const Path &other) const
+{
+    // in-place definition of std::mismatch to avoid including <algorithm>
+    auto this_iter = begin();
+    auto other_iter = other.begin();
+    for (; this_iter != end() && other_iter != other.end() && *this_iter == *other_iter;)
+    {
+        ++this_iter;
+        ++other_iter;
+    }
+
+    return other_iter == other.end() && this_iter != end();
 }
 
 bool Path::is_absolute() const

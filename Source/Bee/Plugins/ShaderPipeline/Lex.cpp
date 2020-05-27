@@ -165,6 +165,10 @@ String BscError::to_string(Allocator* allocator) const
             io::write_fmt(&result, "invalid number format");
             break;
         }
+        default:
+        {
+            BEE_UNREACHABLE("Error code not translated");
+        }
     }
 
     io::write_fmt(&result, "\n\t`%" BEE_PRIsv "`", BEE_FMT_SV(text));

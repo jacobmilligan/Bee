@@ -175,7 +175,7 @@ bool reflect_vertex_description(
     vertex_desc->layouts[0].stride = 0;
 
     // remap the inputs
-    SpvReflectResult reflect_result;
+    SpvReflectResult reflect_result{};
     const auto location_count = sign_cast<u32>(vertex_inputs.size());
     for (u32 location = 0; location < location_count; ++location)
     {
@@ -217,7 +217,48 @@ bool reflect_vertex_description(
     return true;
 }
 
-Shader::Range reflect_subshader(Shader* shader, VertexDescriptor* reflected_vertex_descriptor, const i32 stage_index, const Span<const u8>& spirv, Allocator* allocator = system_allocator())
+
+bool reflect_resources(Shader::SubShader* subshader, SpvReflectShaderModule* reflect_module, Allocator* allocator)
+{
+    u32 count = 0;
+    auto success = spv_reflect_check(spvReflectEnumerateDescriptorBindings(
+        reflect_module, &count, nullptr
+    ), "Failed to reflect resources");
+
+    if (!success)
+    {
+        return false;
+    }
+
+    SpvReflectDescriptorBinding** bindings = nullptr;
+
+    if (count > 0)
+    {
+        bindings = BEE_ALLOCA_ARRAY(SpvReflectDescriptorBinding*, count);
+
+        success = spv_reflect_check(spvReflectEnumerateDescriptorBindings(
+            reflect_module, &count, bindings
+        ), "Failed to reflect resources");
+
+        if (!success)
+        {
+            return false;
+        }
+    }
+
+    if (bindings == nullptr)
+    {
+        return true;
+    }
+
+//    for (u32 i = 0; i < count; ++i)
+//    {
+//        subshader->resource_layout_count
+//    }
+    return true;
+}
+
+Shader::Range reflect_subshader(Shader* shader, const i32 subshader_index, VertexDescriptor* reflected_vertex_descriptor, const i32 stage_index, const Span<const u8>& spirv, Allocator* allocator = system_allocator())
 {
     BEE_ASSERT(shader != nullptr);
 
@@ -233,6 +274,11 @@ Shader::Range reflect_subshader(Shader* shader, VertexDescriptor* reflected_vert
         return Shader::Range{};
     }
 
+    if (!reflect_resources(&shader->subshaders[subshader_index], &reflect_module, allocator))
+    {
+        return Shader::Range{};
+    }
+
     // Reflect vertex inputs if we're reflecting a vertex shader
     if (stage_index == static_cast<i32>(ShaderStageIndex::vertex))
     {
@@ -242,12 +288,6 @@ Shader::Range reflect_subshader(Shader* shader, VertexDescriptor* reflected_vert
             return Shader::Range{};
         }
     }
-
-//    const auto success = reflect_resources(type, &reflect_module, &result->resources, allocator);
-//    if (!success)
-//    {
-//        return false;
-//    }
 
     // spvReflectGetCode returns a *word* array but spvReflectGetCodeSize returns the size in *bytes*
     const auto spv_code_size = sign_cast<i32>(spvReflectGetCodeSize(&reflect_module));
@@ -309,6 +349,10 @@ AssetCompilerStatus compile_subshader(AssetCompilerContext* ctx, IDxcCompiler* c
             L"-fspv-reflect"
         };
 
+        DxcDefine dxc_defines[] = {
+            { L"BEE_BINDING(b, s)", L"[[vk::binding(b, s)]]" }
+        };
+
         CComPtr<IDxcOperationResult> compilation_result = nullptr;
 
         // Compile the HLSL to SPIRV
@@ -317,11 +361,11 @@ AssetCompilerStatus compile_subshader(AssetCompilerContext* ctx, IDxcCompiler* c
             module_name.data(),                         // name of the source file
             entry_name.data(),                          // the shader stages entry function
             shader_profile_str,                         // shader profile
-            dxc_args,                                   // command line args
-            static_array_length(dxc_args),
-            nullptr,                          // #defines array
-            0,                             // #define array count
-            nullptr,                   // #include handler
+            dxc_args,                                   // argv
+            static_array_length(dxc_args),              // argc
+            dxc_defines,                                // #defines array
+            static_array_length(dxc_defines),           // #define array count
+            nullptr,                                    // #include handler
             &compilation_result
         );
 
@@ -354,6 +398,7 @@ AssetCompilerStatus compile_subshader(AssetCompilerContext* ctx, IDxcCompiler* c
 
         subshader.stage_code_ranges[stage_index] = reflect_subshader(
             shader,
+            subshader_index,
             reflected_vertex_descriptor,
             stage_index,
             { static_cast<u8*>(spirv_blob->GetBufferPointer()), sign_cast<i32>(spirv_blob->GetBufferSize()) },
@@ -383,7 +428,7 @@ void init_shader_compiler(AssetCompilerData* data, const i32 thread_count)
     data->dxc_libraries.resize(thread_count);
     data->bsc_parsers.resize(thread_count);
 
-    auto dxc_path = fs::get_appdata().binaries_root.join("dxcompiler");
+    auto dxc_path = fs::get_root_dirs().binaries_root.join("dxcompiler");
 #if BEE_OS_WINDOWS == 1
     dxc_path.set_extension(".dll");
 #else
@@ -515,12 +560,12 @@ AssetCompilerStatus compile_shader(AssetCompilerData* data, const i32 thread_ind
         ++index;
     }
 
-    auto& artifact = ctx->add_artifact();
-    BinarySerializer serializer(&artifact.buffer);
+    auto& shader_artifact = ctx->add_artifact<Shader>();
+    BinarySerializer serializer(&shader_artifact);
     serialize(SerializerMode::writing, &serializer, &result, ctx->temp_allocator());
 
-    // auto options = ctx->options<ShaderCompilerOptions>();
-    if (/*options->output_debug*/true)
+//    const auto& options = ctx->options<ShaderCompilerOptions>();
+    if (true /*options.output_debug_artifacts*/)
     {
         auto* spv_context = spvContextCreate(SPV_ENV_VULKAN_1_1);
         spv_text spv_text_dest = nullptr;
@@ -570,11 +615,12 @@ AssetCompilerStatus compile_shader(AssetCompilerData* data, const i32 thread_ind
             }
         }
 
-        auto& debug_artifact = ctx->add_artifact();
-        debug_artifact.buffer.resize(debug_output.size());
-        memcpy(debug_artifact.buffer.data(), debug_output.data(), debug_artifact.buffer.size());
+        auto& debug_artifact = ctx->add_artifact<String>();
+        serializer.reset(&debug_artifact);
+        serialize(SerializerMode::writing, &serializer, &debug_output);
     }
 
+    ctx->set_main(shader_artifact);
     return AssetCompilerStatus::success;
 }
 
@@ -583,7 +629,7 @@ const char* get_shader_compiler_name()
     return "Bee Shader Compiler";
 }
 
-const Type* shader_compiler_options_type()
+const Type* shader_compiler_settings_type()
 {
     return get_type<ShaderCompilerOptions>();
 }
@@ -604,10 +650,15 @@ void load_compiler(bee::PluginRegistry* registry, const bee::PluginState state)
     g_compiler.destroy = destroy_shader_compiler;
     g_compiler.compile = compile_shader;
     g_compiler.get_name = get_shader_compiler_name;
-    g_compiler.options_type = shader_compiler_options_type;
+    g_compiler.settings_type = shader_compiler_settings_type;
     g_compiler.supported_file_types = shader_compiler_file_type;
 
     auto* asset_pipeline = registry->get_module<AssetPipelineModule>(BEE_ASSET_PIPELINE_MODULE_NAME);
+
+    if (asset_pipeline->register_compiler == nullptr)
+    {
+        return;
+    }
 
     if (state == bee::PluginState::loading)
     {

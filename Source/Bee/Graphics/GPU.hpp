@@ -584,14 +584,14 @@ inline BEE_TRANSLATION_TABLE(gpu_type_string, PhysicalDeviceType, const char*, P
     "Virtual GPU", // virtual_gpu
 )
 
-enum class MinMagFilter
+enum class BEE_REFLECT(serializable) MinMagFilter
 {
     nearest,
     linear,
     unknown
 };
 
-enum class MipMapMode
+enum class BEE_REFLECT(serializable) MipMapMode
 {
     none,
     nearest,
@@ -599,7 +599,7 @@ enum class MipMapMode
     unknown
 };
 
-enum class AddressMode
+enum class BEE_REFLECT(serializable) AddressMode
 {
     repeat,
     mirrored_repeat,
@@ -609,7 +609,7 @@ enum class AddressMode
     unknown
 };
 
-enum class BorderColor
+enum class BEE_REFLECT(serializable) BorderColor
 {
     transparent_black,
     opaque_black,
@@ -625,7 +625,7 @@ enum class BEE_REFLECT(serializable) ResourceBindingType
     combined_texture_sampler,
     /// an image that can be sampled by a separate sampler object
     sampled_texture,
-    /// non-filtered (i.e. no sampler) stpres and loads on image memory
+    /// non-filtered (i.e. no sampler) and loads on image memory
     storage_texture,
     /// texel buffer that allows read-only operations
     uniform_texel_buffer,
@@ -950,6 +950,25 @@ struct TextureViewCreateInfo
     const char*     debug_name { nullptr };
 };
 
+struct BEE_REFLECT(serializable) SamplerCreateInfo
+{
+    MinMagFilter    mag_filter { MinMagFilter::nearest };
+    MinMagFilter    min_filter { MinMagFilter::nearest };
+    MipMapMode      mip_mode { MipMapMode::none };
+    AddressMode     u_address { AddressMode::clamp_to_edge };
+    AddressMode     v_address { AddressMode::clamp_to_edge };
+    AddressMode     w_address { AddressMode::clamp_to_edge };
+    float           lod_bias { 0.0f };
+    float           lod_min { 0.0f };
+    float           lod_max { limits::max<float>() };
+    bool            anisotropy_enabled { false };
+    float           anisotropy_max { 1.0f };
+    bool            compare_enabled { false };
+    CompareFunc     compare_func { CompareFunc::never };
+    BorderColor     border_color { BorderColor::transparent_black };
+    bool            normalized_coordinates { true };
+};
+
 
 struct BEE_REFLECT(serializable) AttachmentDescriptor
 {
@@ -1135,7 +1154,7 @@ struct BEE_REFLECT(serializable) ResourceDescriptor
 {
     u32                 binding { 0 };
     ResourceBindingType type { ResourceBindingType::unknown };
-    u32                 element_count { 0 };
+    u32                 element_count { 1 };
     ShaderStageFlags    shader_stages { ShaderStageFlags::unknown };
 };
 

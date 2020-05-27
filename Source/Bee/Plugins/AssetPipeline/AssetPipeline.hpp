@@ -51,80 +51,58 @@ constexpr AssetPlatform current_asset_gfx_backend()
 
 constexpr AssetPlatform default_asset_platform = current_asset_os() | current_asset_gfx_backend();
 
-struct AssetArtifact
-{
-    u128                content_hash;
-    DynamicArray<u8>    buffer;
 
-    explicit AssetArtifact(Allocator* allocator = system_allocator())
-        : buffer(allocator)
-    {}
-};
+BEE_RAW_HANDLE_U32(AssetCompilerId) BEE_REFLECT(serializable);
 
-struct BEE_REFLECT(serializable, version = 1) AssetPipelineContent
+
+struct BEE_REFLECT(serializable, version = 1) AssetMetadata
 {
     BEE_REFLECT(id = 1, added = 1)
-    u128                hash;
+    GUID                guid;
 
     BEE_REFLECT(id = 2, added = 1)
-    u32                 type_hash { 0 };
-
-    BEE_REFLECT(id = 4, added = 1)
-    DynamicArray<u128>  artifacts;
-
-    BEE_REFLECT(id = 5, added = 1)
-    DynamicArray<u128>  children;
-
-    explicit AssetPipelineContent(Allocator* allocator = system_allocator())
-        : artifacts(allocator)
-    {}
-};
-
-
-struct BEE_REFLECT(serializable, version = 1) AssetFile
-{
-    BEE_REFLECT(id = 1, added = 1)
-    GUID                                guid;
-
-    BEE_REFLECT(id = 2, added = 1)
-    u128                                content_hash;
+    bool                is_directory { false };
 
     BEE_REFLECT(id = 3, added = 1)
-    bool                                is_directory { false };
+    AssetCompilerId     compiler;
 
     BEE_REFLECT(id = 4, added = 1)
-    String                              name;
+    TypeInstance        settings;
+};
+
+
+struct BEE_REFLECT(serializable, version = 1) AssetArtifact
+{
+    BEE_REFLECT(id = 3, added = 1)
+    u128    content_hash;
+
+    BEE_REFLECT(id = 4, added = 1)
+    u32     type_hash { 0 };
+};
+
+
+struct BEE_REFLECT(serializable, version = 1) CompiledAsset
+{
+    BEE_REFLECT(id = 1, added = 1)
+    u64             src_timestamp { 0 };
+
+    BEE_REFLECT(id = 2, added = 1)
+    u64             metadata_timestamp { 0 };
+
+    BEE_REFLECT(id = 3, added = 1)
+    u128            source_hash;
+
+    BEE_REFLECT(id = 4, added = 1)
+    AssetArtifact   main_artifact;
 
     BEE_REFLECT(id = 5, added = 1)
-    Path                                source;
+    String          uri;
 
     BEE_REFLECT(id = 6, added = 1)
-    DynamicArray<AssetPipelineContent>  assets;
+    AssetMetadata   metadata;
 
-    BEE_REFLECT(id = 7, added = 1)
-    DynamicArray<TypeInstance>          options;
-
-    explicit AssetFile(Allocator* allocator = system_allocator())
-        : name(allocator),
-          source(allocator),
-          assets(allocator),
-          options(allocator)
-    {}
-};
-
-struct BEE_REFLECT(serializable, version = 1) AssetDbItem
-{
-    BEE_REFLECT(id = 1, added = 1)
-    u64         src_timestamp { 0 };
-
-    BEE_REFLECT(id = 2, added = 1)
-    u64         dst_timestamp { 0 };
-
-    BEE_REFLECT(id = 3, added = 1)
-    AssetFile   contents;
-
-    explicit AssetDbItem(Allocator* allocator = system_allocator())
-        : contents(allocator)
+    explicit CompiledAsset(Allocator* allocator = system_allocator())
+        : uri(allocator)
     {}
 };
 
@@ -140,6 +118,7 @@ enum class AssetDbTxnKind
     read_write
 };
 
+struct AssetDatabaseEnv;
 struct AssetDatabaseModule;
 
 struct AssetDbTxn final : public Noncopyable
@@ -147,6 +126,7 @@ struct AssetDbTxn final : public Noncopyable
     AssetDbTxnKind          kind { AssetDbTxnKind::invalid };
     AssetDBTxnHandle        handle { nullptr };
     AssetDatabaseModule*    assetdb { nullptr };
+    AssetDatabaseEnv*       env { nullptr };
 
     AssetDbTxn() = default;
 
@@ -160,47 +140,58 @@ struct AssetDbTxn final : public Noncopyable
 
 struct AssetDatabaseModule
 {
-    void (*open)(const Path& directory, const StringView& name) { nullptr };
+    AssetDatabaseEnv* (*open)(const Path& directory, const StringView& name, Allocator* allocator) { nullptr };
 
-    void (*close)() { nullptr };
+    void (*close)(AssetDatabaseEnv* env) { nullptr };
 
-    bool (*is_open)() { nullptr };
+    bool (*is_open)(AssetDatabaseEnv* env) { nullptr };
 
-    const Path& (*location)() { nullptr };
+    const Path& (*location)(AssetDatabaseEnv* env) { nullptr };
 
-    AssetDbTxn (*read)() { nullptr };
+    AssetDbTxn (*read)(AssetDatabaseEnv* env) { nullptr };
 
-    AssetDbTxn (*write)() { nullptr };
+    AssetDbTxn (*write)(AssetDatabaseEnv* env) { nullptr };
 
-    void (*abort_transaction)(AssetDbTxn* txn) { nullptr };
+    void (*abort)(AssetDatabaseEnv* env, AssetDbTxn* txn) { nullptr };
 
-    void (*commit_transaction)(AssetDbTxn* txn) { nullptr };
+    void (*commit)(AssetDatabaseEnv* env, AssetDbTxn* txn) { nullptr };
 
-    bool (*put_asset)(const AssetDbTxn& txn, AssetDbItem* asset) {nullptr };
+    /*
+     * Asset data
+     */
+    bool (*put_asset)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid, CompiledAsset* asset) {nullptr };
 
-    bool (*delete_asset)(const AssetDbTxn& txn, const GUID& guid) { nullptr };
+    bool (*delete_asset)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid) { nullptr };
 
-    bool (*get_asset)(const AssetDbTxn& txn, const GUID& guid, AssetDbItem* asset) {nullptr };
+    bool (*get_asset)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid, CompiledAsset* asset) {nullptr };
 
-    bool (*has_asset)(const AssetDbTxn& txn, const GUID& guid) { nullptr };
+    bool (*get_asset_from_path)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const StringView& uri, CompiledAsset* asset) {nullptr };
 
-    bool (*set_asset_name)(const AssetDbTxn& txn, const GUID& guid, const StringView& name) { nullptr };
+    i32 (*get_guids_by_type)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const Type* type, GUID* dst) { nullptr };
 
-    bool (*get_name_from_guid)(const AssetDbTxn& txn, const GUID& guid, String* name) { nullptr };
+    bool (*has_asset)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid) { nullptr };
 
-    bool (*get_guid_from_name)(const AssetDbTxn& txn, const StringView& name, GUID* guid) { nullptr };
+    /*
+     * Asset dependencies
+     */
+    bool (*set_asset_dependencies)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid, const GUID* dependencies, const i32 dependency_count) { nullptr };
 
-    bool (*get_asset_from_path)(const AssetDbTxn& txn, const Path& path, AssetDbItem* asset) { nullptr };
+    i32 (*get_asset_dependencies)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid, GUID* dst) { nullptr };
 
-    bool (*put_artifact)(const AssetDbTxn& txn, const AssetArtifact& artifact) { nullptr };
+    /*
+     * Artifacts
+     */
+    bool (*put_artifact)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid, const AssetArtifact& artifact, const void* buffer, const size_t buffer_size) { nullptr };
 
-    bool (*delete_artifact)(const AssetDbTxn& txn, const u128& hash) { nullptr };
+    bool (*delete_artifact)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid, const u128& hash) { nullptr };
 
-    bool (*get_artifact_path)(const AssetDbTxn& txn, const u128& hash, Path* dst) { nullptr };
+    bool (*get_artifact)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const u128& hash, AssetArtifact* dst, io::FileStream* dst_stream) { nullptr };
 
-    bool (*get_artifact)(const AssetDbTxn& txn, const u128& hash, AssetArtifact* artifact) { nullptr };
+    bool (*has_artifact)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const u128& hash) { nullptr };
 
-    bool (*get_artifacts_from_guid)(const AssetDbTxn& txn, const GUID& guid, DynamicArray<AssetArtifact>* result) { nullptr };
+    i32 (*get_artifacts_from_guid)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid, AssetArtifact* dst) { nullptr };
+
+    i32 (*get_guids_from_artifact)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const u128& hash, GUID* dst) { nullptr };
 };
 
 
@@ -220,38 +211,63 @@ enum class DeleteAssetKind
     asset_and_source
 };
 
-BEE_RAW_HANDLE_I32(AssetPipelineContentHandle);
+struct AssetCompilerOutput
+{
+    DynamicArray<const Type*>*          artifact_types { nullptr };
+    DynamicArray<DynamicArray<u8>>*     artifact_buffers { nullptr };
+    DynamicArray<GUID>*                 dependencies { nullptr };
+};
 
 class AssetCompilerContext
 {
 public:
-    AssetCompilerContext(const AssetPlatform platform, const StringView& location, const StringView& cache_dir, const TypeInstance& options, DynamicArray<AssetPipelineContent>* content_out, Allocator* allocator)
+    AssetCompilerContext(const AssetPlatform platform, const StringView& location, const StringView& cache_dir, const TypeInstance& options, const AssetCompilerOutput& output, Allocator* allocator)
         : platform_(platform),
           location_(location),
           cache_dir_(cache_dir),
           options_(options),
-          assets_(content_out),
+          output_(output),
           allocator_(allocator)
     {}
 
-    AssetPipelineContentHandle add_content(const Type* type)
+    template <typename T>
+    inline DynamicArray<u8>& add_artifact()
     {
-        assets_->emplace_back(allocator_);
+        const auto* type = get_type<T>();
 
-        auto& asset = assets_->back();
-        asset.type_hash = type->hash;
+        BEE_ASSERT_F(!type->is(TypeKind::unknown), "Artifact type must be reflected using BEE_REFLECT()");
 
-        return AssetPipelineContentHandle(assets_->size() - 1);
+        output_.artifact_buffers->emplace_back(allocator_);
+        output_.artifact_types->push_back(type);
+        return output_.artifact_buffers->back();
     }
 
-    AssetPipelineContentHandle add_child(const AssetPipelineContentHandle& parent, const Type* child_type)
+    inline void set_main(const DynamicArray<u8>& buffer)
     {
-        auto& parent_asset = assets_[parent.id];
-        parent_asset.emplace_back()
-        assets_->emplace_back(allocator_);
+        const auto index = container_index_of(*output_.artifact_buffers, [&](const DynamicArray<u8>& b)
+        {
+            return b.data() == buffer.data();
+        });
+
+        if (index < 0)
+        {
+            log_error("Invalid artifact buffer - must have been created using add_artifact");
+            return;
+        }
+
+        main_artifact_ = index;
     }
 
-//    AssetArtifact& add_artifact()
+    void add_dependency(const GUID& guid) const
+    {
+        if (container_find_index(*output_.dependencies, guid) >= 0)
+        {
+            log_error("Asset already has a dependency with GUID %s", format_guid(guid, GUIDFormat::digits));
+            return;
+        }
+
+        output_.dependencies->push_back(guid);
+    }
 
     inline AssetPlatform platform() const
     {
@@ -273,29 +289,25 @@ public:
         return allocator_;
     }
 
-    inline const DynamicArray<AssetPipelineContent>& assets() const
-    {
-        return *assets_;
-    }
-
-    inline const DynamicArray<AssetArtifact>& artifacts() const
-    {
-        return *artifacts_;
-    }
-
     template <typename OptionsType>
     const OptionsType& options() const
     {
         return *options_.get<OptionsType>();
     }
+
+    inline i32 main_artifact() const
+    {
+        return main_artifact_;
+    }
+
 private:
     AssetPlatform                       platform_ { AssetPlatform::unknown };
     StringView                          location_;
     StringView                          cache_dir_;
     const TypeInstance&                 options_;
+    AssetCompilerOutput                 output_;
+    i32                                 main_artifact_ { -1 };
     Allocator*                          allocator_ { nullptr };
-    DynamicArray<AssetPipelineContent>* assets_ { nullptr };
-    DynamicArray<AssetArtifact>*        artifacts_ { nullptr };
 };
 
 
@@ -309,7 +321,9 @@ struct AssetCompiler
 
     Span<const char* const> (*supported_file_types)() { nullptr };
 
-    const Type* (*options_type)() { nullptr };
+    const Type* (*asset_type)() { nullptr };
+
+    const Type* (*settings_type)() { nullptr };
 
     void (*init)(AssetCompilerData* data, const i32 thread_count) { nullptr };
 
@@ -333,31 +347,37 @@ struct AssetPipeline;
 
 struct AssetPipelineModule
 {
-    bool (*init)(const AssetPipelineInitInfo& info) { nullptr };
+    AssetPipeline* (*init)(const AssetPipelineInitInfo& info, Allocator* allocator) { nullptr };
 
-    void (*destroy)() { nullptr };
+    void (*destroy)(AssetPipeline* instance) { nullptr };
 
-    void (*set_platform)(const AssetPlatform platform) { nullptr };
+    void (*set_platform)(AssetPipeline* instance, const AssetPlatform platform) { nullptr };
 
-    void (*import_asset)(const Path& source_path, const Path& dst_path, const StringView& name) { nullptr };
+    void (*import_asset)(AssetPipeline* instance, const Path& source_path) { nullptr };
 
-    void (*delete_asset)(const GUID& guid, const DeleteAssetKind kind) { nullptr };
+    void (*reimport_asset)(AssetPipeline* instance, const GUID& guid) { nullptr };
 
-    void (*delete_asset_with_name)(const StringView& name, const DeleteAssetKind kind) { nullptr };
+    // TODO(Jacob): set_compiler(id) instead of import_asset/import_asset_default
+    //  and add a get_compilers_for_asset(GUID, AssetCompilerId*)
 
-    void (*delete_asset_at_path)(const Path& path, const DeleteAssetKind kind) { nullptr };
+    void (*delete_asset)(AssetPipeline* instance, const GUID& guid, const DeleteAssetKind kind) { nullptr };
 
+    void (*delete_asset_at_path)(AssetPipeline* instance, const StringView& uri, const DeleteAssetKind kind) { nullptr };
+
+    void (*add_asset_directory)(AssetPipeline* instance, const Path& path) { nullptr };
+
+    void (*remove_asset_directory)(AssetPipeline* instance, const Path& path) { nullptr };
+
+    Span<const Path> (*asset_directories)(AssetPipeline* instance) { nullptr };
+
+    void (*refresh)(AssetPipeline* instance) { nullptr };
+
+    // Compilers
     void (*register_compiler)(AssetCompiler* compiler) { nullptr };
 
     void (*unregister_compiler)(AssetCompiler* compiler) { nullptr };
 
-    void (*add_asset_directory)(const Path& path) { nullptr };
-
-    void (*remove_asset_directory)(const Path& path) { nullptr };
-
-    Span<const Path> (*asset_directories)() { nullptr };
-
-    void (*refresh)() { nullptr };
+    i32 (*get_compilers_for_filetype)(const StringView& extension, AssetCompilerId* dst_buffer) { nullptr };
 };
 
 

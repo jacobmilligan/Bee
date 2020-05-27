@@ -14,8 +14,8 @@
 TEST(ShaderCompilerTests, test_triangle_shader)
 {
     bee::ShaderCompiler compiler;
-    const auto location = bee::fs::get_appdata().assets_root.join("Shaders").join("BSCTestShader.bsc");
-    const auto new_location = bee::fs::get_appdata().data_root.join("test-shader");
+    const auto location = bee::fs::get_root_dirs().assets_root.join("Shaders").join("BSCTestShader.bsc");
+    const auto new_location = bee::fs::get_root_dirs().data_root.join("test-shader");
     bee::DynamicArray<bee::u8> data;
     bee::io::MemoryStream stream(&data);
     bee::AssetCompileSettings settings;

@@ -275,7 +275,7 @@ i32 parse_option(
         return arg_idx;
     }
 
-    results->options.insert({ options[found_option].long_name, { arg_idx + 1, arg_count } });
+    results->options.insert({options[found_option].long_name, {arg_idx + 1, arg_count}});
     return opt_arg_idx;
 }
 
@@ -416,7 +416,8 @@ String make_help_string(const char* program_name, const ParserDescriptor& desc)
     return result;
 }
 
-void parse_recursive(const char* prog_name, const i32 argc, char** const argv, const ParserDescriptor& desc, Results* results)
+void parse_recursive(const char* prog_name, const i32 argc, char** const argv, const ParserDescriptor& desc,
+                     Results* results)
 {
     results->argc = argc;
     results->argv = argv;
@@ -453,7 +454,8 @@ void parse_recursive(const char* prog_name, const i32 argc, char** const argv, c
         // Process the subparser and not the rest of the command line
         if (found_subparser >= 0)
         {
-            auto subparser_results = results->subparsers.insert(String(desc.subparsers[found_subparser].command_name), Results());
+            auto subparser_results = results->subparsers
+                                            .insert(String(desc.subparsers[found_subparser].command_name), Results());
             parse_recursive(prog_name, argc - 1, argv + 1, desc.subparsers[found_subparser], &subparser_results->value);
             results->requested_help_string = subparser_results->value.requested_help_string;
             results->help_requested = subparser_results->value.help_requested;
@@ -484,7 +486,8 @@ void parse_recursive(const char* prog_name, const i32 argc, char** const argv, c
         }
 
         // try and parse as an option, if it's not one then it's a positional or invalid
-        const auto new_arg_idx = parse_option(results->argv_parsed_count, argc, argv, desc.options, desc.option_count, results);
+        const auto new_arg_idx = parse_option(results->argv_parsed_count, argc, argv, desc.options, desc.option_count,
+            results);
         if (new_arg_idx >= 0 && new_arg_idx != results->argv_parsed_count)
         {
             results->argv_parsed_count = new_arg_idx;
@@ -529,7 +532,8 @@ void parse_recursive(const char* prog_name, const i32 argc, char** const argv, c
 
             if (!missing_due_to_exclusion)
             {
-                set_result_error(results, str::format("Missing required option: %s", desc.options[opt_idx].long_name.c_str()));
+                set_result_error(results,
+                    str::format("Missing required option: %s", desc.options[opt_idx].long_name.c_str()));
                 return;
             }
         }
@@ -553,6 +557,11 @@ Results parse(const i32 argc, char** const argv, const ParserDescriptor& desc)
     parse_recursive(prog_name, argc - 1, argv + 1, desc, &results);
     ++results.argv_parsed_count; // program name
     return results;
+}
+
+Results parse(i32 argc, const char** argv, const ParserDescriptor& desc)
+{
+    return parse(argc, const_cast<char**>(argv), desc);
 }
 
 Results parse(const char* program_name, const char* command_line, const ParserDescriptor& desc, Allocator* allocator)
@@ -581,7 +590,7 @@ const char* get_positional(const Results& results, const i32 positional_index)
 
 const char* get_option(const Results& results, const char* option_long_name, const i32 arg_index)
 {
-    const auto token = results.options.find(option_long_name);
+    const auto* token = results.options.find(option_long_name);
     if (BEE_FAIL(token != nullptr))
     {
         return "";
@@ -593,6 +602,17 @@ const char* get_option(const Results& results, const char* option_long_name, con
     }
 
     return results.argv[token->value.index + arg_index];
+}
+
+i32 get_option_count(const Results& results, const char* option_long_name)
+{
+    const auto* token = results.options.find(option_long_name);
+    if (token == nullptr)
+    {
+        return 0;
+    }
+
+    return token->value.count;
 }
 
 i32 get_remainder_count(const Results& results)

@@ -5,6 +5,7 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
+#include "Bee.ImGui.Descriptor.hpp"
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Plugins/ImGui/ImGui.hpp"
 #include "Bee/Plugins/Renderer/Renderer.hpp"
@@ -47,8 +48,8 @@ void renderer_observer(void* interface, void* user_data)
     renderer->add_stage(bee::get_static_string_hash("ImGuiRenderStage"), &bee::g_render_stage);
 }
 
-} // namespace bee
 
+} // namespace bee
 
 
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::PluginState state)

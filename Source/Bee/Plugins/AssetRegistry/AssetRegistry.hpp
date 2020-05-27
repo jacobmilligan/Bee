@@ -90,8 +90,6 @@ struct AssetLoader
 struct AssetLocator
 {
     bool (*locate)(const GUID& guid, AssetLocation* location) { nullptr };
-
-    bool (*locate_by_name)(const StringView& name, GUID* dst, AssetLocation* location) { nullptr };
 };
 
 

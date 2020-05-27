@@ -324,7 +324,7 @@ public:
     Mode file_mode_to_stream_mode(const char* file_mode);
 private:
     FILE*           file_ { nullptr };
-    const char*     file_mode_;
+    const char*     file_mode_ { nullptr };
     i32             size_ { 0 };
     bool            close_on_destruct_ { false };
 };

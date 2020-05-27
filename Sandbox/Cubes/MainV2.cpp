@@ -84,7 +84,7 @@ int bee_main(int argc, char** argv)
      */
     bee::job_system_init(bee::JobSystemInitInfo{});
     bee::assets_init();
-    bee::assetdb_open(bee::fs::get_appdata().data_root);
+    bee::assetdb_open(bee::fs::get_root_dirs().data_root);
 
     TextureLoader texture_loader;
     DefaultLocator locator;
@@ -93,7 +93,7 @@ int bee_main(int argc, char** argv)
 
     bee::register_asset_compiler<bee::TextureCompiler>(bee::AssetCompilerKind::default_compiler);
 
-    bee::assetdb_import("textures::test", "C:/Users/jacob/Pictures/12619257.jpg", bee::fs::get_appdata().data_root);
+    bee::assetdb_import("textures::test", "C:/Users/jacob/Pictures/12619257.jpg", bee::fs::get_root_dirs().data_root);
     auto options = bee::assetdb_write<bee::TextureCompilerOptions>("textures::test");
     options->mipmap = true;
     options.commit();

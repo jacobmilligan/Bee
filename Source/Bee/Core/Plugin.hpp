@@ -50,6 +50,72 @@ using plugin_observer_t = void(*)(const PluginEventType event, const StringView&
 using module_observer_t = void(*)(void* module, void* user_data);
 
 
+struct PluginVersion
+{
+    u8 major { 0 };
+    u8 minor { 0 };
+    u8 patch { 0 };
+};
+
+constexpr PluginVersion plugin_version_any { limits::max<u8>(), limits::max<u8>(), limits::max<u8>() };
+
+inline constexpr bool operator==(const PluginVersion& lhs, const PluginVersion& rhs)
+{
+    return lhs.major == rhs.major && lhs.minor == rhs.minor && lhs.patch == rhs.patch;
+}
+
+inline constexpr bool operator!=(const PluginVersion& lhs, const PluginVersion& rhs)
+{
+    return !(lhs == rhs);
+}
+
+struct PluginDependency
+{
+    const char*     name { nullptr };
+    PluginVersion   version;
+};
+
+struct PluginDescriptor
+{
+    PluginVersion           version;
+    const char*             name { nullptr };
+    const char*             description { nullptr };
+    const char*             source_location { nullptr };
+    i32                     dependency_count { 0 };
+    const PluginDependency* dependencies { nullptr };
+
+    PluginDescriptor() = default;
+
+    template <i32 Size>
+    PluginDescriptor(
+        const PluginVersion& new_version,
+        const char* new_name,
+        const char* new_description,
+        const char* new_source_location,
+        const PluginDependency(&dependency_array)[Size]
+    )
+        : version(new_version),
+          name(new_name),
+          description(new_description),
+          source_location(new_source_location),
+          dependency_count(Size),
+          dependencies(dependency_array)
+    {}
+
+    PluginDescriptor(
+        const PluginVersion& new_version,
+        const char* new_name,
+        const char* new_description,
+        const char* new_source_location
+    )
+        : version(new_version),
+          name(new_name),
+          description(new_description),
+          source_location(new_source_location)
+    {}
+};
+
+
 class BEE_CORE_API PluginRegistry
 {
 public:
@@ -61,7 +127,7 @@ public:
 
     void remove_search_path(const Path& path);
 
-    bool load_plugin(const StringView& name);
+    bool load_plugin(const StringView& name, const PluginVersion& required_version);
 
     bool unload_plugin(const StringView& name);
 
@@ -73,7 +139,9 @@ public:
 
     void refresh_plugins();
 
-    bool is_plugin_loaded(const StringView& name);
+    bool is_plugin_registered(const StringView& name);
+
+    bool is_plugin_loaded(const StringView& name, const PluginVersion& version);
 
     void add_observer(plugin_observer_t observer, void* user_data = nullptr);
 
@@ -122,8 +190,10 @@ private:
     struct Plugin
     {
         bool                        is_loaded { false };
+        PluginDescriptor            desc;
         String                      name;
         u32                         name_hash { 0 };
+        Path                        source_path;
         Path                        library_path;
         Path                        current_version_path;
         Path                        old_version_path;
@@ -186,13 +256,13 @@ private:
     DynamicHashMap<Path, DynamicArray<u32>>     search_paths_;
     fs::DirectoryWatcher                        directory_watcher_;
 
-    bool register_plugins_at_path(const Path& search_root, const Path& root, const RegisterPluginMode search_path_type);
+    bool register_plugins_at_path(const Path& root, const RegisterPluginMode search_path_type);
 
     void register_plugin(const Path& path, const RegisterPluginMode register_mode);
 
     void unregister_plugin(const Path& path);
 
-    void load_plugin(Plugin* plugin);
+    bool load_plugin(Plugin* plugin, const PluginVersion& required_version);
 
     void unload_plugin(Plugin* plugin);
 

@@ -118,7 +118,7 @@ BscResolveError bsc_convert_subpass_attachments(const BscRenderPassNode& pass, S
 
 BscResolveError bsc_convert_subpass(const BscRenderPassNode& pass, const i32 subpass_index, SubPassDescriptor* output)
 {
-    auto& subpass = pass.subpasses[subpass_index].data;
+    const auto& subpass = pass.subpasses[subpass_index].data;
 
     SubpassAttachmentConversion conversions[] = {
         { output->input_attachment_count, output->input_attachments, subpass.input_attachments },
@@ -143,7 +143,7 @@ BscResolveError bsc_convert_subpass(const BscRenderPassNode& pass, const i32 sub
 
 BscResolveError bsc_add_pass(const BscRenderPassNode& input, Shader* shader)
 {
-    auto& pass = shader->add_pass(input.attachments.size(), input.subpasses.size());
+    const auto& pass = shader->add_pass(input.attachments.size(), input.subpasses.size());
 
     for (int i = 0; i < input.attachments.size(); ++i)
     {
@@ -179,7 +179,7 @@ BscResolveError bsc_resolve_module(const BscModule& module, Shader* output)
 
     for (int i = 0; i < module.pipeline_states.size(); ++i)
     {
-        auto& in = module.pipeline_states[i].data;
+        const auto& in = module.pipeline_states[i].data;
 
         output->pipelines.emplace_back();
         auto& out_pipeline = output->pipelines.back();
@@ -191,7 +191,7 @@ BscResolveError bsc_resolve_module(const BscModule& module, Shader* output)
             return { BscResolveErrorCode::undefined_symbol, in.render_pass };
         }
 
-        auto& pass = module.render_passes[pass_index].data;
+        const auto& pass = module.render_passes[pass_index].data;
 
         auto subpass_index = bsc_find_node_index(pass.subpasses, in.subpass);
         if (subpass_index < 0)
@@ -199,22 +199,40 @@ BscResolveError bsc_resolve_module(const BscModule& module, Shader* output)
             return { BscResolveErrorCode::undefined_symbol, in.subpass };
         }
 
-        auto raster_state = bsc_find_node(module.raster_states, in.raster_state);
-        if (!raster_state)
+        // Raster state - not required
+        if (!in.raster_state.empty())
         {
-            return raster_state.error;
+            auto raster_state = bsc_find_node(module.raster_states, in.raster_state);
+            if (!raster_state)
+            {
+                return raster_state.error;
+            }
+
+            out_pipeline.info.raster_state = *raster_state;
         }
 
-        auto multisample_state = bsc_find_node(module.multisample_states, in.multisample_state);
-        if (!multisample_state)
+        // Multisample state - not required
+        if (!in.multisample_state.empty())
         {
-            return multisample_state.error;
+            auto multisample_state = bsc_find_node(module.multisample_states, in.multisample_state);
+            if (!multisample_state)
+            {
+                return multisample_state.error;
+            }
+
+            out_pipeline.info.multisample_state = *multisample_state;
         }
 
-        auto depth_stencil_state = bsc_find_node(module.depth_stencil_states, in.depth_stencil_state);
-        if (!depth_stencil_state)
+        // Depth stencil state - not required
+        if (!in.depth_stencil_state.empty())
         {
-            return depth_stencil_state.error;
+            auto depth_stencil_state = bsc_find_node(module.depth_stencil_states, in.depth_stencil_state);
+            if (!depth_stencil_state)
+            {
+                return depth_stencil_state.error;
+            }
+
+            out_pipeline.info.depth_stencil_state = *depth_stencil_state;
         }
 
         // Resolve all the shader stages
@@ -240,29 +258,41 @@ BscResolveError bsc_resolve_module(const BscModule& module, Shader* output)
             }
 
             // resolve the stage and entry strings from the parsed form
-            auto& shader = module.shaders[shader_node_index];
-            auto subshader_index = symbol_map.find(shader.identifier);
+            const auto& shader = module.shaders[shader_node_index];
+            auto* subshader_index = symbol_map.find(shader.identifier);
 
             if (subshader_index == nullptr)
             {
+                /*
+                 * New subshader resolution - resolve the name, entries, and resource objects if needed
+                 * Code ranges dont need to be resolved becayse they're assigned after compiling and reflecting the HLSL
+                 */
                 subshader_index = symbol_map.insert(shader.identifier, output->subshaders.size());
 
                 output->subshaders.emplace_back();
-                auto& subshader = output->subshaders.back();
 
+                auto& subshader = output->subshaders.back();
                 subshader.name = shader.identifier;
 
                 for (int entry_index = 0; entry_index < static_array_length(shader.data.stages); ++entry_index)
                 {
                     subshader.stage_entries[entry_index] = shader.data.stages[entry_index];
                 }
-
-//                // store the code in the subshaders first index for compilation later
-//                subshader.stages[0].resize(shader.data.code.size());
-//                memcpy(subshader.stages[0].data(), shader.data.code.data(), shader.data.code.size());
             }
 
             out_pipeline.shaders[stage.index] = subshader_index->value;
+        }
+
+        // Resolve the resource layouts
+        for (int l = 0; l < in.resource_layout_count; ++l)
+        {
+            const auto layout = bsc_find_node(module.resource_layouts, in.resource_layouts[l]);
+            if (!layout)
+            {
+                return layout.error;
+            }
+
+            out_pipeline.info.resource_layouts[out_pipeline.info.resource_layout_count++] = *layout;
         }
 
         // Generate the ShaderPass
@@ -276,9 +306,6 @@ BscResolveError bsc_resolve_module(const BscModule& module, Shader* output)
         out_pipeline.pass = pass_index;
         out_pipeline.info.subpass_index = sign_cast<u32>(subpass_index);
         out_pipeline.info.primitive_type = in.primitive_type;
-        out_pipeline.info.raster_state = *raster_state;
-        out_pipeline.info.multisample_state = *multisample_state;
-        out_pipeline.info.depth_stencil_state = *depth_stencil_state;
         // TODO(Jacob): color blend states, resource layouts, and push constants
     }
 
@@ -411,9 +438,22 @@ bool BscParser::parse_top_level_structure(BscLexer* lexer, BscModule* ast)
             success = parse_shader(lexer, &ast->shaders.back());
             break;
         }
+        case BscTokenKind::SamplerState:
+        {
+            ast->sampler_states.emplace_back(ident);
+            success = parse_sampler_state(lexer, &ast->sampler_states.back());
+            break;
+        }
+        case BscTokenKind::ResourceLayout:
+        {
+            ast->resource_layouts.emplace_back(ident);
+            success = parse_resource_layout(lexer, &ast->resource_layouts.back());
+            break;
+        }
         default:
         {
             success = report_error(BscErrorCode::invalid_object_type, lexer);
+            break;
         }
     }
 
@@ -508,6 +548,55 @@ bool BscParser::parse_depth_stencil_state(BscLexer* lexer, BscNode<DepthStencilS
     return parse_fields(lexer, get_type_as<DepthStencilStateDescriptor, RecordType>(), &node->data);
 }
 
+bool BscParser::parse_sampler_state(BscLexer* lexer, BscNode<SamplerCreateInfo>* node)
+{
+    return parse_fields(lexer, get_type_as<SamplerCreateInfo, RecordType>(), &node->data);
+}
+
+bool BscParser::parse_resource_layout(BscLexer* lexer, BscNode<ResourceLayoutDescriptor>* node)
+{
+    BscToken tok{};
+    StringView key{};
+
+    while (lexer->peek(&tok))
+    {
+        if (tok.kind == BscTokenKind::close_bracket)
+        {
+            break;
+        }
+
+        if (sign_cast<i32>(node->data.resource_count) >= static_array_length(node->data.resources))
+        {
+            return report_error(BscErrorCode::too_many_fields, lexer);
+        }
+
+        if (!parse_key(lexer, &key))
+        {
+            return false;
+        }
+
+        if (!lexer->consume_as(BscTokenKind::open_bracket, &tok))
+        {
+            return false;
+        }
+
+        auto& desc = node->data.resources[node->data.resource_count];
+        desc.binding = node->data.resource_count++;
+
+        if (!parse_fields(lexer, get_type_as<ResourceDescriptor, RecordType>(), &desc))
+        {
+            return false;
+        }
+
+        if (!lexer->consume_as(BscTokenKind::close_bracket, &tok))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool BscParser::parse_pipeline_state(BscLexer* lexer, BscNode<BscPipelineStateNode>* node)
 {
     BscToken tok{};
@@ -524,6 +613,23 @@ bool BscParser::parse_pipeline_state(BscLexer* lexer, BscNode<BscPipelineStateNo
         if (!parse_key(lexer, &key))
         {
             return false;
+        }
+
+        if (key == "resource_layouts")
+        {
+            const auto layouts_success = parse_array(
+                lexer,
+                node->data.resource_layouts,
+                static_array_length(node->data.resource_layouts),
+                &node->data.resource_layout_count
+            );
+
+            if (!layouts_success)
+            {
+                return false;
+            }
+
+            continue;
         }
 
         if (!lexer->consume_as(BscTokenKind::identifier, &tok))
@@ -950,6 +1056,52 @@ bool BscParser::parse_array(BscLexer* lexer, DynamicArray<StringView>* array)
         {
             return report_error(BscErrorCode::unexpected_character, lexer);
         }
+    }
+
+    if (lexer->get_error().code != BscErrorCode::none)
+    {
+        return false;
+    }
+
+    return lexer->consume_as(BscTokenKind::close_square_bracket, &tok);
+}
+
+bool BscParser::parse_array(BscLexer* lexer, StringView* array, const i32 capacity, i32* count)
+{
+    BscToken tok{};
+
+    if (!lexer->consume_as(BscTokenKind::open_square_bracket, &tok))
+    {
+        return false;
+    }
+
+    *count = 0;
+
+    while (lexer->consume_as(BscTokenKind::identifier, &tok))
+    {
+        if (*count >= capacity)
+        {
+            return report_error(BscErrorCode::array_too_large, lexer);
+        }
+
+        array[*count] = StringView(tok.begin, tok.end);
+        ++(*count);
+
+        if (!lexer->consume(&tok))
+        {
+            return false;
+        }
+
+        if (tok.kind == BscTokenKind::close_square_bracket)
+        {
+            return true;
+        }
+
+        if (tok.kind != BscTokenKind::comma)
+        {
+            return report_error(BscErrorCode::unexpected_character, lexer);
+        }
+
     }
 
     if (lexer->get_error().code != BscErrorCode::none)

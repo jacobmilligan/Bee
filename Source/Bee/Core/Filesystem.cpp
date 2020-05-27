@@ -279,9 +279,9 @@ DirectoryIterator end(const DirectoryIterator&)
  *
  ******************************************
  */
-const AppData& get_appdata()
+const BeeRootDirs& get_root_dirs()
 {
-    static AppData appdata{};
+    static BeeRootDirs appdata{};
 
     if (!appdata.data_root.empty())
     {
@@ -291,7 +291,9 @@ const AppData& get_appdata()
 
     // Determine if we're running from an installed build or a dev build
     const auto editor_exe_path = Path(Path::executable_path().parent_path());
-    bool is_installed_build = editor_exe_path.filename() != "Debug" && editor_exe_path.filename() != "Release";
+
+    // the .exe for installed builds lives in <install root>/<version>/Binaries - dev builds live in Bee/Build/<Config>
+    bool is_installed_build = editor_exe_path.parent_path().filename() == "Binaries";
 
     appdata.data_root = is_installed_build
                       ? fs::user_local_appdata_path().join("Bee").join(BEE_VERSION)
@@ -311,6 +313,9 @@ const AppData& get_appdata()
 
     // Assume that the install directory is the directory the editor .exe is running in
     appdata.binaries_root = editor_exe_path;
+    appdata.install_root = is_installed_build
+                         ? appdata.binaries_root.parent_path()
+                         : appdata.binaries_root.parent_path().parent_path();
 
     /*
      * In a dev build, the assets root is located in <binaries_root>/../../Assets - i.e. at
@@ -318,14 +323,12 @@ const AppData& get_appdata()
      * Otherwise its at <binaries_root>/../Assets - i.e. at C:/Program Files (x86)/Bee/1.0.0/Binaries/../Assets =>
      * C:/Program Files (x86)/Bee/1.0.0/Assets
      */
-    appdata.assets_root = is_installed_build
-                        ? appdata.binaries_root.parent_path().join("Assets")
-                        : appdata.binaries_root.parent_path().parent_path().join("Assets");
+    appdata.assets_root =  appdata.install_root.join("Assets");
 
     // Installed builds have a /Config subdirectory whereas dev build output configs to /Build/<Build type>/../Config
-    appdata.config_root = is_installed_build
-                          ? appdata.binaries_root.join("Config")
-                          : appdata.binaries_root.parent_path().join("Config");
+    appdata.config_root = appdata.install_root.join("Config");
+
+    appdata.sources_root = appdata.install_root.join("Source");
 
     return appdata;
 }

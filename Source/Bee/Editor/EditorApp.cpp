@@ -5,6 +5,7 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
+#include "Bee.Editor.Descriptor.hpp"
 #include "Bee/Editor/EditorApp.hpp"
 
 #include "Bee/Bee.hpp"
@@ -25,6 +26,7 @@ struct Application // NOLINT
 {
     WindowHandle        main_window;
     InputBuffer         input_buffer;
+    AssetPipeline*      pipeline { nullptr };
 };
 
 struct Editor
@@ -82,16 +84,7 @@ bool init_project(const Path& location, const AssetPlatform force_platform)
 
     BEE_ASSERT(project.platform != AssetPlatform::unknown);
 
-    AssetPipelineInitInfo info{};
-    info.platform = project.platform;
-    info.project_root = g_editor->project_location;
-    info.cache_directory = project.cache_directory;
-    info.asset_database_name = "AssetDB";
-
-    if (!g_asset_pipeline->init(info))
-    {
-        return false;
-    }
+    // TODO(Jacob): initialize the projects asset pipeline
 
     g_editor->is_project_open = true;
 
@@ -263,7 +256,7 @@ bool close_project()
         return false;
     }
 
-    g_asset_pipeline->destroy();
+    // TODO(Jacob): destroy project asset pipeline
 
     destruct(&g_editor->project);
 
@@ -289,7 +282,7 @@ int launch_application(Application* app, int argc, char** argv)
 
     if (g_editor->config_path.empty())
     {
-        g_editor->config_path = bee::fs::get_appdata().data_root.join("Editor.json");
+        g_editor->config_path = bee::fs::get_root_dirs().data_root.join("Editor.json");
     }
 
     /*
@@ -336,12 +329,7 @@ int launch_application(Application* app, int argc, char** argv)
     }
     else
     {
-        AssetPipelineInitInfo asset_pipeline_info{};
-        asset_pipeline_info.project_root = fs::get_appdata().data_root;
-        asset_pipeline_info.cache_directory = "Cache";
-        asset_pipeline_info.asset_database_name = "AssetDB";
-        asset_pipeline_info.platform = default_asset_platform;
-        g_asset_pipeline->init(asset_pipeline_info);
+        log_info("Launching editor without a project");
     }
 
     if (BEE_FAIL(read_editor_config()))
@@ -362,6 +350,29 @@ int launch_application(Application* app, int argc, char** argv)
     window_config.title = "Bee";
     app->main_window = create_window(window_config);
 
+    // Ensure that the editor data folder for this version exists
+    // TODO(Jacob): replace BEE_VERSION with EDITOR_VERSION or similar
+    const auto editor_data_dir = fs::get_root_dirs().data_root.join("Editor" BEE_VERSION);
+
+    if (!editor_data_dir.exists())
+    {
+        fs::mkdir(editor_data_dir);
+    }
+
+    // Initialize the editors asset pipeline
+    AssetPipelineInitInfo info{};
+    info.platform = default_asset_platform;
+    info.project_root = editor_data_dir;
+    info.cache_directory = "Cache";
+    info.asset_database_name = "AssetDB";
+
+    app->pipeline = g_asset_pipeline->init(info, system_allocator());
+
+    if (app->pipeline == nullptr)
+    {
+        return false;
+    }
+
     return app->main_window.is_valid() ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
@@ -369,7 +380,7 @@ ApplicationState tick_application(Application* app)
 {
     poll_input(&app->input_buffer);
 
-    g_asset_pipeline->refresh();
+    g_asset_pipeline->refresh(app->pipeline);
 
     if (is_window_close_requested(app->main_window))
     {
@@ -382,6 +393,7 @@ ApplicationState tick_application(Application* app)
 
 void shutdown_application(Application* app)
 {
+    g_asset_pipeline->destroy(app->pipeline);
     destroy_window(app->main_window);
 
     if (g_editor->is_project_open)
@@ -392,6 +404,12 @@ void shutdown_application(Application* app)
 
 void fail_application(Application* app)
 {
+    if (app->pipeline != nullptr)
+    {
+        g_asset_pipeline->destroy(app->pipeline);
+        app->pipeline = nullptr;
+    }
+
     if (app->main_window.is_valid())
     {
         destroy_window(app->main_window);

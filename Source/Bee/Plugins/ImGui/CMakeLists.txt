@@ -16,7 +16,12 @@ bee_add_compile_definitions(IMGUI_USER_CONFIG="${CMAKE_CURRENT_SOURCE_DIR}/ImCon
 bee_add_compile_definitions(BEE_IMGUI_ASSETS_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/Assets")
 bee_plugin(
     Bee.ImGui
-    LINK_LIBRARIES Bee.Runtime
-    PLUGIN_DEPENDENCIES Bee.AssetPipeline Bee.Renderer
+    LINK_LIBRARIES      Bee.Runtime
+    VERSION
+        0.0.0
+    DESCRIPTION
+        "Bee ImGui plugin"
+    DEPENDENCIES
+        Bee.AssetPipeline 0.0.0
+        Bee.Renderer 0.0.0
 )
-

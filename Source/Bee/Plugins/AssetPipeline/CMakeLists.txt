@@ -3,5 +3,10 @@ bee_add_sources(
     AssetDatabase.cpp
     AssetPipeline.hpp AssetPipeline.inl AssetPipeline.cpp
 )
-bee_plugin(Bee.AssetPipeline LINK_LIBRARIES Bee.Core lmdb)
+bee_plugin(Bee.AssetPipeline LINK_LIBRARIES Bee.Core lmdb
+    VERSION
+        0.0.0
+    DESCRIPTION
+        "Bee asset pipeline plugin"
+)
 bee_reflect(Bee.AssetPipeline INLINE)

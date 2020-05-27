@@ -16,7 +16,7 @@ using namespace bee;
 
 TEST(BscTests, test_ast)
 {
-    const auto path = fs::get_appdata().assets_root.join("Shaders/BscTestShader.bsc");
+    const auto path = fs::get_root_dirs().assets_root.join("Shaders/BscTestShader.bsc");
     ASSERT_TRUE(path.exists());
 
     auto file = fs::read(path);

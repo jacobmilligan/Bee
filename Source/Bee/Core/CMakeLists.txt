@@ -67,7 +67,6 @@ bee_reflect(
     AtomicCounter.hpp
     Thread.hpp
     Process.hpp
-    Plugin.hpp
     IO.hpp
     Meta.hpp
     DynamicLibrary.hpp

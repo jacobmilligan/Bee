@@ -212,11 +212,15 @@ struct BEE_CORE_API ParserDescriptor
 
 BEE_CORE_API Results parse(i32 argc, char** argv, const ParserDescriptor& desc);
 
+BEE_CORE_API Results parse(i32 argc, const char** argv, const ParserDescriptor& desc);
+
 BEE_CORE_API Results parse(const char* program_name, const char* command_line, const ParserDescriptor& desc, Allocator* allocator = system_allocator());
 
 BEE_CORE_API bool has_option(const Results& results, const char* option_long_name);
 
 BEE_CORE_API const char* get_option(const Results& results, const char* option_long_name, i32 arg_index = 0);
+
+BEE_CORE_API i32 get_option_count(const Results& results, const char* option_long_name);
 
 BEE_CORE_API const char* get_positional(const Results& results, const i32 positional_index);
 

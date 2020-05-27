@@ -50,9 +50,9 @@ struct BEE_REFLECT(serializable, version = 1) Shader
 
     struct BEE_REFLECT(serializable, version = 1) SubShader
     {
-        StaticString<128>   name;
-        StaticString<128>   stage_entries[gpu_shader_stage_count];
-        Range               stage_code_ranges[gpu_shader_stage_count];
+        StaticString<128>           name;
+        StaticString<128>           stage_entries[gpu_shader_stage_count];
+        Range                       stage_code_ranges[gpu_shader_stage_count];
 
         BEE_REFLECT(ignored)
         ShaderHandle        stage_handles[gpu_shader_stage_count];

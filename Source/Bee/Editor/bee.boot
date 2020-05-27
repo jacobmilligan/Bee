@@ -1,0 +1,1 @@
+--app-plugin Bee.Editor

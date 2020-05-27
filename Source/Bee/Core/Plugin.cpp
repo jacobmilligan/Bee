@@ -30,6 +30,9 @@ static constexpr auto g_pdb_extension = ".pdb";
 
 static constexpr auto load_function_name = "bee_load_plugin";
 static constexpr auto unload_function_name = "bee_unload_plugin";
+static constexpr auto describe_function_name = "bee_describe_plugin";
+
+using describe_plugin_function_t = void(*)(PluginDescriptor*);
 
 static DynamicHashMap<u32, StaticPluginAutoRegistration*>   g_static_plugins;
 static StaticPluginAutoRegistration*                        g_static_plugin_pending_registrations { nullptr };
@@ -95,7 +98,7 @@ bool PluginRegistry::add_search_path(const Path &path, const RegisterPluginMode 
         search_paths_.insert(path, {});
     }
 
-    if (!register_plugins_at_path(path, path, register_mode))
+    if (!register_plugins_at_path(path, register_mode))
     {
         return false;
     }
@@ -138,7 +141,7 @@ void PluginRegistry::remove_search_path(const Path& path)
     search_paths_.erase(path);
 }
 
-bool PluginRegistry::load_plugin(const StringView& name)
+bool PluginRegistry::load_plugin(const StringView& name, const PluginVersion& required_version)
 {
     const auto name_hash = get_hash(name);
     auto* plugin = plugins_.find(name_hash);
@@ -151,12 +154,15 @@ bool PluginRegistry::load_plugin(const StringView& name)
 
     if (plugin->value.is_loaded)
     {
-        log_error("Plugin \"%" BEE_PRIsv "\" is already loaded", BEE_FMT_SV(name));
-        return false;
+        if (required_version == plugin_version_any)
+        {
+            return true;
+        }
+
+        return required_version == plugin->value.desc.version;
     }
 
-    load_plugin(&plugin->value);
-    return true;
+    return load_plugin(&plugin->value, required_version);
 }
 
 bool PluginRegistry::unload_plugin(const StringView& name)
@@ -213,7 +219,7 @@ void PluginRegistry::refresh_plugins()
             {
                 auto* plugin = plugins_.find(get_hash(event.file.stem()));
                 BEE_ASSERT(plugin != nullptr);
-                load_plugin(&plugin->value);
+                load_plugin(&plugin->value, plugin_version_any);
                 break;
             }
             default: break;
@@ -221,9 +227,15 @@ void PluginRegistry::refresh_plugins()
     }
 }
 
-bool PluginRegistry::is_plugin_loaded(const StringView &name)
+bool PluginRegistry::is_plugin_registered(const StringView &name)
 {
     return plugins_.find(get_hash(name)) != nullptr;
+}
+
+bool PluginRegistry::is_plugin_loaded(const StringView &name, const PluginVersion& version)
+{
+    auto* plugin = plugins_.find(get_hash(name));
+    return plugin != nullptr && plugin->value.is_loaded && plugin->value.desc.version == version;
 }
 
 void PluginRegistry::add_observer(plugin_observer_t observer, void* user_data)
@@ -347,13 +359,13 @@ void* PluginRegistry::get_module(const StringView& name)
     return get_or_create_module(name).storage;
 }
 
-bool PluginRegistry::register_plugins_at_path(const Path& search_root, const Path& root, const RegisterPluginMode register_mode)
+bool PluginRegistry::register_plugins_at_path(const Path& root, const RegisterPluginMode register_mode)
 {
     for (const auto& path : fs::read_dir(root))
     {
         if (fs::is_dir(path))
         {
-            if (!register_plugins_at_path(search_root, root, register_mode))
+            if (!register_plugins_at_path(path, register_mode))
             {
                 return false;
             }
@@ -417,13 +429,21 @@ void PluginRegistry::register_plugin(const Path& path, const RegisterPluginMode 
 
         existing = plugins_.insert(name_hash, Plugin(path, name));
 
-        auto* search_path = search_paths_.find(path.parent_view());
+        auto parent_path = path.parent_path(temp_allocator());
+        auto* search_path = search_paths_.find(parent_path.view());
+
+        while (search_path == nullptr)
+        {
+            parent_path = parent_path.parent_path(temp_allocator());
+            search_path = search_paths_.find(parent_path.view());
+        }
+
         BEE_ASSERT(search_path != nullptr);
         search_path->value.push_back(name_hash);
 
         if (register_mode == RegisterPluginMode::auto_load)
         {
-            load_plugin(&existing->value);
+            load_plugin(&existing->value, plugin_version_any);
         }
     }
 }
@@ -454,7 +474,7 @@ void PluginRegistry::unregister_plugin(const Path& path)
     }
 }
 
-void PluginRegistry::load_plugin(Plugin* plugin)
+bool PluginRegistry::load_plugin(Plugin* plugin, const PluginVersion& required_version)
 {
     static thread_local StaticString<64> timestamp_buffer;
 
@@ -463,6 +483,7 @@ void PluginRegistry::load_plugin(Plugin* plugin)
 
     DynamicLibrary new_library{};
     load_plugin_function_t new_load_function = nullptr;
+    describe_plugin_function_t new_describe_function = nullptr;
 
     if (static_plugin != nullptr)
     {
@@ -491,14 +512,24 @@ void PluginRegistry::load_plugin(Plugin* plugin)
 
         if (!copy_success)
         {
-            return;
+            return false;
         }
 
         new_library = load_library(plugin->current_version_path.c_str());
 
         if (BEE_FAIL_F(new_library.handle != nullptr, "Failed to load plugin at path: %s", plugin->library_path.c_str()))
         {
-            return;
+            return false;
+        }
+
+        new_describe_function = reinterpret_cast<describe_plugin_function_t>(get_library_symbol(new_library, describe_function_name));
+
+        if (BEE_FAIL_F(new_describe_function != nullptr,
+            "Failed to load function symbol `%s` for plugin at path %s", describe_function_name,
+            plugin->library_path.c_str()))
+        {
+            unload_library(new_library);
+            return false;
         }
 
         new_load_function = reinterpret_cast<load_plugin_function_t>(get_library_symbol(new_library, load_function_name));
@@ -506,7 +537,7 @@ void PluginRegistry::load_plugin(Plugin* plugin)
         if (BEE_FAIL_F(new_load_function != nullptr, "Failed to get load function symbol `%s` for plugin at path: %s", load_function_name, plugin->library_path.c_str()))
         {
             unload_library(new_library);
-            return;
+            return false;
         }
     }
 
@@ -515,7 +546,33 @@ void PluginRegistry::load_plugin(Plugin* plugin)
         log_error("Failed to refresh debug symbols after loading plugin at path: %s", plugin->library_path.c_str());
     }
 
-    // Load the new plugin version
+    // Load dependencies first
+    new_describe_function(&plugin->desc);
+
+    if (required_version != plugin_version_any && plugin->desc.version != required_version)
+    {
+        log_error("Failed to load required plugin version");
+        unload_library(new_library);
+        return false;
+    }
+
+    for (int i = 0; i < plugin->desc.dependency_count; ++i)
+    {
+        if (!is_plugin_registered(plugin->desc.dependencies[i].name))
+        {
+            log_error("Plugin dependency \"%s\" is required but not registered", plugin->desc.dependencies[i].name);
+            unload_library(new_library);
+            return false;
+        }
+
+        if (!load_plugin(plugin->desc.dependencies[i].name, plugin->desc.dependencies[i].version))
+        {
+            unload_library(new_library);
+            return false;
+        }
+    }
+
+    plugin->source_path = fs::get_root_dirs().install_root.join(plugin->desc.source_location);
 
     new_load_function(this, PluginState::loading);
 
@@ -555,6 +612,7 @@ void PluginRegistry::load_plugin(Plugin* plugin)
     }
 
     log_info("%s plugin: %s", reload ? "Reloaded" : "Loaded", plugin->name.c_str());
+    return true;
 }
 
 void PluginRegistry::unload_plugin(Plugin* plugin)

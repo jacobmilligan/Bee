@@ -27,12 +27,12 @@ inline AssetDbTxn::~AssetDbTxn()
     {
         case AssetDbTxnKind::read_write:
         {
-            assetdb->abort_transaction(this);
+            assetdb->abort(env, this);
             break;
         }
         case AssetDbTxnKind::read_only:
         {
-            assetdb->commit_transaction(this);
+            assetdb->commit(env, this);
             break;
         }
         default:

@@ -3,10 +3,10 @@ RenderPass DefaultPass
     Attachment MainColor
     {
         type: color
-        format: rgba16i
+        format: bgra8
         load_op: clear
         store_op: store
-        samples: 4
+        samples: 1
     }
 
     SubPass DefaultSubPass
@@ -21,38 +21,45 @@ RasterState DefaultRasterState
     cull_mode: back
 }
 
+SamplerState DefaultSampler
+{
+    min_filter: linear
+    mag_filter: linear
+    u_address: clamp_to_edge
+    v_address: clamp_to_edge
+    w_address: clamp_to_edge
+}
+
+ResourceLayout DefaultLayout
+{
+    Params: 
+    {
+        type: uniform_buffer
+        shader_stages: vertex
+    }
+    
+    main_tex: 
+    {
+        type: sampled_texture
+        shader_stages: fragment
+    }
+
+    main_sampler:
+    {
+        type: sampler
+        shader_stages: fragment
+    }
+}
+
 PipelineState DefaultPipelineState
 {
     primitive_type: triangle
     render_pass: DefaultPass
     subpass: DefaultSubPass
     raster_state: DefaultRasterState
-    depth_stencil_state: DefaultDSS
-    multisample_state: DefaultMSS
     vertex_stage: TriangleShader
     fragment_stage: TriangleShader
-}
-
-DepthStencilState DefaultDSS
-{
-    front_face_stencil: 
-    {
-        fail_op: zero
-        pass_op: replace
-        read_mask: 2
-    }
-
-    depth_test_enabled: true
-}
-
-MultisampleState DefaultMSS
-{
-    sample_count: 2
-    sample_shading_enabled: true
-    sample_shading: 1.0
-    sample_mask: 2
-    alpha_to_coverage_enabled: true
-    alpha_to_one_enabled: true
+    resource_layouts: [ DefaultLayout ]
 }
 
 Shader TriangleShader
@@ -61,13 +68,14 @@ Shader TriangleShader
     fragment: frag
     code:
     {
-        cbuffer Params : register(b0) 
+        BEE_BINDING(0, 0) cbuffer Params
         {
             float4x4 view_proj;
         };
 
-        Texture2D<float4> main_tex: register(t0);
-        sampler main_sampler: register(s0);
+        BEE_BINDING(1, 0) Texture2D<float4> main_tex;
+        
+        BEE_BINDING(2, 0) sampler main_sampler;
 
         struct AppData 
         {

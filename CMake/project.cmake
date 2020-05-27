@@ -73,12 +73,27 @@ set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS
 
 ############################
 #
-# Various logging helpers
+# Various helpers
 #
 ############################
 function(bee_log msg)
     MESSAGE(STATUS "Bee: ${msg}")
 endfunction()
+
+function(bee_fail msg)
+    MESSAGE(FATAL_ERROR "Bee: ${msg}")
+endfunction()
+
+macro(bee_parse_version major minor patch version_string)
+    if (NOT ${version_string} MATCHES "([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+        bee_fail("Invalid semantic version string")
+    endif ()
+
+    string(REPLACE "." ";" __components__ ${version_string})
+    list(GET __components__ 0 major)
+    list(GET __components__ 1 minor)
+    list(GET __components__ 2 patch)
+endmacro()
 
 ################################################################################
 #
@@ -303,7 +318,16 @@ endfunction()
 #
 ################################################################################
 function(bee_plugin name)
-    cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES;PLUGIN_DEPENDENCIES" ${ARGN})
+    cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES;VERSION;DESCRIPTION;DEPENDENCIES" ${ARGN})
+
+    # Ensure required args are set
+    if (NOT ARGS_VERSION)
+        bee_fail("bee_plugin requires VERSION to be set to a semantic version string, i.e. 0.1.0")
+    endif ()
+
+    if (NOT ARGS_DESCRIPTION)
+        bee_fail("bee_plugin requires DESCRIPTION to be set")
+    endif ()
 
     __bee_get_api_macro(${name} api_macro)
 
@@ -320,10 +344,6 @@ function(bee_plugin name)
         target_link_libraries(${name} PUBLIC ${ARGS_LINK_LIBRARIES})
     endif ()
 
-    if (ARGS_PLUGIN_DEPENDENCIES)
-        add_dependencies(${name} ${ARGS_PLUGIN_DEPENDENCIES})
-    endif ()
-
     set(__bee_plugins ${__bee_plugins} ${name} CACHE INTERNAL "")
 
     if (WIN32)
@@ -336,6 +356,40 @@ function(bee_plugin name)
         )
     endif ()
 
+    if (ARGS_DEPENDENCIES)
+        target_compile_definitions(${name} PRIVATE BEE_TARGET_PLUGIN_HAS_DEPENDENCIES)
+        set(TARGET_DEPENDENCIES)
+        list(LENGTH ARGS_DEPENDENCIES count)
+        MATH(EXPR end "${count} - 1")
+        foreach(index RANGE 0 ${end} 2)
+            MATH(EXPR version_index "${index} + 1")
+            list(GET ARGS_DEPENDENCIES ${index} dep_name)
+            list(GET ARGS_DEPENDENCIES ${version_index} version)
+            bee_parse_version(major minor patch ${version})
+            set(TARGET_DEPENDENCIES "${TARGET_DEPENDENCIES}        { \"${dep_name}\", { ${major}, ${minor}, ${patch} } },\n")
+
+            if (TARGET ${dep_name})
+                add_dependencies(${name} ${dep_name})
+            endif ()
+        endforeach()
+    endif ()
+
+    bee_parse_version(major minor patch ${ARGS_VERSION})
+    file(RELATIVE_PATH target_relpath ${BEE_PROJECT_ROOT} ${CMAKE_CURRENT_LIST_DIR})
+
+    set(TARGET_VERSION_MAJOR ${major})
+    set(TARGET_VERSION_MINOR ${minor})
+    set(TARGET_VERSION_PATCH ${patch})
+    set(TARGET_NAME ${name})
+    set(TARGET_DESCRIPTION ${ARGS_DESCRIPTION})
+    set(TARGET_RELATIVE_ROOT ${target_relpath})
+
+    configure_file(
+        ${CMAKE_MODULE_PATH}/PluginDescriptor.hpp.in
+        ${BEE_GENERATED_ROOT}/${name}/${name}.Descriptor.hpp
+    )
+
+    target_include_directories(${name} PRIVATE ${BEE_GENERATED_ROOT}/${name})
     __bee_finalize_target(${name} "Plugins")
 endfunction()
 

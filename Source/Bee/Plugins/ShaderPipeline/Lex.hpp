@@ -19,9 +19,11 @@ namespace bee {
     BSC_KEYWORD(MultisampleState)   \
     BSC_KEYWORD(DepthStencilState)  \
     BSC_KEYWORD(PipelineState)      \
+    BSC_KEYWORD(SamplerState)       \
     BSC_KEYWORD(Attachment)         \
     BSC_KEYWORD(SubPass)            \
-    BSC_KEYWORD(Shader)
+    BSC_KEYWORD(Shader)             \
+    BSC_KEYWORD(ResourceLayout)
 
 #define BSC_CHAR_TOKENS                         \
     BSC_CHAR_TOK(open_bracket, '{')             \
@@ -42,7 +44,8 @@ namespace bee {
     BSC_TOK(unsigned_int)   \
     BSC_TOK(floating_point) \
     BSC_TOK(string_literal) \
-    BSC_TOK(code)
+    BSC_TOK(code)           \
+    BSC_TOK(resource_layouts)
 
 
 #define BSC_ALL_TOKENS  \
@@ -80,6 +83,8 @@ enum class BscErrorCode
     expected_digit,
     expected_decimal,
     invalid_field_value,
+    too_many_fields,
+    array_too_large,
     unexpected_token_kind,
     number_too_long,
     invalid_number_format,

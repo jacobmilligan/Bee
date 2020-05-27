@@ -49,8 +49,8 @@ using bsc_node_array_t = DynamicArray<BscNode<T>>;
 
 struct BscShaderNode
 {
-    StringView  stages[gpu_shader_stage_count];
-    StringView  code;
+    StringView                      code;
+    StringView                      stages[gpu_shader_stage_count];
 };
 
 struct BscSubPassNode
@@ -90,6 +90,8 @@ struct BscPipelineStateNode
     StringView      depth_stencil_state;
     StringView      vertex_stage;
     StringView      fragment_stage;
+    i32             resource_layout_count { 0 };
+    StringView      resource_layouts[BEE_GPU_MAX_RESOURCE_LAYOUTS];
 };
 
 struct BscModule
@@ -100,7 +102,9 @@ struct BscModule
     bsc_node_array_t<RasterStateDescriptor>         raster_states;
     bsc_node_array_t<MultisampleStateDescriptor>    multisample_states;
     bsc_node_array_t<DepthStencilStateDescriptor>   depth_stencil_states;
+    bsc_node_array_t<SamplerCreateInfo>             sampler_states;
     bsc_node_array_t<BscShaderNode>                 shaders;
+    bsc_node_array_t<ResourceLayoutDescriptor>      resource_layouts;
 
     explicit BscModule(Allocator* node_allocator = system_allocator())
         : allocator(node_allocator),
@@ -228,6 +232,10 @@ private:
 
     bool parse_shader(BscLexer* lexer, BscNode<BscShaderNode>* node);
 
+    bool parse_sampler_state(BscLexer* lexer, BscNode<SamplerCreateInfo>* node);
+
+    bool parse_resource_layout(BscLexer* lexer, BscNode<ResourceLayoutDescriptor>* node);
+
     bool parse_attachment(BscLexer* lexer, BscNode<AttachmentDescriptor>* node);
 
     bool parse_subpass(BscLexer* lexer, BscNode<BscSubPassNode>* node);
@@ -243,6 +251,8 @@ private:
     bool parse_number(BscLexer* lexer, const BscTokenKind kind, const StringView& value, const FundamentalType* type, u8* data);
 
     bool parse_array(BscLexer* lexer, DynamicArray<StringView>* array);
+
+    bool parse_array(BscLexer* lexer, StringView* array, const i32 capacity, i32* count);
 };
 
 

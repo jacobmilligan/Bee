@@ -22,9 +22,9 @@ public:
         bee::job_system_init(bee::JobSystemInitInfo{});
 
         bee::AssetPipelineInitInfo pipeline_info{};
-        pipeline_info.asset_source_root = bee::fs::get_appdata().assets_root.c_str();
+        pipeline_info.asset_source_root = bee::fs::get_root_dirs().assets_root.c_str();
         pipeline_info.assetdb_name = "AssetDB";
-        pipeline_info.assetdb_location = bee::fs::get_appdata().data_root.c_str();
+        pipeline_info.assetdb_location = bee::fs::get_root_dirs().data_root.c_str();
         pipeline_.init(pipeline_info);
         pipeline_.register_asset_compiler<bee::ShaderCompiler>();
 

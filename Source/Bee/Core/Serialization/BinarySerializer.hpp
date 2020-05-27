@@ -22,6 +22,12 @@ struct BEE_CORE_API BinarySerializer final : public Serializer
           array(target_array)
     {}
 
+    inline void reset(DynamicArray<u8>* target_array)
+    {
+        read_offset = 0;
+        array = target_array;
+    }
+
     bool begin() override;
     void end() override;
     void begin_record(const RecordType* record) override {}

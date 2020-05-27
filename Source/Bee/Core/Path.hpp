@@ -96,6 +96,18 @@ public:
         return append(StringView(src));
     }
 
+    Path& prepend(const StringView& src);
+
+    inline Path& prepend(const Path& src)
+    {
+        return prepend(src.view());
+    }
+
+    inline Path& prepend(const char* src)
+    {
+        return prepend(StringView(src));
+    }
+
     StringView extension() const;
 
     Path& append_extension(const StringView& ext);
@@ -115,6 +127,27 @@ public:
 
     Path& replace_filename(const StringView& replacement);
 
+    /// @brief Returns true if the current path has a root name, i.e. given `C:\\Files\\file.txt`
+    /// this function looks for`C:`
+    bool has_root_name() const;
+
+    /// @brief Returns true if the current path has a root directory, i.e. given `C:\\Files\\file.txt`
+    /// this function looks for the first`\\`
+    bool has_root_directory() const;
+
+    /// @brief Returns true if the current path has a root path, i.e. given `C:\\Files\\file.txt`
+    /// this function looks for`C:\\`
+    bool has_root_path() const;
+
+    /// @brief Returns the root name if this path object has one, otherwise returns an empty string
+    StringView root_name() const;
+
+    /// @brief Returns the root directory if this path object has one, otherwise returns an empty string
+    StringView root_directory() const;
+
+    /// @brief Returns the root path if this path object has one, otherwise returns an empty string
+    StringView root_path() const;
+
     /// @brief Gets the absolute parent directory of the filename component, i.e. given
     /// `/usr/local/bin/ls` this function would return `bin`
     /// @return
@@ -130,11 +163,15 @@ public:
     /// Gets the path relative to the root, i.e. `D:\Some\Path` would be `Some\Path`
     Path relative_path(Allocator* allocator = system_allocator()) const;
 
+    StringView relative_view() const;
+
     /**
      * Returns a new path object relative to another path, i.e. given this path: `D:\Root`
      * and another path: `D:\Root\Another\Path`` the result would be `..\..\Root`
      */
     Path relative_to(const Path& other, Allocator* allocator = system_allocator()) const;
+
+    bool is_relative_to(const Path& other) const;
 
     bool is_absolute() const;
 
@@ -149,6 +186,8 @@ public:
     String to_generic_string(Allocator* allocator = system_allocator()) const;
 
     String preferred_string(Allocator* allocator = system_allocator()) const;
+
+    Path& make_preferred();
 
     Path& make_generic();
 

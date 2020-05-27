@@ -11,6 +11,11 @@ bee_add_sources(
 )
 bee_plugin(Bee.ShaderPipeline
     LINK_LIBRARIES Bee.Runtime SPIRV-Reflect SPIRV-Tools
-    PLUGIN_DEPENDENCIES Bee.AssetPipeline
+    VERSION
+        0.0.0
+    DESCRIPTION
+        "Bee ShaderPipeline plugin"
+    DEPENDENCIES
+        Bee.AssetPipeline 0.0.0
 )
 bee_reflect(Bee.ShaderPipeline INLINE)

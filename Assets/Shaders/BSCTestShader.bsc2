@@ -1,4 +1,4 @@
-// include: Triangle.bsc       
+// include: Triangle.bsc 
 
 RenderPass DefaultPass
 {
