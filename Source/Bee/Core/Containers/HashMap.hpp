@@ -23,7 +23,7 @@ namespace bee {
 
 
 template <typename T>
-struct EqualTo {
+struct BEE_REFLECT() EqualTo {
     inline bool operator()(const T& lhs, const T& rhs) const
     {
         return lhs == rhs;

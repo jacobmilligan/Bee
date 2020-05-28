@@ -121,7 +121,7 @@ inline constexpr u32 get_static_string_hash(const char(&input)[Size], const u32 
 
 
 template <typename T>
-struct Hash {
+struct BEE_REFLECT() Hash {
     inline u32 operator()(const T& key) const
     {
         return get_hash(&key, sizeof(T), 0xF00D);
@@ -319,3 +319,7 @@ private:
 
 
 } // namespace bee
+
+#ifdef BEE_ENABLE_REFLECTION
+    #include "Bee.Core/ReflectedTemplates/Hash.generated.inl"
+#endif // BEE_ENABLE_REFLECTION

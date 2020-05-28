@@ -1,0 +1,14 @@
+{
+    "bee::version": 1,
+    "bee::flags": 1,
+    "guid": "b2279c55229c45f9ae3f4fef35d6ff8c",
+    "is_directory": true,
+    "compiler": {
+        "bee::version": 1,
+        "bee::flags": 1,
+        "id": 4294967295
+    },
+    "settings": {
+        "bee::type": 0
+    }
+}
