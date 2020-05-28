@@ -105,7 +105,7 @@ static constexpr GeneratorInfo g_generators[] = {
 
 GeneratorInfo find_generator(const char* name)
 {
-    const auto index = container_index_of(g_generators, [&](const GeneratorInfo& info)
+    const auto index = find_index_if(g_generators, [&](const GeneratorInfo& info)
     {
         return str::compare(name, get_bb_generator_string(info.bb)) == 0;
     });

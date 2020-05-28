@@ -5,12 +5,14 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
+#include "Bee.AssetRegistry.Descriptor.hpp"
 #include "Bee/Plugins/AssetRegistry/AssetRegistry.hpp"
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/Containers/ResourcePool.hpp"
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
 #include "Bee/Core/Jobs/JobDependencyCache.hpp"
+#include "Bee/Core/Serialization/StreamSerializer.hpp"
 
 
 namespace bee {
@@ -140,6 +142,7 @@ struct AssetRegistry
     DynamicHashMap<u32, AssetLoader*>   type_hash_to_loader;
     DynamicArray<RegisteredLoader>      loaders;
     DynamicArray<AssetLocator*>         locators;
+    DynamicArray<AssetManifest>         manifests;
 };
 
 static AssetRegistry* g_registry { nullptr };
@@ -291,6 +294,56 @@ void unload_asset_data(AssetData* asset, const UnloadAssetMode kind)
     }
 }
 
+AssetManifest* add_manifest(const StringView& name)
+{
+    const auto hash = get_hash(name);
+    auto index = find_index_if(g_registry->manifests, [&](const AssetManifest& manifest)
+    {
+        return manifest.id == hash;
+    });
+
+    if (index < 0)
+    {
+        g_registry->manifests.emplace_back();
+        auto& manifest = g_registry->manifests.back();
+        manifest.id = hash;
+        index = g_registry->manifests.size() - 1;
+    }
+
+    return &g_registry->manifests[index];
+}
+
+void remove_manifest(const StringView& name)
+{
+    const auto hash = get_hash(name);
+    const auto index = find_index_if(g_registry->manifests, [&](const AssetManifest& manifest)
+    {
+        return manifest.id == hash;
+    });
+
+    if (index >= 0)
+    {
+        g_registry->manifests.erase(index);
+    }
+}
+
+AssetManifest* get_manifest(const StringView& name)
+{
+    const auto hash = get_hash(name);
+    const auto index = find_index_if(g_registry->manifests, [&](const AssetManifest& manifest)
+    {
+        return manifest.id == hash;
+    });
+
+    return index >= 0 ? &g_registry->manifests[index] : nullptr;
+}
+
+void serialize_manifests(const SerializerMode mode, io::Stream* stream)
+{
+    StreamSerializer serializer(stream);
+    serialize(mode, &serializer, &g_registry->manifests);
+}
+
 bool locate_asset(const GUID& guid, AssetLocation* location)
 {
     for (auto& locator : g_registry->locators)
@@ -312,14 +365,14 @@ void add_loader(AssetLoader* loader)
         parameter_type = get_type<UnknownType>();
     }
 
-    if (BEE_FAIL_F(parameter_type->size >= AssetData::load_parameter_capacity, "Failed to add loader: parameter type is too large"))
+    if (BEE_FAIL_F(parameter_type->size < AssetData::load_parameter_capacity, "Failed to add loader: parameter type is too large"))
     {
         return;
     }
 
     g_registry->job_deps.wait_all();
 
-    const auto existing_index = container_index_of(g_registry->loaders, [&](const RegisteredLoader& l)
+    const auto existing_index = find_index_if(g_registry->loaders, [&](const RegisteredLoader& l)
     {
         return l.instance == loader;
     });
@@ -356,7 +409,7 @@ void remove_loader(AssetLoader* loader)
 {
     g_registry->job_deps.wait_all();
 
-    const auto index = container_index_of(g_registry->loaders, [&](const RegisteredLoader& l)
+    const auto index = find_index_if(g_registry->loaders, [&](const RegisteredLoader& l)
     {
         return l.instance == loader;
     });
@@ -379,7 +432,7 @@ void add_locator(AssetLocator* locator)
 {
     g_registry->job_deps.wait_all();
 
-    const auto existing_index = container_index_of(g_registry->locators, [&](const AssetLocator* l)
+    const auto existing_index = find_index_if(g_registry->locators, [&](const AssetLocator* l)
     {
         return l == locator;
     });
@@ -397,7 +450,7 @@ void remove_locator(AssetLocator* locator)
 {
     g_registry->job_deps.wait_all();
 
-    const auto index = container_index_of(g_registry->locators, [&](const AssetLocator* l)
+    const auto index = find_index_if(g_registry->locators, [&](const AssetLocator* l)
     {
         return l == locator;
     });
@@ -411,37 +464,13 @@ void remove_locator(AssetLocator* locator)
     g_registry->locators.erase(index);
 }
 
-bool find_guid(GUID* dst, const StringView& name, const Type* type)
-{
-    auto* cached = g_registry->cache.find(name);
-    if (cached != nullptr)
-    {
-        *dst = cached->guid;
-        return true;
-    }
-
-    AssetLocation location{};
-
-    for (auto& locator : g_registry->locators)
-    {
-        if (locator->locate_guid_by_name(name, dst, &location))
-        {
-            g_registry->cache.insert(name, *dst);
-            return true;
-        }
-    }
-
-    return false;
-}
-
-
 } // namespace bee
 
 
 static bee::AssetRegistryModule g_module{};
 
 
-BEE_PLUGIN_API void load_plugin(bee::PluginRegistry* registry, const bee::PluginState state)
+BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::PluginState state)
 {
     bee::g_registry = registry->get_or_create_persistent<bee::AssetRegistry>("BeeAssetRegistry");
 
@@ -449,7 +478,10 @@ BEE_PLUGIN_API void load_plugin(bee::PluginRegistry* registry, const bee::Plugin
     g_module.destroy = bee::destroy_registry;
     g_module.load_asset_data = bee::get_or_load_asset_data;
     g_module.unload_asset_data = bee::unload_asset_data;
-    g_module.find_guid = bee::find_guid;
+    g_module.add_manifest = bee::add_manifest;
+    g_module.remove_manifest = bee::remove_manifest;
+    g_module.get_manifest = bee::get_manifest;
+    g_module.serialize_manifests = bee::serialize_manifests;
     g_module.add_loader = bee::add_loader;
     g_module.remove_loader = bee::remove_loader;
     g_module.add_locator = bee::add_locator;

@@ -645,6 +645,11 @@ static AssetCompiler g_compiler{};
 
 void load_compiler(bee::PluginRegistry* registry, const bee::PluginState state)
 {
+    if (!registry->has_module(BEE_ASSET_PIPELINE_MODULE_NAME))
+    {
+        return;
+    }
+
     g_compiler.data = registry->get_or_create_persistent<AssetCompilerData>("BeeShaderCompilerData");
     g_compiler.init = init_shader_compiler;
     g_compiler.destroy = destroy_shader_compiler;

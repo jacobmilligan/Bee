@@ -39,8 +39,12 @@ void JobGroup::add_job(Job* job)
 void JobGroup::add_dependency(JobGroup* child_group)
 {
     scoped_rw_write_lock_t lock(child_group->parents_mutex_);
-    child_group->parents_.push_back(this);
-    dependency_count_.fetch_add(1, std::memory_order_release);
+    const auto index = find_index(child_group->parents_, this);
+    if (index < 0)
+    {
+        child_group->parents_.push_back(this);
+        dependency_count_.fetch_add(1, std::memory_order_release);
+    }
 }
 
 i32 JobGroup::pending_count()

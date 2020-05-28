@@ -687,7 +687,7 @@ inline const EnumConstant& enum_to_type(const T& value)
         return default_constant;
     }
 
-    const auto const_index = container_index_of(type->constants, [&](const EnumConstant& c)
+    const auto const_index = find_index_if(type->constants, [&](const EnumConstant& c)
     {
         return c.value == static_cast<i64>(value);
     });
@@ -701,7 +701,7 @@ inline void enum_to_string(io::StringStream* stream, const T& value)
     auto type = get_type_as<T, EnumType>();
     if (!type->is_flags)
     {
-        const auto const_index = container_index_of(type->constants, [&](const EnumConstant& c)
+        const auto const_index = find_index_if(type->constants, [&](const EnumConstant& c)
         {
             return c.value == static_cast<i64>(value);
         });
@@ -721,7 +721,7 @@ inline void enum_to_string(io::StringStream* stream, const T& value)
         int current_flag = 0;
         for_each_flag(value, [&](const T& flag)
         {
-            const auto const_index = container_index_of(type->constants, [&](const EnumConstant& c)
+            const auto const_index = find_index_if(type->constants, [&](const EnumConstant& c)
             {
                 return c.value == static_cast<i64>(flag);
             });

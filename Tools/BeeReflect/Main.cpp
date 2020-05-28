@@ -77,9 +77,10 @@ int bee_main(int argc, char** argv)
     // Output a .generated.cpp file for each of the reflected headers
     for (auto& file : factory.storage.reflected_files)
     {
-        const auto is_external = bee::container_index_of(options_parser.getSourcePathList(), [&](const std::string& str)
+        const auto is_external = bee::find_index_if(options_parser.getSourcePathList(), [&](const std::string& str)
         {
-            return llvm::StringRef(str).endswith(llvm::StringRef(file.value.location.c_str(), file.value.location.size()));
+            return llvm::StringRef(str)
+                .endswith(llvm::StringRef(file.value.location.c_str(), file.value.location.size()));
         }) < 0;
 
         if (is_external)
@@ -132,7 +133,7 @@ int bee_main(int argc, char** argv)
 
     for (const std::string& compilation : options_parser.getSourcePathList())
     {
-        const auto was_reflected = bee::container_index_of(reflectd_abs_paths, [&](const bee::Path& reflected)
+        const auto was_reflected = bee::find_index_if(reflectd_abs_paths, [&](const bee::Path& reflected)
         {
             return compilation.c_str() == reflected.view();
         }) >= 0;

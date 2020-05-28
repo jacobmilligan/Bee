@@ -15,7 +15,5 @@ bee_plugin(Bee.ShaderPipeline
         0.0.0
     DESCRIPTION
         "Bee ShaderPipeline plugin"
-    DEPENDENCIES
-        Bee.AssetPipeline 0.0.0
 )
 bee_reflect(Bee.ShaderPipeline INLINE)

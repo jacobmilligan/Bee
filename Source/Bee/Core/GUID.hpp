@@ -55,19 +55,7 @@ struct BEE_REFLECT(serializable, use_builder) GUID
 {
     static constexpr size_t sizeof_data = 16 * sizeof(u8);
 
-    GUID() noexcept
-    {
-#if BEE_DEBUG
-        debug_string[0] = '\0';
-#endif // BEE_DEBUG
-    }
-
-    u8  data[16];
-
-#if BEE_DEBUG
-    BEE_REFLECT(nonserialized)
-    char debug_string[33];
-#endif // BEE_DEBUG
+    u8  data[16] { 0 };
 
     inline const u8* begin() const
     {
@@ -89,6 +77,9 @@ struct BEE_REFLECT(serializable, use_builder) GUID
         return data + 16;
     }
 };
+
+
+static constexpr GUID invalid_guid{};
 
 
 inline bool operator==(const GUID& lhs, const GUID& rhs)
@@ -190,9 +181,6 @@ inline void serialize_type(SerializationBuilder* builder, GUID* guid)
     if (builder->mode() == SerializerMode::reading)
     {
         *guid = guid_from_string(string_buffer);
-#if BEE_DEBUG
-        memcpy(guid->debug_string, string_buffer, guid_as_digits_size);
-#endif // BEE_DEBUG
     }
 }
 

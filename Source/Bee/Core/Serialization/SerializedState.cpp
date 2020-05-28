@@ -143,7 +143,8 @@ void serialize_packed_record(const i32 version, Serializer* serializer, const Re
 {
     for (const Field& field : type->fields)
     {
-        auto serialized_type = field.type;
+        const auto* serialized_type = field.type;
+        BEE_ASSERT(serialized_type != nullptr);
 
         if (field.version_added > 0 && version >= field.version_added && version < field.version_removed)
         {
@@ -185,7 +186,7 @@ void serialize_table_record(const i32 version, Serializer* serializer, const Rec
             serializer->serialize_bytes(&header, sizeof(FieldHeader));
 
             // Lookup the type using the header hashes
-            const auto field_index = container_index_of(type->fields, [&](const Field& f)
+            const auto field_index = find_index_if(type->fields, [&](const Field& f)
             {
                 return f.type->hash == header.type_hash && f.hash == header.field_hash;
             });
@@ -340,7 +341,7 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
                     i64 value = 0;
                     memcpy(&value, data, as_enum->underlying_type->size);
 
-                    const auto constant_index = container_index_of(as_enum->constants, [&](const EnumConstant& c)
+                    const auto constant_index = find_index_if(as_enum->constants, [&](const EnumConstant& c)
                     {
                         return c.value == value;
                     });
@@ -369,7 +370,7 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
                     serializer->end_text(enum_constant_buffer, size, static_array_length(enum_constant_buffer));
                     const auto constant_hash = get_type_hash({ enum_constant_buffer, size });
 
-                    const auto constant_index = container_index_of(as_enum->constants, [&](const EnumConstant& c)
+                    const auto constant_index = find_index_if(as_enum->constants, [&](const EnumConstant& c)
                     {
                         return c.hash == constant_hash;
                     });
@@ -439,7 +440,7 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
                         }
 
                         const auto flag_hash = get_type_hash(StringView(flag_begin, sign_cast<i32>(flag_end - flag_begin)));
-                        const auto flag_index = container_index_of(as_enum->constants, [&](const EnumConstant& c)
+                        const auto flag_index = find_index_if(as_enum->constants, [&](const EnumConstant& c)
                         {
                             return c.hash == flag_hash;
                         });

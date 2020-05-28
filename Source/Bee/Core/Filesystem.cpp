@@ -100,7 +100,7 @@ void DirectoryWatcher::add_event(const FileAction action, const StringView& rela
     const auto hash = get_hash(full_path);
 
     // On platforms like windows change notifications can sometimes fire multiple times
-    const auto existing_index = container_index_of(events_, [&](const FileNotifyInfo& info)
+    const auto existing_index = find_index_if(events_, [&](const FileNotifyInfo& info)
     {
         return hash == info.hash;
     });
@@ -116,7 +116,7 @@ void DirectoryWatcher::add_event(const FileAction action, const StringView& rela
 
 i32 DirectoryWatcher::find_entry(const Path &path)
 {
-    return container_index_of(watched_paths_, [&](const Path& p)
+    return find_index_if(watched_paths_, [&](const Path& p)
     {
         return p == path;
     });

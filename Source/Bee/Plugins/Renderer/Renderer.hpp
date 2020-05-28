@@ -18,6 +18,8 @@ struct RenderStage
 {
     RenderStageData* data {nullptr };
 
+    const char* (*get_name)() { nullptr };
+
     void (*init)(const DeviceHandle& device, RenderStageData* data) {nullptr };
 
     void (*destroy)(const DeviceHandle& device, RenderStageData* data) {nullptr };
@@ -36,7 +38,7 @@ struct RendererModule
 
     void (*frame)() { nullptr };
 
-    void (*add_stage)(const u32 id, RenderStage* stage) {nullptr };
+    void (*add_stage)(RenderStage* stage) {nullptr };
 
     void (*remove_stage)(RenderStage* stage) {nullptr };
 };

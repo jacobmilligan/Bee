@@ -10,6 +10,7 @@
 #include "Bee/Core/Path.hpp"
 #include "Bee/Core/Handle.hpp"
 #include "Bee/Core/GUID.hpp"
+#include "Bee/Core/Containers/HashMap.hpp"
 
 
 struct MDB_txn;
@@ -244,7 +245,7 @@ public:
 
     inline void set_main(const DynamicArray<u8>& buffer)
     {
-        const auto index = container_index_of(*output_.artifact_buffers, [&](const DynamicArray<u8>& b)
+        const auto index = find_index_if(*output_.artifact_buffers, [&](const DynamicArray<u8>& b)
         {
             return b.data() == buffer.data();
         });
@@ -260,7 +261,7 @@ public:
 
     void add_dependency(const GUID& guid) const
     {
-        if (container_find_index(*output_.dependencies, guid) >= 0)
+        if (find_index(*output_.dependencies, guid) >= 0)
         {
             log_error("Asset already has a dependency with GUID %s", format_guid(guid, GUIDFormat::digits));
             return;
@@ -343,6 +344,17 @@ struct AssetPipelineInitInfo
     const char*     asset_database_name { nullptr };
 };
 
+struct BEE_REFLECT(serializable) ManifestFile
+{
+    String                          name;
+    DynamicHashMap<String, String>  assets;
+
+    explicit ManifestFile(Allocator* allocator = system_allocator())
+        : name(allocator),
+          assets(allocator)
+    {}
+};
+
 struct AssetPipeline;
 
 struct AssetPipelineModule
@@ -363,6 +375,10 @@ struct AssetPipelineModule
     void (*delete_asset)(AssetPipeline* instance, const GUID& guid, const DeleteAssetKind kind) { nullptr };
 
     void (*delete_asset_at_path)(AssetPipeline* instance, const StringView& uri, const DeleteAssetKind kind) { nullptr };
+
+    void (*add_root)(AssetPipeline* instance, const GUID& guid) { nullptr };
+
+    void (*remove_root)(AssetPipeline* instance, const GUID& guid) { nullptr };
 
     void (*add_asset_directory)(AssetPipeline* instance, const Path& path) { nullptr };
 

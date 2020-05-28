@@ -129,6 +129,12 @@ void JSONSerializer::begin_record(const RecordType* /* type */)
 
     if (stack_.back()->IsArray())
     {
+        if (element_iter_stack_.empty())
+        {
+            log_error("JSON: expected object at but got array");
+            return;
+        }
+
         auto* element = &stack_.back()->GetArray()[current_element()];
         stack_.push_back(element);
     }

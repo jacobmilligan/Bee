@@ -22,6 +22,6 @@ bee_plugin(
     DESCRIPTION
         "Bee ImGui plugin"
     DEPENDENCIES
-        Bee.AssetPipeline 0.0.0
         Bee.Renderer 0.0.0
+        Bee.AssetRegistry 0.0.0
 )

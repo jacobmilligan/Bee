@@ -10,6 +10,7 @@ bee_plugin(Bee.Editor LINK_LIBRARIES Bee.Runtime
     DESCRIPTION
         "Bee editor plugin"
     DEPENDENCIES
+        Bee.AssetPipeline 0.0.0
         Bee.ImGui 0.0.0
         Bee.ShaderPipeline 0.0.0
 )

@@ -49,7 +49,7 @@
     </Type>
 
     <Type Name="bee::GUID">
-        <DisplayString>{debug_string}</DisplayString>
+        <DisplayString LegacyAddin="Bee.Core.dll" Export="bee_guid_debug_visualizer" />
     </Type>
 
     <Type Name="bee::Type">

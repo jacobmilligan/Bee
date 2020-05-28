@@ -177,7 +177,7 @@ RenderPassHandle RenderGraph::obtain_physical_pass(const DeviceHandle& device, P
                                                    const RenderPassCreateInfo& create_info)
 {
     const auto hash = get_hash(create_info);
-    const auto index = container_index_of(pool->hashes, [&](const u32 stored_hash)
+    const auto index = find_index_if(pool->hashes, [&](const u32 stored_hash)
     {
         return stored_hash == hash;
     });

@@ -543,7 +543,7 @@ DeviceHandle gpu_create_device(const DeviceCreateInfo& create_info)
         return DeviceHandle{};
     }
 
-    int device_idx = container_index_of(g_backend.devices, [](const VulkanDevice& d)
+    int device_idx = find_index_if(g_backend.devices, [](const VulkanDevice& d)
     {
         return d.handle == VK_NULL_HANDLE;
     });
@@ -805,7 +805,7 @@ SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const Sw
 
     // Select a vk_handle image format - first try and get the format requested in create_info otherwise just choose first available format
     const auto desired_format = convert_pixel_format(create_info.texture_format);
-    const auto desired_format_idx = container_index_of(formats, [&](const VkSurfaceFormatKHR& fmt)
+    const auto desired_format_idx = find_index_if(formats, [&](const VkSurfaceFormatKHR& fmt)
     {
         return fmt.format == desired_format;
     });
@@ -823,7 +823,7 @@ SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const Sw
     auto present_mode = VK_PRESENT_MODE_FIFO_KHR; // vsync on
     if (!create_info.vsync)
     {
-        const auto supports_mailbox = container_index_of(present_modes, [](const VkPresentModeKHR& mode)
+        const auto supports_mailbox = find_index_if(present_modes, [](const VkPresentModeKHR& mode)
         {
             return mode == VK_PRESENT_MODE_MAILBOX_KHR;
         }) >= 0;

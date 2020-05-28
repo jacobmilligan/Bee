@@ -52,7 +52,7 @@ static const char* g_token_names[] = {
 template <i32 Size>
 i32 find_token_def(const StringView& name, BscTokenDef(&tokens)[Size])
 {
-    const auto index = container_index_of(tokens, [&](const BscTokenDef& def)
+    const auto index = find_index_if(tokens, [&](const BscTokenDef& def)
     {
         return str::compare_n(def.text, name, math::min(def.text_length, name.size())) == 0;
     });
@@ -69,7 +69,7 @@ const char* get_token_name(const BscTokenKind kind)
 
 bool is_keyword(const char* text, const i32 text_length, BscTokenKind* dst)
 {
-    const auto index = container_index_of(g_keywords, [&](const BscTokenDef& def)
+    const auto index = find_index_if(g_keywords, [&](const BscTokenDef& def)
     {
         return str::compare_n(def.text, text, math::min(def.text_length, text_length)) == 0;
     });

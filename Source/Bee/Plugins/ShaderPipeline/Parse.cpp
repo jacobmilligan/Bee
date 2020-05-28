@@ -42,7 +42,7 @@ struct ResolveOrError
 template <typename T>
 ResolveOrError<T> bsc_find_node(const bsc_node_array_t<T>& array, const StringView& identifier)
 {
-    const auto index = container_index_of(array, [&](const BscNode<T>& value)
+    const auto index = find_index_if(array, [&](const BscNode<T>& value)
     {
         return value.identifier == identifier;
     });
@@ -66,7 +66,7 @@ ResolveOrError<T> bsc_find_node(const bsc_node_array_t<T>& array, const StringVi
 template <typename T>
 i32 bsc_find_node_index(const bsc_node_array_t<T>& array, const StringView& identifier)
 {
-    return container_index_of(array, [&](const BscNode<T>& value)
+    return find_index_if(array, [&](const BscNode<T>& value)
     {
         return value.identifier == identifier;
     });

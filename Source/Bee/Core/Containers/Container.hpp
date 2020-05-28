@@ -256,7 +256,7 @@ inline constexpr EnumerateAdapter<IterableType> enumerate(IterableType& iterable
  * Gets the index of a value in a c-array or container
  */
 template <typename ContainerType, typename PredicateType>
-inline constexpr i32 container_index_of(const ContainerType& container, PredicateType&& pred)
+inline constexpr i32 find_index_if(const ContainerType& container, PredicateType&& pred)
 {
     int index = 0;
     for (const auto& value : container)
@@ -271,7 +271,7 @@ inline constexpr i32 container_index_of(const ContainerType& container, Predicat
 }
 
 template <typename ContainerType, typename T>
-inline constexpr i32 container_find_index(const ContainerType& container, const T& to_find)
+inline constexpr i32 find_index(const ContainerType& container, const T& to_find)
 {
     int index = 0;
     for (const auto& value : container)

@@ -8,15 +8,17 @@
 #include "Bee.AssetPipeline.Descriptor.hpp"
 #include "Bee/Plugins/AssetPipeline/AssetPipeline.hpp"
 #include "Bee/Plugins/AssetRegistry/AssetRegistry.hpp"
+
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
 #include "Bee/Core/Jobs/JobDependencyCache.hpp"
 #include "Bee/Core/Serialization/StreamSerializer.hpp"
 #include "Bee/Core/Serialization/JSONSerializer.hpp"
+#include "Bee/Core/Serialization/BinarySerializer.hpp"
 
 #include <algorithm>
 
-#define BEE_TESTING_ASSET_PIPELINE_INIT
+//#define BEE_TESTING_ASSET_PIPELINE_INIT
 
 namespace bee {
 
@@ -57,15 +59,17 @@ struct FileTypeMapping
 
 struct AssetPipeline
 {
-    Allocator*                              allocator { nullptr };
-    AssetPlatform                           platform { AssetPlatform::unknown };
-    Path                                    project_root;
-    Path                                    cache_root;
-    fs::DirectoryWatcher                    asset_watcher { true }; // recursive
-    FixedArray<CompiledAsset>               per_thread_assetdb_items;
+    Allocator*                  allocator { nullptr };
+    RecursiveMutex              mutex;
+    AssetPlatform               platform { AssetPlatform::unknown };
+    Path                        project_root;
+    Path                        cache_root;
+    Path                        saved_location;
+    fs::DirectoryWatcher        asset_watcher { true }; // recursive
+    FixedArray<CompiledAsset>   per_thread_assetdb_items;
 
     // Asset Database
-    AssetDatabaseEnv*                       db {nullptr };
+    AssetDatabaseEnv*           db {nullptr };
 };
 
 struct GlobalAssetPipeline
@@ -76,6 +80,8 @@ struct GlobalAssetPipeline
 };
 
 static GlobalAssetPipeline* g_pipeline { nullptr };
+static PluginRegistry*      g_plugin_registry { nullptr };
+static AssetRegistryModule* g_asset_registry { nullptr };
 
 static constexpr auto g_metadata_ext = ".meta";
 
@@ -94,7 +100,7 @@ u32 get_extension_hash(const StringView& ext)
 
 i32 find_compiler(const u32 hash)
 {
-    return container_index_of(g_pipeline->compilers, [&](const CompilerInfo& info)
+    return find_index_if(g_pipeline->compilers, [&](const CompilerInfo& info)
     {
         return info.id.id == hash;
     });
@@ -102,7 +108,7 @@ i32 find_compiler(const u32 hash)
 
 i32 find_compiler(const AssetCompilerId& id)
 {
-    return container_index_of(g_pipeline->compilers, [&](const CompilerInfo& info)
+    return find_index_if(g_pipeline->compilers, [&](const CompilerInfo& info)
     {
         return info.id == id;
     });
@@ -272,6 +278,9 @@ CompiledAsset& get_temp_asset(AssetPipeline* instance)
  *
  *********************************
  */
+void plugin_observer(const PluginEventType event, const bee::PluginDescriptor& plugin, const StringView& module_name, void* module, void* user_data);
+void serialize_manifests(const SerializerMode mode, AssetPipeline* instance);
+void load_manifests_at_path(AssetPipeline* instance, const Path& path);
 void refresh_directory(AssetPipeline* instance, const Path& path);
 void refresh_path(AssetPipeline* instance, const Path& path);
 void destroy(AssetPipeline* instance);
@@ -326,6 +335,10 @@ AssetPipeline* init(const AssetPipelineInitInfo& info, Allocator* allocator)
         fs::mkdir(instance->cache_root);
     }
 
+    // Load up the asset pipeline manifests
+    instance->saved_location = instance->cache_root.join("Manifests");
+    serialize_manifests(SerializerMode::reading, instance);
+
     // Load up the assetdatabase
     instance->db = g_assetdb.open(instance->cache_root, info.asset_database_name, allocator);
 
@@ -354,12 +367,29 @@ AssetPipeline* init(const AssetPipelineInitInfo& info, Allocator* allocator)
     }
 
     instance->asset_watcher.start("AssetWatcher");
+
+    g_plugin_registry->add_observer(plugin_observer, instance);
+
+    // Load any roots from plugins that were loaded before the asset pipeline was
+    const auto loaded_plugin_count = g_plugin_registry->get_loaded_plugins(nullptr);
+    auto plugin_descs = FixedArray<PluginDescriptor>::with_size(loaded_plugin_count, temp_allocator());
+    g_plugin_registry->get_loaded_plugins(plugin_descs.data());
+
+    Path plugin_path(temp_allocator());
+    for (auto& desc : plugin_descs)
+    {
+        desc.get_full_path(&plugin_path);
+        load_manifests_at_path(instance, plugin_path);
+    }
+
     return instance;
 }
 
 void destroy(AssetPipeline* instance)
 {
     g_pipeline->job_deps.wait_all();
+
+    g_plugin_registry->remove_observer(plugin_observer, instance);
 
     if (instance->asset_watcher.is_running())
     {
@@ -376,6 +406,18 @@ void destroy(AssetPipeline* instance)
     instance->platform = AssetPlatform::unknown;
 
     BEE_DELETE(instance->allocator, instance);
+}
+
+void serialize_manifests(const SerializerMode mode, AssetPipeline* instance)
+{
+    if (mode == SerializerMode::reading && !instance->saved_location.exists())
+    {
+        return;
+    }
+
+    const auto* open_mode = mode == SerializerMode::reading ? "rb": "wb";
+    io::FileStream stream(instance->saved_location, open_mode);
+    g_asset_registry->serialize_manifests(mode, &stream);
 }
 
 void set_platform(AssetPipeline* instance, const AssetPlatform platform)
@@ -408,8 +450,6 @@ void import_job(const ImportRequest& req)
     asset.uri.append(req.uri.view());
 
     // Start the import
-    log_debug("Importing %s", asset.uri.c_str());
-
     const auto full_path = asset_uri_to_path(req.pipeline, req.uri.view(), temp_allocator());
 
     Path metadata_path(full_path.view(), temp_allocator());
@@ -523,6 +563,8 @@ void import_job(const ImportRequest& req)
     asset.metadata_timestamp = write_metadata(metadata_path, &metadata);
 
     g_assetdb.commit(pipeline->db, &txn);
+
+    log_debug("Imported %s", asset.uri.c_str());
 }
 
 void import_asset(AssetPipeline* instance, const Path& source_path, const AssetCompilerId& compiler_id)
@@ -568,7 +610,7 @@ void import_asset(AssetPipeline* instance, const Path& source_path, const AssetC
 
     const auto ext_hash = get_extension_hash(ext);
 
-    if (container_find_index(compiler.extensions, ext_hash) < 0)
+    if (find_index(compiler.extensions, ext_hash) < 0)
     {
         log_error(
             "Failed to import %s: compiler \"%s\" does not support \"%" BEE_PRIsv "\" files",
@@ -685,6 +727,7 @@ void delete_asset_at_path(AssetPipeline* instance, const StringView& uri, const 
     delete_asset(instance, asset.metadata.guid, kind);
 }
 
+
 void register_compiler(AssetCompiler* compiler)
 {
     const auto* name = compiler->get_name();
@@ -711,7 +754,10 @@ void register_compiler(AssetCompiler* compiler)
     {
         const auto ext_hash = get_extension_hash(ext);
 
-        if (container_index_of(info.extensions, [&](const u32 hash) { return hash == ext_hash; }) >= 0)
+        if (find_index_if(info.extensions, [&](const u32 hash)
+        {
+            return hash == ext_hash;
+        }) >= 0)
         {
             log_warning("Asset compiler \"%s\" defines the same file extension (%s) multiple times", name, ext);
             continue;
@@ -742,7 +788,7 @@ void unregister_compiler(AssetCompiler* compiler)
     const auto hash = get_hash(name);
     auto id = find_compiler(hash);
 
-    if (BEE_FAIL_F(id >= 0, "Cannot unregister asset compiler: no compiler registered with name \"%s\"", name))
+    if (id < 0)
     {
         return;
     }
@@ -752,7 +798,7 @@ void unregister_compiler(AssetCompiler* compiler)
         auto* extension_mapping = g_pipeline->filetype_map.find(ext_hash);
         if (extension_mapping != nullptr)
         {
-            const auto compiler_mapping_idx = container_index_of(extension_mapping->value.compiler_ids, [&](const i32 stored)
+            const auto compiler_mapping_idx = find_index_if(extension_mapping->value.compiler_ids, [&](const i32 stored)
             {
                 return stored == id;
             });
@@ -894,11 +940,11 @@ void refresh_path(AssetPipeline* instance, const Path& path)
         asset.metadata_timestamp = write_metadata(metadata_path, &metadata);
         asset.uri.append(uri.view());
 
-        log_debug("%s directory %s", is_reimport ? "Reimporting" : "Importing", uri.c_str());
-
         txn = g_assetdb.write(instance->db);
         g_assetdb.put_asset(instance->db, txn, metadata.guid, &asset);
         g_assetdb.commit(instance->db, &txn);
+
+        log_debug("%s directory %s", is_reimport ? "Reimported" : "Imported", uri.c_str());
 
         if (!is_asset_file)
         {
@@ -929,17 +975,77 @@ void refresh(AssetPipeline* instance)
 
 static AssetLocator g_assetdb_locator{};
 
-void asset_registry_observer(void* module, void* user_data)
-{
-//    g_assetdb_locator.locate_by_name()
-}
-
 /*
  * Import roots as they're registered
  */
-void plugin_observer(const PluginEventType event, const StringView& module_name, void* interface_ptr, void* user_data)
+void load_manifests_at_path(AssetPipeline* instance, const Path& path)
 {
+    g_pipeline->job_deps.wait_all();
+
     // iterate through the plugins source directory for any .root files and add the roots if they're there
+    JSONSerializer serializer(temp_allocator());
+    ManifestFile manifest_file(temp_allocator());
+    int files_added = 0;
+
+    for (const auto& file : fs::read_dir(path))
+    {
+        if (fs::is_dir(file))
+        {
+            continue;
+        }
+
+        if (file.extension() != ".manifest")
+        {
+            continue;
+        }
+
+        auto contents = fs::read(file, temp_allocator());
+        serializer.reset(contents.data(), rapidjson::kParseInsituFlag);
+        serialize(
+            SerializerMode::reading,
+            SerializerSourceFlags::dont_serialize_flags | SerializerSourceFlags::unversioned,
+            &serializer,
+            &manifest_file,
+            temp_allocator()
+        );
+
+        auto* manifest = g_asset_registry->get_manifest(manifest_file.name.view());
+        if (manifest == nullptr)
+        {
+            manifest = g_asset_registry->add_manifest(manifest_file.name.view());
+        }
+
+        auto txn = g_assetdb.read(instance->db);
+
+        for (const auto& entry : manifest_file.assets)
+        {
+            auto& asset = get_temp_asset(instance);
+            if (!g_assetdb.get_asset_from_path(instance->db, txn, entry.value.view(), &asset))
+            {
+                log_error("No imported asset found at path %s", entry.value.c_str());
+                continue;
+            }
+
+            const auto hash = detail::runtime_fnv1a(entry.key.data(), entry.key.size() - 1);
+            if (manifest->add(hash, asset.metadata.guid))
+            {
+                ++files_added;
+            }
+        }
+    }
+
+    if (files_added > 0)
+    {
+        serialize_manifests(SerializerMode::writing, instance);
+    }
+}
+
+void plugin_observer(const PluginEventType event, const bee::PluginDescriptor& plugin, const StringView& module_name, void* module, void* user_data)
+{
+    auto* instance = static_cast<AssetPipeline*>(user_data);
+    Path path(temp_allocator());
+    plugin.get_full_path(&path);
+    load_manifests_at_path(instance, path);
 }
 
 
@@ -950,6 +1056,9 @@ static bee::AssetPipelineModule g_module{};
 
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::PluginState state)
 {
+    bee::g_plugin_registry = registry;
+    bee::g_asset_registry = registry->get_module<bee::AssetRegistryModule>(BEE_ASSET_REGISTRY_MODULE_NAME);
+
     load_assetdb_module(registry, state);
 
     bee::g_pipeline = registry->get_or_create_persistent<bee::GlobalAssetPipeline>("GlobalAssetPipelineData");

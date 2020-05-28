@@ -43,12 +43,6 @@ enum class PluginState
 
 class PluginRegistry;
 
-using load_plugin_function_t = void*(*)(PluginRegistry* registry, PluginState state);
-
-using plugin_observer_t = void(*)(const PluginEventType event, const StringView& module_name, void* interface_ptr, void* user_data);
-
-using module_observer_t = void(*)(void* module, void* user_data);
-
 
 struct PluginVersion
 {
@@ -113,7 +107,20 @@ struct PluginDescriptor
           description(new_description),
           source_location(new_source_location)
     {}
+
+    inline void get_full_path(Path* dst) const
+    {
+        dst->clear();
+        dst->append(fs::get_root_dirs().install_root).append(source_location);
+    }
 };
+
+
+using load_plugin_function_t = void*(*)(PluginRegistry* registry, PluginState state);
+
+using plugin_observer_t = void(*)(const PluginEventType event, const PluginDescriptor& plugin, const StringView& module_name, void* module, void* user_data);
+
+using module_observer_t = void(*)(const PluginEventType event, void* module, void* user_data);
 
 
 class BEE_CORE_API PluginRegistry
@@ -137,17 +144,19 @@ public:
 
     void* get_module(const StringView& name);
 
+    bool has_module(const StringView& name);
+
     void refresh_plugins();
 
     bool is_plugin_registered(const StringView& name);
 
     bool is_plugin_loaded(const StringView& name, const PluginVersion& version);
 
+    i32 get_loaded_plugins(PluginDescriptor* descriptors);
+
     void add_observer(plugin_observer_t observer, void* user_data = nullptr);
 
-    void remove_observer(plugin_observer_t observer);
-
-    void require_module(const StringView& module_name, module_observer_t observer, void* user_data = nullptr);
+    void remove_observer(plugin_observer_t observer, void* user_data = nullptr);
 
     void* get_or_create_persistent(const u32 unique_hash, const size_t size);
 
@@ -242,7 +251,6 @@ private:
         u32                             hash { 0 };
         StaticString<256>               name;
         const void*                     current {nullptr };
-        DynamicArray<ModuleObserver>    on_add_observers;
         void*                           storage;
     };
 
@@ -255,6 +263,7 @@ private:
     DynamicHashMap<u32, Plugin>                 plugins_;
     DynamicHashMap<Path, DynamicArray<u32>>     search_paths_;
     fs::DirectoryWatcher                        directory_watcher_;
+    DynamicArray<Plugin*>                       load_stack_;
 
     bool register_plugins_at_path(const Path& root, const RegisterPluginMode search_path_type);
 
@@ -269,6 +278,8 @@ private:
     Module& get_or_create_module(const StringView& name);
 
     bool get_or_create_persistent(const u32 unique_hash, const size_t size, void** out_data);
+
+    void notify_observers(const PluginEventType event, const Plugin* plugin, const Module* module);
 
     inline Module* create_module(const u32 hash, const StringView& name)
     {

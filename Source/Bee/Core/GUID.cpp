@@ -252,5 +252,4 @@ GUID guid_from_string(const StringView& string)
 
 
 
-
 } // namespace bee

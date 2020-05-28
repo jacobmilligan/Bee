@@ -42,13 +42,6 @@ void execute_render_stage(const DeviceHandle& device, RenderStageData* ctx)
 
 }
 
-void renderer_observer(void* interface, void* user_data)
-{
-    auto* renderer = static_cast<RendererModule*>(interface);
-    renderer->add_stage(bee::get_static_string_hash("ImGuiRenderStage"), &bee::g_render_stage);
-}
-
-
 } // namespace bee
 
 
@@ -61,5 +54,15 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::Pl
     bee::g_render_stage.execute = bee::execute_render_stage;
 
     registry->toggle_module(state, BEE_IMGUI_MODULE_NAME, &bee::g_imgui_module);
-    registry->require_module(BEE_RENDERER_MODULE_NAME, bee::renderer_observer, nullptr);
+
+    auto* renderer = registry->get_module<bee::RendererModule>(BEE_RENDERER_MODULE_NAME);
+
+    if (state == bee::PluginState::loading)
+    {
+        renderer->add_stage(&bee::g_render_stage);
+    }
+    else
+    {
+        renderer->remove_stage(&bee::g_render_stage);
+    }
 }

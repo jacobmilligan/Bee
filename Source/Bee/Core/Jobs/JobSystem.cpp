@@ -360,10 +360,10 @@ bool job_wait(JobGroup* group)
     {
         return false;
     }
-    auto local_worker = &g_job_system.workers[local_worker_idx];
+    auto* local_worker = &g_job_system.workers[local_worker_idx];
 
     // Try and help execute jobs while we're waiting for this job to complete
-    while (group->has_pending_jobs())
+    while (group->has_pending_jobs() || group->has_dependencies())
     {
         if (!g_job_system.is_active.load(std::memory_order_acquire))
         {

@@ -16,7 +16,6 @@ struct Renderer
 {
     DeviceHandle                device;
     DynamicArray<RenderStage*>  stages;
-    DynamicArray<u32>           stage_ids;
 };
 
 static Renderer* g_renderer { nullptr };
@@ -64,9 +63,9 @@ void render_frame()
     }
 }
 
-void add_stage(const u32 id, RenderStage* stage)
+void add_stage(RenderStage* stage)
 {
-    const auto index = container_find_index(g_renderer->stage_ids, id);
+    const auto index = find_index(g_renderer->stages, stage);
 
     if (index >= 0)
     {
@@ -75,18 +74,16 @@ void add_stage(const u32 id, RenderStage* stage)
     else
     {
         g_renderer->stages.push_back(stage);
-        g_renderer->stage_ids.push_back(id);
     }
 }
 
 void remove_stage(RenderStage* stage)
 {
-    const auto index = container_find_index(g_renderer->stages, stage);
+    const auto index = find_index(g_renderer->stages, stage);
 
     if (index >= 0)
     {
         g_renderer->stages.erase(index);
-        g_renderer->stage_ids.erase(index);
     }
 }
 

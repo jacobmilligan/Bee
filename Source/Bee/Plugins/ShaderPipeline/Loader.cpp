@@ -153,21 +153,24 @@ AssetStatus unload_shader(AssetLoaderContext* ctx)
 
 static AssetLoader g_loader{};
 
-void asset_registry_observer(void* module, void* user_data)
+void load_asset_loader(bee::PluginRegistry* registry, const bee::PluginState state)
 {
+    if (!registry->has_module(BEE_ASSET_REGISTRY_MODULE_NAME))
+    {
+        return;
+    }
+
     g_loader.get_supported_types = get_supported_shader_types;
     g_loader.get_parameter_type = get_parameter_type;
     g_loader.allocate = allocate_shader;
     g_loader.load = load_shader;
     g_loader.unload = unload_shader;
 
-    auto* asset_registry = static_cast<AssetRegistryModule*>(module);
-    asset_registry->add_loader(&g_loader);
-}
-
-void load_asset_loader(bee::PluginRegistry* registry, const bee::PluginState state)
-{
-    registry->require_module(BEE_ASSET_REGISTRY_MODULE_NAME, asset_registry_observer);
+    auto* asset_registry = registry->get_module<AssetRegistryModule>(BEE_ASSET_REGISTRY_MODULE_NAME);
+    if (asset_registry->add_loader != nullptr)
+    {
+        asset_registry->add_loader(&g_loader);
+    }
 }
 
 

@@ -80,15 +80,39 @@ PluginRegistry::~PluginRegistry()
         directory_watcher_.stop();
     }
 
-    for (auto& plugin : plugins_)
+    if (plugins_.size() > 0)
     {
-        unload_plugin(&plugin.value);
+        auto* unload_order = BEE_ALLOCA_ARRAY(Plugin*, plugins_.size());
+
+        int plugin_index = 0;
+        for (auto& plugin : plugins_)
+        {
+            unload_order[plugin_index] = &plugin.value;
+            ++plugin_index;
+        }
+
+        std::sort(unload_order, unload_order + plugins_.size(), [&](Plugin* lhs, Plugin* rhs)
+        {
+            return lhs->desc.dependency_count > rhs->desc.dependency_count;
+        });
+
+        for (int i = 0; i < plugins_.size(); ++i)
+        {
+            unload_plugin(unload_order[i]);
+        }
     }
 
     for (auto& module : modules_)
     {
         destroy_module(module);
     }
+
+    modules_.clear();
+    observers_.clear();
+    persistent_.clear();
+    search_paths_.clear();
+    plugins_.clear();
+    load_stack_.clear();
 }
 
 bool PluginRegistry::add_search_path(const Path &path, const RegisterPluginMode register_mode)
@@ -238,11 +262,31 @@ bool PluginRegistry::is_plugin_loaded(const StringView &name, const PluginVersio
     return plugin != nullptr && plugin->value.is_loaded && plugin->value.desc.version == version;
 }
 
+i32 PluginRegistry::get_loaded_plugins(PluginDescriptor* descriptors)
+{
+    int loaded_count = 0;
+
+    for (auto& plugin : plugins_)
+    {
+        if (plugin.value.is_loaded)
+        {
+            if (descriptors != nullptr)
+            {
+                descriptors[loaded_count] = plugin.value.desc;
+            }
+
+            ++loaded_count;
+        }
+    }
+
+    return loaded_count;
+}
+
 void PluginRegistry::add_observer(plugin_observer_t observer, void* user_data)
 {
-    const auto index = container_index_of(observers_, [&](const Observer& o)
+    const auto index = find_index_if(observers_, [&](const Observer& o)
     {
-        return o.callback == observer;
+        return o.callback == observer && o.user_data == user_data;
     });
 
     if (index >= 0)
@@ -254,11 +298,11 @@ void PluginRegistry::add_observer(plugin_observer_t observer, void* user_data)
     observers_.emplace_back(observer, user_data);
 }
 
-void PluginRegistry::remove_observer(plugin_observer_t observer)
+void PluginRegistry::remove_observer(plugin_observer_t observer, void* user_data)
 {
-    const auto index = container_index_of(observers_, [&](const Observer& o)
+    const auto index = find_index_if(observers_, [&](const Observer& o)
     {
-        return o.callback == observer;
+        return o.callback == observer && o.user_data == user_data;
     });
 
     if (index < 0)
@@ -270,25 +314,11 @@ void PluginRegistry::remove_observer(plugin_observer_t observer)
     observers_.erase(index);
 }
 
-void PluginRegistry::require_module(const StringView &module_name, module_observer_t observer, void *user_data)
-{
-    auto& module = get_or_create_module(module_name);
-
-    // call the observer immediately if the module is already loaded
-    if (module.current != nullptr)
-    {
-        observer(module.storage, user_data);
-    }
-    else
-    {
-        module.on_add_observers.emplace_back(observer, user_data);
-    }
-}
 
 PluginRegistry::Module& PluginRegistry::get_or_create_module(const StringView& name)
 {
     const auto hash = get_hash(name);
-    auto index = container_index_of(modules_, [&](const Module* m)
+    auto index = find_index_if(modules_, [&](const Module* m)
     {
         return m->hash == hash;
     });
@@ -316,24 +346,12 @@ void PluginRegistry::add_module(const StringView& name, const void* interface_pt
     module.current = interface_ptr;
     memcpy(module.storage, interface_ptr, size);
 
-    // notify the once-off module-specific load callbacks
-    for (auto& observer : module.on_add_observers)
-    {
-        observer.callback(module.storage, observer.user_data);
-    }
-
-    module.on_add_observers.clear();
-
-    // notify observers of the new interface
-    for (auto& observer : observers_)
-    {
-        observer.callback(PluginEventType::add_module, module.name.view(), module.storage, observer.user_data);
-    }
+    notify_observers(PluginEventType::add_module, load_stack_.back(), &module);
 }
 
 void PluginRegistry::remove_module(const void* interface_ptr)
 {
-    auto index = container_index_of(modules_, [&](const Module* m)
+    auto index = find_index_if(modules_, [&](const Module* m)
     {
         return m->current == interface_ptr;
     });
@@ -343,11 +361,8 @@ void PluginRegistry::remove_module(const void* interface_ptr)
         return;
     }
 
-    // notify observers of the removed interface
-    for (auto& observer : observers_)
-    {
-        observer.callback(PluginEventType::remove_module, modules_[index]->name.view(), modules_[index]->storage, observer.user_data);
-    }
+    // notify observers of the removed interface first in case observers need to call module functions
+    notify_observers(PluginEventType::add_module, load_stack_.back(), modules_[index]);
 
     destroy_module(modules_[index]);
     modules_.erase(index);
@@ -357,6 +372,16 @@ void PluginRegistry::remove_module(const void* interface_ptr)
 void* PluginRegistry::get_module(const StringView& name)
 {
     return get_or_create_module(name).storage;
+}
+
+bool PluginRegistry::has_module(const StringView& name)
+{
+    const auto hash = get_hash(name);
+    auto index = find_index_if(modules_, [&](const Module* m)
+    {
+        return m->hash == hash;
+    });
+    return index >= 0;
 }
 
 bool PluginRegistry::register_plugins_at_path(const Path& root, const RegisterPluginMode register_mode)
@@ -458,7 +483,7 @@ void PluginRegistry::unregister_plugin(const Path& path)
 
     if (plugin != nullptr)
     {
-        const auto search_index = container_index_of(search_path->value, [&](const u32 nh)
+        const auto search_index = find_index_if(search_path->value, [&](const u32 nh)
         {
             return nh == name_hash;
         });
@@ -560,7 +585,7 @@ bool PluginRegistry::load_plugin(Plugin* plugin, const PluginVersion& required_v
     {
         if (!is_plugin_registered(plugin->desc.dependencies[i].name))
         {
-            log_error("Plugin dependency \"%s\" is required but not registered", plugin->desc.dependencies[i].name);
+            log_error("Plugin dependency \"%s\" is required by %s but not registered", plugin->desc.dependencies[i].name, plugin->name.c_str());
             unload_library(new_library);
             return false;
         }
@@ -574,7 +599,13 @@ bool PluginRegistry::load_plugin(Plugin* plugin, const PluginVersion& required_v
 
     plugin->source_path = fs::get_root_dirs().install_root.join(plugin->desc.source_location);
 
-    new_load_function(this, PluginState::loading);
+    // Load the plugin - save the currently loading one onto a stack for referencing later
+    load_stack_.push_back(plugin);
+    {
+        new_load_function(this, PluginState::loading);
+    }
+    BEE_ASSERT(!load_stack_.empty() && load_stack_.back() == plugin);
+    load_stack_.pop_back();
 
     if (plugin->is_loaded && static_plugin == nullptr)
     {
@@ -612,6 +643,8 @@ bool PluginRegistry::load_plugin(Plugin* plugin, const PluginVersion& required_v
     }
 
     log_info("%s plugin: %s", reload ? "Reloaded" : "Loaded", plugin->name.c_str());
+
+    notify_observers(PluginEventType::load_plugin, plugin, nullptr);
     return true;
 }
 
@@ -619,7 +652,15 @@ void PluginRegistry::unload_plugin(Plugin* plugin)
 {
     BEE_ASSERT(plugin->load_function != nullptr);
 
-    plugin->load_function(this, PluginState::unloading);
+    // Notify before unloading in case any observers need to call plugin functions
+    notify_observers(PluginEventType::unload_plugin, plugin, nullptr);
+
+    load_stack_.push_back(plugin);
+    {
+        plugin->load_function(this, PluginState::unloading);
+    }
+    BEE_ASSERT(!load_stack_.empty() && load_stack_.back() == plugin);
+    load_stack_.pop_back();
 
     // unload the dyn lib if this isn't a static plugin
     if (plugin->library.handle != nullptr)
@@ -673,6 +714,17 @@ bool PluginRegistry::get_or_create_persistent(const u32 unique_hash, const size_
 
     *out_data = persistent.data();
     return !create;
+}
+
+void PluginRegistry::notify_observers(const PluginEventType event, const Plugin* plugin, const Module* module)
+{
+    StringView module_name = module == nullptr ? StringView{} : module->name.view();
+    void* interface_ptr = module == nullptr ? nullptr : module->storage;
+
+    for (auto& observer : observers_)
+    {
+        observer.callback(event, plugin->desc, module_name, interface_ptr, observer.user_data);
+    }
 }
 
 

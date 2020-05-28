@@ -8,5 +8,7 @@ bee_plugin(Bee.AssetPipeline LINK_LIBRARIES Bee.Core lmdb
         0.0.0
     DESCRIPTION
         "Bee asset pipeline plugin"
+    DEPENDENCIES
+        Bee.AssetRegistry 0.0.0
 )
 bee_reflect(Bee.AssetPipeline INLINE)

@@ -330,7 +330,7 @@ isize enum_from_string(const EnumType* type, const StringView& string)
     if (!type->is_flags)
     {
         const auto const_hash = get_type_hash(string);
-        const auto const_index = container_index_of(type->constants, [&](const EnumConstant& c)
+        const auto const_index = find_index_if(type->constants, [&](const EnumConstant& c)
         {
             return c.hash == const_hash;
         });
@@ -358,7 +358,7 @@ isize enum_from_string(const EnumType* type, const StringView& string)
             }
 
             const auto const_hash = get_type_hash(StringView(begin, static_cast<i32>(end - begin)));
-            const auto const_index = container_index_of(type->constants, [&](const EnumConstant& c)
+            const auto const_index = find_index_if(type->constants, [&](const EnumConstant& c)
             {
                 return c.hash == const_hash;
             });

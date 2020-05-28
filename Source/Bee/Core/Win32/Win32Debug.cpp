@@ -17,6 +17,7 @@
 #include "Bee/Core/Win32/MinWindows.h"
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/String.hpp"
+#include "Bee/Core/GUID.hpp"
 
 #include <DbgHelp.h>
 
@@ -297,5 +298,35 @@ void symbolize_stack_trace(DebugSymbol* dst_symbols, const StackTrace& trace, co
     }
 }
 
-
 } // namespace bee
+
+/*
+ **************************************
+ *
+ * Debug visualizers for visual studio
+ *
+ **************************************
+ */
+typedef struct tagDEBUGHELPER
+{
+    DWORD dwVersion;
+    HRESULT(WINAPI* ReadDebuggeeMemory)(struct tagDEBUGHELPER* pThis, DWORD dwAddr, DWORD nWant, VOID* pWhere, DWORD* nGot);
+    // from here only when dwVersion >= 0x20000
+    DWORDLONG(WINAPI* GetRealAddress)(struct tagDEBUGHELPER* pThis);
+    HRESULT(WINAPI* ReadDebuggeeMemoryEx)(struct tagDEBUGHELPER* pThis, DWORDLONG qwAddr, DWORD nWant, VOID* pWhere, DWORD* nGot);
+    int (WINAPI* GetProcessorType)(struct tagDEBUGHELPER* pThis);
+} DEBUGHELPER;
+
+typedef HRESULT(WINAPI *CUSTOMVIEWER)(DWORD dwAddress, DEBUGHELPER* pHelper, int nBase, BOOL bUniStrings, char* pResult, size_t max, DWORD reserved);
+
+
+extern "C" BEE_CORE_API HRESULT bee_guid_debug_visualizer(DWORD dwAddress, DEBUGHELPER* pHelper, int nBase, BOOL bUniStrings, char* pResult, size_t max, DWORD reserved)
+{
+    static thread_local bee::GUID guid{};
+
+    auto real_addr = pHelper->GetRealAddress(pHelper);
+    DWORD bytes_recv = 0;
+    pHelper->ReadDebuggeeMemoryEx(pHelper, real_addr, sizeof(bee::GUID), &guid, &bytes_recv);
+    const auto result = bee::guid_to_string(guid, bee::GUIDFormat::digits, pResult, max);
+    return result >= bee::guid_format_length(bee::GUIDFormat::digits) ? S_OK : S_FALSE;
+}

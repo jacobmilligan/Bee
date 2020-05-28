@@ -45,6 +45,60 @@ class Asset;
 
 BEE_VERSIONED_HANDLE_64(AssetId);
 
+struct BEE_REFLECT(serializable, version = 1) AssetManifest
+{
+    u32                 id { 0 };
+    FixedArray<u32>     asset_hashes;
+    FixedArray<GUID>    asset_guids;
+
+    explicit AssetManifest(Allocator* allocator = system_allocator())
+        : asset_hashes(allocator),
+          asset_guids(allocator)
+    {}
+
+    explicit AssetManifest(const i32 asset_count, const u32* hashes, const GUID* guids, Allocator* allocator = system_allocator())
+    {
+        asset_hashes = FixedArray<u32>::with_size(asset_count, allocator);
+        asset_guids = FixedArray<GUID>::with_size(asset_count, allocator);
+
+        memcpy(asset_hashes.data(), hashes, sizeof(u32) * asset_count);
+        memcpy(asset_guids.data(), guids, sizeof(GUID) * asset_count);
+    }
+
+    inline GUID get(const u32 hash)
+    {
+        const auto index = find_index(asset_hashes, hash);
+        return index >= 0 ? asset_guids[index] : GUID{};
+    }
+
+    template <i32 Size>
+    inline GUID get(const char(&name)[Size])
+    {
+        return get(get_static_string_hash(name));
+    }
+
+    inline bool add(const u32 hash, const GUID& guid)
+    {
+        const auto index = find_index(asset_hashes, hash);
+        if (index >= 0)
+        {
+            return false;
+        }
+
+        asset_hashes.resize(asset_hashes.size() + 1);
+        asset_guids.resize(asset_guids.size() + 1);
+        asset_hashes.back() = hash;
+        asset_guids.back() = guid;
+        return true;
+    }
+
+    template <i32 Size>
+    inline bool add(const char(&name)[Size], const GUID& guid)
+    {
+        return add(get_static_string_hash(name), guid);
+    }
+};
+
 struct AssetLoadArg
 {
     const Type* type { get_type<UnknownType>() };
@@ -105,7 +159,13 @@ struct AssetRegistryModule
 
     void (*unload_asset_data)(AssetData* asset, const UnloadAssetMode unload_kind) { nullptr };
 
-    bool (*find_guid)(GUID* dst, const StringView& name, const Type* type) { nullptr };
+    AssetManifest* (*add_manifest)(const StringView& name) { nullptr };
+
+    void (*remove_manifest)(const StringView& name) { nullptr };
+
+    AssetManifest* (*get_manifest)(const StringView& name) { nullptr };
+
+    void (*serialize_manifests)(const SerializerMode mode, io::Stream* stream) { nullptr };
 
     void (*add_loader)(AssetLoader* loader) { nullptr };
 

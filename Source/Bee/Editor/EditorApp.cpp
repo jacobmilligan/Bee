@@ -193,7 +193,7 @@ bool delete_project(const Path& root)
         return false;
     }
 
-    const auto index = container_index_of(g_editor->config.projects, [&](const Path& p)
+    const auto index = find_index_if(g_editor->config.projects, [&](const Path& p)
     {
         return p == root;
     });

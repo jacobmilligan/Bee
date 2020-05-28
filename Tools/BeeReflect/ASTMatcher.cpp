@@ -110,7 +110,7 @@ StorageClass get_storage_class(const clang::StorageClass cls, const clang::Stora
 i32 get_attribute_index(const DynamicArray<Attribute>& attributes, const char* name, const AttributeKind kind)
 {
     const auto type_hash = get_type_hash(name);
-    return container_index_of(attributes, [&](const Attribute& attr)
+    return find_index_if(attributes, [&](const Attribute& attr)
     {
         return attr.hash == type_hash && attr.kind == kind;
     });
@@ -534,7 +534,7 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* pa
     type->serialization_flags = serialization_info.flags;
     type->serialized_version = serialization_info.serialized_version;
 
-    const auto flags_attr_index = container_index_of(storage->attributes, [&](const Attribute& attr)
+    const auto flags_attr_index = find_index_if(storage->attributes, [&](const Attribute& attr)
     {
         return str::compare(attr.name, "flags") == 0 && attr.kind == AttributeKind::boolean;
     });
@@ -655,7 +655,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
     {
         const auto template_param_name = print_qualtype_name(decl.getType(), decl.getASTContext());
         const auto template_param_hash = get_type_hash(template_param_name.c_str());
-        const auto param_idx = container_index_of(parent->template_parameters, [&](const TemplateParameter& param)
+        const auto param_idx = find_index_if(parent->template_parameters, [&](const TemplateParameter& param)
         {
             return param.hash == template_param_hash;
         });
@@ -1150,7 +1150,7 @@ bool AttributeParser::parse_attribute(DynamicArray<Attribute>* dst_attributes, S
         }
     }
 
-    const auto builtin_index = container_index_of(g_builtin_attributes, [&](const BuiltinAttribute& builtin)
+    const auto builtin_index = find_index_if(g_builtin_attributes, [&](const BuiltinAttribute& builtin)
     {
         return builtin.hash == attribute.hash;
     });

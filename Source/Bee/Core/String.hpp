@@ -629,6 +629,7 @@ public:
     {
         return StringView(buffer_);
     }
+
 private:
     i32     size_ { 0 };
     char    buffer_[Capacity];
