@@ -5,7 +5,6 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee.AssetPipeline.Descriptor.hpp"
 #include "Bee/Plugins/AssetPipeline/AssetPipeline.hpp"
 #include "Bee/Plugins/AssetRegistry/AssetRegistry.hpp"
 

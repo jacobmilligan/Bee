@@ -5,7 +5,6 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee.Renderer.Descriptor.hpp"
 #include "Bee/Plugins/Renderer/Renderer.hpp"
 #include "Bee/Core/Plugin.hpp"
 

@@ -385,9 +385,11 @@ function(bee_plugin name)
     set(TARGET_RELATIVE_ROOT ${target_relpath})
 
     configure_file(
-        ${CMAKE_MODULE_PATH}/PluginDescriptor.hpp.in
-        ${BEE_GENERATED_ROOT}/${name}/${name}.Descriptor.hpp
+        ${CMAKE_MODULE_PATH}/PluginDescriptor.cpp.in
+        ${BEE_GENERATED_ROOT}/${name}/${name}.Descriptor.cpp
     )
+
+    target_sources(${name} PRIVATE ${BEE_GENERATED_ROOT}/${name}/${name}.Descriptor.cpp)
 
     target_include_directories(${name} PRIVATE ${BEE_GENERATED_ROOT}/${name})
     __bee_finalize_target(${name} "Plugins")

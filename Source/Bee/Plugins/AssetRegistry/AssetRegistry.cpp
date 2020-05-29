@@ -5,7 +5,6 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee.AssetRegistry.Descriptor.hpp"
 #include "Bee/Plugins/AssetRegistry/AssetRegistry.hpp"
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/Containers/ResourcePool.hpp"

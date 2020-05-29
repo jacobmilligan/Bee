@@ -5,7 +5,6 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee.ImGui.Descriptor.hpp"
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Plugins/ImGui/ImGui.hpp"
 #include "Bee/Plugins/ShaderPipeline/Shader.hpp"

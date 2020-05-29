@@ -5,7 +5,6 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee.ShaderPipeline.Descriptor.hpp"
 #include "Bee/Core/Plugin.hpp"
 
 
