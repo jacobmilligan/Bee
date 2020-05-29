@@ -53,8 +53,8 @@ BEE_TRANSLATION_TABLE(get_platform_string, BuildPlatform, const char*, BuildPlat
 )
 
 BEE_TRANSLATION_TABLE(get_bb_generator_string, BBGenerator, const char*, BBGenerator::unknown,
-    "Visual Studio 2017",   // vs2017
-    "CLion"                 // clion
+    "VS2017",   // vs2017
+    "CLion"     // clion
 )
 
 BEE_TRANSLATION_TABLE(get_cmake_generator_string, CMakeGenerator, const char*, CMakeGenerator::unknown,
@@ -193,8 +193,9 @@ bool configure(const ConfigureInfo& config_info)
         const auto* cmake_generator_string = get_cmake_generator_string(generator_info.cmake);
         auto output_directory = config_info.environment->build_dir.join(bb_generator_string);
 
-        if (build_type != BuildType::unknown)
+        if (build_type != BuildType::unknown && build_type != BuildType::multi_config)
         {
+            // we only want to output to subdirs if we have to generate i.e. seperate makefiles
             output_directory.append(build_type_string);
         }
 
