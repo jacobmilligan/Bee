@@ -6,8 +6,6 @@ bee_add_sources(
     Loader.cpp
     Shader.hpp
     ShaderPipeline.cpp
-    # BSCV4.hpp           BSCV4.cpp
-#    Reflection.hpp      Reflection.cpp
 )
 bee_plugin(Bee.ShaderPipeline
     LINK_LIBRARIES Bee.Runtime SPIRV-Reflect SPIRV-Tools
