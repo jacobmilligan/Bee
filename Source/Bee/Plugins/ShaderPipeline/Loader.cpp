@@ -12,19 +12,20 @@
 namespace bee {
 
 
-void get_supported_shader_types(DynamicArray<const Type*>* types)
+void get_supported_shader_types(DynamicArray<TypeRef>* types)
 {
     types->push_back(get_type<Shader>());
 }
 
-const Type* get_parameter_type()
+TypeRef get_parameter_type()
 {
     return get_type<DeviceHandle>();
 }
 
-void* allocate_shader(const Type* type)
+void* allocate_shader(const TypeRef& type)
 {
-    BEE_ASSERT(type == get_type<Shader>());
+    const auto shader_type = get_type<Shader>();
+    BEE_ASSERT(type == shader_type);
     return BEE_NEW(system_allocator(), Shader);
 }
 

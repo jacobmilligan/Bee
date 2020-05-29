@@ -22,7 +22,7 @@ Serializer::Serializer(const bee::SerializerFormat serialized_format)
 {}
 
 
-SerializationBuilder::SerializationBuilder(Serializer* new_serializer, const RecordType* type, Allocator* allocator)
+SerializationBuilder::SerializationBuilder(Serializer* new_serializer, const RecordTypeRef& type, Allocator* allocator)
     : serializer_(new_serializer),
       type_(type),
       allocator_(allocator)
@@ -139,12 +139,11 @@ void serialize_serialization_flags(Serializer* serializer, SerializationFlags* f
 }
 
 
-void serialize_packed_record(const i32 version, Serializer* serializer, const RecordType* type, u8* data, const Span<const Type*> template_args)
+void serialize_packed_record(const i32 version, Serializer* serializer, const RecordTypeRef& type, u8* data, const Span<const TypeRef> template_args)
 {
     for (const Field& field : type->fields)
     {
-        const auto* serialized_type = field.type;
-        BEE_ASSERT(serialized_type != nullptr);
+        auto serialized_type = field.type;
 
         if (field.version_added > 0 && version >= field.version_added && version < field.version_removed)
         {
@@ -160,7 +159,7 @@ void serialize_packed_record(const i32 version, Serializer* serializer, const Re
     }
 }
 
-void serialize_table_record(const i32 version, Serializer* serializer, const RecordType* type, u8* data, const Span<const Type*> template_args)
+void serialize_table_record(const i32 version, Serializer* serializer, const RecordTypeRef& type, u8* data, const Span<const TypeRef> template_args)
 {
     int field_count = type->fields.size();
 
@@ -241,7 +240,7 @@ enum class SerializeTypeMode
     append_scope
 };
 
-void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type*>& template_type_arguments, Allocator* builder_allocator)
+void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, const Span<const TypeRef>& template_type_arguments, Allocator* builder_allocator)
 {
     static thread_local char enum_constant_buffer[1024];
 
@@ -265,7 +264,7 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
     if (type->is(TypeKind::record))
     {
         auto record_type = type->as<RecordType>();
-        for (const Type* base_type : record_type->base_records)
+        for (const auto& base_type : record_type->base_records)
         {
             // FIXME(Jacob): is this the best way to handle inheritence?
             // FIXME(Jacob): base types need their serialization builder functions because they're not fields
@@ -499,22 +498,22 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
     }
 }
 
-void serialize_type(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator)
+void serialize_type(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator)
 {
     return serialize_type(SerializeTypeMode::new_scope, serializer, type, serialization_function, data, {}, builder_allocator);
 }
 
-void serialize_type(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type*>& template_type_arguments, Allocator* builder_allocator)
+void serialize_type(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, const Span<const TypeRef>& template_type_arguments, Allocator* builder_allocator)
 {
     return serialize_type(SerializeTypeMode::new_scope, serializer, type, serialization_function, data, template_type_arguments, builder_allocator);
 }
 
-void serialize_type_append(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator)
+void serialize_type_append(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator)
 {
     serialize_type(SerializeTypeMode::append_scope, serializer, type, serialization_function, data, {}, builder_allocator);
 }
 
-void serialize_type_append(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type*>& template_type_arguments, Allocator* builder_allocator)
+void serialize_type_append(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, const Span<const TypeRef>& template_type_arguments, Allocator* builder_allocator)
 {
     serialize_type(SerializeTypeMode::append_scope, serializer, type, serialization_function, data, template_type_arguments, builder_allocator);
 }

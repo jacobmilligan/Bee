@@ -113,7 +113,12 @@ void JSONSerializer::end()
     // no-op
 }
 
-void JSONSerializer::begin_record(const RecordType* /* type */)
+void JSONSerializer::begin_record(const RecordTypeRef& /* type */)
+{
+    begin_record();
+}
+
+void JSONSerializer::begin_record()
 {
     if (mode == SerializerMode::writing)
     {
@@ -157,7 +162,7 @@ void JSONSerializer::end_record()
 
 void JSONSerializer::begin_object(i32* member_count)
 {
-    begin_record(nullptr);
+    begin_record();
 
     if (mode == SerializerMode::writing)
     {

@@ -106,11 +106,11 @@ void CodeGenerator::write_type_signature(const Type& type)
         {
             if (type.is(TypeKind::function))
             {
-                write("template <> %s const Type* get_type<BEE_NONMEMBER(%s)>(const TypeTag<BEE_NONMEMBER(%s)>& tag)", export_symbol, type.name, type.name);
+                write("template <> %s TypeRef get_type<BEE_NONMEMBER(%s)>(const TypeTag<BEE_NONMEMBER(%s)>& tag)", export_symbol, type.name, type.name);
             }
             else
             {
-                write("template <> %s const Type* get_type<%s>(const TypeTag<%s>& tag)", export_symbol, type.name, type.name);
+                write("template <> %s TypeRef get_type<%s>(const TypeTag<%s>& tag)", export_symbol, type.name, type.name);
             }
             break;
         }
@@ -118,7 +118,7 @@ void CodeGenerator::write_type_signature(const Type& type)
         {
             if (type.is(TypeKind::template_decl))
             {
-                write("%s const Type* get_type(const TypeTag<%s>& tag)", export_symbol, type.name);
+                write("%s TypeRef get_type(const TypeTag<%s>& tag)", export_symbol, type.name);
             }
             break;
         }
@@ -126,11 +126,11 @@ void CodeGenerator::write_type_signature(const Type& type)
         {
             if (type.is(TypeKind::function))
             {
-                write("template <> %s inline const Type* get_type<BEE_NONMEMBER(%s)>(const TypeTag<BEE_NONMEMBER(%s)>& tag)", export_symbol, type.name, type.name);
+                write("template <> %s inline TypeRef get_type<BEE_NONMEMBER(%s)>(const TypeTag<BEE_NONMEMBER(%s)>& tag)", export_symbol, type.name, type.name);
             }
             else
             {
-                write("template <> %s inline const Type* get_type<%s>(const TypeTag<%s>& tag)", export_symbol, type.name, type.name);
+                write("template <> %s inline TypeRef get_type<%s>(const TypeTag<%s>& tag)", export_symbol, type.name, type.name);
             }
         }
     }
@@ -332,11 +332,11 @@ void codegen_field_extra_info(const FieldStorage& storage, CodeGenerator* codege
     const auto& field = storage.field;
     if (field.type->is(TypeKind::template_decl))
     {
-        codegen->write("static const Type* %s__template_args[] =", field.name);
+        codegen->write("static TypeRef %s__template_args[] =", field.name);
         codegen->scope([&]()
         {
             codegen->indent();
-            for (const Type* template_arg : storage.template_arguments)
+            for (const auto& template_arg : storage.template_arguments)
             {
                 codegen->append_line("get_type<%s>(), ", template_arg->name);
             }
@@ -383,7 +383,7 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
         if (field.type->is(TypeKind::template_decl))
         {
             codegen->write(
-                "%u, %zu, %s, %s, \"%s\", get_type<%s>(), Span<const Type*>(%s), %s, %s, %d, %d, %d",
+                "%u, %zu, %s, %s, \"%s\", get_type<%s>(), Span<TypeRef>(%s), %s, %s, %d, %d, %d",
                 field.hash,
                 field.offset,
                 reflection_dump_flags(field.qualifier),
@@ -401,7 +401,7 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
         else
         {
             codegen->write(
-                "%u, %zu, %s, %s, \"%s\", get_type<%s>(), Span<const Type*>(%s), %s, %s, %d, %d, %d",
+                "%u, %zu, %s, %s, \"%s\", get_type<%s>(), Span<TypeRef>(%s), %s, %s, %d, %d, %d",
                 field.hash,
                 field.offset,
                 reflection_dump_flags(field.qualifier),
@@ -453,7 +453,7 @@ void codegen_array_type(ArrayTypeStorage* storage, CodeGenerator* codegen)
             codegen_type(CodegenTypeOptions::none, type, codegen);
             codegen->append_line("%d, get_type<%s>()", type.element_count, storage->element_type_name);
         }, ";\n\n");
-        codegen->write_line("return &instance;");
+        codegen->write_line("return TypeRef(&instance);");
     });
     codegen->write("// get_type<%s>()\n", type.name);
 
@@ -609,7 +609,7 @@ void codegen_enum(const EnumTypeStorage* storage, CodeGenerator* codegen)
         }, ";");
         codegen->newline();
         codegen->newline();
-        codegen->write_line("return &instance;");
+        codegen->write_line("return TypeRef(&instance);");
     });
     codegen->write_line("// get_type<%s>()\n", storage->type.name);
 }
@@ -728,7 +728,7 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
 
         if (!storage->nested_records.empty())
         {
-            codegen->write("static const RecordType* %s__records[] =", name_as_ident.c_str());
+            codegen->write("static RecordTypeRef %s__records[] =", name_as_ident.c_str());
             codegen->scope([&]()
             {
                 for (const RecordTypeStorage* record : storage->nested_records)
@@ -741,7 +741,7 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
 
         if (!storage->enums.empty())
         {
-            codegen->write("static const EnumType* %s__enums[] =", name_as_ident.c_str());
+            codegen->write("static EnumTypeRef %s__enums[] =", name_as_ident.c_str());
             codegen->scope([&]()
             {
                 for (const EnumTypeStorage* enum_type : storage->enums)
@@ -754,7 +754,7 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
 
         if (!storage->base_type_names.empty())
         {
-            codegen->write("static const Type* %s__base_types[] =", name_as_ident.c_str());
+            codegen->write("static TypeRef %s__base_types[] =", name_as_ident.c_str());
             codegen->scope([&]()
             {
                 for (const char* base_name : storage->base_type_names)
@@ -807,7 +807,7 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
 
             if (!storage->enums.empty())
             {
-                codegen->append_line("Span<const EnumType*>(%s__enums)", name_as_ident.c_str());
+                codegen->append_line("Span<EnumTypeRef>(%s__enums)", name_as_ident.c_str());
             }
             else
             {
@@ -818,7 +818,7 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
 
             if (!storage->nested_records.empty())
             {
-                codegen->append_line("Span<const RecordType*>(%s__records)", name_as_ident.c_str());
+                codegen->append_line("Span<RecordTypeRef>(%s__records)", name_as_ident.c_str());
             }
             else
             {
@@ -829,7 +829,7 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
 
             if (!storage->base_type_names.empty())
             {
-                codegen->append_line("Span<const Type*>(%s__base_types)", name_as_ident.c_str());
+                codegen->append_line("Span<TypeRef>(%s__base_types)", name_as_ident.c_str());
             }
             else
             {
@@ -837,7 +837,7 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
             }
 
         }, ";\n\n");
-        codegen->write_line("return &instance;");
+        codegen->write_line("return TypeRef(&instance);");
     });
     codegen->write_line("// get_type<%s>()\n", storage->type.name);
 }
@@ -872,6 +872,7 @@ i32 generate_reflection(const ReflectedFile& file, io::StringStream* src_stream,
         if (mode != CodegenMode::cpp)
         {
             codegen.write_line("struct Type;");
+            codegen.write_line("class TypeRef;");
             codegen.write_line("template <typename T> struct TypeTag;");
             codegen.newline();
         }

@@ -504,12 +504,12 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* pa
     const auto underlying = decl.getIntegerType().getCanonicalType();
     // Get the associated types hash so we can look it up later
     const auto underlying_name = print_qualtype_name(underlying, ast_context);
-    const auto* underlying_type = get_type(get_type_hash({
+    const auto underlying_type = get_type(get_type_hash({
         underlying_name.c_str(),
         static_cast<i32>(underlying_name.size())
     }));
 
-    if (underlying_type == nullptr)
+    if (underlying_type.is_unknown())
     {
         diagnostics.Report(decl.getLocation(), clang::diag::err_enum_invalid_underlying);
         return;
@@ -605,14 +605,14 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
             array_storage->element_type_name = allocator->allocate_name(element_type_name);
 
             const auto element_type_hash = get_type_hash({ element_type_name.data(), static_cast<i32>(element_type_name.size()) });
-            new_array_type.element_type = type_map->find_type(element_type_hash);
+            new_array_type.element_type = TypeRef(type_map->find_type(element_type_hash));
 
-            if (new_array_type.element_type == nullptr)
+            if (new_array_type.element_type.is_unknown())
             {
                 new_array_type.element_type = get_type(element_type_hash);
             }
 
-            if (new_array_type.element_type != nullptr)
+            if (!new_array_type.element_type.is_unknown())
             {
                 new_array_type.size = decl.getASTContext().getTypeSize(element_type) * new_array_type.element_count;
                 new_array_type.alignment = decl.getASTContext().getTypeAlign(element_type);
@@ -646,7 +646,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
 
     auto& field = storage.field;
 
-    if (field.type == nullptr)
+    if (field.type.is_unknown())
     {
         return;
     }
@@ -858,9 +858,9 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
                 const auto arg_qualtype = is_type ? arg.getAsType() : arg.getIntegralType();
                 const auto templ_type_name = print_qualtype_name(arg_qualtype, specialization->getASTContext());
                 const auto arg_type_hash = get_type_hash(templ_type_name.c_str());
-                const auto* arg_type = type_map->find_type(arg_type_hash);
+                auto arg_type = TypeRef(type_map->find_type(arg_type_hash));
 
-                if (arg_type == nullptr)
+                if (arg_type.is_unknown())
                 {
                     arg_type = get_type(arg_type_hash);
                 }
@@ -889,8 +889,8 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
         }
     }
 
-    const auto* type = type_map->find_type(type_hash);
-    if (type == nullptr)
+    auto type = TypeRef(type_map->find_type(type_hash));
+    if (type.is_unknown())
     { 
         /*
          * If the type is missing it might be a core builtin type which can be accessed by bee-reflect via

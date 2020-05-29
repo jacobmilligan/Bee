@@ -74,8 +74,3 @@ bee_reflect(
     Error.hpp
     Bitset.hpp
 )
-
-add_custom_command(
-    TARGET Bee.Core PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${BEE_CMAKE_ROOT}/Bee.natvis $<TARGET_FILE_DIR:Bee.Core>
-)

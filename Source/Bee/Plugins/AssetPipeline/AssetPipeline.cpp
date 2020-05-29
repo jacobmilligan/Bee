@@ -484,7 +484,7 @@ void import_job(const ImportRequest& req)
     asset.src_timestamp = fs::last_modified(full_path);
     asset.source_hash = get_source_hash(full_path, metadata.settings);
 
-    DynamicArray<const Type*> artifact_types(temp_allocator());
+    DynamicArray<TypeRef> artifact_types(temp_allocator());
     DynamicArray<DynamicArray<u8>> artifact_buffers(temp_allocator());
     DynamicArray<GUID> dependencies(temp_allocator());
 
@@ -1026,7 +1026,7 @@ void load_manifests_at_path(AssetPipeline* instance, const Path& path)
                 continue;
             }
 
-            const auto hash = detail::runtime_fnv1a(entry.key.data(), entry.key.size() - 1);
+            const auto hash = detail::runtime_fnv1a(entry.key.data(), entry.key.size());
             if (manifest->add(hash, asset.metadata.guid))
             {
                 ++files_added;

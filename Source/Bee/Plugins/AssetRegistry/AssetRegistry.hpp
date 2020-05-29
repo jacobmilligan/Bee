@@ -101,7 +101,7 @@ struct BEE_REFLECT(serializable, version = 1) AssetManifest
 
 struct AssetLoadArg
 {
-    const Type* type { get_type<UnknownType>() };
+    TypeRef type { get_type<UnknownType>() };
     const void* data { nullptr };
 };
 
@@ -114,27 +114,27 @@ struct AssetData
     AssetStatus             status { AssetStatus::invalid };
     AssetLoader*            loader { nullptr };
     std::atomic_int32_t     refcount { 0 };
-    const Type*             type { nullptr };
+    TypeRef                 type { nullptr };
     void*                   ptr { nullptr };
-    const Type*             parameter_type { nullptr };
+    TypeRef                 parameter_type { nullptr };
     u8                      parameter_storage[load_parameter_capacity];
 };
 
 
 struct AssetLocation
 {
-    const Type* type { nullptr };
+    TypeRef     type { nullptr };
     Path        path;
     size_t      offset { 0 };
 };
 
 struct AssetLoader
 {
-    void (*get_supported_types)(DynamicArray<const Type*>* types) { nullptr };
+    void (*get_supported_types)(DynamicArray<TypeRef>* types) { nullptr };
 
-    const Type* (*get_parameter_type)() { nullptr };
+    TypeRef (*get_parameter_type)() { nullptr };
 
-    void* (*allocate)(const Type* type) { nullptr };
+    void* (*allocate)(const TypeRef& type) { nullptr };
 
     AssetStatus (*load)(AssetLoaderContext* ctx, io::Stream* stream) { nullptr };
 
@@ -155,7 +155,7 @@ struct AssetRegistryModule
 
     void (*destroy)() { nullptr };
 
-    AssetData* (*load_asset_data)(const GUID& guid, const Type* type, const AssetLoadArg& arg) { nullptr };
+    AssetData* (*load_asset_data)(const GUID& guid, const TypeRef& type, const AssetLoadArg& arg) { nullptr };
 
     void (*unload_asset_data)(AssetData* asset, const UnloadAssetMode unload_kind) { nullptr };
 
@@ -178,43 +178,15 @@ struct AssetRegistryModule
     template <typename T>
     inline Asset<T> load_asset(const GUID& guid)
     {
-        return Asset<T>(load_asset_data(guid, get_type<T>(), {}));
-    }
-
-    template <typename T, typename ArgType>
-    inline Asset<T> load_asset(const GUID& guid, const T& arg)
-    {
-        AssetLoadArg load_arg{};
-        load_arg.type = get_type<ArgType>();
-        load_arg.data = &arg;
-        return Asset<T>(load_asset_data(guid, get_type<T>(), load_arg), this);
-    }
-
-    template <typename T>
-    inline Asset<T> load_asset(const StringView& name)
-    {
-        GUID guid{};
-        if (!find_guid(&guid, name, get_type<T>()))
-        {
-            return Asset<T>(nullptr, this);
-        }
-
         return Asset<T>(load_asset_data(guid, get_type<T>(), {}), this);
     }
 
     template <typename T, typename ArgType>
-    inline Asset<T> load_asset(const StringView& name, const T& arg)
+    inline Asset<T> load_asset(const GUID& guid, const ArgType& arg)
     {
         AssetLoadArg load_arg{};
         load_arg.type = get_type<ArgType>();
         load_arg.data = &arg;
-
-        GUID guid{};
-        if (!find_guid(&guid, name, get_type<T>()))
-        {
-            return Asset<T>(nullptr, this);
-        }
-
         return Asset<T>(load_asset_data(guid, get_type<T>(), load_arg), this);
     }
 };
@@ -227,12 +199,12 @@ public:
         : data_(data)
     {}
 
-    inline const Type* type() const
+    inline TypeRef type() const
     {
         return data_->type;
     }
 
-    inline const Type* parameter_type() const
+    inline TypeRef parameter_type() const
     {
         return data_->parameter_type;
     }

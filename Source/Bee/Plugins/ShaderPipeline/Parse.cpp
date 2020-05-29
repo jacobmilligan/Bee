@@ -814,7 +814,7 @@ bool BscParser::parse_key(BscLexer* lexer, StringView* identifier)
     return lexer->consume_as(BscTokenKind::colon, &tok);
 }
 
-bool BscParser::parse_fields(bee::BscLexer* lexer, const RecordType* parent_type, void* parent_data)
+bool BscParser::parse_fields(bee::BscLexer* lexer, const RecordTypeRef& parent_type, void* parent_data)
 {
     BscToken tok{};
     StringView key{};
@@ -964,7 +964,7 @@ bool BscParser::parse_code(BscLexer* lexer, StringView* dst)
     return lexer->consume_as(BscTokenKind::close_bracket, &tok);
 }
 
-bool BscParser::parse_number(BscLexer* lexer, const BscTokenKind kind, const StringView& value, const FundamentalType* type, u8* data)
+bool BscParser::parse_number(BscLexer* lexer, const BscTokenKind kind, const StringView& value, const FundamentalTypeRef& type, u8* data)
 {
     static thread_local char temp_buffer[64];
 

@@ -57,7 +57,7 @@ struct BEE_CORE_API Serializer
 
     virtual bool begin() = 0;
     virtual void end() = 0;
-    virtual void begin_record(const RecordType* type) = 0;
+    virtual void begin_record(const RecordTypeRef& type) = 0;
     virtual void end_record() = 0;
     virtual void begin_object(i32* member_count) = 0;
     virtual void end_object() = 0;
@@ -84,13 +84,13 @@ struct BEE_CORE_API Serializer
 };
 
 
-BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator = system_allocator());
+BEE_CORE_API void serialize_type(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator = system_allocator());
 
-BEE_CORE_API void serialize_type(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type*>& template_type_arguments, Allocator* builder_allocator = system_allocator());
+BEE_CORE_API void serialize_type(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, const Span<const TypeRef>& template_type_arguments, Allocator* builder_allocator = system_allocator());
 
-BEE_CORE_API void serialize_type_append(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator = system_allocator());
+BEE_CORE_API void serialize_type_append(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator = system_allocator());
 
-BEE_CORE_API void serialize_type_append(Serializer* serializer, const Type* type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type*>& template_type_arguments, Allocator* builder_allocator = system_allocator());
+BEE_CORE_API void serialize_type_append(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, const Span<const TypeRef>& template_type_arguments, Allocator* builder_allocator = system_allocator());
 
 
 template <typename T>
@@ -123,7 +123,7 @@ inline bool operator!=(const FieldHeader& lhs, const FieldHeader& rhs)
 class BEE_CORE_API SerializationBuilder
 {
 public:
-    SerializationBuilder(Serializer* new_serializer, const RecordType* type, Allocator* allocator);
+    SerializationBuilder(Serializer* new_serializer, const RecordTypeRef& type, Allocator* allocator);
 
     ~SerializationBuilder();
 
@@ -237,7 +237,7 @@ public:
 
 private:
     Serializer*             serializer_ { nullptr };
-    const RecordType*       type_ { nullptr };
+    RecordTypeRef           type_ { nullptr };
     Allocator*              allocator_ { nullptr };
     SerializedContainerKind container_kind_ { SerializedContainerKind::none };
     i32                     version_ { -1 };
@@ -299,7 +299,7 @@ inline void serialize_type(SerializationBuilder* builder, TypeInstance* instance
 
     if (builder->mode() == SerializerMode::reading)
     {
-        const Type* type = get_type(type_hash);
+        const auto type = get_type(type_hash);
 
         if (type->is(TypeKind::unknown))
         {

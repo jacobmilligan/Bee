@@ -30,7 +30,7 @@ struct BEE_CORE_API BinarySerializer final : public Serializer
 
     bool begin() override;
     void end() override;
-    void begin_record(const RecordType* record) override {}
+    void begin_record(const RecordTypeRef& record) override {}
     void end_record() override {}
     void begin_object(i32* member_count) override;
     void end_object() override;

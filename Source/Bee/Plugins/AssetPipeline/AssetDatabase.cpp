@@ -601,7 +601,7 @@ bool get_asset_from_path(AssetDatabaseEnv* env, const AssetDbTxn& txn, const Str
     return get_asset(env, txn, guid, asset);
 }
 
-i32 get_guids_by_type(AssetDatabaseEnv* env, const AssetDbTxn& txn, const Type* type, GUID* dst)
+i32 get_guids_by_type(AssetDatabaseEnv* env, const AssetDbTxn& txn, const TypeRef& type, GUID* dst)
 {
     auto type_key = make_key(type->hash);
     MDB_val val{};

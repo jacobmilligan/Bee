@@ -74,6 +74,7 @@ void add_stage(RenderStage* stage)
     else
     {
         g_renderer->stages.push_back(stage);
+        stage->init(g_renderer->device, stage->data);
     }
 }
 

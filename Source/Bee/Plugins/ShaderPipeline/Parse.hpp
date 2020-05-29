@@ -242,13 +242,13 @@ private:
 
     static bool parse_key(BscLexer* lexer, StringView* identifier);
 
-    bool parse_fields(BscLexer* lexer, const RecordType* parent_type, void* parent_data);
+    bool parse_fields(BscLexer* lexer, const RecordTypeRef& parent_type, void* parent_data);
 
     bool parse_value(BscLexer* lexer, const Field& field, u8* data);
 
     static bool parse_code(BscLexer* lexer, StringView* dst);
 
-    bool parse_number(BscLexer* lexer, const BscTokenKind kind, const StringView& value, const FundamentalType* type, u8* data);
+    bool parse_number(BscLexer* lexer, const BscTokenKind kind, const StringView& value, const FundamentalTypeRef& type, u8* data);
 
     bool parse_array(BscLexer* lexer, DynamicArray<StringView>* array);
 

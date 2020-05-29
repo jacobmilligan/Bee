@@ -373,6 +373,8 @@ int launch_application(Application* app, int argc, char** argv)
         return false;
     }
 
+    g_imgui->init();
+
     return app->main_window.is_valid() ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
@@ -393,6 +395,7 @@ ApplicationState tick_application(Application* app)
 
 void shutdown_application(Application* app)
 {
+    g_imgui->destroy();
     g_asset_pipeline->destroy(app->pipeline);
     destroy_window(app->main_window);
 

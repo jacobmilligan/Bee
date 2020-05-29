@@ -130,9 +130,9 @@ struct AssetCache
 
 struct RegisteredLoader
 {
-    AssetLoader*                instance { nullptr };
-    const Type*                 parameter_type { get_type<UnknownType>() };
-    DynamicArray<const Type*>   supported_types;
+    AssetLoader*            instance { nullptr };
+    TypeRef                 parameter_type { get_type<UnknownType>() };
+    DynamicArray<TypeRef>   supported_types;
 };
 
 struct AssetRegistry
@@ -201,7 +201,7 @@ void load_asset_job(AssetData* asset, AssetLoader* loader)
     }
 }
 
-AssetData* get_or_load_asset_data(const GUID& guid, const Type* type, const AssetLoadArg& arg)
+AssetData* get_or_load_asset_data(const GUID& guid, const TypeRef& type, const AssetLoadArg& arg)
 {
     auto& cache = g_registry->cache;
     auto* cached = cache.find(guid);
@@ -232,6 +232,8 @@ AssetData* get_or_load_asset_data(const GUID& guid, const Type* type, const Asse
     if (cached == nullptr)
     {
         cached = cache.insert(guid);
+        cached->type = type;
+        cached->parameter_type = loader->value->get_parameter_type();
     }
 
     cached->loader = loader->value;
@@ -243,9 +245,8 @@ AssetData* get_or_load_asset_data(const GUID& guid, const Type* type, const Asse
         return cached;
     }
 
-    if (arg.type != cached->type)
+    if (BEE_FAIL_F(arg.type == cached->parameter_type, "Invalid argument given to load_asset_data: expected %s but got %s", cached->parameter_type->name, arg.type->name))
     {
-        log_error("Invalid argument given to load_asset_data: expected %s but got %s", cached->type->name, arg.type->name);
         return nullptr;
     }
 
@@ -359,12 +360,7 @@ bool locate_asset(const GUID& guid, AssetLocation* location)
 
 void add_loader(AssetLoader* loader)
 {
-    const auto* parameter_type = loader->get_parameter_type();
-    if (parameter_type == nullptr)
-    {
-        parameter_type = get_type<UnknownType>();
-    }
-
+    auto parameter_type = loader->get_parameter_type();
     if (BEE_FAIL_F(parameter_type->size < AssetData::load_parameter_capacity, "Failed to add loader: parameter type is too large"))
     {
         return;

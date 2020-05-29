@@ -629,7 +629,7 @@ const char* get_shader_compiler_name()
     return "Bee Shader Compiler";
 }
 
-const Type* shader_compiler_settings_type()
+TypeRef shader_compiler_settings_type()
 {
     return get_type<ShaderCompilerOptions>();
 }

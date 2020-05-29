@@ -49,8 +49,12 @@
     </Type>
 
     <Type Name="bee::GUID">
-        <DisplayString LegacyAddin="Bee.Core.dll" Export="bee_guid_debug_visualizer" />
+      <DisplayString>{*(bee::u32*)data,xb}-{*(bee::u16*)(data + 4),xb}-{*(bee::u16*)(data + 6),xb}-{*(bee::u16*)(data + 8),xb}-{*(bee::u16*)(data + 14),xb}{*(bee::u16*)(data + 12),xb}{*(bee::u16*)(data + 10),xb}</DisplayString>
     </Type>
+
+  <Type Name="bee::u128">
+    <DisplayString>{high}{low}</DisplayString>
+  </Type>
 
     <Type Name="bee::Type">
         <DisplayString>{{Name = {name}}</DisplayString>

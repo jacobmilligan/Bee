@@ -26,7 +26,7 @@ struct FieldStorage
     i32                         order { -1 };
     clang::SourceLocation       location;
     DynamicArray<Attribute>     attributes;
-    DynamicArray<const Type*>   template_arguments;
+    DynamicArray<TypeRef>       template_arguments;
     const char*                 specialized_type {nullptr };
 };
 

@@ -15,7 +15,9 @@ namespace bee {
 
 struct ImGuiModule
 {
+    void (*init)() { nullptr };
 
+    void (*destroy)() { nullptr };
 };
 
 

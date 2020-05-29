@@ -168,7 +168,7 @@ struct AssetDatabaseModule
 
     bool (*get_asset_from_path)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const StringView& uri, CompiledAsset* asset) {nullptr };
 
-    i32 (*get_guids_by_type)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const Type* type, GUID* dst) { nullptr };
+    i32 (*get_guids_by_type)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const TypeRef& type, GUID* dst) { nullptr };
 
     bool (*has_asset)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid) { nullptr };
 
@@ -214,7 +214,7 @@ enum class DeleteAssetKind
 
 struct AssetCompilerOutput
 {
-    DynamicArray<const Type*>*          artifact_types { nullptr };
+    DynamicArray<TypeRef>*              artifact_types { nullptr };
     DynamicArray<DynamicArray<u8>>*     artifact_buffers { nullptr };
     DynamicArray<GUID>*                 dependencies { nullptr };
 };
@@ -234,7 +234,7 @@ public:
     template <typename T>
     inline DynamicArray<u8>& add_artifact()
     {
-        const auto* type = get_type<T>();
+        const auto type = get_type<T>();
 
         BEE_ASSERT_F(!type->is(TypeKind::unknown), "Artifact type must be reflected using BEE_REFLECT()");
 
@@ -322,9 +322,9 @@ struct AssetCompiler
 
     Span<const char* const> (*supported_file_types)() { nullptr };
 
-    const Type* (*asset_type)() { nullptr };
+    TypeRef (*asset_type)() { nullptr };
 
-    const Type* (*settings_type)() { nullptr };
+    TypeRef (*settings_type)() { nullptr };
 
     void (*init)(AssetCompilerData* data, const i32 thread_count) { nullptr };
 
