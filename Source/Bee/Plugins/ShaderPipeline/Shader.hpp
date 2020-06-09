@@ -13,6 +13,7 @@
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Graphics/GPU.hpp"
 
+
 namespace bee {
 
 
@@ -40,6 +41,7 @@ struct BEE_REFLECT(serializable, version = 1) Shader
 
     struct BEE_REFLECT(serializable, version = 1) Pipeline // NOLINT
     {
+        StaticString<128>           name;
         PipelineStateCreateInfo     info; // contains everything except the renderpass and shader handles
         i32                         pass { -1 };
         i32                         shaders[gpu_shader_stage_count];

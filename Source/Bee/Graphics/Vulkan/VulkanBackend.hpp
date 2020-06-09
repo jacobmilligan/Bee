@@ -380,6 +380,16 @@ private:
  *
  ******************************************
  */
+static constexpr size_t swapchain_chunk_size = sizeof(VulkanSwapchain) * 2;
+static constexpr size_t render_pass_chunk_size = sizeof(VulkanRenderPass) * 16;
+static constexpr size_t shader_chunk_size = sizeof(VulkanShader) * 32;
+static constexpr size_t buffer_chunk_size = sizeof(VulkanBuffer) * 32;
+static constexpr size_t texture_chunk_size = sizeof(VulkanTexture) * 32;
+static constexpr size_t texture_view_chunk_size = sizeof(VulkanTextureView) * 32;
+static constexpr size_t command_pool_chunk_size = sizeof(VulkanCommandPool) * 4;
+static constexpr size_t fence_chunk_size = sizeof(VkFence) * 32;
+static constexpr size_t pipeline_chunk_size = sizeof(VulkanPipeline) * 32;
+
 struct VulkanDevice
 {
     using swapchain_table_t     = ThreadSafeResourcePool<SwapchainHandle, VulkanSwapchain>;
@@ -392,8 +402,17 @@ struct VulkanDevice
     using fence_table_t         = ThreadSafeResourcePool<FenceHandle, VkFence>;
     using pipeline_table_t      = ThreadSafeResourcePool<PipelineStateHandle, VulkanPipeline>;
 
-    VulkanDevice() noexcept
-        : scratch_allocator(mebibytes(4), system_allocator())
+    VulkanDevice() noexcept // NOLINT
+        : scratch_allocator(mebibytes(4), system_allocator()),
+          swapchains(swapchain_chunk_size),
+          render_passes(render_pass_chunk_size),
+          shaders(shader_chunk_size),
+          buffers(buffer_chunk_size),
+          textures(texture_chunk_size),
+          texture_views(texture_view_chunk_size),
+          command_pools(command_pool_chunk_size),
+          fences(fence_chunk_size),
+          pipelines(pipeline_chunk_size)
     {
         memset(queues, 0, sizeof(VulkanQueue) * vk_max_queues);
     }

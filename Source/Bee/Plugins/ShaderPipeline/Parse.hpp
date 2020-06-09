@@ -14,21 +14,13 @@
 
 namespace bee {
 
-/**
+/*
  ************************************
  *
- * # BscModule
- *
- * The result of parsing a .bsc file
+ * Bee Shader Compiler - Nodes
  *
  ************************************
  */
-//struct BscShaderVariant
-//{
-//    BscTarget       target { BscTarget::none };
-//    ShaderStage     stage { ShaderStage::unknown };
-//    FixedArray<u8>  code;
-//};
 template <typename T>
 struct BscNode
 {

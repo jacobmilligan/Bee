@@ -117,38 +117,32 @@ VkBool32 VKAPI_CALL vk_debug_callback(
             "ValidationCache", // VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT_EXT = 33,
         };
 
-    static const auto get_flag_string = [&]() -> const char*
+    LogVerbosity verbosity = LogVerbosity::quiet;
+    const char* extra_message_type = "";
+
+    if ((flags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT) != 0)
     {
-        if ((flags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT) != 0)
-        {
-            return "Info";
-        }
+        verbosity = LogVerbosity::info;
+    }
+    else if ((flags & VK_DEBUG_REPORT_WARNING_BIT_EXT) != 0)
+    {
+        verbosity = LogVerbosity::warn;
+    }
+    else if ((flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) != 0)
+    {
+        verbosity = LogVerbosity::warn;
+        extra_message_type = "[perf]";
+    }
+    else if ((flags & VK_DEBUG_REPORT_ERROR_BIT_EXT) != 0)
+    {
+        verbosity = LogVerbosity::error;
+    }
+    else if ((flags & VK_DEBUG_REPORT_DEBUG_BIT_EXT) != 0)
+    {
+        verbosity = LogVerbosity::debug;
+    }
 
-        if ((flags & VK_DEBUG_REPORT_WARNING_BIT_EXT) != 0)
-        {
-            return "Warning";
-        }
-
-        if ((flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) != 0)
-        {
-            return "Performance warning";
-        }
-
-        if ((flags & VK_DEBUG_REPORT_ERROR_BIT_EXT) != 0)
-        {
-            return "Error";
-        }
-
-        if ((flags & VK_DEBUG_REPORT_DEBUG_BIT_EXT) != 0)
-        {
-            return "Debug";
-        }
-
-        return "Uknown";
-    };
-
-    log_error("Vulkan validation: %s (%s) %s: %d: %s\n", layer_prefix, object_names[object_type],
-              get_flag_string(), msg_code, msg);
+    log_write(verbosity, "Vulkan%s: %s (%s): %s", extra_message_type, layer_prefix, object_names[object_type], msg);
     log_stack_trace(LogVerbosity::error, 9);
     BEE_DEBUG_BREAK();
     return VK_FALSE;
@@ -1303,6 +1297,7 @@ PipelineStateHandle gpu_create_pipeline_state(const DeviceHandle& device_handle,
         stage_info.pNext = nullptr;
         stage_info.flags = 0;
         stage_info.stage = stage.flags;
+        stage_info.module = shader.handle;
         stage_info.pName = shader.entry.c_str();
         stage_info.pSpecializationInfo = nullptr;
     }
@@ -1316,7 +1311,7 @@ PipelineStateHandle gpu_create_pipeline_state(const DeviceHandle& device_handle,
     for (int b = 0; b < vertex_binding_descs.size(); ++b)
     {
         auto& vk_desc = vertex_binding_descs[b];
-        auto& layout = create_info.vertex_description.layouts[b];
+        const auto& layout = create_info.vertex_description.layouts[b];
 
         vk_desc.binding = layout.index;
         vk_desc.inputRate = convert_step_function(layout.step_function);
@@ -1326,7 +1321,7 @@ PipelineStateHandle gpu_create_pipeline_state(const DeviceHandle& device_handle,
     for (int a = 0; a < vertex_attribute_descs.size(); ++a)
     {
         auto& vk_desc = vertex_attribute_descs[a];
-        auto& attr = create_info.vertex_description.attributes[a];
+        const auto& attr = create_info.vertex_description.attributes[a];
 
         vk_desc.location = attr.location;
         vk_desc.binding = attr.layout;
@@ -1427,7 +1422,7 @@ PipelineStateHandle gpu_create_pipeline_state(const DeviceHandle& device_handle,
     for (int i = 0; i < color_blend_attachments.size(); ++i)
     {
         auto& vk_state = color_blend_attachments[i];
-        auto& state = create_info.color_blend_states[i];
+        const auto& state = create_info.color_blend_states[i];
 
         vk_state.blendEnable = static_cast<VkBool32>(state.blend_enabled);
         vk_state.srcColorBlendFactor = convert_blend_factor(state.src_blend_color);
@@ -1470,7 +1465,7 @@ PipelineStateHandle gpu_create_pipeline_state(const DeviceHandle& device_handle,
     pipeline_layout_key.resource_layouts = create_info.resource_layouts;
     pipeline_layout_key.push_constant_range_count = create_info.push_constant_range_count;
     pipeline_layout_key.push_constant_ranges = create_info.push_constant_ranges;
-    auto pipeline_layout = get_or_create_pipeline_layout(&device, pipeline_layout_key);
+    auto* pipeline_layout = get_or_create_pipeline_layout(&device, pipeline_layout_key);
 
     /*
      * TODO(Jacob): Pipeline cache

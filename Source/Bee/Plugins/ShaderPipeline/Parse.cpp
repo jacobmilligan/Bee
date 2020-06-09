@@ -182,7 +182,9 @@ BscResolveError bsc_resolve_module(const BscModule& module, Shader* output)
         const auto& in = module.pipeline_states[i].data;
 
         output->pipelines.emplace_back();
+
         auto& out_pipeline = output->pipelines.back();
+        out_pipeline.name = module.pipeline_states[i].identifier;
 
         // Resolve all pipeline symbols
         const auto pass_index = bsc_find_node_index(module.render_passes, in.render_pass);
