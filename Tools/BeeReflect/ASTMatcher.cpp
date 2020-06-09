@@ -619,7 +619,37 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
             }
             else
             {
-                diagnostics.Report(decl.getLocation(), diagnostics.warn_unknown_field_type).AddString(element_type_name);
+                // fallback - we need to know if the type in the array uses a builder for serialization
+                // not sure if this is a great way to do this but considering we need this, it might be the only way
+                if (!element_type->isRecordType() || element_type->getAsCXXRecordDecl() == nullptr)
+                {
+                    diagnostics.Report(decl.getLocation(), diagnostics.warn_unknown_field_type).AddString(element_type_name);
+                }
+                else
+                {
+                    // if the type is a template we already know it needs a builder
+                    auto* element_type_decl = element_type->getAsCXXRecordDecl();
+                    array_storage->uses_builder = element_type_decl->getTemplateSpecializationKind() != clang::TSK_Undeclared;
+
+                    if (!array_storage->uses_builder)
+                    {
+                        // ugh the worst part - now we need to reparse the attributes in-place to see if use_builder is in them
+                        AttributeParser element_type_attr_parser{};
+                        if (!element_type_attr_parser.init(*element_type_decl, &diagnostics))
+                        {
+                            return;
+                        }
+
+                        DynamicArray<Attribute> tmp_attributes(temp_allocator());
+                        SerializationInfo serialization_info{};
+                        if (!attr_parser.parse(&tmp_attributes, &serialization_info, allocator))
+                        {
+                            return;
+                        }
+
+                        array_storage->uses_builder = (serialization_info.flags & SerializationFlags::uses_builder) != SerializationFlags::none;
+                    }
+                }
             }
 
             if (parent == nullptr)
@@ -633,7 +663,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
         }
     }
 
-    // We need to parse the attributes before allocating storage to ensure ignoredd fields aren't reflected
+    // We need to parse the attributes before allocating storage to ensure ignored fields aren't reflected
     DynamicArray<Attribute> tmp_attributes(temp_allocator());
     SerializationInfo serialization_info{};
     if (!attr_parser.parse(&tmp_attributes, &serialization_info, allocator))

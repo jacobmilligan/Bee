@@ -316,7 +316,7 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
 
         for (int element = 0; element < element_count; ++element)
         {
-            serialize_type(serializer, element_type, nullptr, data + element_type->size * element);
+            serialize_type(serializer, element_type, array_type->serializer_function, data + element_type->size * element);
         }
 
         serializer->end_array();

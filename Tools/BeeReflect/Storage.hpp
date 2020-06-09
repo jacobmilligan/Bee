@@ -156,6 +156,7 @@ struct ArrayTypeStorage
 {
     const char* element_type_name { nullptr };
     bool        is_generated { false };
+    bool        uses_builder {false };
     ArrayType   type;
 };
 

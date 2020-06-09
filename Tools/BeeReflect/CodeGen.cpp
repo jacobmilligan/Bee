@@ -118,7 +118,7 @@ void CodeGenerator::write_type_signature(const Type& type)
         {
             if (type.is(TypeKind::template_decl))
             {
-                write("%s TypeRef get_type(const TypeTag<%s>& tag)", export_symbol, type.name);
+                write("%s inline TypeRef get_type(const TypeTag<%s>& tag)", export_symbol, type.name);
             }
             break;
         }
@@ -327,6 +327,15 @@ bool has_serializer_function(const FieldStorage& storage)
     return uses_builder || is_templated_and_serialized;
 }
 
+// TODO(Jacob): add specialized type to array
+void codegen_serializer_function(CodeGenerator* codegen, const char* field_name, const char* specialized_type_name)
+{
+    // [](SerializationBuilder* builder, void* data) { serialize_type(builder, static_cast<bee::GUID*>(data)); };
+    codegen->write("static auto %s__serializer_function = [](SerializationBuilder* builder, void* data) { serialize_type(builder, static_cast<%s*>(data)); };", field_name, specialized_type_name);
+    codegen->newline();
+    codegen->newline();
+}
+
 void codegen_field_extra_info(const FieldStorage& storage, CodeGenerator* codegen)
 {
     const auto& field = storage.field;
@@ -349,12 +358,8 @@ void codegen_field_extra_info(const FieldStorage& storage, CodeGenerator* codege
 
     if (has_serializer_function(storage))
     {
-        // [](SerializationBuilder* builder, void* data) { serialize_type(builder, static_cast<bee::GUID*>(data)); };
-        codegen->write("static auto %s__serializer_function = [](SerializationBuilder* builder, void* data) { serialize_type(builder, static_cast<%s*>(data)); };", field.name, storage.specialized_type);
-        codegen->newline();
-        codegen->newline();
+        codegen_serializer_function(codegen, storage.field.name, storage.specialized_type);
     }
-
 }
 
 void codegen_field(const FieldStorage& storage, const char* attributes_array_name, CodeGenerator* codegen)
@@ -447,11 +452,21 @@ void codegen_array_type(ArrayTypeStorage* storage, CodeGenerator* codegen)
     codegen->scope([&]()
     {
         codegen_create_instance(type, codegen);
+
+        if (storage->uses_builder)
+        {
+            codegen_serializer_function(codegen, "elements", storage->element_type_name);
+        }
         codegen->write("static ArrayType instance");
         codegen->scope([&]()
         {
             codegen_type(CodegenTypeOptions::none, type, codegen);
-            codegen->append_line("%d, get_type<%s>()", type.element_count, storage->element_type_name);
+            codegen->append_line(
+                "%d, get_type<%s>(), %s",
+                type.element_count,
+                storage->element_type_name,
+                storage->uses_builder ? "elements__serializer_function" : "nullptr"
+            );
         }, ";\n\n");
         codegen->write_line("return TypeRef(&instance);");
     });

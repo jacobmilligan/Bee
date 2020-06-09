@@ -74,16 +74,18 @@ int bee_main(int argc, char** argv)
     bee::DynamicArray<bee::Path> reflectd_abs_paths;
     bee::DynamicArray<const bee::Type*> reflected_types;
 
+    const auto src_path_list = options_parser.getSourcePathList();
+
     // Output a .generated.cpp file for each of the reflected headers
     for (auto& file : factory.storage.reflected_files)
     {
-        const auto is_external = bee::find_index_if(options_parser.getSourcePathList(), [&](const std::string& str)
+        const auto iter = std::find_if(src_path_list.begin(), src_path_list.end(), [&](const std::string& str)
         {
             return llvm::StringRef(str)
                 .endswith(llvm::StringRef(file.value.location.c_str(), file.value.location.size()));
-        }) < 0;
+        });
 
-        if (is_external)
+        if (iter == src_path_list.end())
         {
             continue;
         }

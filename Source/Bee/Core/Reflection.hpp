@@ -648,8 +648,9 @@ struct TypeSpec : public Type
 
 struct ArrayType final : public TypeSpec<TypeKind::array>
 {
-    i32         element_count { 0 };
-    TypeRef     element_type { nullptr };
+    i32                             element_count { 0 };
+    TypeRef                         element_type { nullptr };
+    Field::serialization_function_t serializer_function { nullptr };
 
     ArrayType() noexcept = default;
 
@@ -662,10 +663,12 @@ struct ArrayType final : public TypeSpec<TypeKind::array>
         const SerializationFlags new_serialization_flags,
         create_instance_t create_instance_function,
         const i32 count,
-        const TypeRef& type
+        const TypeRef& type,
+        Field::serialization_function_t new_serializer_function
     ) noexcept : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags, create_instance_function),
         element_count(count),
-        element_type(type)
+        element_type(type),
+        serializer_function(new_serializer_function)
     {}
 };
 

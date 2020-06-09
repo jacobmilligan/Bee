@@ -128,13 +128,13 @@ public:
     ~SerializationBuilder();
 
     template <typename FieldType>
-    SerializationBuilder& add_field(const i32 version_added, FieldType* field, const char* field_name)
+    inline SerializationBuilder& add_field(const i32 version_added, FieldType* field, const char* field_name)
     {
         return add_field(version_added, limits::max<i32>(), field, field_name);
     }
 
     template <typename FieldType>
-    SerializationBuilder& add_field(const i32 version_added, const i32 version_removed, FieldType* field, const char* field_name)
+    inline SerializationBuilder& add_field(const i32 version_added, const i32 version_removed, FieldType* field, const char* field_name)
     {
         BEE_ASSERT_F(container_kind_ == SerializedContainerKind::none, "serialization builder is not configured to build a structure - cannot add fields to non-structure types");
 
@@ -160,7 +160,7 @@ public:
     }
 
     template <typename FieldType>
-    SerializationBuilder& remove_field(const i32 version_added, const i32 version_removed, const FieldType& default_value, const char* field_name)
+    inline SerializationBuilder& remove_field(const i32 version_added, const i32 version_removed, const FieldType& default_value, const char* field_name)
     {
         BEE_ASSERT_F(container_kind_ == SerializedContainerKind::none, "serialization builder is not configured to build a structure - cannot remove fields from non-structure types");
 
@@ -201,7 +201,7 @@ public:
     SerializationBuilder& key(String* data);
 
     template <typename T>
-    SerializationBuilder& element(T* data)
+    inline SerializationBuilder& element(T* data)
     {
         BEE_ASSERT_F(container_kind_ != SerializedContainerKind::none, "serialization builder is not configured to build a container type");
 
