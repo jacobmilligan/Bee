@@ -51,17 +51,6 @@ ResourceLayout DefaultLayout
     }
 }
 
-PipelineState DefaultPipelineState
-{
-    primitive_type: triangle
-    render_pass: DefaultPass
-    subpass: DefaultSubPass
-    raster_state: DefaultRasterState
-    vertex_stage: TriangleShader
-    fragment_stage: TriangleShader
-    resource_layouts: [ DefaultLayout ]
-}
-
 Shader TriangleShader
 {
     vertex: vert
@@ -105,4 +94,15 @@ Shader TriangleShader
             return main_tex.Sample(main_sampler, IN.texcoord) * IN.color;
         }
     }
+}
+
+PipelineState DefaultPipelineState
+{
+    primitive_type: triangle
+    render_pass: DefaultPass
+    subpass: DefaultSubPass
+    raster_state: DefaultRasterState
+    vertex_stage: TriangleShader
+    fragment_stage: TriangleShader
+    resource_layouts: [ DefaultLayout ]
 }

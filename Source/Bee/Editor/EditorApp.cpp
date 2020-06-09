@@ -12,6 +12,8 @@
 #include "Bee/Core/Serialization/JSONSerializer.hpp"
 #include "Bee/Core/Time.hpp"
 #include "Bee/Plugins/AssetPipeline/AssetPipeline.hpp"
+#include "Bee/Plugins/AssetRegistry/AssetRegistry.hpp"
+#include "Bee/Plugins/Renderer/Renderer.hpp"
 #include "Bee/Plugins/ImGui/ImGui.hpp"
 #include "Bee/Core/CLI.hpp"
 
@@ -40,6 +42,8 @@ struct Editor
 static Editor*              g_editor { nullptr };
 static ImGuiModule*         g_imgui { nullptr };
 static AssetPipelineModule* g_asset_pipeline { nullptr };
+static AssetRegistryModule* g_asset_registry { nullptr };
+static RendererModule*      g_renderer { nullptr };
 
 
 bool read_editor_config()
@@ -358,6 +362,8 @@ int launch_application(Application* app, int argc, char** argv)
         fs::mkdir(editor_data_dir);
     }
 
+    g_asset_registry->init();
+
     // Initialize the editors asset pipeline
     AssetPipelineInitInfo info{};
     info.platform = default_asset_platform;
@@ -369,9 +375,16 @@ int launch_application(Application* app, int argc, char** argv)
 
     if (app->pipeline == nullptr)
     {
+        g_asset_registry->destroy();
         return false;
     }
 
+    // initialize the renderer after the pipeline/registry are all setup
+    DeviceCreateInfo device_info{};
+    device_info.physical_device_id = 0;
+    g_renderer->init(device_info);
+
+    // initialize non-core plugins
     g_imgui->init();
 
     return app->main_window.is_valid() ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -395,7 +408,10 @@ ApplicationState tick_application(Application* app)
 void shutdown_application(Application* app)
 {
     g_imgui->destroy();
+    g_renderer->destroy();
     g_asset_pipeline->destroy(app->pipeline);
+    g_asset_registry->destroy();
+
     destroy_window(app->main_window);
 
     if (g_editor->is_project_open)
@@ -434,6 +450,8 @@ static bee::EditorModule g_editor_interface{};
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::PluginState state)
 {
     bee::g_asset_pipeline = registry->get_module<bee::AssetPipelineModule>(BEE_ASSET_PIPELINE_MODULE_NAME);
+    bee::g_asset_registry = registry->get_module<bee::AssetRegistryModule>(BEE_ASSET_REGISTRY_MODULE_NAME);
+    bee::g_renderer = registry->get_module<bee::RendererModule>(BEE_RENDERER_MODULE_NAME);
 
     bee::g_imgui = registry->get_module<bee::ImGuiModule>(BEE_IMGUI_MODULE_NAME);
 

@@ -32,6 +32,11 @@
         <StringView>data_,[size_]s8</StringView>
     </Type>
 
+    <Type Name="bee::StaticString&lt;*&gt;">
+        <DisplayString>{buffer_,[size_]s8}</DisplayString>
+        <StringView>buffer_,[size_]s8</StringView>
+    </Type>
+
     <Type Name="bee::Path">
         <DisplayString>{data_}</DisplayString>
         <StringView>data_</StringView>
@@ -57,6 +62,14 @@
   </Type>
 
     <Type Name="bee::Type">
-        <DisplayString>{{Name = {name}}</DisplayString>
+        <DisplayString>{name}</DisplayString>
     </Type>
+
+    <Type Name="bee::TypeRef">
+        <DisplayString>{type_->name}</DisplayString>
+    </Type>
+
+   <Type Name="bee::ConcreteTypeRef&lt;*&gt;">
+     <DisplayString>{type_->name}</DisplayString>
+   </Type>
 </AutoVisualizer>

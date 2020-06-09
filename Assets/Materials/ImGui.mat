@@ -1,0 +1,7 @@
+{
+    "bee::version": 1,
+    "bee::flags": 1,
+    "shader": "builtin://Assets/Shaders/ImGui.bsc",
+    "pipeline": "DefaultPipelineState",
+    "bindings": {}
+}

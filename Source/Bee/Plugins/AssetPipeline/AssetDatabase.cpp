@@ -214,12 +214,12 @@ struct DbMapInfo
 };
 
 BEE_TRANSLATION_TABLE(db_mapping_info, DbMapId, DbMapInfo, DbMapId::count,
-    { "GUIDToAsset", MDB_CREATE },                                          // guid_to_asset
-    { "GUIDToDependencies", MDB_CREATE | MDB_DUPSORT, lmdb_compare_guid },  // guid_to_dependencies
-    { "GUIDToArtifact", MDB_CREATE | MDB_DUPSORT, lmdb_compare_artifact },  // guid_to_artifact
-    { "ArtifactToGUID", MDB_CREATE | MDB_DUPSORT, lmdb_compare_guid },      // artifact_to_guid
-    { "PathToGUID", MDB_CREATE },                                           // path_to_guid
-    { "TypeToGUID", MDB_CREATE | MDB_DUPSORT, lmdb_compare_guid }           // type_to_guid
+    { "GUIDToAsset", MDB_CREATE },                                                          // guid_to_asset
+    { "GUIDToDependencies", MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, lmdb_compare_guid },  // guid_to_dependencies
+    { "GUIDToArtifact", MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, lmdb_compare_artifact },  // guid_to_artifact
+    { "ArtifactToGUID", MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, lmdb_compare_guid },      // artifact_to_guid
+    { "PathToGUID", MDB_CREATE },                                                           // path_to_guid
+    { "TypeToGUID", MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, lmdb_compare_guid }           // type_to_guid
 )
 
 struct PerThread
@@ -601,6 +601,20 @@ bool get_asset_from_path(AssetDatabaseEnv* env, const AssetDbTxn& txn, const Str
     return get_asset(env, txn, guid, asset);
 }
 
+bool get_guid_from_path(AssetDatabaseEnv* env, const AssetDbTxn& txn, const StringView& uri, GUID* guid)
+{
+    auto key = make_key(uri);
+    MDB_val val{};
+
+    if (!txn_get(txn, get_dbi(env, DbMapId::path_to_guid), &key, &val))
+    {
+        return false;
+    }
+
+    memcpy(guid->data, val.mv_data, val.mv_size);
+    return true;
+}
+
 i32 get_guids_by_type(AssetDatabaseEnv* env, const AssetDbTxn& txn, const TypeRef& type, GUID* dst)
 {
     auto type_key = make_key(type->hash);
@@ -712,17 +726,14 @@ i32 get_asset_dependencies(AssetDatabaseEnv* env, const AssetDbTxn& txn, const G
  *
  ************************
  */
-const Path& get_artifact_path(AssetDatabaseEnv* env, const u128& hash)
+void get_artifact_path(AssetDatabaseEnv* env, const u128& hash, Path* dst)
 {
     static thread_local char hash_buffer[33];
 
     str::format_buffer(hash_buffer, static_array_length(hash_buffer), "%" BEE_PRIxu128, BEE_FMT_u128(hash));
 
-    auto& path = get_temp_path(env);
-    path.clear();
-    path.append(env->artifacts_directory).append(StringView(hash_buffer, 2)).append(hash_buffer);
-
-    return path;
+    dst->clear();
+    dst->append(env->artifacts_directory).append(StringView(hash_buffer, 2)).append(hash_buffer);
 }
 
 bool put_artifact(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid, const AssetArtifact& artifact, const void* buffer, const size_t buffer_size)
@@ -751,7 +762,9 @@ bool put_artifact(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid
      * TODO(Jacob): add ability to force a write-to-file in cases where the binary data
      *  has gotten corrupted somehow
      */
-    const auto& artifact_path = get_artifact_path(env, artifact.content_hash);
+    auto& artifact_path = get_temp_path(env);
+    get_artifact_path(env, artifact.content_hash, &artifact_path);
+
     if (!artifact_path.exists())
     {
         const auto parent_dir = artifact_path.parent_path(temp_allocator());
@@ -808,7 +821,8 @@ bool delete_artifact(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& g
     // Remove the disk artifact as well if nothing is referencing it
     if (has_references)
     {
-        const auto& disk_path = get_artifact_path(env, hash);
+        auto& disk_path = get_temp_path(env);
+        get_artifact_path(env, hash, &disk_path);
         if (disk_path.exists())
         {
             if (!fs::remove(disk_path))
@@ -842,7 +856,8 @@ bool get_artifact(AssetDatabaseEnv* env, const AssetDbTxn& txn, const u128& hash
     BEE_ASSERT(val.mv_size == sizeof(AssetArtifact));
     memcpy(dst, val.mv_data, sizeof(AssetArtifact));
 
-    const auto& path = get_artifact_path(env, hash);
+    auto& path = get_temp_path(env);
+    get_artifact_path(env, hash, &path);
     if (!path.exists())
     {
         return false;
@@ -858,7 +873,7 @@ i32 get_artifacts_from_guid(AssetDatabaseEnv* env, const AssetDbTxn& txn, const 
     LMDBCursor cursor(txn, get_dbi(env, DbMapId::guid_to_artifact));
     if (!cursor)
     {
-        return false;
+        return 0;
     }
 
     auto guid_key = make_key(guid);
@@ -875,6 +890,12 @@ i32 get_artifacts_from_guid(AssetDatabaseEnv* env, const AssetDbTxn& txn, const 
         return cursor.count();
     }
 
+    if (cursor.count() == 1)
+    {
+        memcpy(&dst[0], val.mv_data, val.mv_size);
+        return 1;
+    }
+
     int count = 0;
     AssetArtifact* multiple = dst;
 
@@ -882,8 +903,8 @@ i32 get_artifacts_from_guid(AssetDatabaseEnv* env, const AssetDbTxn& txn, const 
     {
         BEE_ASSERT(val.mv_size % sizeof(AssetArtifact) == 0);
 
+        memcpy(multiple + count, val.mv_data, val.mv_size);
         count += static_cast<i32>(val.mv_size / sizeof(AssetArtifact));
-        memcpy(multiple, val.mv_data, val.mv_size);
     }
 
     return count;
@@ -911,6 +932,12 @@ i32 get_guids_from_artifact(AssetDatabaseEnv* env, const AssetDbTxn& txn, const 
         return cursor.count();
     }
 
+    if (cursor.count() == 1)
+    {
+        memcpy(&dst[0], val.mv_data, val.mv_size);
+        return 1;
+    }
+
     int count = 0;
     GUID* multiple = dst;
 
@@ -923,22 +950,6 @@ i32 get_guids_from_artifact(AssetDatabaseEnv* env, const AssetDbTxn& txn, const 
     }
 
     return count;
-}
-
-
-bool runtime_locate_asset(AssetDatabaseEnv* env, const GUID& guid, AssetLocation* location)
-{
-    auto txn = read_assetdb(env);
-    auto& local_asset = get_temp_asset(env);
-
-    if (!get_asset(env, txn, guid, &local_asset))
-    {
-        return false;
-    }
-
-    location->path.clear();
-//    location->path.append()
-    return false;
 }
 
 
@@ -959,6 +970,7 @@ void load_assetdb_module(PluginRegistry* registry, const PluginState state)
     g_assetdb.delete_asset = delete_asset;
     g_assetdb.get_asset = get_asset;
     g_assetdb.get_asset_from_path = get_asset_from_path;
+    g_assetdb.get_guid_from_path = get_guid_from_path;
     g_assetdb.get_guids_by_type = get_guids_by_type;
     g_assetdb.has_asset = has_asset;
     g_assetdb.set_asset_dependencies = set_asset_dependencies;
@@ -968,6 +980,7 @@ void load_assetdb_module(PluginRegistry* registry, const PluginState state)
     g_assetdb.get_artifact = get_artifact;
     g_assetdb.get_artifacts_from_guid = get_artifacts_from_guid;
     g_assetdb.get_guids_from_artifact = get_guids_from_artifact;
+    g_assetdb.get_artifact_path = get_artifact_path;
 }
 
 } // namespace bee

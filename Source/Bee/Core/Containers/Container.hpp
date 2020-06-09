@@ -255,34 +255,37 @@ inline constexpr EnumerateAdapter<IterableType> enumerate(IterableType& iterable
  *
  * Gets the index of a value in a c-array or container
  */
+template <typename T, typename PredicateType>
+inline constexpr i32 find_index_if(const T* begin, const T* end, PredicateType&& pred)
+{
+    auto* value = begin;
+    while (value != end)
+    {
+        if (pred(*value))
+        {
+            return static_cast<i32>(value - begin);
+        }
+        ++value;
+    }
+    return -1;
+}
+
 template <typename ContainerType, typename PredicateType>
 inline constexpr i32 find_index_if(const ContainerType& container, PredicateType&& pred)
 {
-    int index = 0;
-    for (const auto& value : container)
-    {
-        if (pred(value))
-        {
-            return index;
-        }
-        ++index;
-    }
-    return -1;
+    return find_index_if(::bee::begin(container), ::bee::end(container), pred);
+}
+
+template <typename T>
+inline constexpr i32 find_index(const T* begin, const T* end, const T& to_find)
+{
+    return find_index_if(begin, end, [&](const T& value) { return value == to_find; });
 }
 
 template <typename ContainerType, typename T>
 inline constexpr i32 find_index(const ContainerType& container, const T& to_find)
 {
-    int index = 0;
-    for (const auto& value : container)
-    {
-        if (value == to_find)
-        {
-            return index;
-        }
-        ++index;
-    }
-    return -1;
+    return find_index(::bee::begin(container), ::bee::end(container), to_find);
 }
 
 

@@ -26,19 +26,23 @@ class BEE_CORE_API JobGroup
 public:
     explicit JobGroup(Allocator* allocator = system_allocator()) noexcept;
 
+    JobGroup(JobGroup&& other) noexcept;
+
     ~JobGroup();
+
+    JobGroup& operator=(JobGroup&& other) noexcept;
 
     void add_job(Job* job);
 
     void add_dependency(JobGroup* child_group);
 
-    i32 pending_count();
+    i32 pending_count() const;
 
-    i32 dependency_count();
+    i32 dependency_count() const;
 
-    bool has_pending_jobs();
+    bool has_pending_jobs() const;
 
-    bool has_dependencies();
+    bool has_dependencies() const;
 
     void signal(Job* job);
 private:
@@ -46,6 +50,8 @@ private:
     std::atomic_int32_t     dependency_count_ { 0 };
     ReaderWriterMutex       parents_mutex_;
     DynamicArray<JobGroup*> parents_;
+
+    void move_construct(JobGroup& other) noexcept;
 };
 
 class BEE_CORE_API Job

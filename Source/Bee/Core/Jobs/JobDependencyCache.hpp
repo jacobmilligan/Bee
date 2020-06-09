@@ -22,24 +22,30 @@ public:
 
     ~JobDependencyCache();
 
-    void write(const u32 hash, Job* job, JobGroup* parent_group = nullptr);
+    void schedule_write(const u32 hash, Job* job, JobGroup* parent_group = nullptr);
 
-    void read(const u32 hash, Job* job, JobGroup* parent_group = nullptr);
+    void schedule_read(const u32 hash, Job* job, JobGroup* parent_group = nullptr);
+
+    void wait(const u32 hash);
+
+    void wait_read(const u32 hash);
+
+    void wait_write(const u32 hash);
 
     void wait_all();
 
     void trim();
 
     template <typename T>
-    inline void write(const T& value, Job* job)
+    inline void schedule_write(const T& value, Job* job, JobGroup* parent_group = nullptr)
     {
-        write(get_hash(value), job);
+        schedule_write(get_hash(value), job, parent_group);
     }
 
     template <typename T>
-    inline void read(const T& value, Job* job)
+    inline void schedule_read(const T& value, Job* job, JobGroup* parent_group = nullptr)
     {
-        return read(get_hash(value), job);
+        return schedule_read(get_hash(value), job, parent_group);
     }
 
 private:
@@ -56,6 +62,8 @@ private:
     DynamicArray<u32>                   to_erase_;
 
     WaitHandle* get_or_create_wait_handle(const u32 hash);
+
+    WaitHandle* get_wait_handle(const u32 hash);
 };
 
 

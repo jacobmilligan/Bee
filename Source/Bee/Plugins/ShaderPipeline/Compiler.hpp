@@ -9,10 +9,17 @@
 
 #include "Bee/Core/Reflection.hpp"
 
+#include "Bee/Plugins/AssetPipeline/AssetCompilerOrder.hpp"
+
+
 namespace bee {
 
 
-struct BEE_REFLECT(serializable) ShaderCompilerOptions
+static constexpr auto shader_compiler_order = AssetCompilerOrder::first;
+static constexpr auto material_compiler_order = shader_compiler_order + 1;
+
+
+struct BEE_REFLECT(serializable) ShaderCompilerSettings
 {
     bool output_debug_artifacts { false };
 };

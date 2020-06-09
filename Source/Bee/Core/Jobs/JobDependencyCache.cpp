@@ -37,7 +37,14 @@ JobDependencyCache::WaitHandle* JobDependencyCache::get_or_create_wait_handle(co
     return wait_handles_.insert(hash, BEE_NEW(allocator_, WaitHandle))->value;
 }
 
-void JobDependencyCache::write(const u32 hash, Job* job, JobGroup* parent_group)
+JobDependencyCache::WaitHandle* JobDependencyCache::get_wait_handle(const u32 hash)
+{
+    scoped_recursive_lock_t lock(mutex_);
+    auto* mapped = wait_handles_.find(hash);
+    return mapped != nullptr ? mapped->value : nullptr;
+}
+
+void JobDependencyCache::schedule_write(const u32 hash, Job* job, JobGroup* parent_group)
 {
     auto* wait_handle = get_or_create_wait_handle(hash);
 
@@ -53,7 +60,7 @@ void JobDependencyCache::write(const u32 hash, Job* job, JobGroup* parent_group)
     job_schedule(&wait_handle->write_deps, job);
 }
 
-void JobDependencyCache::read(const u32 hash, Job* job, JobGroup* parent_group)
+void JobDependencyCache::schedule_read(const u32 hash, Job* job, JobGroup* parent_group)
 {
     auto* wait_handle = get_or_create_wait_handle(hash);
 
@@ -66,6 +73,40 @@ void JobDependencyCache::read(const u32 hash, Job* job, JobGroup* parent_group)
     }
 
     job_schedule(&wait_handle->read_deps, job);
+}
+
+void JobDependencyCache::wait(const u32 hash)
+{
+    auto* wait_handle = get_wait_handle(hash);
+    if (wait_handle == nullptr)
+    {
+        return;
+    }
+
+    job_wait(&wait_handle->write_deps);
+    job_wait(&wait_handle->read_deps);
+}
+
+void JobDependencyCache::wait_read(const u32 hash)
+{
+    auto* wait_handle = get_wait_handle(hash);
+    if (wait_handle == nullptr)
+    {
+        return;
+    }
+
+    job_wait(&wait_handle->read_deps);
+}
+
+void JobDependencyCache::wait_write(const u32 hash)
+{
+    auto* wait_handle = get_wait_handle(hash);
+    if (wait_handle == nullptr)
+    {
+        return;
+    }
+
+    job_wait(&wait_handle->write_deps);
 }
 
 void JobDependencyCache::wait_all()

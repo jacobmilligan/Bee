@@ -103,8 +103,8 @@ void RecursiveSpinLock::unlock()
 
 AtomicNode* make_atomic_node(Allocator* allocator, const size_t data_size)
 {
-    auto ptr = static_cast<u8*>(BEE_MALLOC_ALIGNED(allocator, sizeof(AtomicNode) + data_size, 64));
-    auto node = reinterpret_cast<AtomicNode*>(ptr);
+    auto* ptr = static_cast<u8*>(BEE_MALLOC_ALIGNED(allocator, sizeof(AtomicNode) + data_size, 64));
+    auto* node = reinterpret_cast<AtomicNode*>(ptr);
 
     new (node) AtomicNode{};
 

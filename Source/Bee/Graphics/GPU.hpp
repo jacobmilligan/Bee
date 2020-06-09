@@ -864,7 +864,7 @@ struct DeviceCreateInfo
 {
     i32     physical_device_id { -1 };
     bool    enable_depth_clamp { false };
-    bool    enable_sampler_anisotropy { true };
+    bool    enable_sampler_anisotropy { false };
     bool    enable_sample_rate_shading { false };
 };
 

@@ -29,8 +29,9 @@ enum class UnloadAssetMode
     destroy
 };
 
-enum class AssetLocationKind
+enum class AssetStreamType
 {
+    none,
     file,
     buffer
 };
@@ -65,14 +66,14 @@ struct BEE_REFLECT(serializable, version = 1) AssetManifest
         memcpy(asset_guids.data(), guids, sizeof(GUID) * asset_count);
     }
 
-    inline GUID get(const u32 hash)
+    inline GUID get(const u32 hash) const
     {
         const auto index = find_index(asset_hashes, hash);
         return index >= 0 ? asset_guids[index] : GUID{};
     }
 
     template <i32 Size>
-    inline GUID get(const char(&name)[Size])
+    inline GUID get(const char(&name)[Size]) const
     {
         return get(get_static_string_hash(name));
     }
@@ -97,6 +98,12 @@ struct BEE_REFLECT(serializable, version = 1) AssetManifest
     {
         return add(get_static_string_hash(name), guid);
     }
+
+    template <typename T, i32 Size>
+    inline Asset<T> load(AssetRegistryModule* registry, const char(&name)[Size]);
+
+    template <typename T, typename ArgType, i32 Size>
+    inline Asset<T> load(AssetRegistryModule* registry, const char(&name)[Size], const ArgType& arg);
 };
 
 struct AssetLoadArg
@@ -107,7 +114,7 @@ struct AssetLoadArg
 
 struct AssetData
 {
-    static constexpr i32 load_parameter_capacity = 128;
+    static constexpr i32 load_arg_capacity = 128;
 
     GUID                    guid;
     AssetId                 id;
@@ -117,37 +124,71 @@ struct AssetData
     TypeRef                 type { nullptr };
     void*                   ptr { nullptr };
     TypeRef                 parameter_type { nullptr };
-    u8                      parameter_storage[load_parameter_capacity];
+    u8                      argument_storage[load_arg_capacity];
 };
 
+struct AssetStreamInfo
+{
+    TypeRef             asset_type;
+    AssetStreamType     stream_type { AssetStreamType::none };
+    size_t              offset { 0 };
+    Path                path;
+    void*               buffer { nullptr };
+    size_t              buffer_size { 0 };
+};
 
 struct AssetLocation
 {
-    TypeRef     type { nullptr };
-    Path        path;
-    size_t      offset { 0 };
+    static constexpr i32 max_streams = 8;
+
+    TypeRef         type { nullptr };
+    i32             stream_count { 0 };
+    AssetStreamInfo streams[max_streams];
+
+    inline void clear()
+    {
+        stream_count = 0;
+        type = TypeRef{};
+        for (auto& stream : streams)
+        {
+            stream.asset_type = TypeRef{};
+            stream.stream_type = AssetStreamType::none;
+            stream.offset = 0;
+            stream.path.clear();
+            stream.buffer = nullptr;
+            stream.buffer_size = 0;
+        }
+    }
 };
 
 struct AssetLoader
 {
-    void (*get_supported_types)(DynamicArray<TypeRef>* types) { nullptr };
+    i32 (*get_supported_types)(TypeRef* types) { nullptr };
 
     TypeRef (*get_parameter_type)() { nullptr };
 
     void* (*allocate)(const TypeRef& type) { nullptr };
 
-    AssetStatus (*load)(AssetLoaderContext* ctx, io::Stream* stream) { nullptr };
+    AssetStatus (*load)(AssetLoaderContext* ctx, const i32 stream_count, const TypeRef* stream_types, io::Stream** streams) { nullptr };
 
     AssetStatus (*unload)(AssetLoaderContext* ctx) { nullptr };
 };
 
+struct AssetLocatorInstance;
+
 struct AssetLocator
 {
-    bool (*locate)(const GUID& guid, AssetLocation* location) { nullptr };
+    AssetLocatorInstance* instance { nullptr };
+
+    const char* (*get_name)() { nullptr };
+
+    bool (*locate)(AssetLocatorInstance* instance, const GUID& guid, AssetLocation* location) { nullptr };
 };
 
 
 #define BEE_ASSET_REGISTRY_MODULE_NAME "BEE_ASSET_REGISTRY_MODULE"
+
+class JobGroup;
 
 struct AssetRegistryModule
 {
@@ -155,7 +196,7 @@ struct AssetRegistryModule
 
     void (*destroy)() { nullptr };
 
-    AssetData* (*load_asset_data)(const GUID& guid, const TypeRef& type, const AssetLoadArg& arg) { nullptr };
+    AssetData* (*load_asset_data)(const GUID& guid, const TypeRef& type, const AssetLoadArg& arg, JobGroup* wait_handle) { nullptr };
 
     void (*unload_asset_data)(AssetData* asset, const UnloadAssetMode unload_kind) { nullptr };
 
@@ -174,29 +215,15 @@ struct AssetRegistryModule
     void (*add_locator)(AssetLocator* locator) { nullptr };
 
     void (*remove_locator)(AssetLocator* locator) { nullptr };
-
-    template <typename T>
-    inline Asset<T> load_asset(const GUID& guid)
-    {
-        return Asset<T>(load_asset_data(guid, get_type<T>(), {}), this);
-    }
-
-    template <typename T, typename ArgType>
-    inline Asset<T> load_asset(const GUID& guid, const ArgType& arg)
-    {
-        AssetLoadArg load_arg{};
-        load_arg.type = get_type<ArgType>();
-        load_arg.data = &arg;
-        return Asset<T>(load_asset_data(guid, get_type<T>(), load_arg), this);
-    }
 };
 
 
 class AssetLoaderContext
 {
 public:
-    explicit AssetLoaderContext(AssetData* data)
-        : data_(data)
+    explicit AssetLoaderContext(AssetRegistryModule* registry, AssetData* data)
+        : registry_(registry),
+          data_(data)
     {}
 
     inline TypeRef type() const
@@ -204,9 +231,14 @@ public:
         return data_->type;
     }
 
-    inline TypeRef parameter_type() const
+    inline TypeRef arg_type() const
     {
         return data_->parameter_type;
+    }
+
+    inline AssetRegistryModule* registry() const
+    {
+        return registry_;
     }
 
     template <typename T>
@@ -221,32 +253,51 @@ public:
     }
 
     template <typename T>
-    inline T* get_parameter()
+    inline T* get_arg()
     {
-        if (BEE_FAIL_F(get_type<T>() == parameter_type(), "Invalid type cast"))
+        if (BEE_FAIL_F(get_type<T>() == arg_type(), "Invalid type cast"))
         {
             return nullptr;
         }
 
-        return reinterpret_cast<T*>(data_->parameter_storage);
+        return reinterpret_cast<T*>(data_->argument_storage);
     }
 
 private:
-    AssetData*          data_ { nullptr };
+    AssetRegistryModule*    registry_ { nullptr };
+    AssetData*              data_ { nullptr };
 };
 
 template <typename T>
-class Asset
+class BEE_REFLECT(serializable) Asset
 {
 public:
     Asset() = default;
 
-    Asset(AssetData* data, AssetRegistryModule* registry)
-        : data_(data),
-          registry_(registry)
+    explicit Asset(const GUID& guid)
+        : guid_(guid)
+    {}
+
+    Asset(const Asset& other)
     {
-        BEE_ASSERT(data->type == get_type<T>());
-        ptr_ = static_cast<T*>(data->ptr);
+        guid_ = other.guid_;
+        registry_ = other.registry_;
+        data_ = other.data_;
+
+        if (data_ != nullptr)
+        {
+            data_->refcount.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
+    Asset(Asset&& other) noexcept
+    {
+        guid_ = other.guid_;
+        data_ = other.data_;
+        registry_ = other.registry_;
+        other.guid_ = invalid_guid;
+        other.data_ = nullptr;
+        other.registry_ = nullptr;
     }
 
     ~Asset()
@@ -254,40 +305,180 @@ public:
         unload();
     }
 
+    Asset<T>& operator=(Asset&& other) noexcept
+    {
+        unload();
+
+        guid_ = other.guid_;
+        data_ = other.data_;
+        registry_ = other.registry_;
+        other.guid_ = invalid_guid;
+        other.data_ = nullptr;
+        other.registry_ = nullptr;
+
+        return *this;
+    }
+
+    Asset<T>& operator=(const Asset& other)
+    {
+        if (&other == this)
+        {
+            return *this;
+        }
+
+        unload();
+        guid_ = other.guid_;
+        registry_ = other.registry_;
+        data_ = other.data_;
+
+        if (data_ != nullptr)
+        {
+            data_->refcount.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        return *this;
+    }
+
+    inline bool load(AssetRegistryModule* registry, JobGroup* wait_handle = nullptr)
+    {
+        if (registry_ != nullptr && registry != registry_)
+        {
+            unload();
+        }
+
+        const auto type = get_type<T>();
+        registry_ = registry;
+        data_ = registry_->load_asset_data(guid_, type, {}, wait_handle);
+
+        if (data_ == nullptr || data_->status == AssetStatus::unloaded)
+        {
+            return false;
+        }
+
+        return BEE_CHECK(data_->type == type);
+    }
+
+    template <typename ArgType>
+    inline bool load(AssetRegistryModule* registry, const ArgType& arg, JobGroup* wait_handle = nullptr)
+    {
+        if (registry_ != nullptr && registry != registry_)
+        {
+            unload();
+        }
+
+        AssetLoadArg load_arg{};
+        load_arg.type = get_type<ArgType>();
+        load_arg.data = &arg;
+
+        const auto type = get_type<T>();
+        registry_ = registry;
+        data_ = registry_->load_asset_data(guid_, type, load_arg, wait_handle);
+
+        if (data_ == nullptr || (data_->status != AssetStatus::loading && data_->status != AssetStatus::loaded))
+        {
+            return false;
+        }
+
+        return BEE_CHECK(data_->type == type);
+    }
+
     inline void unload(const UnloadAssetMode mode = UnloadAssetMode::release)
     {
-        if (ptr_ != nullptr)
+        if (data_ != nullptr)
         {
+            BEE_ASSERT(registry_ != nullptr);
             registry_->unload_asset_data(data_, mode);
         }
 
-        ptr_ = nullptr;
         data_ = nullptr;
         registry_ = nullptr;
     }
 
     inline AssetStatus status() const
     {
-        return ptr_ == nullptr ? AssetStatus::invalid : data_->status;
+        return data_ == nullptr ? AssetStatus::invalid : data_->status;
+    }
+
+    inline const GUID& guid() const
+    {
+        return guid_;
     }
 
     inline T* operator->()
     {
-        BEE_ASSERT(ptr_ != nullptr);
-        return ptr_
+        BEE_ASSERT(data_ != nullptr && data_->ptr != nullptr);
+        return static_cast<T*>(data_->ptr);
     }
 
     inline const T* operator->() const
     {
-        BEE_ASSERT(ptr_ != nullptr);
-        return ptr_;
+        BEE_ASSERT(data_ != nullptr && data_->ptr != nullptr);
+        return static_cast<const T*>(data_->ptr);
+    }
+
+    inline explicit operator bool() const
+    {
+        return guid_ != invalid_guid;
     }
 
 private:
-    T*                      ptr_ { nullptr };
+    BEE_REFLECT() GUID      guid_;
+
     AssetData*              data_ { nullptr };
     AssetRegistryModule*    registry_ { nullptr };
 };
 
+template <typename T, i32 Size>
+inline Asset<T> AssetManifest::load(AssetRegistryModule* registry, const char(&name)[Size])
+{
+    const auto guid = get<Size>(name);
+    if (guid == invalid_guid)
+    {
+        log_error("Failed to load asset \"%s\" from manifest", name);
+        return Asset<T>{};
+    }
+
+    Asset<T> asset(guid);
+    asset.load(registry);
+    return std::move(asset);
+}
+
+template <typename T, typename ArgType, i32 Size>
+inline Asset<T> AssetManifest::load(AssetRegistryModule* registry, const char(&name)[Size], const ArgType& arg)
+{
+    const auto guid = get<Size>(name);
+    if (guid == invalid_guid)
+    {
+        log_error("Failed to load asset \"%s\" from manifest", name);
+        return Asset<T>{};
+    }
+
+    Asset<T> asset(guid);
+    asset.load(registry, arg);
+    return std::move(asset);
+}
+
+/*
+ **************************
+ *
+ * Asset<T> serialization
+ *
+ **************************
+ */
+template <typename T>
+inline void serialize_type(SerializationBuilder* builder, Asset<T>* data)
+{
+    auto guid = data->guid();
+    builder->structure(1).add_field(1, &guid, "guid");
+
+    if (builder->mode() == SerializerMode::reading)
+    {
+        new (data) Asset<T>(guid);
+    }
+}
 
 } // namespace bee
+
+#ifdef BEE_ENABLE_REFLECTION
+    #include "Bee.AssetRegistry/ReflectedTemplates/AssetRegistry.generated.inl"
+#endif // BEE_ENABLE_REFLECTIONs

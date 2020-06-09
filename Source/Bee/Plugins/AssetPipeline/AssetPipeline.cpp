@@ -17,7 +17,7 @@
 
 #include <algorithm>
 
-//#define BEE_TESTING_ASSET_PIPELINE_INIT
+#define BEE_TESTING_ASSET_PIPELINE_INIT
 
 namespace bee {
 
@@ -44,6 +44,7 @@ void load_assetdb_module(bee::PluginRegistry* registry, const bee::PluginState s
 struct CompilerInfo
 {
     AssetCompilerId     id { 0 };
+    AssetCompilerOrder  order { AssetCompilerOrder::first };
     u32                 type_hash { 0 };
     AssetCompiler*      instance { nullptr };
     DynamicArray<u32>   extensions;
@@ -56,8 +57,47 @@ struct FileTypeMapping
     DynamicArray<u32>   compiler_hashes;
 };
 
+struct AssetLocatorInstance
+{
+    AssetPipeline* pipeline { nullptr };
+};
+
+struct ImportRequest
+{
+    JobGroup*           wait_handle { nullptr };
+    AssetCompilerOrder  order { AssetCompilerOrder::none };
+    StaticString<1024>  uri;
+    AssetPlatform       platform { AssetPlatform::unknown };
+    AssetCompilerId     compiler_id;
+    AssetCompiler*      compiler { nullptr };
+    AssetPipeline*      pipeline { nullptr };
+};
+
+BEE_VERSIONED_HANDLE_32(ImportBatchHandle);
+
+struct AssetImportBatch
+{
+    AssetPipeline*              pipeline { nullptr };
+    DynamicArray<ImportRequest> requests;
+    DynamicArray<JobGroup>      groups;
+    JobGroup                    wait_handle;
+
+    explicit AssetImportBatch(AssetPipeline* pipeline_instance);
+
+    void reset();
+
+    bool add(const Path& source_path, const AssetCompilerId& compiler_id);
+};
+
 struct AssetPipeline
 {
+    struct ThreadData
+    {
+        CompiledAsset   asset;
+        String          uri;
+        Path            path;
+    };
+
     Allocator*                  allocator { nullptr };
     RecursiveMutex              mutex;
     AssetPlatform               platform { AssetPlatform::unknown };
@@ -65,24 +105,37 @@ struct AssetPipeline
     Path                        cache_root;
     Path                        saved_location;
     fs::DirectoryWatcher        asset_watcher { true }; // recursive
-    FixedArray<CompiledAsset>   per_thread_assetdb_items;
+    FixedArray<ThreadData>      thread_data;
 
     // Asset Database
     AssetDatabaseEnv*           db {nullptr };
+    AssetLocatorInstance        locator_instance;
+    AssetLocator                locator;
+
+    // Asset importing
+    AtomicStack                 free_batches;
+    AtomicStack                 scheduled_batches;
 };
 
 struct GlobalAssetPipeline
 {
-    JobDependencyCache                      job_deps;
+    JobDependencyCache                      asset_op_deps;
     DynamicArray<CompilerInfo>              compilers;
     DynamicHashMap<u32, FileTypeMapping>    filetype_map;
+    DynamicArray<AssetPipeline*>            all_pipelines;
 };
 
-static GlobalAssetPipeline* g_pipeline { nullptr };
-static PluginRegistry*      g_plugin_registry { nullptr };
-static AssetRegistryModule* g_asset_registry { nullptr };
+static GlobalAssetPipeline*     g_pipeline { nullptr };
+static PluginRegistry*          g_plugin_registry { nullptr };
+static AssetRegistryModule*     g_asset_registry { nullptr };
+static bee::AssetPipelineModule g_module{};
 
 static constexpr auto g_metadata_ext = ".meta";
+
+AssetPipeline::ThreadData& get_thread_data(AssetPipeline* pipeline)
+{
+    return pipeline->thread_data[get_local_job_worker_id()];
+}
 
 /*
  *********************************
@@ -205,13 +258,14 @@ u128 get_content_hash(const AssetPlatform platform, const DynamicArray<u8>& data
     return hash.end();
 }
 
-String asset_path_to_uri(AssetPipeline* instance, const Path& src, Allocator* allocator = system_allocator())
+void asset_path_to_uri(AssetPipeline* instance, const Path& src, String* dst)
 {
     const auto is_builtin = src.is_relative_to(fs::get_root_dirs().install_root);
     const auto& root = is_builtin ? fs::get_root_dirs().install_root : instance->project_root;
     const char* scheme = is_builtin ? "builtin:/" : "project:/";
 
-    String result(scheme, allocator);
+    dst->clear();
+    dst->append(scheme);
     auto root_begin = root.begin();
     auto src_begin = src.begin();
 
@@ -223,23 +277,21 @@ String asset_path_to_uri(AssetPipeline* instance, const Path& src, Allocator* al
 
     while (src_begin != src.end())
     {
-        result += Path::generic_slash;
-        result += *src_begin;
+        *dst += Path::generic_slash;
+        *dst += *src_begin;
         ++src_begin;
     }
-
-    return std::move(result);
 }
 
-Path asset_uri_to_path(AssetPipeline* instance, const StringView& uri, Allocator* allocator = system_allocator())
+void asset_uri_to_path(AssetPipeline* instance, const StringView& uri, Path* dst)
 {
-    Path result(allocator);
+    dst->clear();
 
     const auto scheme_separator = str::first_index_of(uri, "://");
 
     if (BEE_FAIL(scheme_separator >= 0))
     {
-        return std::move(result);
+        return;
     }
 
     const auto scheme_name = str::substring(uri, 0, scheme_separator);
@@ -247,19 +299,17 @@ Path asset_uri_to_path(AssetPipeline* instance, const StringView& uri, Allocator
 
     if (scheme_name == "builtin")
     {
-        result = fs::get_root_dirs().install_root.join(filepath, allocator);
+        dst->append(fs::get_root_dirs().install_root).append(filepath);
     }
     else
     {
-        result = instance->project_root.join(filepath, allocator);
+        dst->append(instance->project_root).append(filepath);
     }
-
-    return std::move(result);
 }
 
 CompiledAsset& get_temp_asset(AssetPipeline* instance)
 {
-    auto& asset = instance->per_thread_assetdb_items[get_local_job_worker_id()];
+    auto& asset = get_thread_data(instance).asset;
     asset.src_timestamp = 0;
     asset.metadata_timestamp = 0;
     asset.source_hash = u128{};
@@ -273,183 +323,181 @@ CompiledAsset& get_temp_asset(AssetPipeline* instance)
 /*
  *********************************
  *
- * Asset Pipeline implementation
+ * Asset Pipeline fwd
  *
  *********************************
  */
 void plugin_observer(const PluginEventType event, const bee::PluginDescriptor& plugin, const StringView& module_name, void* module, void* user_data);
+
 void serialize_manifests(const SerializerMode mode, AssetPipeline* instance);
+
 void load_manifests_at_path(AssetPipeline* instance, const Path& path);
+
 void refresh_directory(AssetPipeline* instance, const Path& path);
-void refresh_path(AssetPipeline* instance, const Path& path);
+
+void refresh_path(AssetImportBatch* batch, const Path& path);
+
 void destroy(AssetPipeline* instance);
 
-#ifdef BEE_TESTING_ASSET_PIPELINE_INIT
-void clean_asset_files(const Path& path)
-{
-    auto asset_file = path;
-    asset_file.set_extension(g_metadata_ext);
+const char* get_runtime_locator_name();
 
-    if (asset_file.exists())
+bool runtime_locate_asset(AssetLocatorInstance* instance, const GUID& guid, AssetLocation* location);
+
+AssetImportBatch* create_import_batch(AssetPipeline* instance);
+
+void schedule_import_batch(AssetImportBatch* batch);
+
+
+/*
+ *********************************
+ *
+ * ImportBatch and import job
+ * scheduling
+ *
+ *********************************
+ */
+void import_job(const ImportRequest* req);
+
+void schedule_batch_job(AssetImportBatch* batch);
+
+AssetImportBatch::AssetImportBatch(AssetPipeline* pipeline_instance)
+    : pipeline(pipeline_instance)
+{}
+
+void AssetImportBatch::reset()
+{
+    requests.clear();
+    groups.clear();
+}
+
+bool AssetImportBatch::add(const Path& source_path, const AssetCompilerId &compiler_id)
+{
+    if (!source_path.exists())
     {
-        fs::remove(asset_file);
+        log_error("Failed to import asset: %s is not a valid source path", source_path.c_str());
+        return false;
     }
 
-    for (const auto& child : fs::read_dir(path))
+    auto& uri = get_thread_data(pipeline).uri;
+    asset_path_to_uri(pipeline, source_path, &uri);
+
+    int compiler_index = -1;
+    const auto ext = source_path.extension();
+
+    if (compiler_id.is_valid())
     {
-        if (fs::is_dir(child))
+        compiler_index = find_compiler(compiler_id);
+    }
+    else
+    {
+        compiler_index = find_default_compiler_for_filetype(source_path.extension());
+
+        if (compiler_index < 0)
         {
-            clean_asset_files(child);
-            continue;
+            log_warning(
+                "Failed to import %s: no registered compiler supports \"%" BEE_PRIsv "\" files",
+                uri.c_str(),
+                BEE_FMT_SV(ext)
+            );
+
+            return false;
+        }
+    }
+
+    if (compiler_index < 0)
+    {
+        log_warning("Skipping import for %s: no compiler registered with id \"%" PRIu32 "\"", uri.c_str(), compiler_id.id);
+        return false;
+    }
+
+    auto& compiler = g_pipeline->compilers[compiler_index];
+
+    const auto ext_hash = get_extension_hash(ext);
+
+    if (find_index(compiler.extensions, ext_hash) < 0)
+    {
+        log_error(
+            "Failed to import %s: compiler \"%s\" does not support \"%" BEE_PRIsv "\" files",
+            uri.c_str(),
+            compiler.instance->get_name(),
+            BEE_FMT_SV(ext)
+        );
+
+        return false;
+    }
+
+    // import as asset
+    requests.emplace_back();
+
+    auto& req = requests.back();
+    req.pipeline = pipeline;
+    req.compiler_id = compiler.id;
+    req.compiler = compiler.instance;
+    req.order = compiler.order;
+    req.platform = pipeline->platform;
+    req.uri = uri.view();
+
+    return true;
+}
+
+void import_batch_job(AssetImportBatch* batch)
+{
+    std::sort(batch->requests.begin(), batch->requests.end(), [](const ImportRequest& lhs, const ImportRequest& rhs)
+    {
+        return lhs.order < rhs.order;
+    });
+
+    auto ordering_dep = AssetCompilerOrder::none;
+    batch->groups.clear();
+    batch->groups.emplace_back();
+
+    for (auto& req : batch->requests)
+    {
+        if (req.order != ordering_dep)
+        {
+            batch->groups.emplace_back();
+            ordering_dep = req.order;
         }
 
-        if (child.extension() == g_metadata_ext)
+        // Get hash here because req is moved into the job when creating it
+        auto* job = create_job(import_job, &req);
+        const auto uri_hash = get_hash(req.uri);
+
+        if (batch->groups.size() > 1)
         {
-            fs::remove(child);
+            req.wait_handle = &batch->groups[batch->groups.size() - 2];
         }
+
+        g_pipeline->asset_op_deps.schedule_write(uri_hash, job, &batch->groups.back());
     }
-}
-#endif // BEE_TESTING_ASSET_PIPELINE_INIT
 
-AssetPipeline* init(const AssetPipelineInitInfo& info, Allocator* allocator)
-{
-    BEE_ASSERT(info.platform != AssetPlatform::unknown);
-
-    auto* instance = BEE_NEW(allocator, AssetPipeline);
-    instance->allocator = allocator;
-    instance->platform = info.platform;
-    instance->project_root = info.project_root;
-    instance->cache_root = info.project_root.join(info.cache_directory);
-    instance->per_thread_assetdb_items.resize(get_job_worker_count());
-
-#ifdef BEE_TESTING_ASSET_PIPELINE_INIT
-    if (instance->cache_root.exists())
+    for (auto& group : batch->groups)
     {
-        fs::rmdir(instance->cache_root, true);
-    }
-#endif
-
-    if (!instance->cache_root.exists())
-    {
-        fs::mkdir(instance->cache_root);
+        job_wait(&group);
     }
 
-    // Load up the asset pipeline manifests
-    instance->saved_location = instance->cache_root.join("Manifests");
-    serialize_manifests(SerializerMode::reading, instance);
-
-    // Load up the assetdatabase
-    instance->db = g_assetdb.open(instance->cache_root, info.asset_database_name, allocator);
-
-    if (!g_assetdb.is_open(instance->db))
-    {
-        destroy(instance);
-        return nullptr;
-    }
-
-    // Add all the subdirectories under Assets/ in the project root as asset directories
-    for (const auto& dir : fs::read_dir(fs::get_root_dirs().assets_root))
-    {
-        if (!fs::is_dir(dir))
-        {
-            continue;
-        }
-        instance->asset_watcher.add_directory(dir);
-    }
-
-    for (const auto& dir : instance->asset_watcher.watched_directories())
-    {
-#ifdef BEE_TESTING_ASSET_PIPELINE_INIT
-        clean_asset_files(dir);
-#endif // BEE_TESTING_ASSET_PIPELINE_INIT
-        refresh_path(instance, dir);
-    }
-
-    instance->asset_watcher.start("AssetWatcher");
-
-    g_plugin_registry->add_observer(plugin_observer, instance);
-
-    // Load any roots from plugins that were loaded before the asset pipeline was
-    const auto loaded_plugin_count = g_plugin_registry->get_loaded_plugins(nullptr);
-    auto plugin_descs = FixedArray<PluginDescriptor>::with_size(loaded_plugin_count, temp_allocator());
-    g_plugin_registry->get_loaded_plugins(plugin_descs.data());
-
-    Path plugin_path(temp_allocator());
-    for (auto& desc : plugin_descs)
-    {
-        desc.get_full_path(&plugin_path);
-        load_manifests_at_path(instance, plugin_path);
-    }
-
-    return instance;
+    batch->reset();
+    batch->pipeline->free_batches.push(atomic_node_cast(batch));
 }
 
-void destroy(AssetPipeline* instance)
+void import_job(const ImportRequest* req)
 {
-    g_pipeline->job_deps.wait_all();
-
-    g_plugin_registry->remove_observer(plugin_observer, instance);
-
-    if (instance->asset_watcher.is_running())
+    if (req->wait_handle != nullptr)
     {
-        instance->asset_watcher.stop();
+        job_wait(req->wait_handle);
     }
 
-    g_pipeline->compilers.clear();
-
-    if (g_assetdb.is_open(instance->db))
-    {
-        g_assetdb.close(instance->db);
-    }
-
-    instance->platform = AssetPlatform::unknown;
-
-    BEE_DELETE(instance->allocator, instance);
-}
-
-void serialize_manifests(const SerializerMode mode, AssetPipeline* instance)
-{
-    if (mode == SerializerMode::reading && !instance->saved_location.exists())
-    {
-        return;
-    }
-
-    const auto* open_mode = mode == SerializerMode::reading ? "rb": "wb";
-    io::FileStream stream(instance->saved_location, open_mode);
-    g_asset_registry->serialize_manifests(mode, &stream);
-}
-
-void set_platform(AssetPipeline* instance, const AssetPlatform platform)
-{
-    g_pipeline->job_deps.wait_all();
-    instance->platform = platform;
-}
-
-struct ImportRequest
-{
-    String          uri;
-    AssetPlatform   platform { AssetPlatform::unknown };
-    AssetCompilerId compiler_id;
-    AssetCompiler*  compiler { nullptr };
-    AssetPipeline*  pipeline { nullptr };
-
-    explicit ImportRequest(Allocator* allocator)
-        : uri(allocator)
-    {}
-};
-
-void import_job(const ImportRequest& req)
-{
     // Setup the compiled asset data
-    auto* pipeline = req.pipeline;
+    auto* pipeline = req->pipeline;
     auto& asset = get_temp_asset(pipeline);
     auto& metadata = asset.metadata;
 
     // Setup the uri
-    asset.uri.append(req.uri.view());
+    asset.uri.append(req->uri.view());
 
     // Start the import
-    const auto full_path = asset_uri_to_path(req.pipeline, req.uri.view(), temp_allocator());
+    auto& full_path = get_thread_data(req->pipeline).path;
+    asset_uri_to_path(req->pipeline, req->uri.view(), &full_path);
 
     Path metadata_path(full_path.view(), temp_allocator());
     metadata_path.append_extension(g_metadata_ext);
@@ -475,10 +523,13 @@ void import_job(const ImportRequest& req)
         // otherwise we're importing a brand new asset
         metadata.guid = generate_guid();
         metadata.is_directory = false;
-        metadata.settings = req.compiler->settings_type()->create_instance(temp_allocator());
+        if (req->compiler->settings_type != nullptr)
+        {
+            metadata.settings = req->compiler->settings_type()->create_instance(temp_allocator());
+        }
     }
 
-    metadata.compiler = req.compiler_id;
+    metadata.compiler = req->compiler_id;
 
     asset.src_timestamp = fs::last_modified(full_path);
     asset.source_hash = get_source_hash(full_path, metadata.settings);
@@ -494,7 +545,9 @@ void import_job(const ImportRequest& req)
 
     // Compile the asset!
     AssetCompilerContext ctx(
-        req.platform,
+        &g_assetdb,
+        req->pipeline->db,
+        req->platform,
         full_path.view(),
         pipeline->cache_root.view(),
         metadata.settings,
@@ -502,7 +555,7 @@ void import_job(const ImportRequest& req)
         temp_allocator()
     );
 
-    const auto status = req.compiler->compile(req.compiler->data, get_local_job_worker_id(), &ctx);
+    const auto status = req->compiler->compile(req->compiler->data, get_local_job_worker_id(), &ctx);
 
     if (status != AssetCompilerStatus::success)
     {
@@ -512,7 +565,7 @@ void import_job(const ImportRequest& req)
 
     if (ctx.main_artifact() < 0)
     {
-        log_error("Failed to import asset %s: no main artifact was set by compiler \"%s\"", asset.uri.c_str(), req.compiler->get_name());
+        log_error("Failed to import asset %s: no main artifact was set by compiler \"%s\"", asset.uri.c_str(), req->compiler->get_name());
         return;
     }
 
@@ -525,7 +578,7 @@ void import_job(const ImportRequest& req)
     for (int i = 0; i < artifact_buffers.size(); ++i)
     {
         artifact.type_hash = artifact_types[i]->hash;
-        artifact.content_hash = get_content_hash(req.platform, artifact_buffers[i]);
+        artifact.content_hash = get_content_hash(req->platform, artifact_buffers[i]);
 
         // ensure we keep track of the content hash for the main asset
         if (i == ctx.main_artifact())
@@ -566,88 +619,216 @@ void import_job(const ImportRequest& req)
     log_debug("Imported %s", asset.uri.c_str());
 }
 
-void import_asset(AssetPipeline* instance, const Path& source_path, const AssetCompilerId& compiler_id)
+/*
+ *********************************
+ *
+ * Asset Pipeline utils
+ *
+ *********************************
+ */
+#ifdef BEE_TESTING_ASSET_PIPELINE_INIT
+void clean_asset_files(const Path& path)
 {
-    if (!source_path.exists())
+    auto asset_file = path;
+    asset_file.set_extension(g_metadata_ext);
+
+    if (asset_file.exists())
     {
-        log_error("Failed to import asset: %s is not a valid source path", source_path.c_str());
-        return;
+        fs::remove(asset_file);
     }
 
-    auto uri = asset_path_to_uri(instance, source_path, temp_allocator());
-
-    int compiler_index = -1;
-    const auto ext = source_path.extension();
-
-    if (compiler_id.is_valid())
+    for (const auto& child : fs::read_dir(path))
     {
-        compiler_index = find_compiler(compiler_id);
-    }
-    else
-    {
-        compiler_index = find_default_compiler_for_filetype(source_path.extension());
-
-        if (compiler_index < 0)
+        if (fs::is_dir(child))
         {
-            log_warning(
-                "Failed to import %s: no registered compiler supports \"%" BEE_PRIsv "\" files",
-                uri.c_str(),
-                BEE_FMT_SV(ext)
-            );
+            clean_asset_files(child);
+            continue;
+        }
 
-            return;
+        if (child.extension() == g_metadata_ext)
+        {
+            fs::remove(child);
         }
     }
+}
+#endif // BEE_TESTING_ASSET_PIPELINE_INIT
 
-    if (compiler_index < 0)
+
+/*
+ *********************************
+ *
+ * Asset Pipeline implementation
+ *
+ *********************************
+ */
+AssetPipeline* init(const AssetPipelineInitInfo& info, Allocator* allocator)
+{
+    BEE_ASSERT(info.platform != AssetPlatform::unknown);
+
+    auto* instance = BEE_NEW(allocator, AssetPipeline);
+    instance->allocator = allocator;
+    instance->platform = info.platform;
+    instance->project_root = info.project_root;
+    instance->cache_root = info.project_root.join(info.cache_directory);
+    instance->thread_data.resize(get_job_worker_count());
+
+#ifdef BEE_TESTING_ASSET_PIPELINE_INIT
+    if (instance->cache_root.exists())
     {
-        log_warning("Skipping import for %s: no compiler registered with id \"%" PRIu32 "\"", uri.c_str(), compiler_id.id);
-        return;
+        fs::rmdir(instance->cache_root, true);
+    }
+#endif
+
+    if (!instance->cache_root.exists())
+    {
+        fs::mkdir(instance->cache_root);
     }
 
-    auto& compiler = g_pipeline->compilers[compiler_index];
+    // Load up the asset pipeline manifests
+    instance->saved_location = instance->cache_root.join("Manifests");
+    serialize_manifests(SerializerMode::reading, instance);
 
-    const auto ext_hash = get_extension_hash(ext);
+    // Load up the assetdatabase
+    instance->db = g_assetdb.open(instance->cache_root, info.asset_database_name, allocator);
 
-    if (find_index(compiler.extensions, ext_hash) < 0)
+    if (!g_assetdb.is_open(instance->db))
     {
-        log_error(
-            "Failed to import %s: compiler \"%s\" does not support \"%" BEE_PRIsv "\" files",
-            uri.c_str(),
-            compiler.instance->get_name(),
-            BEE_FMT_SV(ext)
-        );
-
-        return;
+        destroy(instance);
+        return nullptr;
     }
 
-    // import as asset
-    ImportRequest req(temp_allocator());
-    req.pipeline = instance;
-    req.compiler_id = compiler.id;
-    req.compiler = compiler.instance;
-    req.platform = instance->platform;
-    req.uri = std::move(uri);
+    // Add all the subdirectories under Assets/ in the project root as asset directories
+    for (const auto& dir : fs::read_dir(fs::get_root_dirs().assets_root))
+    {
+        if (!fs::is_dir(dir))
+        {
+            continue;
+        }
+        instance->asset_watcher.add_directory(dir);
+    }
 
-    // Get hash here because req is moved into the job when creating it
-    const auto uri_hash = get_hash(req.uri);
+    g_plugin_registry->add_observer(plugin_observer, instance);
 
-    auto* job = create_job(import_job, std::move(req));
-    g_pipeline->job_deps.write(uri_hash, job);
+    // Initialize the locator with the right function & instance data
+    instance->locator_instance.pipeline = instance;
+    instance->locator.instance = &instance->locator_instance;
+    instance->locator.locate = runtime_locate_asset;
+    instance->locator.get_name = get_runtime_locator_name;
+
+    g_asset_registry->add_locator(&instance->locator);
+    g_pipeline->all_pipelines.push_back(instance);
+
+    // Refresh all assets
+    if (!instance->asset_watcher.watched_directories().empty())
+    {
+        auto* batch = create_import_batch(instance);
+
+        for (const auto& dir : instance->asset_watcher.watched_directories())
+        {
+#ifdef BEE_TESTING_ASSET_PIPELINE_INIT
+            clean_asset_files(dir);
+#endif // BEE_TESTING_ASSET_PIPELINE_INIT
+            refresh_path(batch, dir);
+        }
+
+        schedule_import_batch(batch);
+    }
+
+    // Load any roots from plugins that were loaded before the asset pipeline was
+    const auto loaded_plugin_count = g_plugin_registry->get_loaded_plugins(nullptr);
+    auto plugin_descs = FixedArray<PluginDescriptor>::with_size(loaded_plugin_count, temp_allocator());
+    g_plugin_registry->get_loaded_plugins(plugin_descs.data());
+
+    Path plugin_path(temp_allocator());
+    for (auto& desc : plugin_descs)
+    {
+        desc.get_full_path(&plugin_path);
+        load_manifests_at_path(instance, plugin_path);
+    }
+
+    // init the asset directory watcher
+    instance->asset_watcher.start("AssetWatcher");
+
+    return instance;
 }
 
-void import_asset(AssetPipeline* instance, const Path& source_path)
+void destroy(AssetPipeline* instance)
 {
-    auto& asset = get_temp_asset(instance);
+    g_pipeline->asset_op_deps.wait_all();
 
-    auto txn = g_assetdb.read(instance->db);
-    const auto uri = asset_path_to_uri(instance, source_path, temp_allocator());
-    const auto reimport = g_assetdb.get_asset_from_path(instance->db, txn, uri.view(), &asset);
-    g_assetdb.commit(instance->db, &txn);
+    const auto index = find_index(g_pipeline->all_pipelines, instance);
+    BEE_ASSERT(index >= 0);
+    g_pipeline->all_pipelines.erase(index);
+
+    g_asset_registry->remove_locator(&instance->locator);
+    g_plugin_registry->remove_observer(plugin_observer, instance);
+
+    if (instance->asset_watcher.is_running())
+    {
+        instance->asset_watcher.stop();
+    }
+
+    g_pipeline->compilers.clear();
+
+    if (g_assetdb.is_open(instance->db))
+    {
+        g_assetdb.close(instance->db);
+    }
+
+    instance->platform = AssetPlatform::unknown;
+
+    BEE_DELETE(instance->allocator, instance);
+}
+
+void serialize_manifests(const SerializerMode mode, AssetPipeline* instance)
+{
+    if (mode == SerializerMode::reading && !instance->saved_location.exists())
+    {
+        return;
+    }
+
+    const auto* open_mode = mode == SerializerMode::reading ? "rb": "wb";
+    io::FileStream stream(instance->saved_location, open_mode);
+    g_asset_registry->serialize_manifests(mode, &stream);
+}
+
+void set_platform(AssetPipeline* instance, const AssetPlatform platform)
+{
+    g_pipeline->asset_op_deps.wait_all();
+    instance->platform = platform;
+}
+
+AssetImportBatch* create_import_batch(AssetPipeline* instance)
+{
+    auto* node = instance->free_batches.pop();
+    if (node != nullptr)
+    {
+        return static_cast<AssetImportBatch*>(node->data[0]);
+    }
+
+    return make_atomic_node<AssetImportBatch>(system_allocator(), instance).data;
+}
+
+void schedule_import_batch(AssetImportBatch* batch)
+{
+    auto* job = create_job(import_batch_job, batch);
+    job_schedule(&batch->wait_handle, job);
+    batch->pipeline->scheduled_batches.push(atomic_node_cast(batch));
+}
+
+void import_asset(AssetImportBatch* batch, const Path& source_path)
+{
+    auto& asset = get_temp_asset(batch->pipeline);
+
+    auto txn = g_assetdb.read(batch->pipeline->db);
+    auto& uri = get_thread_data(batch->pipeline).uri;
+    asset_path_to_uri(batch->pipeline, source_path, &uri);
+    const auto reimport = g_assetdb.get_asset_from_path(batch->pipeline->db, txn, uri.view(), &asset);
+    g_assetdb.commit(batch->pipeline->db, &txn);
 
     if (reimport)
     {
-        import_asset(instance, source_path, asset.metadata.compiler);
+        batch->add(source_path, asset.metadata.compiler);
         return;
     }
 
@@ -655,13 +836,13 @@ void import_asset(AssetPipeline* instance, const Path& source_path)
 
     if (!meta_path.exists())
     {
-        import_asset(instance, source_path, AssetCompilerId{});
+        batch->add(source_path, AssetCompilerId{});
     }
     else
     {
         AssetMetadata meta{};
         read_metadata(source_path, &meta);
-        import_asset(instance, source_path, meta.compiler);
+        batch->add(source_path, meta.compiler);
     }
 }
 
@@ -678,9 +859,10 @@ void delete_asset(AssetPipeline* instance, const GUID& guid, const DeleteAssetKi
         return;
     }
 
-    auto src_path = asset_uri_to_path(instance, asset.uri.view(), temp_allocator());
+    auto& src_path = get_thread_data(instance).path;
+    asset_uri_to_path(instance, asset.uri.view(), &src_path);
 
-    g_pipeline->job_deps.write(asset.uri, create_null_job());
+    g_pipeline->asset_op_deps.schedule_write(asset.uri, create_null_job());
 
     // Delete from disk if needed
     if (kind == DeleteAssetKind::asset_and_source)
@@ -747,10 +929,18 @@ void register_compiler(AssetCompiler* compiler)
     const auto compiler_id = g_pipeline->compilers.size() - 1;
 
     // Validate that no compilers have been registered with the supported extensions
-    const auto supported_filetypes = compiler->supported_file_types();
-
-    for (const auto* ext : supported_filetypes)
+    const int filetype_count = compiler->supported_file_types(nullptr);
+    if (BEE_FAIL_F(filetype_count > 0, "Asset compiler must specify at least one supported file type"))
     {
+        return;
+    }
+
+    auto* supported_filetypes = BEE_ALLOCA_ARRAY(const char*, filetype_count);
+    compiler->supported_file_types(supported_filetypes);
+
+    for (int i = 0; i < filetype_count; ++i)
+    {
+        const auto* ext = supported_filetypes[i];
         const auto ext_hash = get_extension_hash(ext);
 
         if (find_index_if(info.extensions, [&](const u32 hash)
@@ -775,7 +965,15 @@ void register_compiler(AssetCompiler* compiler)
         info.extensions.push_back(ext_hash);
     }
 
-    info.instance->init(info.instance->data, get_job_worker_count());
+    if (info.instance->init != nullptr)
+    {
+        info.instance->init(info.instance->data, get_job_worker_count());
+    }
+
+    if (info.instance->get_order != nullptr)
+    {
+        info.order = info.instance->get_order();
+    }
 
     // TODO(Jacob): iterate watched directories and import all assets with a filetype in supported_filetypes that
     //  haven't already been imported OR have a newer timestamp than what's stored in the AssetDB
@@ -815,7 +1013,11 @@ void unregister_compiler(AssetCompiler* compiler)
         }
     }
 
-    g_pipeline->compilers[id].instance->destroy(g_pipeline->compilers[id].instance->data);
+    if (g_pipeline->compilers[id].instance->destroy != nullptr)
+    {
+        g_pipeline->compilers[id].instance->destroy(g_pipeline->compilers[id].instance->data);
+    }
+
     g_pipeline->compilers.erase(id);
 }
 
@@ -840,7 +1042,7 @@ Span<const Path> asset_directories(AssetPipeline* instance)
     return instance->asset_watcher.watched_directories();
 }
 
-void refresh_path(AssetPipeline* instance, const Path& path)
+void refresh_path(AssetImportBatch* batch, const Path& path)
 {
     Path src_path(path.view(), temp_allocator());
     Path metadata_path(path.view(), temp_allocator());
@@ -857,20 +1059,22 @@ void refresh_path(AssetPipeline* instance, const Path& path)
         metadata_path.append_extension(g_metadata_ext);
     }
 
-    const auto uri = asset_path_to_uri(instance, src_path, temp_allocator());
+    auto* pipeline = batch->pipeline;
+    auto& uri = get_thread_data(pipeline).uri;
+    asset_path_to_uri(pipeline, src_path, &uri);
 
-    g_pipeline->job_deps.read(uri, create_null_job());
+    g_pipeline->asset_op_deps.schedule_read(uri, create_null_job());
 
     // Check if we've already imported the source file
-    auto txn = g_assetdb.read(instance->db);
-    auto& asset = get_temp_asset(instance);
-    const auto is_reimport = g_assetdb.get_asset_from_path(instance->db, txn, uri.view(), &asset);
-    g_assetdb.commit(instance->db, &txn);
+    auto txn = g_assetdb.read(pipeline->db);
+    auto& asset = get_temp_asset(pipeline);
+    const auto is_reimport = g_assetdb.get_asset_from_path(pipeline->db, txn, uri.view(), &asset);
+    g_assetdb.commit(pipeline->db, &txn);
 
     // if the source path is missing, delete the asset from the DB
     if (!src_path.exists())
     {
-        delete_asset_at_path(instance, uri.view(), DeleteAssetKind::asset_only);
+        delete_asset_at_path(pipeline, uri.view(), DeleteAssetKind::asset_only);
         return;
     }
 
@@ -883,7 +1087,7 @@ void refresh_path(AssetPipeline* instance, const Path& path)
     {
         if (!metadata_exists)
         {
-            delete_asset_at_path(instance, uri.view(), DeleteAssetKind::asset_only);
+            delete_asset_at_path(pipeline, uri.view(), DeleteAssetKind::asset_only);
             return;
         }
 
@@ -924,7 +1128,7 @@ void refresh_path(AssetPipeline* instance, const Path& path)
 
     if (fs::is_file(src_path))
     {
-        import_asset(instance, src_path, metadata.compiler);
+        batch->add(src_path, metadata.compiler);
     }
     else
     {
@@ -939,9 +1143,9 @@ void refresh_path(AssetPipeline* instance, const Path& path)
         asset.metadata_timestamp = write_metadata(metadata_path, &metadata);
         asset.uri.append(uri.view());
 
-        txn = g_assetdb.write(instance->db);
-        g_assetdb.put_asset(instance->db, txn, metadata.guid, &asset);
-        g_assetdb.commit(instance->db, &txn);
+        txn = g_assetdb.write(pipeline->db);
+        g_assetdb.put_asset(pipeline->db, txn, metadata.guid, &asset);
+        g_assetdb.commit(pipeline->db, &txn);
 
         log_debug("%s directory %s", is_reimport ? "Reimported" : "Imported", uri.c_str());
 
@@ -949,7 +1153,7 @@ void refresh_path(AssetPipeline* instance, const Path& path)
         {
             for (const auto& child : fs::read_dir(src_path))
             {
-                refresh_path(instance, child);
+                refresh_path(batch, child);
             }
         }
     }
@@ -959,12 +1163,19 @@ void refresh(AssetPipeline* instance)
 {
     auto events = instance->asset_watcher.pop_events();
 
-    for (auto& event : events)
+    if (!events.empty())
     {
-        refresh_path(instance, event.file);
+        auto* batch = create_import_batch(instance);
+
+        for (auto& event : events)
+        {
+            refresh_path(batch, event.file);
+        }
+
+        schedule_import_batch(batch);
     }
 
-    g_pipeline->job_deps.trim();
+    g_pipeline->asset_op_deps.trim();
 }
 
 
@@ -979,7 +1190,7 @@ static AssetLocator g_assetdb_locator{};
  */
 void load_manifests_at_path(AssetPipeline* instance, const Path& path)
 {
-    g_pipeline->job_deps.wait_all();
+    g_pipeline->asset_op_deps.wait_all();
 
     // iterate through the plugins source directory for any .root files and add the roots if they're there
     JSONSerializer serializer(temp_allocator());
@@ -1047,11 +1258,50 @@ void plugin_observer(const PluginEventType event, const bee::PluginDescriptor& p
     load_manifests_at_path(instance, path);
 }
 
+const char* get_runtime_locator_name()
+{
+    return "Bee.AssetPipeline Locator";
+}
+
+bool runtime_locate_asset(AssetLocatorInstance* instance, const GUID& guid, AssetLocation* location)
+{
+    auto txn = g_assetdb.read(instance->pipeline->db);
+    const auto artifact_count = g_assetdb.get_artifacts_from_guid(instance->pipeline->db, txn, guid, nullptr);
+    if (artifact_count <= 0)
+    {
+        log_error("No artifacts");
+        return false;
+    }
+
+    auto& asset = get_temp_asset(instance->pipeline);
+    if (!g_assetdb.get_asset(instance->pipeline->db, txn, guid, &asset))
+    {
+        log_error("No asset");
+        return false;
+    }
+
+    BEE_ASSERT(artifact_count < AssetLocation::max_streams);
+
+    auto* artifacts = BEE_ALLOCA_ARRAY(AssetArtifact, artifact_count);
+    location->type = get_type(asset.main_artifact.type_hash);
+    location->stream_count = g_assetdb.get_artifacts_from_guid(instance->pipeline->db, txn, guid, artifacts);
+
+    BEE_ASSERT(location->stream_count == artifact_count);
+
+    for (int i = 0; i < artifact_count; ++i)
+    {
+        location->streams[i].asset_type = get_type(artifacts[i].type_hash);
+        location->streams[i].stream_type = AssetStreamType::file;
+        location->streams[i].offset = 0;
+        g_assetdb.get_artifact_path(instance->pipeline->db, artifacts[i].content_hash, &location->streams[i].path);
+    }
+
+    return true;
+}
+
 
 } // namespace bee
 
-
-static bee::AssetPipelineModule g_module{};
 
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::PluginState state)
 {
@@ -1062,18 +1312,24 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::Pl
 
     bee::g_pipeline = registry->get_or_create_persistent<bee::GlobalAssetPipeline>("GlobalAssetPipelineData");
 
-    g_module.init = bee::init;
-    g_module.destroy = bee::destroy;
-    g_module.set_platform = bee::set_platform;
-    g_module.import_asset = bee::import_asset;
-    g_module.delete_asset = bee::delete_asset;
-    g_module.register_compiler = bee::register_compiler;
-    g_module.unregister_compiler = bee::unregister_compiler;
-    g_module.get_compilers_for_filetype = bee::get_compilers_for_filetype;
-    g_module.add_asset_directory = bee::add_asset_directory;
-    g_module.remove_asset_directory = bee::remove_asset_directory;
-    g_module.asset_directories = bee::asset_directories;
-    g_module.refresh = bee::refresh;
+    bee::g_module.init = bee::init;
+    bee::g_module.destroy = bee::destroy;
+    bee::g_module.set_platform = bee::set_platform;
+    bee::g_module.import_asset = bee::import_asset;
+    bee::g_module.delete_asset = bee::delete_asset;
+    bee::g_module.register_compiler = bee::register_compiler;
+    bee::g_module.unregister_compiler = bee::unregister_compiler;
+    bee::g_module.get_compilers_for_filetype = bee::get_compilers_for_filetype;
+    bee::g_module.add_asset_directory = bee::add_asset_directory;
+    bee::g_module.remove_asset_directory = bee::remove_asset_directory;
+    bee::g_module.asset_directories = bee::asset_directories;
+    bee::g_module.refresh = bee::refresh;
 
-    registry->toggle_module(state, BEE_ASSET_PIPELINE_MODULE_NAME, &g_module);
+    for (auto& pipeline : bee::g_pipeline->all_pipelines)
+    {
+        pipeline->locator.get_name = bee::get_runtime_locator_name;
+        pipeline->locator.locate = bee::runtime_locate_asset;
+    }
+
+    registry->toggle_module(state, BEE_ASSET_PIPELINE_MODULE_NAME, &bee::g_module);
 }

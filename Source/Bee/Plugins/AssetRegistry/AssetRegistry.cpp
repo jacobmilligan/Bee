@@ -17,6 +17,9 @@
 namespace bee {
 
 
+static AssetRegistryModule g_module{};
+
+
 struct AssetCache
 {
     RecursiveSpinLock                   mutex;
@@ -117,7 +120,7 @@ struct AssetCache
         {
             if (asset.loader != nullptr)
             {
-                AssetLoaderContext ctx(&asset);
+                AssetLoaderContext ctx(&g_module, &asset);
                 asset.loader->unload(&ctx);
             }
         }
@@ -134,6 +137,15 @@ struct RegisteredLoader
     DynamicArray<TypeRef>   supported_types;
 };
 
+struct ThreadData
+{
+    AssetLocation       location;
+    io::FileStream      file_streams[AssetLocation::max_streams];
+    io::MemoryStream    buffer_streams[AssetLocation::max_streams];
+    io::Stream*         all_streams[AssetLocation::max_streams];
+    TypeRef             stream_types[AssetLocation::max_streams];
+};
+
 struct AssetRegistry
 {
     JobDependencyCache                  job_deps;
@@ -142,45 +154,57 @@ struct AssetRegistry
     DynamicArray<RegisteredLoader>      loaders;
     DynamicArray<AssetLocator*>         locators;
     DynamicArray<AssetManifest>         manifests;
+    FixedArray<ThreadData>              thread_data;
 };
 
-static AssetRegistry* g_registry { nullptr };
+static AssetRegistry*           g_registry { nullptr };
 
 
 void add_loader(AssetLoader* loader);
 void remove_loader(AssetLoader* loader);
 void add_locator(AssetLocator* locator);
 void remove_locator(AssetLocator* locator);
-bool locate_asset(const GUID& guid, AssetLocation* location);
+bool locate_asset(const GUID& guid, AssetLocation* location, AssetLocator** locator);
 void unload_asset_data(const AssetData* asset, const UnloadAssetMode kind);
+
+ThreadData& get_thread_data()
+{
+    return g_registry->thread_data[get_local_job_worker_id()];
+}
 
 
 void init_registry()
 {
-
+    g_registry->thread_data.resize(get_job_worker_count());
 }
 
 void destroy_registry()
 {
-
+    g_registry->thread_data.clear();
 }
 
 void load_asset_job(AssetData* asset, AssetLoader* loader)
 {
-    AssetLocation location{};
+    auto& thread_data = get_thread_data();
+    auto& location = thread_data.location;
+    location.clear();
 
-    if (!locate_asset(asset->guid, &location))
+    AssetLocator* locator = nullptr;
+
+    if (!locate_asset(asset->guid, &location, &locator))
     {
+        asset->status = AssetStatus::loading_failed;
         log_error("Failed to find a location for asset %s", format_guid(asset->guid, GUIDFormat::digits));
         return;
     }
 
     if (location.type != asset->type)
     {
+        asset->status = AssetStatus::loading_failed;
         log_error(
-            "Located asset %s at %s but the located type `%s` doesn't match the expected type `%s`",
+            "Locator \"%s\" found asset %s but the located type `%s` doesn't match the expected type `%s`",
+            locator->get_name(),
             format_guid(asset->guid, GUIDFormat::digits),
-            location.path.c_str(),
             location.type->name,
             asset->type->name
         );
@@ -188,11 +212,65 @@ void load_asset_job(AssetData* asset, AssetLoader* loader)
         return;
     }
 
-    io::FileStream stream(location.path, "rb");
-    stream.seek(location.offset, io::SeekOrigin::begin);
+    int file_stream_count = 0;
+    int buffer_stream_count = 0;
+    auto& file_streams = thread_data.file_streams;
+    auto& buffer_streams = thread_data.buffer_streams;
+    auto& all_streams = thread_data.all_streams;
+    auto& all_types = thread_data.stream_types;
 
-    AssetLoaderContext ctx(asset);
-    asset->status = loader->load(&ctx, &stream);
+    for (int i = 0; i < location.stream_count; ++i)
+    {
+        auto& stream_info = location.streams[i];
+        all_types[i] = stream_info.asset_type;
+
+        switch (location.streams[i].stream_type)
+        {
+            case AssetStreamType::none:
+            {
+                break;
+            }
+            case AssetStreamType::file:
+            {
+                auto& file_stream = file_streams[file_stream_count];
+                file_stream.reopen(stream_info.path, "rb");
+                file_stream.seek(stream_info.offset, io::SeekOrigin::begin);
+                all_streams[i] = &file_stream;
+
+                ++file_stream_count;
+                break;
+            }
+            case AssetStreamType::buffer:
+            {
+                auto& buffer_stream = buffer_streams[buffer_stream_count];
+
+                new (&buffer_stream) io::MemoryStream(stream_info.buffer, stream_info.buffer_size);
+                buffer_stream.seek(stream_info.offset, io::SeekOrigin::begin);
+                all_streams[i] = &buffer_stream;
+
+                ++buffer_stream_count;
+                break;
+            }
+            default:
+            {
+                BEE_UNREACHABLE("Invalid stream type");
+            }
+        }
+    }
+
+    AssetLoaderContext ctx(&g_module, asset);
+    asset->status = loader->load(&ctx, location.stream_count, all_types, all_streams);
+
+    for (int i = 0; i < file_stream_count; ++i)
+    {
+        file_streams[i].close();
+    }
+
+    if (asset->status == AssetStatus::loading_failed)
+    {
+        log_error("Failed to load %s asset %s", asset->type->name, format_guid(asset->guid, GUIDFormat::digits));
+        return;
+    }
 
     if (asset->status == AssetStatus::loaded)
     {
@@ -200,7 +278,7 @@ void load_asset_job(AssetData* asset, AssetLoader* loader)
     }
 }
 
-AssetData* get_or_load_asset_data(const GUID& guid, const TypeRef& type, const AssetLoadArg& arg)
+AssetData* get_or_load_asset_data(const GUID& guid, const TypeRef& type, const AssetLoadArg& arg, JobGroup* wait_handle)
 {
     auto& cache = g_registry->cache;
     auto* cached = cache.find(guid);
@@ -235,6 +313,11 @@ AssetData* get_or_load_asset_data(const GUID& guid, const TypeRef& type, const A
         cached->parameter_type = loader->value->get_parameter_type();
     }
 
+    if (BEE_FAIL_F(arg.type == cached->parameter_type, "Invalid argument given to load_asset_data: expected %s but got %s", cached->parameter_type->name, arg.type->name))
+    {
+        return nullptr;
+    }
+
     cached->loader = loader->value;
 
     // Don't try to reload assets currently in flight or already loaded - add a reference instead
@@ -244,13 +327,8 @@ AssetData* get_or_load_asset_data(const GUID& guid, const TypeRef& type, const A
         return cached;
     }
 
-    if (BEE_FAIL_F(arg.type == cached->parameter_type, "Invalid argument given to load_asset_data: expected %s but got %s", cached->parameter_type->name, arg.type->name))
-    {
-        return nullptr;
-    }
-
     // Copy the load parameter to this asset
-    memcpy(cached->parameter_storage, arg.data, arg.type->size);
+    memcpy(cached->argument_storage, arg.data, arg.type->size);
 
     // Allocate new data if we're not reloading
     if (cached->ptr == nullptr)
@@ -258,8 +336,20 @@ AssetData* get_or_load_asset_data(const GUID& guid, const TypeRef& type, const A
         cached->ptr = cached->loader->allocate(type);
     }
 
+    cached->status = AssetStatus::loading;
+
     auto* job = create_job(load_asset_job, cached, cached->loader);
-    g_registry->job_deps.write(guid, job);
+
+    if (wait_handle == nullptr)
+    {
+        JobGroup group{};
+        g_registry->job_deps.schedule_write(guid, job, &group);
+        job_wait(&group);
+    }
+    else
+    {
+        g_registry->job_deps.schedule_write(guid, job, wait_handle);
+    }
 
     return cached;
 }
@@ -282,10 +372,11 @@ void unload_asset_data(AssetData* asset, const UnloadAssetMode kind)
         return;
     }
 
-    g_registry->job_deps.write(asset->guid, create_null_job());
+    g_registry->job_deps.schedule_write(asset->guid, create_null_job());
 
     // unload and deallocate the asset if last ref or otherwise explicitly requested
-    AssetLoaderContext ctx(asset);
+    AssetLoaderContext ctx(&g_module, asset);
+
     asset->status = asset->loader->unload(&ctx);
 
     if (asset->status == AssetStatus::unloaded)
@@ -344,12 +435,15 @@ void serialize_manifests(const SerializerMode mode, io::Stream* stream)
     serialize(mode, &serializer, &g_registry->manifests);
 }
 
-bool locate_asset(const GUID& guid, AssetLocation* location)
+bool locate_asset(const GUID& guid, AssetLocation* location, AssetLocator** locator)
 {
-    for (auto& locator : g_registry->locators)
+    BEE_ASSERT(locator != nullptr );
+
+    for (auto& l : g_registry->locators)
     {
-        if (locator->locate(guid, location))
+        if (l->locate(l->instance, guid, location))
         {
+            *locator = l;
             return true;
         }
     }
@@ -360,7 +454,7 @@ bool locate_asset(const GUID& guid, AssetLocation* location)
 void add_loader(AssetLoader* loader)
 {
     auto parameter_type = loader->get_parameter_type();
-    if (BEE_FAIL_F(parameter_type->size < AssetData::load_parameter_capacity, "Failed to add loader: parameter type is too large"))
+    if (BEE_FAIL_F(parameter_type->size < AssetData::load_arg_capacity, "Failed to add loader: parameter type is too large"))
     {
         return;
     }
@@ -383,7 +477,13 @@ void add_loader(AssetLoader* loader)
     auto& registered = g_registry->loaders.back();
     registered.instance = loader;
     registered.parameter_type = parameter_type;
-    registered.instance->get_supported_types(&registered.supported_types);
+
+    const auto type_count = registered.instance->get_supported_types(nullptr);
+
+    BEE_ASSERT_F(type_count > 0, "Asset loaders must specify at least one supported asset type");
+
+    registered.supported_types.resize(type_count);
+    registered.instance->get_supported_types(registered.supported_types.data());
 
     // Add mappings for all the supported types to the loader API
     for (const auto& type : registered.supported_types)
@@ -462,25 +562,22 @@ void remove_locator(AssetLocator* locator)
 } // namespace bee
 
 
-static bee::AssetRegistryModule g_module{};
-
-
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::PluginState state)
 {
     bee::g_registry = registry->get_or_create_persistent<bee::AssetRegistry>("BeeAssetRegistry");
 
-    g_module.init = bee::init_registry;
-    g_module.destroy = bee::destroy_registry;
-    g_module.load_asset_data = bee::get_or_load_asset_data;
-    g_module.unload_asset_data = bee::unload_asset_data;
-    g_module.add_manifest = bee::add_manifest;
-    g_module.remove_manifest = bee::remove_manifest;
-    g_module.get_manifest = bee::get_manifest;
-    g_module.serialize_manifests = bee::serialize_manifests;
-    g_module.add_loader = bee::add_loader;
-    g_module.remove_loader = bee::remove_loader;
-    g_module.add_locator = bee::add_locator;
-    g_module.remove_locator = bee::remove_locator;
+    bee::g_module.init = bee::init_registry;
+    bee::g_module.destroy = bee::destroy_registry;
+    bee::g_module.load_asset_data = bee::get_or_load_asset_data;
+    bee::g_module.unload_asset_data = bee::unload_asset_data;
+    bee::g_module.add_manifest = bee::add_manifest;
+    bee::g_module.remove_manifest = bee::remove_manifest;
+    bee::g_module.get_manifest = bee::get_manifest;
+    bee::g_module.serialize_manifests = bee::serialize_manifests;
+    bee::g_module.add_loader = bee::add_loader;
+    bee::g_module.remove_loader = bee::remove_loader;
+    bee::g_module.add_locator = bee::add_locator;
+    bee::g_module.remove_locator = bee::remove_locator;
 
-    registry->toggle_module(state, BEE_ASSET_REGISTRY_MODULE_NAME, &g_module);
+    registry->toggle_module(state, BEE_ASSET_REGISTRY_MODULE_NAME, &bee::g_module);
 }

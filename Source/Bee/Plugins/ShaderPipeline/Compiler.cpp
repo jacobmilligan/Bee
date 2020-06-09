@@ -560,6 +560,13 @@ AssetCompilerStatus compile_shader(AssetCompilerData* data, const i32 thread_ind
         ++index;
     }
 
+    // Assign the reflected vertex descriptions to each of the pipelines
+    for (auto& pipeline : result.pipelines)
+    {
+        const auto vert_index = underlying_t(ShaderStageIndex::vertex);
+        pipeline.info.vertex_description = reflected_vertex_descs[pipeline.shaders[vert_index]];
+    }
+
     auto& shader_artifact = ctx->add_artifact<Shader>();
     BinarySerializer serializer(&shader_artifact);
     serialize(SerializerMode::writing, &serializer, &result, ctx->temp_allocator());
@@ -631,32 +638,35 @@ const char* get_shader_compiler_name()
 
 TypeRef shader_compiler_settings_type()
 {
-    return get_type<ShaderCompilerOptions>();
+    return get_type<ShaderCompilerSettings>();
 }
 
-Span<const char* const> shader_compiler_file_type()
+i32 shader_compiler_file_type(const char** filetypes)
 {
-    static constexpr const char* filetypes[] = { ".bsc" };
-    return Span<const char* const>(filetypes);
-}
-
-
-static AssetCompiler g_compiler{};
-
-void load_compiler(bee::PluginRegistry* registry, const bee::PluginState state)
-{
-    if (!registry->has_module(BEE_ASSET_PIPELINE_MODULE_NAME))
+    if (filetypes != nullptr)
     {
-        return;
+        filetypes[0] = ".bsc";
     }
+    return 1;
+}
 
-    g_compiler.data = registry->get_or_create_persistent<AssetCompilerData>("BeeShaderCompilerData");
-    g_compiler.init = init_shader_compiler;
-    g_compiler.destroy = destroy_shader_compiler;
-    g_compiler.compile = compile_shader;
-    g_compiler.get_name = get_shader_compiler_name;
-    g_compiler.settings_type = shader_compiler_settings_type;
-    g_compiler.supported_file_types = shader_compiler_file_type;
+AssetCompilerOrder get_shader_compiler_order()
+{
+    return shader_compiler_order;
+}
+
+
+static AssetCompiler g_shader_compiler{};
+
+void load_shader_compiler(bee::PluginRegistry* registry, const bee::PluginState state)
+{
+    g_shader_compiler.data = registry->get_or_create_persistent<AssetCompilerData>("BeeShaderCompilerData");
+    g_shader_compiler.init = init_shader_compiler;
+    g_shader_compiler.destroy = destroy_shader_compiler;
+    g_shader_compiler.compile = compile_shader;
+    g_shader_compiler.get_name = get_shader_compiler_name;
+    g_shader_compiler.settings_type = shader_compiler_settings_type;
+    g_shader_compiler.supported_file_types = shader_compiler_file_type;
 
     auto* asset_pipeline = registry->get_module<AssetPipelineModule>(BEE_ASSET_PIPELINE_MODULE_NAME);
 
@@ -667,11 +677,11 @@ void load_compiler(bee::PluginRegistry* registry, const bee::PluginState state)
 
     if (state == bee::PluginState::loading)
     {
-        asset_pipeline->register_compiler(&g_compiler);
+        asset_pipeline->register_compiler(&g_shader_compiler);
     }
     else
     {
-        asset_pipeline->unregister_compiler(&g_compiler);
+        asset_pipeline->unregister_compiler(&g_shader_compiler);
     }
 }
 

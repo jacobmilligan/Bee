@@ -203,6 +203,10 @@ protected:
 class BEE_CORE_API MemoryStream : public Stream
 {
 public:
+    MemoryStream()
+        : Stream(Mode::invalid)
+    {}
+
     explicit MemoryStream(std::nullptr_t)
         : Stream(Mode::invalid)
     {}

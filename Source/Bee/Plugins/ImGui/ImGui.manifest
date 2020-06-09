@@ -1,6 +1,6 @@
 {
     "name": "ImGui",
     "assets": {
-        "Shader": "builtin://Assets/Shaders/ImGui.bsc"
+        "Material": "builtin://Assets/Materials/ImGui.mat"
     }
 }

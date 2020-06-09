@@ -341,6 +341,11 @@ struct AtomicNodePtr
 
 BEE_CORE_API AtomicNode* make_atomic_node(Allocator* allocator, const size_t data_size);
 
+template <typename T>
+BEE_FORCE_INLINE AtomicNode* atomic_node_cast(T* data)
+{
+    return reinterpret_cast<AtomicNode*>(reinterpret_cast<u8*>(data) - sizeof(AtomicNode));
+}
 
 template <typename T, typename... Args>
 AtomicNodePtr<T> make_atomic_node(Allocator* allocator, Args&&... args)

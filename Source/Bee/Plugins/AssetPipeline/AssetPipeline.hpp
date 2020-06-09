@@ -12,6 +12,8 @@
 #include "Bee/Core/GUID.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
 
+#include "Bee/Plugins/AssetPipeline/AssetCompilerOrder.hpp"
+
 
 struct MDB_txn;
 
@@ -168,6 +170,8 @@ struct AssetDatabaseModule
 
     bool (*get_asset_from_path)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const StringView& uri, CompiledAsset* asset) {nullptr };
 
+    bool (*get_guid_from_path)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const StringView& uri, GUID* guid) { nullptr };
+
     i32 (*get_guids_by_type)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const TypeRef& type, GUID* dst) { nullptr };
 
     bool (*has_asset)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid) { nullptr };
@@ -193,6 +197,8 @@ struct AssetDatabaseModule
     i32 (*get_artifacts_from_guid)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const GUID& guid, AssetArtifact* dst) { nullptr };
 
     i32 (*get_guids_from_artifact)(AssetDatabaseEnv* env, const AssetDbTxn& txn, const u128& hash, GUID* dst) { nullptr };
+
+    void (*get_artifact_path)(AssetDatabaseEnv* env, const u128& hash, Path* dst) { nullptr };
 };
 
 
@@ -222,11 +228,22 @@ struct AssetCompilerOutput
 class AssetCompilerContext
 {
 public:
-    AssetCompilerContext(const AssetPlatform platform, const StringView& location, const StringView& cache_dir, const TypeInstance& options, const AssetCompilerOutput& output, Allocator* allocator)
-        : platform_(platform),
+    AssetCompilerContext(
+        AssetDatabaseModule* db_module,
+        AssetDatabaseEnv* db,
+        const AssetPlatform platform,
+        const StringView& location,
+        const StringView& cache_dir,
+        const TypeInstance& settings,
+        const AssetCompilerOutput& output,
+        Allocator* allocator
+    )
+        : db_module_(db_module),
+          db_(db),
+          platform_(platform),
           location_(location),
           cache_dir_(cache_dir),
-          options_(options),
+          settings_(settings),
           output_(output),
           allocator_(allocator)
     {}
@@ -270,6 +287,14 @@ public:
         output_.dependencies->push_back(guid);
     }
 
+    bool uri_to_guid(const StringView& uri, GUID* dst)
+    {
+        auto txn = db_module_->read(db_);
+        const auto success = db_module_->get_guid_from_path(db_, txn, uri, dst);
+        db_module_->commit(db_, &txn);
+        return success;
+    }
+
     inline AssetPlatform platform() const
     {
         return platform_;
@@ -290,10 +315,10 @@ public:
         return allocator_;
     }
 
-    template <typename OptionsType>
-    const OptionsType& options() const
+    template <typename SettingsType>
+    const SettingsType& settings() const
     {
-        return *options_.get<OptionsType>();
+        return *settings_.get<SettingsType>();
     }
 
     inline i32 main_artifact() const
@@ -302,10 +327,12 @@ public:
     }
 
 private:
+    AssetDatabaseModule*                db_module_ { nullptr };
+    AssetDatabaseEnv*                   db_ { nullptr };
     AssetPlatform                       platform_ { AssetPlatform::unknown };
     StringView                          location_;
     StringView                          cache_dir_;
-    const TypeInstance&                 options_;
+    const TypeInstance&                 settings_;
     AssetCompilerOutput                 output_;
     i32                                 main_artifact_ { -1 };
     Allocator*                          allocator_ { nullptr };
@@ -320,9 +347,9 @@ struct AssetCompiler
 
     const char* (*get_name)() { nullptr };
 
-    Span<const char* const> (*supported_file_types)() { nullptr };
+    AssetCompilerOrder (*get_order)() { nullptr };
 
-    TypeRef (*asset_type)() { nullptr };
+    i32 (*supported_file_types)(const char**) { nullptr };
 
     TypeRef (*settings_type)() { nullptr };
 
@@ -355,6 +382,7 @@ struct BEE_REFLECT(serializable) ManifestFile
     {}
 };
 
+struct AssetImportBatch;
 struct AssetPipeline;
 
 struct AssetPipelineModule
@@ -365,9 +393,13 @@ struct AssetPipelineModule
 
     void (*set_platform)(AssetPipeline* instance, const AssetPlatform platform) { nullptr };
 
-    void (*import_asset)(AssetPipeline* instance, const Path& source_path) { nullptr };
+    AssetImportBatch* (*create_import_batch)(AssetPipeline* instance) { nullptr };
 
-    void (*reimport_asset)(AssetPipeline* instance, const GUID& guid) { nullptr };
+    void (*schedule_import_batch)(AssetImportBatch* batch) { nullptr };
+
+    void (*import_asset)(AssetImportBatch* batch, const Path& source_path) { nullptr };
+
+    void (*reimport_asset)(AssetImportBatch* batch, const GUID& guid) { nullptr };
 
     // TODO(Jacob): set_compiler(id) instead of import_asset/import_asset_default
     //  and add a get_compilers_for_asset(GUID, AssetCompilerId*)

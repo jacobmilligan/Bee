@@ -15,6 +15,11 @@ JobGroup::JobGroup(Allocator* allocator) noexcept
     : parents_(allocator)
 {}
 
+JobGroup::JobGroup(JobGroup&& other) noexcept
+{
+    move_construct(other);
+}
+
 JobGroup::~JobGroup()
 {
     BEE_ASSERT(!has_pending_jobs());
@@ -28,6 +33,22 @@ JobGroup::~JobGroup()
 
     parents_.clear();
     parents_.shrink_to_fit();
+}
+
+JobGroup& JobGroup::operator=(JobGroup&& other) noexcept
+{
+    move_construct(other);
+    return *this;
+}
+
+void JobGroup::move_construct(JobGroup& other) noexcept
+{
+    job_wait(this);
+    job_wait(&other);
+
+    pending_count_ = other.pending_count_.load(std::memory_order_relaxed);
+    dependency_count_ = other.dependency_count_.load(std::memory_order_relaxed);
+    parents_ = std::move(other.parents_);
 }
 
 void JobGroup::add_job(Job* job)
@@ -47,22 +68,22 @@ void JobGroup::add_dependency(JobGroup* child_group)
     }
 }
 
-i32 JobGroup::pending_count()
+i32 JobGroup::pending_count() const
 {
     return pending_count_.load(std::memory_order_seq_cst);
 }
 
-i32 JobGroup::dependency_count()
+i32 JobGroup::dependency_count() const
 {
     return dependency_count_.load(std::memory_order_seq_cst);
 }
 
-bool JobGroup::has_pending_jobs()
+bool JobGroup::has_pending_jobs() const
 {
     return pending_count() > 0;
 }
 
-bool JobGroup::has_dependencies()
+bool JobGroup::has_dependencies() const
 {
     return dependency_count() > 0;
 }
