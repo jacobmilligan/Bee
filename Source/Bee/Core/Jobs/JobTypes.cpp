@@ -95,8 +95,6 @@ void JobGroup::signal(Job* job)
         return;
     }
 
-    scoped_rw_write_lock_t lock(parents_mutex_);
-
     const auto old_job_count = pending_count_.fetch_sub(1, std::memory_order_release);
     if (old_job_count == 0)
     {
@@ -104,21 +102,26 @@ void JobGroup::signal(Job* job)
         pending_count_.compare_exchange_strong(new_count, 0);
     }
 
-    // Signal all the groups parents
-    for (JobGroup* parent : parents_)
-    {
-        const auto old_dep_count = parent->dependency_count_.fetch_sub(1, std::memory_order_release);
-        if (old_dep_count == 0)
-        {
-            int new_count = -1;
-            parent->dependency_count_.compare_exchange_strong(new_count, 0, std::memory_order_release);
-        }
-    }
+    scoped_rw_write_lock_t lock(parents_mutex_);
 
-    // Ensure all memory allocated by the array is free'd as soon as possible for i.e. job temp allocations that
-    // need to be used quickly
-    parents_.clear();
-    parents_.shrink_to_fit();
+    // Signal all the groups parents
+    if (!parents_.empty())
+    {
+        for (JobGroup* parent : parents_)
+        {
+            const auto old_dep_count = parent->dependency_count_.fetch_sub(1, std::memory_order_release);
+            if (old_dep_count == 0)
+            {
+                int new_count = -1;
+                parent->dependency_count_.compare_exchange_strong(new_count, 0, std::memory_order_release);
+            }
+        }
+
+        // Ensure all memory allocated by the array is free'd as soon as possible for i.e. job temp allocations that
+        // need to be used quickly
+        parents_.clear();
+        parents_.shrink_to_fit();
+    }
 }
 
 Job::Job()
@@ -144,6 +147,8 @@ void Job::complete()
     {
         parent()->signal(this);
     }
+
+    parent_.store(nullptr, std::memory_order_release);
 }
 
 void Job::set_group(JobGroup* group)

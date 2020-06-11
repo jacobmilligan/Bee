@@ -162,6 +162,14 @@ public:
         {
             BEE_FREE(allocator_, chunks_);
         }
+
+        chunk_count_ = 0;
+        resource_count_ = 0;
+        chunks_ = nullptr;
+        next_free_resource_ = 0;
+        chunk_byte_size_ = 0;
+        chunk_capacity_ = 0;
+        allocator_ = nullptr;
     }
 
     template <typename... ConstructorArgs>

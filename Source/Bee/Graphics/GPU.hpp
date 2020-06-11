@@ -1342,6 +1342,8 @@ BEE_RUNTIME_API void gpu_destroy_texture(const DeviceHandle& device_handle, cons
 
 BEE_RUNTIME_API void gpu_update_texture(const DeviceHandle& device_handle, const TextureHandle& texture_handle, const void* data, const Offset& offset, const Extent& extent, const u32 mip_level, const u32 element);
 
+BEE_RUNTIME_API PixelFormat gpu_get_texture_format(const DeviceHandle& device_handle, const TextureHandle& handle);
+
 BEE_RUNTIME_API TextureViewHandle gpu_create_texture_view(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info);
 
 BEE_RUNTIME_API void gpu_destroy_texture_view(const DeviceHandle& device_handle, const TextureViewHandle& texture_view_handle);
@@ -1384,23 +1386,36 @@ BEE_RUNTIME_API i32 gpu_get_current_frame(const DeviceHandle& device_handle);
  *
  ********************************************************
  */
+enum class CommandBufferState
+{
+    invalid,
+    initial,
+    recording,
+    executable,
+    empty
+};
+
 class BEE_RUNTIME_API CommandBuffer
 {
 public:
+    NativeCommandBuffer* native { nullptr };
+
+    CommandBuffer() = default;
+
     CommandBuffer(const DeviceHandle& device_handle, const CommandPoolHandle& pool_handle, const QueueType required_queue_type);
 
     ~CommandBuffer();
+
+    inline CommandBufferState state() const
+    {
+        return state_;
+    }
 
     void reset(const CommandStreamReset hint = CommandStreamReset::none);
 
     void begin(const CommandBufferUsage usage = CommandBufferUsage::default_usage);
 
     void end();
-
-    inline const NativeCommandBuffer* native() const
-    {
-        return cmd_;
-    }
 
     void begin_render_pass(
         const RenderPassHandle&     pass_handle,
@@ -1450,7 +1465,8 @@ public:
 
     void transition_resources(const u32 count, const GpuTransition* transitions);
 private:
-    NativeCommandBuffer* cmd_ { nullptr };
+    CommandBufferState      state_ { CommandBufferState::invalid };
+    i32                     size_ { 0 };
 };
 
 

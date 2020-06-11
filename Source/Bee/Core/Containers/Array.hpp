@@ -66,7 +66,7 @@ public:
 
     inline bool empty() const noexcept
     {
-        return size_ == 0;
+        return size_ <= 0;
     }
 
     inline i32 size() const noexcept

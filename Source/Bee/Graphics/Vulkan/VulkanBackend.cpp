@@ -80,42 +80,42 @@ VkBool32 VKAPI_CALL vk_debug_callback(
 )
 {
     static constexpr const char* object_names[] =
-        {
-            "Unknown", // VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT = 0,
-            "Instance", // VK_DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT = 1,
-            "PhysicalDevice", // VK_DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT = 2,
-            "Device", // VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT = 3,
-            "Queue", // VK_DEBUG_REPORT_OBJECT_TYPE_QUEUE_EXT = 4,
-            "Semaphore", // VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT = 5,
-            "CommpiandBuffer", // VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT = 6,
-            "Fence", // VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT = 7,
-            "DeviceMemory", // VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT = 8,
-            "Buffer", // VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT = 9,
-            "Image", // VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT = 10,
-            "Event", // VK_DEBUG_REPORT_OBJECT_TYPE_EVENT_EXT = 11,
-            "QueryPool", // VK_DEBUG_REPORT_OBJECT_TYPE_QUERY_POOL_EXT = 12,
-            "BufferView", // VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT = 13,
-            "ImageView", // VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT = 14,
-            "ShaderModule", // VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT = 15,
-            "PipelineCache", // VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_CACHE_EXT = 16,
-            "PipelineLayout", // VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT = 17,
-            "RenderPass", // VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT = 18,
-            "Pipeline", // VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT = 19,
-            "DescriptorSetLayout", // VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT_EXT = 20,
-            "Sampler", // VK_DEBUG_REPORT_OBJECT_TYPE_SAMPLER_EXT = 21,
-            "DescriptorPool", // VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_POOL_EXT = 22,
-            "DescriptorSet", // VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_EXT = 23,
-            "Framebuffer", // VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT = 24,
-            "CommandPool", // VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT = 25,
-            "SurfaceKHR", // VK_DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT = 26,
-            "SwapchainKHR", // VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT = 27,
-            "DebugReportCallback", // VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT_EXT = 28,
-            "DisplayKHR", // VK_DEBUG_REPORT_OBJECT_TYPE_DISPLAY_KHR_EXT = 29,
-            "DisplayModeKHR", // VK_DEBUG_REPORT_OBJECT_TYPE_DISPLAY_MODE_KHR_EXT = 30,
-            "ObjectTableNVX", // VK_DEBUG_REPORT_OBJECT_TYPE_OBJECT_TABLE_NVX_EXT = 31,
-            "IndirectCommandsLayoutNVX", // VK_DEBUG_REPORT_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NVX_EXT = 32,
-            "ValidationCache", // VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT_EXT = 33,
-        };
+    {
+        "UNKNOWN", // VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT = 0,
+        "INSTANCE", // VK_DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT = 1,
+        "PHYSICAL_DEVICE", // VK_DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT = 2,
+        "DEVICE", // VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT = 3,
+        "QUEUE", // VK_DEBUG_REPORT_OBJECT_TYPE_QUEUE_EXT = 4,
+        "SEMAPHORE", // VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT = 5,
+        "COMMAND_BUFFER", // VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT = 6,
+        "FENCE", // VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT = 7,
+        "DEVICE_MEMORY", // VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT = 8,
+        "BUFFER", // VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT = 9,
+        "IMAGE", // VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT = 10,
+        "EVENT", // VK_DEBUG_REPORT_OBJECT_TYPE_EVENT_EXT = 11,
+        "QUERY_POOL", // VK_DEBUG_REPORT_OBJECT_TYPE_QUERY_POOL_EXT = 12,
+        "BUFFER_VIEW", // VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT = 13,
+        "IMAGE_VIEW", // VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT = 14,
+        "SHADER_MODULE", // VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT = 15,
+        "PIPELINE_CACHE", // VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_CACHE_EXT = 16,
+        "PIPELINE_LAYOUT", // VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT = 17,
+        "RENDER_PASS", // VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT = 18,
+        "PIPELINE", // VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT = 19,
+        "DESCRIPTOR_SET_LAYOUT", // VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT_EXT = 20,
+        "SAMPLER", // VK_DEBUG_REPORT_OBJECT_TYPE_SAMPLER_EXT = 21,
+        "DESCRIPTOR_POOL", // VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_POOL_EXT = 22,
+        "DESCRIPTOR_SET", // VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_EXT = 23,
+        "FRAMEBUFFER", // VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT = 24,
+        "COMMAND_POOL", // VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT = 25,
+        "SURFACE_KHR", // VK_DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT = 26,
+        "SWAPCHAIN_KHR", // VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT = 27,
+        "DEBUG_REPORT_CALLBACK", // VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT_EXT = 28,
+        "DISPLAY_KHR", // VK_DEBUG_REPORT_OBJECT_TYPE_DISPLAY_KHR_EXT = 29,
+        "DISPLAY_MODE_KHR", // VK_DEBUG_REPORT_OBJECT_TYPE_DISPLAY_MODE_KHR_EXT = 30,
+        "OBJECT_TABLE_NVX", // VK_DEBUG_REPORT_OBJECT_TYPE_OBJECT_TABLE_NVX_EXT = 31,
+        "INDIRECT_COMMANDS_LAYOUT_NVX", // VK_DEBUG_REPORT_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NVX_EXT = 32,
+        "VALIDATION_CACHE", // VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT_EXT = 33,
+    };
 
     LogVerbosity verbosity = LogVerbosity::quiet;
     const char* extra_message_type = "";
@@ -143,7 +143,7 @@ VkBool32 VKAPI_CALL vk_debug_callback(
     }
 
     log_write(verbosity, "Vulkan%s: %s (%s): %s", extra_message_type, layer_prefix, object_names[object_type], msg);
-    log_stack_trace(LogVerbosity::error, 9);
+    log_stack_trace(LogVerbosity::error, 4);
     BEE_DEBUG_BREAK();
     return VK_FALSE;
 }
@@ -1729,6 +1729,13 @@ void gpu_update_texture(const DeviceHandle& device_handle, const TextureHandle& 
     vkCmdCopyBufferToImage(chunk.cmd, chunk.buffer, texture.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
 }
 
+PixelFormat gpu_get_texture_format(const DeviceHandle& device_handle, const TextureHandle& handle)
+{
+    auto& device = validate_device(device_handle);
+    auto& texture = device.textures[handle];
+    return texture.format;
+}
+
 TextureViewHandle gpu_create_texture_view(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info)
 {
     if (BEE_FAIL_F(create_info.texture.is_valid(), "Invalid texture handle given as source texture to TextureViewCreateInfo"))
@@ -1789,7 +1796,7 @@ CommandPoolHandle gpu_create_command_pool(const DeviceHandle& device_handle, con
     const auto handle = device.command_pools.allocate();
     auto& pool = device.command_pools[handle];
 
-    new (&pool.allocator) PoolAllocator(sizeof(CommandBuffer), alignof(CommandBuffer), 0);
+    new (&pool.allocator) PoolAllocator(sizeof(NativeCommandBuffer), alignof(NativeCommandBuffer), 0);
 
     for_each_flag(create_info.used_queues_hint, [&](const QueueType queue_type)
     {
@@ -1816,7 +1823,7 @@ CommandPoolHandle gpu_create_command_pool(const DeviceHandle& device_handle, con
             }
         }
 
-        auto vk_pool = &pool.per_queue_pools[queue_type_index(queue_type)];
+        auto* vk_pool = &pool.per_queue_pools[queue_type_index(queue_type)];
         BEE_VK_CHECK(vkCreateCommandPool(device.handle, &vk_info, nullptr, &vk_pool->handle));
     });
 
@@ -1830,6 +1837,18 @@ void gpu_destroy_command_pool(const DeviceHandle& device_handle, const CommandPo
 
     auto& device = validate_device(device_handle);
     auto& pool = device.command_pools[handle];
+
+    for (auto& per_queue_pool : pool.per_queue_pools)
+    {
+        if (per_queue_pool.handle != VK_NULL_HANDLE)
+        {
+            for (auto& cmd_buffer : per_queue_pool.command_buffers)
+            {
+                vkFreeCommandBuffers(device.handle, per_queue_pool.handle, 1, &cmd_buffer->handle);
+                cmd_buffer->api->native = nullptr;
+            }
+        }
+    }
 
     for (auto& per_queue_pool : pool.per_queue_pools)
     {
@@ -1989,14 +2008,14 @@ struct QueueSubmit
 
     void push_command_buffer(const CommandBuffer* cmd)
     {
-        command_buffers.push_back(cmd->native()->handle);
+        command_buffers.push_back(cmd->native->handle);
         ++info.commandBufferCount;
         info.pCommandBuffers = command_buffers.data();
     }
 };
 
 
-void submit_job(VulkanDevice* device, const FenceHandle& fence, FixedArray<const CommandBuffer*> command_buffers)
+void submit_job(VulkanDevice* device, const FenceHandle& fence, const FixedArray<const CommandBuffer*>& command_buffers)
 {
     static constexpr VkPipelineStageFlags swapchain_wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
@@ -2009,7 +2028,7 @@ void submit_job(VulkanDevice* device, const FenceHandle& fence, FixedArray<const
     // Gather all the command buffers into per-queue submissions
     for (auto& command_buffer : command_buffers)
     {
-        auto native_cmd = command_buffer->native();
+        auto native_cmd = command_buffer->native;
         auto& submission = submissions[native_cmd->queue];
 
         // we have to add a semaphore if the command buffer is targeting the swapchain
@@ -2061,7 +2080,7 @@ void gpu_submit(JobGroup* wait_handle, const DeviceHandle& device_handle, const 
     auto cmds = FixedArray<const CommandBuffer*>::with_size(info.command_buffer_count, temp_allocator());
     memcpy(cmds.data(), info.command_buffers, sizeof(CommandBuffer*) * info.command_buffer_count);
 
-    auto job = create_job(submit_job, &device, info.fence, std::move(cmds));
+    auto* job = create_job(submit_job, &device, info.fence, std::move(cmds));
     job_schedule(wait_handle, job);
 }
 

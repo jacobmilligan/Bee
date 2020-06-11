@@ -383,6 +383,7 @@ int launch_application(Application* app, int argc, char** argv)
     DeviceCreateInfo device_info{};
     device_info.physical_device_id = 0;
     g_renderer->init(device_info);
+    g_renderer->add_swapchain(SwapchainKind::primary, app->main_window, PixelFormat::bgra8, "EditorWindow");
 
     // initialize non-core plugins
     g_imgui->init();
@@ -400,6 +401,8 @@ ApplicationState tick_application(Application* app)
     {
         return ApplicationState::quit_requested;
     }
+
+    g_renderer->execute_frame();
 
     current_thread::sleep(make_time_point<TimeInterval::milliseconds>(8).ticks());
     return ApplicationState::running;

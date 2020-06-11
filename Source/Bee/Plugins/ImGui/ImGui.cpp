@@ -47,11 +47,17 @@ void destroy_render_stage(const DeviceHandle& device)
     g_imgui->material.unload();
 }
 
-void execute_render_stage(RenderGraphBuilder* builder, RenderGraph* graph)
+void execute_render_stage(RenderGraph* graph, RenderGraphBuilderModule* builder)
 {
-    RenderGraphArgs* args = nullptr;
-    auto* pass = builder->add_pass(graph, "ImGui", &args);
-    args->target = builder->import_texture(graph, )
+    auto* pass = builder->add_pass(graph, "ImGui");
+    const auto target = builder->import_backbuffer(pass, "Backbuffer", builder->get_primary_swapchain());
+    builder->write_color(pass, target, LoadOp::clear, StoreOp::store, 1);
+
+    builder->set_execute(pass, [](RenderGraph* graph, RenderGraphStorage* storage)
+    {
+        auto* cmd = storage->create_command_buffer(graph, QueueType::graphics);
+        BEE_UNUSED(cmd);
+    });
 }
 
 void init_imgui()
@@ -76,6 +82,9 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::Pl
 {
     bee::g_imgui = registry->get_or_create_persistent<bee::RenderStageData>("BeeImGuiData");
     bee::g_asset_registry = registry->get_module<bee::AssetRegistryModule>(BEE_ASSET_REGISTRY_MODULE_NAME);
+
+    g_module.init = bee::init_imgui;
+    g_module.destroy = bee::destroy_imgui;
 
     g_stage.init = bee::init_render_stage;
     g_stage.destroy = bee::destroy_render_stage;

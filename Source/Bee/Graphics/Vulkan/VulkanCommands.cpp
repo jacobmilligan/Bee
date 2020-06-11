@@ -15,6 +15,8 @@
 namespace bee {
 
 
+#define BEE_VK_CMD(cmd) cmd; ++size_
+
 /*
  ********************************************************
  *
@@ -62,27 +64,39 @@ CommandBuffer::CommandBuffer(const DeviceHandle& device_handle, const CommandPoo
     alloc_info.commandBufferCount = 1u;
     alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 
-    cmd_ = BEE_NEW(pool.allocator, NativeCommandBuffer);
-    cmd_->index = queue_pool.command_buffers.size();
-    cmd_->queue = queue;
-    cmd_->pool = pool_handle;
-    cmd_->device = &device;
-    BEE_VK_CHECK(vkAllocateCommandBuffers(device.handle, &alloc_info, &cmd_->handle));
+    native = BEE_NEW(pool.allocator, NativeCommandBuffer);
+    native->index = queue_pool.command_buffers.size();
+    native->queue = queue;
+    native->pool = pool_handle;
+    native->device = &device;
+    native->api = this;
+    BEE_VK_CHECK(vkAllocateCommandBuffers(device.handle, &alloc_info, &native->handle));
 
-    queue_pool.command_buffers.push_back(cmd_);
+    queue_pool.command_buffers.push_back(native);
+    state_ = CommandBufferState::initial;
 }
 
 CommandBuffer::~CommandBuffer()
 {
-    auto& pool = cmd_->device->command_pools[cmd_->pool];
-    auto& per_queue_pool = pool.per_queue_pools[cmd_->queue];
-    vkFreeCommandBuffers(cmd_->device->handle, per_queue_pool.handle, 1, &cmd_->handle);
+    if (native == nullptr)
+    {
+        return;
+    }
 
-    BEE_DELETE(pool.allocator, cmd_);
+    auto& pool = native->device->command_pools[native->pool];
+    auto& per_queue_pool = pool.per_queue_pools[native->queue];
+    vkFreeCommandBuffers(native->device->handle, per_queue_pool.handle, 1, &native->handle);
 
-    std::swap(per_queue_pool.command_buffers.back(), per_queue_pool.command_buffers[cmd_->index]);
-    per_queue_pool.command_buffers[cmd_->index]->index = cmd_->index;
+    BEE_DELETE(pool.allocator, native);
+
+    if (native->index != per_queue_pool.command_buffers.size() - 1)
+    {
+        std::swap(per_queue_pool.command_buffers.back(), per_queue_pool.command_buffers[native->index]);
+        per_queue_pool.command_buffers[native->index]->index = native->index;
+    }
+
     per_queue_pool.command_buffers.pop_back();
+    state_ = CommandBufferState::invalid;
 }
 
 void CommandBuffer::reset(const CommandStreamReset hint)
@@ -90,9 +104,12 @@ void CommandBuffer::reset(const CommandStreamReset hint)
     const auto reset_flags = convert_command_buffer_reset_hint(hint);
 
     // the command buffer doesn't target a swapchain anymore
-    cmd_->target_swapchain = SwapchainHandle{};
+    native->target_swapchain = SwapchainHandle{};
 
-    BEE_VK_CHECK(vkResetCommandBuffer(cmd_->handle, reset_flags));
+    BEE_VK_CHECK(vkResetCommandBuffer(native->handle, reset_flags));
+
+    state_ = CommandBufferState::initial;
+    size_ = 0;
 }
 
 void CommandBuffer::begin(const CommandBufferUsage usage)
@@ -100,12 +117,16 @@ void CommandBuffer::begin(const CommandBufferUsage usage)
     VkCommandBufferBeginInfo info { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr };
     info.flags = convert_command_buffer_usage(usage);
 
-    BEE_VK_CHECK(vkBeginCommandBuffer(cmd_->handle, &info));
+    BEE_VK_CHECK(vkBeginCommandBuffer(native->handle, &info));
+
+    state_ = CommandBufferState::recording;
 }
 
 void CommandBuffer::end()
 {
-    BEE_VK_CHECK(vkEndCommandBuffer(cmd_->handle));
+    BEE_VK_CHECK(vkEndCommandBuffer(native->handle));
+
+    state_ = size_ > 0 ? CommandBufferState::executable : CommandBufferState::empty;
 }
 
 void CommandBuffer::begin_render_pass(
@@ -117,7 +138,7 @@ void CommandBuffer::begin_render_pass(
     const ClearValue*           clear_values
 )
 {
-    auto& pass = cmd_->device->render_passes[pass_handle];
+    auto& pass = native->device->render_passes[pass_handle];
     auto begin_info = VkRenderPassBeginInfo { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr };
     begin_info.renderPass = pass.handle;
     begin_info.renderArea = vkrect2d_cast(render_area);
@@ -133,7 +154,7 @@ void CommandBuffer::begin_render_pass(
 
     for (u32 i = 0; i < attachment_count; ++i)
     {
-        auto& view = cmd_->device->texture_views[attachments[i]];
+        auto& view = native->device->texture_views[attachments[i]];
 
         image_views[i] = view.handle;
 
@@ -141,7 +162,7 @@ void CommandBuffer::begin_render_pass(
         fb_key.attachments[i].sample_count = view.samples;
     }
 
-    begin_info.framebuffer = get_or_create_framebuffer(cmd_->device, fb_key, pass.handle, image_views);
+    begin_info.framebuffer = get_or_create_framebuffer(native->device, fb_key, pass.handle, image_views);
 
     VkClearValue vk_clear_values[BEE_GPU_MAX_ATTACHMENTS];
     for (u32 val = 0; val < clear_value_count; ++val)
@@ -149,32 +170,32 @@ void CommandBuffer::begin_render_pass(
         memcpy(vk_clear_values + val, clear_values + val, sizeof(VkClearValue));
     }
 
-    auto& device_texture_views = cmd_->device->texture_views;
+    auto& device_texture_views = native->device->texture_views;
     for (u32 att = 0; att < attachment_count; ++att)
     {
         auto& texture_view = attachments[att];
         if (device_texture_views[texture_view].swapchain_handle.is_valid())
         {
-            BEE_ASSERT_F(!cmd_->target_swapchain.is_valid(), "A render pass must contain only one swapchain texture attachment");
-            cmd_->target_swapchain = device_texture_views[texture_view].swapchain_handle;
+            BEE_ASSERT_F(!native->target_swapchain.is_valid(), "A render pass must contain only one swapchain texture attachment");
+            native->target_swapchain = device_texture_views[texture_view].swapchain_handle;
         }
     }
 
     begin_info.pClearValues = vk_clear_values;
 
     // TODO(Jacob): if we switch to secondary command buffers, this flag should change
-    vkCmdBeginRenderPass(cmd_->handle, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    BEE_VK_CMD(vkCmdBeginRenderPass(native->handle, &begin_info, VK_SUBPASS_CONTENTS_INLINE));
 }
 
 void CommandBuffer::end_render_pass()
 {
-    vkCmdEndRenderPass(cmd_->handle);
+    BEE_VK_CMD(vkCmdEndRenderPass(native->handle));
 }
 
 void CommandBuffer::bind_pipeline_state(const PipelineStateHandle& pipeline_handle)
 {
-    auto& pipeline = cmd_->device->pipelines[pipeline_handle];
-    vkCmdBindPipeline(cmd_->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
+    auto& pipeline = native->device->pipelines[pipeline_handle];
+    BEE_VK_CMD(vkCmdBindPipeline(native->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle));
 }
 
 void CommandBuffer::bind_vertex_buffer(const BufferHandle& buffer_handle, const u32 binding, const u64 offset)
@@ -189,21 +210,21 @@ void CommandBuffer::bind_vertex_buffers(
     const u64*          offsets
 )
 {
-    auto& buffer_table = cmd_->device->buffers;
-    auto vk_buffers = BEE_ALLOCA_ARRAY(VkBuffer, count);
+    auto& buffer_table = native->device->buffers;
+    auto* vk_buffers = BEE_ALLOCA_ARRAY(VkBuffer, count);
 
     for (u32 b = 0; b < count; ++b)
     {
         vk_buffers[b] = buffer_table[buffers[b]].handle;
     }
 
-    vkCmdBindVertexBuffers(cmd_->handle, first_binding, count, vk_buffers, offsets);
+    BEE_VK_CMD(vkCmdBindVertexBuffers(native->handle, first_binding, count, vk_buffers, offsets));
 }
 
 void CommandBuffer::bind_index_buffer(const BufferHandle& buffer_handle, const u64 offset, const IndexFormat index_format)
 {
-    auto& buffer = cmd_->device->buffers[buffer_handle];
-    vkCmdBindIndexBuffer(cmd_->handle, buffer.handle, offset, convert_index_type(index_format));
+    auto& buffer = native->device->buffers[buffer_handle];
+    BEE_VK_CMD(vkCmdBindIndexBuffer(native->handle, buffer.handle, offset, convert_index_type(index_format)));
 }
 
 void CommandBuffer::copy_buffer(
@@ -214,20 +235,20 @@ void CommandBuffer::copy_buffer(
     const i32           size
 )
 {
-    auto& src = cmd_->device->buffers[src_handle];
-    auto& dst = cmd_->device->buffers[dst_handle];
+    auto& src = native->device->buffers[src_handle];
+    auto& dst = native->device->buffers[dst_handle];
 
     VkBufferCopy copy{};
     copy.srcOffset = src_offset;
     copy.dstOffset = dst_offset;
     copy.size = size;
 
-    vkCmdCopyBuffer(cmd_->handle, src.handle, dst.handle, 1, &copy);
+    BEE_VK_CMD(vkCmdCopyBuffer(native->handle, src.handle, dst.handle, 1, &copy));
 }
 
 void CommandBuffer::draw(const u32 vertex_count, const u32 instance_count, const u32 first_vertex, const u32 first_instance)
 {
-    vkCmdDraw(cmd_->handle, vertex_count, instance_count, first_vertex, first_instance);
+    BEE_VK_CMD(vkCmdDraw(native->handle, vertex_count, instance_count, first_vertex, first_instance));
 }
 
 void CommandBuffer::draw_indexed(
@@ -238,14 +259,14 @@ void CommandBuffer::draw_indexed(
     const u32 first_instance
 )
 {
-    vkCmdDrawIndexed(
-        cmd_->handle,
+    BEE_VK_CMD(vkCmdDrawIndexed(
+        native->handle,
         index_count,
         instance_count,
         first_index,
         vertex_offset,
         first_instance
-    );
+    ));
 }
 
 void CommandBuffer::set_viewport(const Viewport& viewport)
@@ -258,7 +279,7 @@ void CommandBuffer::set_viewport(const Viewport& viewport)
     vk_viewport.minDepth = viewport.min_depth;
     vk_viewport.maxDepth = viewport.max_depth;
 
-    vkCmdSetViewport(cmd_->handle, 0, 1, &vk_viewport);
+    BEE_VK_CMD(vkCmdSetViewport(native->handle, 0, 1, &vk_viewport));
 }
 
 void CommandBuffer::set_scissor(const RenderRect& scissor)
@@ -269,7 +290,7 @@ void CommandBuffer::set_scissor(const RenderRect& scissor)
     rect.extent.width = scissor.width;
     rect.extent.height = scissor.height;
 
-    vkCmdSetScissor(cmd_->handle, 0, 1, &rect);
+    BEE_VK_CMD(vkCmdSetScissor(native->handle, 0, 1, &rect));
 }
 
 void CommandBuffer::transition_resources(const u32 count, const GpuTransition* transitions)
@@ -292,7 +313,7 @@ void CommandBuffer::transition_resources(const u32 count, const GpuTransition* t
                 image_barriers.emplace_back();
 
                 auto& barrier = image_barriers.back();
-                auto& texture = cmd_->device->textures[transition.barrier.texture];
+                auto& texture = native->device->textures[transition.barrier.texture];
 
                 barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
                 barrier.pNext = nullptr;
@@ -318,7 +339,7 @@ void CommandBuffer::transition_resources(const u32 count, const GpuTransition* t
                 buffer_barriers.emplace_back();
 
                 auto& barrier = buffer_barriers.back();
-                auto& buffer = cmd_->device->buffers[transition.barrier.buffer.handle];
+                auto& buffer = native->device->buffers[transition.barrier.buffer.handle];
 
                 barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
                 barrier.pNext = nullptr;
@@ -363,14 +384,14 @@ void CommandBuffer::transition_resources(const u32 count, const GpuTransition* t
     const auto src_stage = select_pipeline_stage_from_access(src_access);
     const auto dst_stage = select_pipeline_stage_from_access(dst_access);
 
-    vkCmdPipelineBarrier(
-        cmd_->handle,
+    BEE_VK_CMD(vkCmdPipelineBarrier(
+        native->handle,
         src_stage, dst_stage,
         0,
         static_cast<u32>(memory_barriers.size()), memory_barriers.data(),
         static_cast<u32>(buffer_barriers.size()), buffer_barriers.data(),
         static_cast<u32>(image_barriers.size()), image_barriers.data()
-    );
+    ));
 }
 
 

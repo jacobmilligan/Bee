@@ -81,21 +81,10 @@ Job* create_job(FunctionType&& fn)
     return job;
 }
 
-
 template <typename FunctionType>
 inline void parallel_for(JobGroup* group, const i32 iteration_count, const i32 execute_batch_size, FunctionType&& function)
 {
-    const auto first_batch_size = math::min(iteration_count, execute_batch_size);
-
-    auto first_job = create_job([&, end=first_batch_size]()
-    {
-        for (int i = 0; i < end; ++i)
-        {
-            function(i);
-        }
-    });
-
-    for (int batch = first_batch_size; batch < iteration_count; batch += execute_batch_size)
+    for (int batch = 0; batch < iteration_count; batch += execute_batch_size)
     {
         auto batch_job = create_job([&, begin=batch, end=math::min(iteration_count, batch + execute_batch_size)]()
         {
@@ -107,8 +96,6 @@ inline void parallel_for(JobGroup* group, const i32 iteration_count, const i32 e
 
         job_schedule(group, batch_job);
     }
-
-    job_schedule(group, first_job);
 }
 
 

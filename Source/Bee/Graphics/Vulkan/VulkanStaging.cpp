@@ -111,8 +111,11 @@ void VulkanStaging::destroy()
             BEE_VK_CHECK(vkResetFences(device, 1, &buffer.submit_fence));
         }
 
-        vmaUnmapMemory(vma_allocator, buffer.allocation);
-        vmaDestroyBuffer(vma_allocator, buffer.handle, buffer.allocation);
+        if (buffer.allocation != nullptr)
+        {
+            vmaUnmapMemory(vma_allocator, buffer.allocation);
+            vmaDestroyBuffer(vma_allocator, buffer.handle, buffer.allocation);
+        }
         buffer.handle = VK_NULL_HANDLE;
 
         vkDestroyFence(device, buffer.submit_fence, nullptr);

@@ -171,6 +171,7 @@ struct NativeCommandBuffer
     CommandPoolHandle       pool;
     VulkanDevice*           device { nullptr };
     SwapchainHandle         target_swapchain;
+    CommandBuffer*          api { nullptr };
 };
 
 struct VulkanCommandPool
@@ -542,6 +543,14 @@ struct VulkanBackend
         "VK_LAYER_LUNARG_monitor"              // displays FPS in title bar (maybe useless)
     };
 #endif // BEE_CONFIG_ENABLE_ASSERTIONS
+
+    ~VulkanBackend()
+    {
+        for (auto& device : devices)
+        {
+            BEE_ASSERT_F(device.handle == nullptr, "All GPU devices must be destroyed before the GPU backend is destroyed");
+        }
+    }
 };
 
 
