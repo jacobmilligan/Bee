@@ -43,7 +43,13 @@ struct PerFrameTexture
     TextureCreateInfo   create_info;
     TextureHandle       handle;
     TextureViewHandle   view_handle;
+};
+
+struct PerFrameBackBuffer
+{
     SwapchainHandle     swapchain;
+    TextureHandle       drawable;
+    TextureViewHandle   drawable_view;
 };
 
 struct RenderGraphPass
@@ -57,11 +63,12 @@ struct RenderGraphPass
 
     i32                     attachment_count { 0 };
     AttachmentDescriptor    attachments[BEE_GPU_MAX_ATTACHMENTS];
-    RenderGraphResource     attachment_textures[BEE_GPU_MAX_ATTACHMENTS];
+    RenderGraphResource     attachment_rg_resources[BEE_GPU_MAX_ATTACHMENTS];
+    TextureViewHandle       attachment_textures[BEE_GPU_MAX_ATTACHMENTS];
 
-    bool                    has_execute;
     render_graph_execute_t  execute_fn;
     u8                      execute_args[rg_args_capacity];
+    bool                    has_transitioned_resources { false };
 };
 
 struct PerFrameResource
@@ -70,13 +77,15 @@ struct PerFrameResource
 
     union
     {
-        PerFrameBuffer    buffer;
-        PerFrameTexture   texture;
+        PerFrameBuffer      buffer;
+        PerFrameTexture     texture;
+        PerFrameBackBuffer  backbuffer;
     };
 
     u32                 hash { 0 };
     const char*         name { nullptr };
-    i32                 refcount {0 };
+    i32                 refcount { 0 };
+    i32                 pool_index { -1 };
     i32                 writer_pass_count { 0 };
     RenderGraphPass*    writer_passes[rg_pass_max_ops] { nullptr };
 
@@ -94,13 +103,20 @@ struct PooledResource
         TextureViewHandle   view_handle;
     };
 
+    struct Buffer
+    {
+        BufferHandle    handle;
+        size_t          size { 0 };
+    };
+
     u32                     hash { 0 };
     RenderGraphResourceType type { RenderGraphResourceType::imported_buffer };
+    GpuResourceState        state { GpuResourceState::undefined };
 
     union
     {
-        BufferHandle    buffer;
-        Texture         texture;
+        Buffer  buffer;
+        Texture texture;
     };
 };
 
@@ -123,13 +139,18 @@ struct RenderGraph
     RenderGraph*                        next { nullptr };
     RenderGraph*                        prev { nullptr };
 
+    JobGroup                            wait_handle;
+    std::atomic_int32_t                 executed_command_buffer_count { 0 };
+
     i32                                 frame_pass_count { 0 };
     i32                                 frame_resource_count { 0 };
     PerFrameResource                    frame_resources[rg_max_resources];
     RenderGraphPass                     frame_passes[rg_max_passes];
 
     i32                                 execute_count { 0 };
+    i32                                 executed_resource_count { 0 };
     RenderGraphPass*                    execute_order[rg_max_passes] { nullptr };
+    PerFrameResource*                   executed_resources[rg_max_resources] { nullptr };
 
     RenderPassCreateInfo                tmp_pass_info;
     DynamicArray<PooledResource>        resource_pool;
@@ -228,7 +249,7 @@ void rg_destroy_render_graph(RenderGraph* graph)
         {
             case RenderGraphResourceType::buffer:
             {
-                gpu_destroy_buffer(g_renderer->device, resource.buffer);
+                gpu_destroy_buffer(g_renderer->device, resource.buffer.handle);
                 break;
             }
             case RenderGraphResourceType::texture:
@@ -282,6 +303,21 @@ RenderGraphThreadData& rg_get_thread_data(RenderGraph* graph)
     return graph->thread_data[frame][thread];
 }
 
+void rg_reset_thread_data(RenderGraph* graph)
+{
+    const auto frame = gpu_get_current_frame(g_renderer->device);
+    for (auto& thread : graph->thread_data[frame])
+    {
+        if (thread.cmd_count >= 0)
+        {
+            gpu_reset_command_pool(g_renderer->device, thread.cmd_pool);
+            thread.cmd_count = 0;
+        }
+    }
+
+    graph->executed_command_buffer_count.store(0, std::memory_order_relaxed);
+}
+
 void rg_resolve_resource(RenderGraph* graph, PerFrameResource* src)
 {
     // imported resources already have a GPU handle
@@ -290,17 +326,19 @@ void rg_resolve_resource(RenderGraph* graph, PerFrameResource* src)
         return;
     }
 
+    // This is probably the latest point we can acquire the swapchains drawables safely, i.e. we need to acquire
+    // drawables before executing command buffers because the swapchain may be recreated here
+    if (src->handle == RenderGraphResourceType::backbuffer)
+    {
+        src->backbuffer.drawable = gpu_acquire_swapchain_texture(g_renderer->device, src->backbuffer.swapchain);
+        src->backbuffer.drawable_view = gpu_get_swapchain_texture_view(g_renderer->device, src->backbuffer.swapchain);
+        return;
+    }
+
     const auto index = find_index_if(graph->resource_pool, [&](const PooledResource& r)
     {
         return r.hash == src->hash && r.type == src->handle;
     });
-
-    if (src->handle == RenderGraphResourceType::backbuffer)
-    {
-        src->texture.view_handle = gpu_get_swapchain_texture_view(g_renderer->device, src->texture.swapchain);
-        src->texture.handle = gpu_acquire_swapchain_texture(g_renderer->device, src->texture.swapchain);
-        return;
-    }
 
     PooledResource* resource = nullptr;
 
@@ -319,7 +357,8 @@ void rg_resolve_resource(RenderGraph* graph, PerFrameResource* src)
 
         if (resource->type == RenderGraphResourceType::buffer)
         {
-            resource->buffer = gpu_create_buffer(g_renderer->device, src->buffer.create_info);
+            resource->buffer.handle = gpu_create_buffer(g_renderer->device, src->buffer.create_info);
+            resource->buffer.size = src->buffer.create_info.size;
         }
         else
         {
@@ -342,13 +381,15 @@ void rg_resolve_resource(RenderGraph* graph, PerFrameResource* src)
 
     if (resource->type == RenderGraphResourceType::buffer)
     {
-        src->buffer.handle = resource->buffer;
+        src->buffer.handle = resource->buffer.handle;
     }
     else
     {
         src->texture.handle = resource->texture.handle;
         src->texture.view_handle = resource->texture.view_handle;
     }
+
+    src->pool_index = index;
 }
 
 void rg_resolve_pass(RenderGraph* graph, RenderGraphPass* pass)
@@ -364,6 +405,17 @@ void rg_resolve_pass(RenderGraph* graph, RenderGraphPass* pass)
     {
         pass_info.attachments[i] = pass->attachments[i];
 
+        const u64 per_frame_index = pass->attachment_rg_resources[i].low();
+
+        BEE_ASSERT(
+            graph->frame_resources[per_frame_index].handle != RenderGraphResourceType::buffer
+            && graph->frame_resources[per_frame_index].handle != RenderGraphResourceType::imported_buffer
+        );
+
+        pass->attachment_textures[i] = graph->frame_resources[per_frame_index].texture.view_handle;
+
+        BEE_ASSERT(pass->attachment_textures[i].is_valid());
+
         switch (pass->attachments[i].type)
         {
             case AttachmentType::present:
@@ -373,10 +425,17 @@ void rg_resolve_pass(RenderGraph* graph, RenderGraphPass* pass)
                 ++subpass.color_attachment_count;
 
                 // Resolve the pixel format for the color attachment from the texture
-                auto& resource = graph->frame_resources[pass->attachment_textures[i].low()];
+                auto& resource = graph->frame_resources[pass->attachment_rg_resources[i].low()];
 
                 // use the GPU backend to get the format instead of the create_info because this may be an imported texture
-                pass_info.attachments[i].format = gpu_get_texture_format(g_renderer->device, resource.texture.handle);
+                if (resource.handle == RenderGraphResourceType::backbuffer)
+                {
+                    pass_info.attachments[i].format = gpu_get_swapchain_texture_format(g_renderer->device, resource.backbuffer.swapchain);
+                }
+                else
+                {
+                    pass_info.attachments[i].format = gpu_get_texture_format(g_renderer->device, resource.texture.handle);
+                }
                 break;
             }
             case AttachmentType::depth_stencil:
@@ -412,13 +471,14 @@ void rg_resolve_pass(RenderGraph* graph, RenderGraphPass* pass)
     pass->handle = graph->pass_pool[index].handle;
 }
 
-void rg_execute_pass(RenderGraphPass* pass, std::atomic_int32_t* cmd_count)
+void rg_execute_pass(RenderGraphPass* pass)
 {
+    // Reset the thread data
     auto& thread = rg_get_thread_data(pass->graph);
-    gpu_reset_command_pool(g_renderer->device, thread.cmd_pool);
 
     BEE_ASSERT(pass != nullptr);
-    pass->execute_fn(pass->graph, &g_storage);
+
+    pass->execute_fn(pass, &g_storage);
 
     for (int i = 0; i < thread.cmd_count; ++i)
     {
@@ -429,71 +489,12 @@ void rg_execute_pass(RenderGraphPass* pass, std::atomic_int32_t* cmd_count)
 
         if (thread.cmd_buffers[i].state() != CommandBufferState::empty)
         {
-            cmd_count->fetch_add(1, std::memory_order_relaxed);
+            pass->graph->executed_command_buffer_count.fetch_add(1, std::memory_order_relaxed);
         }
     }
 }
 
-void rg_execute_job(const i32 frame, RenderGraph* graph)
-{
-    JobGroup wait_handle{};
-
-    // kick jobs or each pass
-
-    std::atomic_int32_t cmd_count { 0 };
-
-    for (int i = 0; i < graph->execute_count; ++i)
-    {
-        auto* job = create_job(rg_execute_pass, graph->execute_order[i], &cmd_count);
-        job_schedule(&wait_handle, job);
-    }
-
-    job_wait(&wait_handle);
-
-    const auto executed_cmd_count = cmd_count.load(std::memory_order_relaxed);
-
-    if (executed_cmd_count > 0)
-    {
-        auto* cmd_buffers = BEE_ALLOCA_ARRAY(const CommandBuffer*, executed_cmd_count);
-
-        int cmd_index = 0;
-
-        for (auto& thread : graph->thread_data[frame])
-        {
-            for (int i = 0; i < thread.cmd_count; ++i)
-            {
-                if (thread.cmd_buffers[i].state() != CommandBufferState::empty)
-                {
-                    cmd_buffers[cmd_index] = &thread.cmd_buffers[i];
-                    ++cmd_index;
-                }
-            }
-        }
-
-        SubmitInfo submit{};
-        submit.fence = graph->fences[frame];
-        submit.command_buffer_count = executed_cmd_count;
-        submit.command_buffers = cmd_buffers;
-
-        gpu_submit(&wait_handle, g_renderer->device, submit);
-        job_wait(&wait_handle);
-
-        for (int i = 0; i < graph->frame_resource_count; ++i)
-        {
-            if (graph->frame_resources[i].handle == RenderGraphResourceType::backbuffer)
-            {
-                gpu_present(g_renderer->device, graph->frame_resources[i].texture.swapchain);
-            }
-        }
-    }
-
-    // reset the graph
-    graph->frame_pass_count = 0;
-    graph->frame_resource_count = 0;
-    graph->execute_count = 0;
-}
-
-void rg_execute(RenderGraph* graph, JobGroup* wait_handle)
+void rg_execute(RenderGraph* graph)
 {
     /*
      * TODO(Jacob):
@@ -506,16 +507,18 @@ void rg_execute(RenderGraph* graph, JobGroup* wait_handle)
 
     const auto frame = gpu_get_current_frame(g_renderer->device);
     gpu_wait_for_fence(g_renderer->device, graph->fences[frame]);
+    gpu_reset_fence(g_renderer->device, graph->fences[frame]);
 
     FixedArray<PerFrameResource*> frontier(graph->frame_resource_count, temp_allocator());
-    FixedArray<PerFrameResource*> resource_list(graph->frame_resource_count, temp_allocator());
+    graph->executed_resource_count = 0;
 
     for (int i = 0; i < graph->frame_resource_count; ++i)
     {
         if (graph->frame_resources[i].refcount <= 0)
         {
             frontier.push_back(&graph->frame_resources[i]);
-            resource_list.push_back(&graph->frame_resources[i]);
+            graph->executed_resources[graph->executed_resource_count] = &graph->frame_resources[i];
+            ++graph->executed_resource_count;
         }
     }
 
@@ -572,7 +575,8 @@ void rg_execute(RenderGraph* graph, JobGroup* wait_handle)
 
                 // We've reached a leaf resource - so add to the frontier and mark as actually used
                 frontier.push_back(&graph->frame_resources[dependency.low()]);
-                resource_list.push_back(frontier.back());
+                graph->executed_resources[graph->executed_resource_count] = frontier.back();
+                ++graph->executed_resource_count;
             }
 
             // add to execute order - we've found a leaf pass
@@ -587,9 +591,9 @@ void rg_execute(RenderGraph* graph, JobGroup* wait_handle)
     std::reverse(graph->execute_order, graph->execute_order + graph->execute_count);
 
     // Resolve all the resources and passes to their physical passes
-    for (auto* resource : resource_list)
+    for (int i = 0; i < graph->executed_resource_count; ++i)
     {
-        rg_resolve_resource(graph, resource);
+        rg_resolve_resource(graph, graph->executed_resources[i]);
     }
 
     // resolve all the passes
@@ -598,8 +602,58 @@ void rg_execute(RenderGraph* graph, JobGroup* wait_handle)
         rg_resolve_pass(graph, graph->execute_order[i]);
     }
 
-    auto* job = create_job(rg_execute_job, frame, graph);
-    job_schedule(wait_handle, job);
+    rg_reset_thread_data(graph);
+
+    // kick jobs for each pass
+    for (int i = 0; i < graph->execute_count; ++i)
+    {
+        auto* job = create_job(rg_execute_pass, graph->execute_order[i]);
+        job_schedule(&graph->wait_handle, job);
+    }
+
+    job_wait(&graph->wait_handle);
+
+    const auto executed_cmd_count = graph->executed_command_buffer_count.load(std::memory_order_relaxed);
+
+    if (executed_cmd_count > 0)
+    {
+        auto* cmd_buffers = BEE_ALLOCA_ARRAY(const CommandBuffer*, executed_cmd_count);
+
+        int cmd_index = 0;
+
+        for (auto& thread : graph->thread_data[frame])
+        {
+            for (int i = 0; i < thread.cmd_count; ++i)
+            {
+                if (thread.cmd_buffers[i].state() != CommandBufferState::empty)
+                {
+                    BEE_ASSERT(cmd_index < executed_cmd_count);
+                    cmd_buffers[cmd_index] = &thread.cmd_buffers[i];
+                    ++cmd_index;
+                }
+            }
+        }
+
+        SubmitInfo submit{};
+        submit.fence = graph->fences[frame];
+        submit.command_buffer_count = executed_cmd_count;
+        submit.command_buffers = cmd_buffers;
+
+        gpu_submit(g_renderer->device, submit);
+
+        for (int i = 0; i < graph->frame_resource_count; ++i)
+        {
+            if (graph->frame_resources[i].handle == RenderGraphResourceType::backbuffer)
+            {
+                gpu_present(g_renderer->device, graph->frame_resources[i].backbuffer.swapchain);
+            }
+        }
+    }
+
+    // reset the graph
+    graph->frame_pass_count = 0;
+    graph->frame_resource_count = 0;
+    graph->execute_count = 0;
 }
 
 /*
@@ -609,9 +663,9 @@ void rg_execute(RenderGraph* graph, JobGroup* wait_handle)
  *
  ********************************************
  */
-BufferHandle rg_get_buffer(RenderGraph* graph, const RenderGraphResource& handle)
+BufferHandle rg_get_buffer(RenderGraphPass* pass, const RenderGraphResource& handle)
 {
-    if (BEE_FAIL(handle.low() < graph->frame_resource_count))
+    if (BEE_FAIL(handle.low() < pass->graph->frame_resource_count))
     {
         return BufferHandle{};
     }
@@ -621,12 +675,12 @@ BufferHandle rg_get_buffer(RenderGraph* graph, const RenderGraphResource& handle
         return BufferHandle{};
     }
 
-    return graph->frame_resources[handle.low()].buffer.handle;
+    return pass->graph->frame_resources[handle.low()].buffer.handle;
 }
 
-TextureHandle rg_get_texture(RenderGraph* graph, const RenderGraphResource& handle)
+TextureHandle rg_get_texture(RenderGraphPass* pass, const RenderGraphResource& handle)
 {
-    if (BEE_FAIL(handle.low() < graph->frame_resource_count))
+    if (BEE_FAIL(handle.low() < pass->graph->frame_resource_count))
     {
         return TextureHandle{};
     }
@@ -636,12 +690,12 @@ TextureHandle rg_get_texture(RenderGraph* graph, const RenderGraphResource& hand
         return TextureHandle{};
     }
 
-    return graph->frame_resources[handle.low()].texture.handle;
+    return pass->graph->frame_resources[handle.low()].texture.handle;
 }
 
-CommandBuffer* rg_create_command_buffer(RenderGraph* graph, const QueueType queue)
+CommandBuffer* rg_create_command_buffer(RenderGraphPass* pass, const QueueType queue)
 {
-    auto& thread_data = rg_get_thread_data(graph);
+    auto& thread_data = rg_get_thread_data(pass->graph);
 
     if (thread_data.cmd_count >= rg_max_cmd)
     {
@@ -650,15 +704,108 @@ CommandBuffer* rg_create_command_buffer(RenderGraph* graph, const QueueType queu
     }
 
     auto* cmd = &thread_data.cmd_buffers[thread_data.cmd_count];
-    if (cmd->native == nullptr)
-    {
-        new (cmd) CommandBuffer(g_renderer->device, thread_data.cmd_pool, queue);
-    }
+    new (cmd) CommandBuffer(g_renderer->device, thread_data.cmd_pool, queue);
     cmd->begin(CommandBufferUsage::default_usage);
 
     ++thread_data.cmd_count;
 
     return cmd;
+}
+
+void rg_begin_render_pass(CommandBuffer* cmd, RenderGraphPass* pass, const RenderRect& render_area, const u32 clear_value_count, const ClearValue* clear_values)
+{
+    BEE_ASSERT(pass != nullptr);
+
+    if (!pass->has_transitioned_resources)
+    {
+        auto* transitions = BEE_ALLOCA_ARRAY(GpuTransition, pass->attachment_count);
+
+        for (int i = 0; i < pass->attachment_count; ++i)
+        {
+            const auto type = static_cast<RenderGraphResourceType>(pass->attachment_rg_resources[i].high());
+            const auto index = pass->attachment_rg_resources[i].low();
+
+            auto& transition = transitions[i];
+            PooledResource* resource = nullptr;
+
+            if (type != RenderGraphResourceType::backbuffer)
+            {
+                BEE_ASSERT(pass->graph->frame_resources[index].pool_index >= 0);
+                transition.old_state = resource->state;
+                resource = &pass->graph->resource_pool[pass->graph->frame_resources[index].pool_index];
+                BEE_ASSERT(resource->type == type);
+            }
+
+            switch (type)
+            {
+                case RenderGraphResourceType::imported_buffer:
+                case RenderGraphResourceType::buffer:
+                {
+                    transition.new_state = GpuResourceState::vertex_buffer; // TODO(Jacob): THIS IS WRONG - we could have the buffer in any number of states
+                    transition.barrier.buffer.handle = resource->buffer.handle;
+                    transition.barrier.buffer.offset = 0;
+                    transition.barrier.buffer.size = resource->buffer.size;
+                    transition.barrier_type = GpuBarrierType::buffer;
+                    break;
+                }
+                case RenderGraphResourceType::imported_texture:
+                case RenderGraphResourceType::texture:
+                {
+                    if (pass->attachments[i].type == AttachmentType::depth_stencil)
+                    {
+                        transition.new_state = GpuResourceState::depth_write; // TODO(Jacob): thid should allow for depth reads as well
+                    }
+                    else
+                    {
+                        transition.new_state = GpuResourceState::color_attachment;
+                    }
+
+                    transition.barrier.texture = resource->texture.handle;
+                    transition.barrier_type = GpuBarrierType::texture;
+                    break;
+                }
+                case RenderGraphResourceType::backbuffer:
+                {
+                    const auto backbuffer = pass->graph->frame_resources[index].backbuffer;
+                    pass->attachment_textures[i] = backbuffer.drawable_view;
+
+                    transition.old_state = GpuResourceState::undefined;
+                    transition.new_state = GpuResourceState::present;
+                    transition.barrier_type = GpuBarrierType::texture;
+                    transition.barrier.texture = backbuffer.drawable;
+                    break;
+                }
+            }
+        }
+
+        cmd->transition_resources(sign_cast<u32>(pass->attachment_count), transitions);
+        pass->has_transitioned_resources = true;
+    }
+
+    cmd->begin_render_pass(
+        pass->handle,
+        sign_cast<u32>(pass->attachment_count),
+        pass->attachment_textures,
+        render_area,
+        clear_value_count,
+        clear_values
+    );
+}
+
+Extent rg_get_backbuffer_size(RenderGraphPass* pass, const RenderGraphResource& resource)
+{
+    const auto index = resource.low();
+    if (BEE_FAIL_F(index < pass->graph->frame_resource_count, "Invalid resource handle"))
+    {
+        return Extent{};
+    }
+
+    if (BEE_FAIL_F(pass->graph->frame_resources[index].handle == RenderGraphResourceType::backbuffer, "Resource handle is not a backbuffer"))
+    {
+        return Extent{};
+    }
+
+    return gpu_get_swapchain_extent(g_renderer->device, pass->graph->frame_resources[index].backbuffer.swapchain);
 }
 
 /*
@@ -729,7 +876,7 @@ inline RenderGraphResource rg_add_resource(RenderGraph* graph, const char* name,
         }
         case RenderGraphResourceType::backbuffer:
         {
-            memcpy(&resource.texture.swapchain, &create_info_or_handle, sizeof(T));
+            memcpy(&resource.backbuffer, &create_info_or_handle, sizeof(T));
             break;
         }
         default:
@@ -807,7 +954,7 @@ bool rg_add_attachment(RenderGraphPass* pass, const RenderGraphResource& texture
     // if the attachment texture is already added we need to replace the attachment stored in the pass with the new one
     for (int i = 0; i < pass->attachment_count; ++i)
     {
-        if (pass->attachment_textures[i] == texture)
+        if (pass->attachment_rg_resources[i] == texture)
         {
             pass->attachments[i] = desc;
             return true;
@@ -822,7 +969,7 @@ bool rg_add_attachment(RenderGraphPass* pass, const RenderGraphResource& texture
     }
 
     pass->attachments[pass->attachment_count] = desc;
-    pass->attachment_textures[pass->attachment_count] = texture;
+    pass->attachment_rg_resources[pass->attachment_count] = texture;
     ++pass->attachment_count;
     return true;
 }
@@ -832,7 +979,7 @@ void rg_write_color(RenderGraphPass* pass, const RenderGraphResource& texture, c
     BEE_ASSERT(texture != RenderGraphResourceType::buffer && texture != RenderGraphResourceType::imported_buffer);
 
     AttachmentDescriptor desc{};
-    desc.type = AttachmentType::color;
+    desc.type = texture == RenderGraphResourceType::backbuffer ? AttachmentType::present : AttachmentType::color;
     desc.format = PixelFormat::unknown; // we'll get the color later from the texture format
     desc.load_op = load;
     desc.store_op = store;
@@ -862,16 +1009,9 @@ void rg_write_depth(RenderGraphPass* pass, const RenderGraphResource& texture, c
     }
 }
 
-void rg_set_execute_function(RenderGraphPass* pass, render_graph_execute_t&& fn)
+render_graph_execute_t& rg_get_execute_function(RenderGraphPass* pass)
 {
-    if (BEE_FAIL_F(!pass->has_execute, "RenderGraph pass already has an execute function assigned"))
-    {
-        return;
-    }
-
-    pass->execute_fn = std::move(fn);
-    pass->has_execute = true;
-
+    return pass->execute_fn;
 }
 
 RenderGraphPass* rg_add_pass(RenderGraph* graph, const char* name)
@@ -887,11 +1027,11 @@ RenderGraphPass* rg_add_pass(RenderGraph* graph, const char* name)
 
     BEE_ASSERT(graph->frame_pass_count <= 1);
 
+    pass->has_transitioned_resources = false;
     pass->attachment_count = 0;
     pass->read_count = 0;
     pass->write_count = 0;
     pass->graph = graph;
-    pass->has_execute = false;
 
     return pass;
 }
@@ -981,10 +1121,10 @@ void destroy_renderer()
         return;
     }
 
-    gpu_device_wait(g_renderer->device);
-
     while (g_renderer->first_graph != nullptr)
     {
+        job_wait(&g_renderer->first_graph->wait_handle);
+        gpu_device_wait(g_renderer->device);
         rg_destroy_render_graph(g_renderer->first_graph);
     }
 
@@ -1014,10 +1154,7 @@ void execute_frame()
         stage->execute(g_renderer->default_graph, &g_builder);
     }
 
-    JobGroup wait_handle{};
-    rg_execute(g_renderer->default_graph, &wait_handle);
-    job_wait(&wait_handle);
-
+    rg_execute(g_renderer->default_graph);
     gpu_commit_frame(g_renderer->device);
 }
 
@@ -1161,7 +1298,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::Pl
     bee::g_builder.import_backbuffer = bee::rg_import_backbuffer;
     bee::g_builder.write_color = bee::rg_write_color;
     bee::g_builder.write_depth = bee::rg_write_depth;
-    bee::g_builder.set_execute_function = bee::rg_set_execute_function;
+    bee::g_builder.get_execute_function = bee::rg_get_execute_function;
     bee::g_builder.add_pass = bee::rg_add_pass;
     bee::g_builder.get_device = bee::rg_get_device;
     bee::g_builder.get_swapchains = bee::get_swapchains;
@@ -1172,4 +1309,6 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::Pl
     bee::g_storage.get_buffer = bee::rg_get_buffer;
     bee::g_storage.get_texture = bee::rg_get_texture;
     bee::g_storage.create_command_buffer = bee::rg_create_command_buffer;
+    bee::g_storage.begin_render_pass = bee::rg_begin_render_pass;
+    bee::g_storage.get_backbuffer_size = bee::rg_get_backbuffer_size;
 }

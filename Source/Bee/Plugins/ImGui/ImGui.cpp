@@ -53,10 +53,16 @@ void execute_render_stage(RenderGraph* graph, RenderGraphBuilderModule* builder)
     const auto target = builder->import_backbuffer(pass, "Backbuffer", builder->get_primary_swapchain());
     builder->write_color(pass, target, LoadOp::clear, StoreOp::store, 1);
 
-    builder->set_execute(pass, [](RenderGraph* graph, RenderGraphStorage* storage)
+    builder->set_execute(pass, [target](RenderGraphPass* pass, RenderGraphStorage* storage)
     {
-        auto* cmd = storage->create_command_buffer(graph, QueueType::graphics);
-        BEE_UNUSED(cmd);
+        auto* cmd = storage->create_command_buffer(pass, QueueType::graphics);
+
+        const auto backbuffer = storage->get_backbuffer_size(pass, target);
+        RenderRect render_area(0, 0, backbuffer.width, backbuffer.height);
+        ClearValue clear_value(1.0f, 0.0f, 0.0f, 1.0f);
+
+        storage->begin_render_pass(cmd, pass, render_area, 1, &clear_value);
+        cmd->end_render_pass();
     });
 }
 

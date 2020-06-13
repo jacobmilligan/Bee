@@ -257,7 +257,7 @@ bool RenderGraph::add_attachment(const i32 pass_index, const RenderGraphResource
     // find an existing texture->attachment mapping
     for (u32 att = 0; att < pass.info.attachment_count; ++att)
     {
-        if (pass.attachment_textures[att] == texture)
+        if (pass.attachment_rg_resources[att] == texture)
         {
             pass.attachment_types[att] = type;
             pass.info.attachments[att] = desc;
@@ -272,7 +272,7 @@ bool RenderGraph::add_attachment(const i32 pass_index, const RenderGraphResource
 
     // Add a new attachment using the texture resource
     pass.info.attachments[pass.info.attachment_count] = desc;
-    pass.attachment_textures[pass.info.attachment_count] = texture;
+    pass.attachment_rg_resources[pass.info.attachment_count] = texture;
     pass.attachment_types[pass.info.attachment_count] = type;
     ++pass.info.attachment_count;
     return true;
@@ -425,7 +425,7 @@ void RenderGraph::execute(JobGroup *wait_handle)
                     subpass.color_attachments[subpass.color_attachment_count - 1] = static_cast<u32>(att);
 
                     // Get the pixel format from the texture create info for color attachments
-                    const auto virtual_texture_index = pass->attachment_textures[att].index;
+                    const auto virtual_texture_index = pass->attachment_rg_resources[att].index;
                     const auto physical_texture_index = active_list_.physical_indices[virtual_texture_index];
                     pass->info.attachments[att].format = textures_.create_infos[physical_texture_index].format;
                     break;

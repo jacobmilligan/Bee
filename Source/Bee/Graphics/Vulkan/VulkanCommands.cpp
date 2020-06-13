@@ -174,10 +174,10 @@ void CommandBuffer::begin_render_pass(
     for (u32 att = 0; att < attachment_count; ++att)
     {
         auto& texture_view = attachments[att];
-        if (device_texture_views[texture_view].swapchain_handle.is_valid())
+        if (device_texture_views[texture_view].swapchain.is_valid())
         {
             BEE_ASSERT_F(!native->target_swapchain.is_valid(), "A render pass must contain only one swapchain texture attachment");
-            native->target_swapchain = device_texture_views[texture_view].swapchain_handle;
+            native->target_swapchain = device_texture_views[texture_view].swapchain;
         }
     }
 
@@ -304,7 +304,7 @@ void CommandBuffer::transition_resources(const u32 count, const GpuTransition* t
 
     for (u32 i = 0; i < count; ++i)
     {
-        auto& transition = transitions[i];
+        const auto& transition = transitions[i];
 
         switch (transition.barrier_type)
         {
@@ -381,8 +381,18 @@ void CommandBuffer::transition_resources(const u32 count, const GpuTransition* t
         }
     }
 
-    const auto src_stage = select_pipeline_stage_from_access(src_access);
-    const auto dst_stage = select_pipeline_stage_from_access(dst_access);
+    auto src_stage = select_pipeline_stage_from_access(src_access);
+    auto dst_stage = select_pipeline_stage_from_access(dst_access);
+
+    if (src_stage == 0)
+    {
+        src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    }
+
+    if (dst_stage == 0)
+    {
+        dst_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    }
 
     BEE_VK_CMD(vkCmdPipelineBarrier(
         native->handle,

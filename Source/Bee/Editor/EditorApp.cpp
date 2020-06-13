@@ -404,7 +404,6 @@ ApplicationState tick_application(Application* app)
 
     g_renderer->execute_frame();
 
-    current_thread::sleep(make_time_point<TimeInterval::milliseconds>(8).ticks());
     return ApplicationState::running;
 }
 

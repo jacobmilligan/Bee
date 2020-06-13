@@ -47,20 +47,25 @@ constexpr bool operator!=(const RenderGraphResource& resource, const RenderGraph
 
 struct RenderGraph;
 struct RenderGraphPass;
+class JobGroup;
 
 struct RenderGraphStorage
 {
-    BufferHandle (*get_buffer)(RenderGraph* graph, const RenderGraphResource& handle) { nullptr };
+    BufferHandle (*get_buffer)(RenderGraphPass* pass, const RenderGraphResource& handle) { nullptr };
 
-    TextureHandle (*get_texture)(RenderGraph* graph, const RenderGraphResource& handle) { nullptr };
+    TextureHandle (*get_texture)(RenderGraphPass* pass, const RenderGraphResource& handle) { nullptr };
 
-    CommandBuffer* (*create_command_buffer)(RenderGraph* graph, const QueueType queue) { nullptr };
+    void (*begin_render_pass)(CommandBuffer* cmd, RenderGraphPass* pass, const RenderRect& render_area, const u32 clear_value_count, const ClearValue* clear_values) { nullptr };
+
+    CommandBuffer* (*create_command_buffer)(RenderGraphPass* pass, const QueueType queue) { nullptr };
+
+    Extent (*get_backbuffer_size)(RenderGraphPass* pass, const RenderGraphResource& handle) { nullptr };
 };
 
 
 #define BEE_RENDER_GRAPH_BUILDER_MODULE_NAME "BEE_RENDER_GRAPH_BUILDER"
 
-using render_graph_execute_t = Function<void(RenderGraph*, RenderGraphStorage*), 1024>;
+using render_graph_execute_t = Function<void(RenderGraphPass* pass, RenderGraphStorage*), 1024>;
 
 struct RenderGraphBuilderModule
 {
@@ -84,26 +89,14 @@ struct RenderGraphBuilderModule
 
     void (*write_depth)(RenderGraphPass* pass, const RenderGraphResource& texture, const PixelFormat depth_format, const LoadOp load, const StoreOp store) { nullptr };
 
-    void (*set_execute_function)(RenderGraphPass* pass, render_graph_execute_t&& fn) { nullptr };
+    render_graph_execute_t& (*get_execute_function)(RenderGraphPass* pass) { nullptr };
 
     RenderGraphPass* (*add_pass)(RenderGraph* graph, const char* name) { nullptr };
-
-    template <typename ExecuteFnType, typename ArgsType>
-    void set_execute(RenderGraphPass* pass, const ArgsType& execute_args, ExecuteFnType&& execute_fn)
-    {
-        set_execute_function(pass, [&execute_fn, args=execute_args](RenderGraph* graph, RenderGraphStorage* storage)
-        {
-            execute_fn(graph, storage, args);
-        });
-    }
 
     template <typename ExecuteFnType>
     void set_execute(RenderGraphPass* pass, ExecuteFnType&& execute_fn)
     {
-        set_execute_function(pass, [&execute_fn](RenderGraph* graph, RenderGraphStorage* storage)
-        {
-            execute_fn(graph, storage);
-        });
+        get_execute_function(pass) = execute_fn;
     }
 
     // Wrappers for RenderModule functions

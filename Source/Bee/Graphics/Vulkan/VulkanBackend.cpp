@@ -241,7 +241,7 @@ VulkanSubmission* enqueue_submission(VulkanDevice* device)
         return nullptr;
     }
 
-    auto submission = &device->submit_queue[device->current_frame][submission_index];
+    auto* submission = &device->submit_queue[device->current_frame][submission_index];
     submission->wait();
     submission->reset(device->handle);
     return submission;
@@ -334,7 +334,7 @@ VkFramebuffer get_or_create_framebuffer(
 VkDescriptorSetLayout get_or_create_descriptor_set_layout(VulkanDevice* device, const ResourceLayoutDescriptor& key)
 {
     const auto hash = get_hash(key);
-    auto layout = device->descriptor_set_layout_cache.find(hash);
+    auto* layout = device->descriptor_set_layout_cache.find(hash);
     if (layout != nullptr)
     {
         return layout->value;
@@ -363,7 +363,7 @@ VkDescriptorSetLayout get_or_create_descriptor_set_layout(VulkanDevice* device, 
 VkPipelineLayout get_or_create_pipeline_layout(VulkanDevice* device, const VulkanPipelineLayoutKey& key)
 {
     const auto hash = get_hash(key);
-    auto layout = device->pipeline_layout_cache.find(hash);
+    auto* layout = device->pipeline_layout_cache.find(hash);
     if (layout != nullptr)
     {
         return layout->value;
@@ -546,7 +546,7 @@ DeviceHandle gpu_create_device(const DeviceCreateInfo& create_info)
         return DeviceHandle{};
     }
 
-    auto physical_device = g_backend.physical_devices[create_info.physical_device_id];
+    auto* physical_device = g_backend.physical_devices[create_info.physical_device_id];
 
     // Query the amount of extensions supported by the GPU
 #ifdef BEE_VULKAN_DEVICE_EXTENSIONS_ENABLED
@@ -746,34 +746,56 @@ void gpu_device_wait(const DeviceHandle& handle)
     vkDeviceWaitIdle(validate_device(handle).handle);
 }
 
-SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const SwapchainCreateInfo& create_info)
+bool vk_create_swapchain(VulkanDevice* device, VulkanSwapchain* swapchain, const SwapchainHandle& swapchain_handle, const SwapchainCreateInfo& create_info)
 {
-    auto& device = validate_device(device_handle);
-
     // Create a surface and query its capabilities
-    auto surface = gpu_create_wsi_surface(g_backend.instance, create_info.window);
-    BEE_ASSERT(surface != VK_NULL_HANDLE);
+    auto* surface = swapchain->surface;
+
+    if (surface != VK_NULL_HANDLE)
+    {
+        // check for lost surface with recreated swapchain
+        VkSurfaceCapabilitiesKHR surface_caps{};
+        const auto result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device->physical_device, surface, &surface_caps);
+        if (result == VK_ERROR_SURFACE_LOST_KHR)
+        {
+            // destroy the existing swapchain linked to the surface as well as the old surface object
+            BEE_ASSERT(swapchain->handle != VK_NULL_HANDLE);
+
+            vkDestroySwapchainKHR(device->handle, swapchain->handle, nullptr);
+            vkDestroySurfaceKHR(g_backend.instance, swapchain->surface, nullptr);
+
+            swapchain->handle = VK_NULL_HANDLE;
+            swapchain->surface = VK_NULL_HANDLE;
+            surface = VK_NULL_HANDLE;
+        }
+    }
+
+    if (surface == VK_NULL_HANDLE)
+    {
+        surface = vk_create_wsi_surface(g_backend.instance, create_info.window);
+        BEE_ASSERT(surface != VK_NULL_HANDLE);
+    }
 
     /*
      * If we've never found the present queue for the device we have to do it here rather than in create_device
      * as it requires a valid surface to query.
      */
-    if (device.present_queue == VulkanQueue::invalid_queue_index)
+    if (device->present_queue == VulkanQueue::invalid_queue_index)
     {
         // Prefers graphics/present combined queue over other combinations - first queue is always the graphics queue
         VkBool32 supports_present = VK_FALSE;
-        for (const auto& queue : device.queues)
+        for (const auto& queue : device->queues)
         {
             BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceSupportKHR(
-                device.physical_device,
-                device.graphics_queue.index,
+                device->physical_device,
+                device->graphics_queue.index,
                 surface,
                 &supports_present
             ));
 
             if (supports_present == VK_TRUE)
             {
-                device.present_queue = queue.index;
+                device->present_queue = queue.index;
                 break;
             }
         }
@@ -781,18 +803,18 @@ SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const Sw
 
     // Get the surface capabilities and ensure it supports all the things we need
     VkSurfaceCapabilitiesKHR surface_caps{};
-    BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device, surface, &surface_caps));
+    BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device->physical_device, surface, &surface_caps));
 
     // Get supported formats
     u32 format_count = 0;
-    BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device.physical_device, surface, &format_count, nullptr));
-    auto formats = FixedArray<VkSurfaceFormatKHR>::with_size(sign_cast<i32>(format_count), &device.scratch_allocator);
-    BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device.physical_device, surface, &format_count, formats.data()));
+    BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device->physical_device, surface, &format_count, nullptr));
+    auto formats = FixedArray<VkSurfaceFormatKHR>::with_size(sign_cast<i32>(format_count), &device->scratch_allocator);
+    BEE_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device->physical_device, surface, &format_count, formats.data()));
 
     // Get supported present modes
     u32 present_mode_count = VK_PRESENT_MODE_RANGE_SIZE_KHR;
     VkPresentModeKHR present_modes[VK_PRESENT_MODE_RANGE_SIZE_KHR];
-    BEE_VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device.physical_device, surface, &present_mode_count, present_modes));
+    BEE_VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device->physical_device, surface, &present_mode_count, present_modes));
 
     // Choose an appropriate image count - try and get MAX_FRAMES_IN_FLIGHT first, otherwise fit in range of minImageCount -> maxImageCount
     auto image_count = math::min(math::max(BEE_GPU_MAX_FRAMES_IN_FLIGHT, surface_caps.minImageCount), surface_caps.maxImageCount);
@@ -824,99 +846,153 @@ SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const Sw
         present_mode = supports_mailbox ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
     }
 
+    const auto& requested_extent = create_info.texture_extent;
+    Extent actual_extent{};
+    actual_extent.width = math::min(math::max(requested_extent.width, surface_caps.minImageExtent.width), surface_caps.maxImageExtent.width);
+    actual_extent.height = math::min(math::max(requested_extent.height, surface_caps.minImageExtent.height), surface_caps.maxImageExtent.height);
+
     // Create the vk_handle
     VkSwapchainCreateInfoKHR swapchain_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
-    swapchain_info.flags = 0;
-    swapchain_info.surface = surface;
-    swapchain_info.minImageCount = image_count;
-    swapchain_info.imageFormat = selected_format.format;
-    swapchain_info.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-    swapchain_info.imageExtent.width = create_info.texture_extent.width;
-    swapchain_info.imageExtent.height = create_info.texture_extent.height;
-    swapchain_info.imageArrayLayers = create_info.texture_array_layers;
-    swapchain_info.imageUsage = decode_image_usage(create_info.texture_usage);
-    swapchain_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    swapchain_info.flags                 = 0;
+    swapchain_info.surface               = surface;
+    swapchain_info.minImageCount         = image_count;
+    swapchain_info.imageFormat           = selected_format.format;
+    swapchain_info.imageColorSpace       = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    swapchain_info.imageExtent.width     = actual_extent.width;
+    swapchain_info.imageExtent.height    = actual_extent.height;
+    swapchain_info.imageArrayLayers      = create_info.texture_array_layers;
+    swapchain_info.imageUsage            = decode_image_usage(create_info.texture_usage);
+    swapchain_info.imageSharingMode      = VK_SHARING_MODE_EXCLUSIVE;
     swapchain_info.queueFamilyIndexCount = 0;
-    swapchain_info.pQueueFamilyIndices = nullptr;
-    swapchain_info.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR; // no pre-transform
-    swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // ignore surface alpha channel
-    swapchain_info.presentMode = present_mode;
-    swapchain_info.clipped = VK_TRUE; // allows optimal presentation of pixels clipped in the surface by other OS windows etc.
-    swapchain_info.oldSwapchain = VK_NULL_HANDLE;
+    swapchain_info.pQueueFamilyIndices   = nullptr;
+    swapchain_info.preTransform          = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR; // no pre-transform
+    swapchain_info.compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // ignore surface alpha channel
+    swapchain_info.presentMode           = present_mode;
+    swapchain_info.clipped               = VK_TRUE; // allows optimal presentation of pixels clipped in the surface by other OS windows etc.
+    swapchain_info.oldSwapchain          = swapchain->handle != VK_NULL_HANDLE ? swapchain->handle : VK_NULL_HANDLE;
 
-    VkSwapchainKHR vk_handle;
-    BEE_VK_CHECK(vkCreateSwapchainKHR(device.handle, &swapchain_info, nullptr, &vk_handle));
+    VkSwapchainKHR vk_handle = VK_NULL_HANDLE;
+    BEE_VK_CHECK(vkCreateSwapchainKHR(device->handle, &swapchain_info, nullptr, &vk_handle));
 
     if (create_info.debug_name != nullptr)
     {
-        set_vk_object_name(device.handle, VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT, vk_handle, create_info.debug_name);
+        set_vk_object_name(device->handle, VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT, vk_handle, create_info.debug_name);
+    }
+
+    // destroy the old swapchain after transitioning it into the new one
+    if (swapchain_info.oldSwapchain != VK_NULL_HANDLE)
+    {
+        vkDestroySwapchainKHR(device->handle, swapchain_info.oldSwapchain, nullptr);
     }
 
     // Setup the swapchain images
     u32 swapchain_image_count = 0;
-    BEE_VK_CHECK(vkGetSwapchainImagesKHR(device.handle, vk_handle, &swapchain_image_count, nullptr));
-    auto swapchain_images = FixedArray<VkImage>::with_size(sign_cast<i32>(swapchain_image_count), &device.scratch_allocator);
-    BEE_VK_CHECK(vkGetSwapchainImagesKHR(device.handle, vk_handle, &swapchain_image_count, swapchain_images.data()));
+    BEE_VK_CHECK(vkGetSwapchainImagesKHR(device->handle, vk_handle, &swapchain_image_count, nullptr));
+    auto swapchain_images = FixedArray<VkImage>::with_size(sign_cast<i32>(swapchain_image_count), &device->scratch_allocator);
+    BEE_VK_CHECK(vkGetSwapchainImagesKHR(device->handle, vk_handle, &swapchain_image_count, swapchain_images.data()));
 
-    const auto created_handle = device.swapchains.allocate();
-    auto& swapchain = device.swapchains[created_handle];
-    swapchain.handle = vk_handle;
-    swapchain.surface = surface;
-    swapchain.images = FixedArray<TextureHandle>::with_size(image_count);
-    swapchain.image_views = FixedArray<TextureViewHandle>::with_size(image_count);
-    swapchain.extent = create_info.texture_extent;
+    swapchain->handle       = vk_handle;
+    swapchain->surface      = surface;
+    swapchain->images       = FixedArray<TextureHandle>::with_size(image_count);
+    swapchain->image_views  = FixedArray<TextureViewHandle>::with_size(image_count);
+    swapchain->create_info  = create_info;
+    swapchain->create_info.texture_extent = actual_extent; // fixup the extent in the stored create info
 
-    str::format_buffer(swapchain.id_string, static_array_length(swapchain.id_string), "handle:%u", created_handle.id);
-    set_vk_object_name(
-        device.handle,
-        VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT,
-        vk_handle,
-        create_info.debug_name == nullptr ? swapchain.id_string : create_info.debug_name
-    );
+    if (create_info.debug_name != nullptr)
+    {
+        set_vk_object_name(
+            device->handle,
+            VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT,
+            vk_handle,
+            create_info.debug_name
+        );
+    }
     /*
      * Insert a texture handle for each of the swapchain images to use with external code and create a texture view
      * for each one
      */
     TextureViewCreateInfo view_info;
-    view_info.type = TextureType::tex2d;
-    view_info.format = create_info.texture_format;
-    view_info.mip_level_count = 1;
-    view_info.mip_level_offset = 0;
-    view_info.array_element_offset = 0;
-    view_info.array_element_count = 1;
+    view_info.type                  = TextureType::tex2d;
+    view_info.format                = create_info.texture_format;
+    view_info.mip_level_count       = 1;
+    view_info.mip_level_offset      = 0;
+    view_info.array_element_offset  = 0;
+    view_info.array_element_count   = 1;
 
     for (int si = 0; si < swapchain_images.size(); ++si)
     {
-        swapchain.images[si] = device.textures.allocate();
-        auto& texture = device.textures[swapchain.images[si]];
-        texture.swapchain_handle = created_handle;
-        texture.width = swapchain_info.imageExtent.width;
-        texture.height = swapchain_info.imageExtent.height;
-        texture.layers = swapchain_info.imageArrayLayers;
-        texture.levels = 1;
-        texture.samples = VK_SAMPLE_COUNT_1_BIT;
-        texture.format = create_info.texture_format;
-        texture.handle = swapchain_images[si];
-        set_vk_object_name(device.handle, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, texture.handle, "Swapchain image");
+        swapchain->images[si] = device->textures.allocate();
+        auto& texture = device->textures[swapchain->images[si]];
+        texture.swapchain           = swapchain_handle;
+        texture.width               = swapchain_info.imageExtent.width;
+        texture.height              = swapchain_info.imageExtent.height;
+        texture.layers              = swapchain_info.imageArrayLayers;
+        texture.levels              = 1;
+        texture.samples             = VK_SAMPLE_COUNT_1_BIT;
+        texture.format              = create_info.texture_format;
+        texture.handle              = swapchain_images[si];
+        set_vk_object_name(device->handle, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, texture.handle, "Swapchain image");
 
         // Create a texture view as well
-        view_info.texture = swapchain.images[si];
-        view_info.debug_name = "Swapchain texture view";
-        swapchain.image_views[si] = gpu_create_texture_view(device_handle, view_info);
-        auto& texture_view = device.texture_views[swapchain.image_views[si]];
-        texture_view.swapchain_handle = created_handle;
+        view_info.texture           = swapchain->images[si];
+        view_info.debug_name        = "Swapchain texture view";
+        swapchain->image_views[si]  = vk_create_texture_view(device, view_info);
+
+        auto& texture_view = device->texture_views[swapchain->image_views[si]];
+        texture_view.swapchain = swapchain_handle;
     }
 
     // Create image available and render finished semaphores
     VkSemaphoreCreateInfo sem_info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
     sem_info.flags = 0;
+
     for (int frame_idx = 0; frame_idx < BEE_GPU_MAX_FRAMES_IN_FLIGHT; ++frame_idx)
     {
-        BEE_VK_CHECK(vkCreateSemaphore(device.handle, &sem_info, nullptr, &swapchain.acquire_semaphore[frame_idx]));
-        BEE_VK_CHECK(vkCreateSemaphore(device.handle, &sem_info, nullptr, &swapchain.render_semaphore[frame_idx]));
+        BEE_VK_CHECK(vkCreateSemaphore(device->handle, &sem_info, nullptr, &swapchain->acquire_semaphore[frame_idx]));
+        BEE_VK_CHECK(vkCreateSemaphore(device->handle, &sem_info, nullptr, &swapchain->render_semaphore[frame_idx]));
     }
 
+    return true;
+}
+
+SwapchainHandle gpu_create_swapchain(const DeviceHandle& device_handle, const SwapchainCreateInfo& create_info)
+{
+    auto& device = validate_device(device_handle);
+    const auto created_handle = device.swapchains.allocate();
+    if (!vk_create_swapchain(&device, &device.swapchains[created_handle], created_handle, create_info))
+    {
+        return SwapchainHandle{};
+    }
     return created_handle;
+}
+
+void vk_recreate_swapchain(VulkanDevice* device, VulkanSwapchain* swapchain, const SwapchainHandle& swapchain_handle)
+{
+    BEE_VK_CHECK(vkDeviceWaitIdle(device->handle));
+
+    for (int frame_idx = 0; frame_idx < BEE_GPU_MAX_FRAMES_IN_FLIGHT; ++frame_idx)
+    {
+        vkDestroySemaphore(device->handle, swapchain->acquire_semaphore[frame_idx], nullptr);
+        vkDestroySemaphore(device->handle, swapchain->render_semaphore[frame_idx], nullptr);
+    }
+
+    for (auto& view_handle : swapchain->image_views)
+    {
+        auto& view = device->texture_views[view_handle];
+        vkDestroyImageView(device->handle, view.handle, nullptr);
+        device->texture_views.deallocate(view_handle);
+    }
+
+    for (auto& texture_handle : swapchain->images)
+    {
+        device->textures.deallocate(texture_handle);
+    }
+
+    vk_create_swapchain(device, swapchain, swapchain_handle, swapchain->create_info);
+
+    BEE_VK_CHECK(vkDeviceWaitIdle(device->handle));
+
+    log_info("Vulkan: recreated swapchain %s", swapchain->create_info.debug_name == nullptr ? "" : swapchain->create_info.debug_name);
 }
 
 void gpu_destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle)
@@ -954,7 +1030,7 @@ void gpu_destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHan
     device.swapchains.deallocate(swapchain_handle);
 }
 
-i32 get_or_acquire_swapchain_image(VulkanDevice* device, VulkanSwapchain* swapchain)
+i32 get_or_acquire_swapchain_image(VulkanDevice* device, VulkanSwapchain* swapchain, const SwapchainHandle& swapchain_handle)
 {
     /*
      * vkAcquireNextImageKHR can access a swapchain across multiple threads as long as it's externally
@@ -965,14 +1041,24 @@ i32 get_or_acquire_swapchain_image(VulkanDevice* device, VulkanSwapchain* swapch
 
     if (swapchain->pending_image_acquire)
     {
-        BEE_VK_CHECK(vkAcquireNextImageKHR(
+        const auto result = vkAcquireNextImageKHR(
             device->handle,
             swapchain->handle,
             limits::max<u64>(),
-            swapchain->acquire_semaphore[device->current_frame],
+            swapchain->acquire_semaphore[swapchain->present_index],
             VK_NULL_HANDLE,
             &swapchain->current_image // get the next image index
-        ));
+        );
+
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+        {
+            vk_recreate_swapchain(device, swapchain, swapchain_handle);
+            get_or_acquire_swapchain_image(device, swapchain, swapchain_handle);
+        }
+        else
+        {
+            BEE_ASSERT_F(result == VK_SUCCESS, "Vulkan: %s", bee::vk_result_string(result));
+        }
 
         swapchain->pending_image_acquire = false;
     }
@@ -984,7 +1070,7 @@ TextureHandle gpu_acquire_swapchain_texture(const DeviceHandle& device_handle, c
 {
     auto& device = validate_device(device_handle);
     auto& swapchain = device.swapchains[swapchain_handle];
-    const auto index = get_or_acquire_swapchain_image(&device, &swapchain);
+    const auto index = get_or_acquire_swapchain_image(&device, &swapchain, swapchain_handle);
     return swapchain.images[index];
 }
 
@@ -999,7 +1085,14 @@ Extent gpu_get_swapchain_extent(const DeviceHandle& device_handle, const Swapcha
 {
     auto& device = validate_device(device_handle);
     auto& swapchain = device.swapchains[swapchain_handle];
-    return swapchain.extent;
+    return swapchain.create_info.texture_extent;
+}
+
+PixelFormat gpu_get_swapchain_texture_format(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle)
+{
+    auto& device = validate_device(device_handle);
+    auto& swapchain = device.swapchains[swapchain_handle];
+    return swapchain.create_info.texture_format;
 }
 
 RenderPassHandle gpu_create_render_pass(const DeviceHandle& device_handle, const RenderPassCreateInfo& create_info)
@@ -1022,7 +1115,7 @@ RenderPassHandle gpu_create_render_pass(const DeviceHandle& device_handle, const
     for (int a = 0; a < attachments.size(); ++a)
     {
         auto& attachment = attachments[a];
-        auto& bee_attachment = create_info.attachments[a];
+        const auto& bee_attachment = create_info.attachments[a];
 
         attachment.flags = 0;
         attachment.format = convert_pixel_format(bee_attachment.format);
@@ -1065,7 +1158,7 @@ RenderPassHandle gpu_create_render_pass(const DeviceHandle& device_handle, const
     for (int sp = 0; sp < subpasses.size(); ++sp)
     {
         auto& subpass = subpasses[sp];
-        auto& bee_subpass = create_info.subpasses[sp];
+        const auto& bee_subpass = create_info.subpasses[sp];
 
         subpass.flags = 0;
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -1088,10 +1181,10 @@ RenderPassHandle gpu_create_render_pass(const DeviceHandle& device_handle, const
 
         attachment_refs.append(this_subpass_count, VkAttachmentReference{});
 
-        auto input_attachments = attachment_refs.data() + this_subpass_begin;
-        auto color_attachments = input_attachments + bee_subpass.input_attachment_count;
-        auto resolve_attachments = color_attachments + bee_subpass.color_attachment_count;
-        auto depth_stencil_attachment = resolve_attachments + bee_subpass.resolve_attachment_count;
+        auto* input_attachments = attachment_refs.data() + this_subpass_begin;
+        auto* color_attachments = input_attachments + bee_subpass.input_attachment_count;
+        auto* resolve_attachments = color_attachments + bee_subpass.color_attachment_count;
+        auto* depth_stencil_attachment = resolve_attachments + bee_subpass.resolve_attachment_count;
 
         for (u32 att = 0; att < bee_subpass.input_attachment_count; ++att)
         {
@@ -1165,7 +1258,7 @@ RenderPassHandle gpu_create_render_pass(const DeviceHandle& device_handle, const
             dep.srcStageMask = 0;
             dep.srcAccessMask = 0;
 
-            auto& prev_subpass = create_info.subpasses[sp - 1];
+            const auto& prev_subpass = create_info.subpasses[sp - 1];
 
             if (prev_subpass.color_attachment_count > 0)
             {
@@ -1671,7 +1764,7 @@ void gpu_destroy_texture(const DeviceHandle& device_handle, const TextureHandle&
     auto& texture = device.textures[texture_handle];
     BEE_ASSERT(texture.handle != VK_NULL_HANDLE);
     // swapchain images are destroyed with their owning swapchain
-    if (!texture.swapchain_handle.is_valid())
+    if (!texture.swapchain.is_valid())
     {
         vmaDestroyImage(device.vma_allocator, texture.handle, texture.allocation);
     }
@@ -1736,15 +1829,9 @@ PixelFormat gpu_get_texture_format(const DeviceHandle& device_handle, const Text
     return texture.format;
 }
 
-TextureViewHandle gpu_create_texture_view(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info)
+TextureViewHandle vk_create_texture_view(VulkanDevice* device, const TextureViewCreateInfo& create_info)
 {
-    if (BEE_FAIL_F(create_info.texture.is_valid(), "Invalid texture handle given as source texture to TextureViewCreateInfo"))
-    {
-        return TextureViewHandle{};
-    }
-
-    auto& device = validate_device(device_handle);
-    auto& texture = device.textures[create_info.texture];
+    auto& texture = device->textures[create_info.texture];
 
     VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, nullptr };
     view_info.flags = 0;
@@ -1762,20 +1849,31 @@ TextureViewHandle gpu_create_texture_view(const DeviceHandle& device_handle, con
     view_info.subresourceRange.layerCount = create_info.array_element_count;
 
     VkImageView img_view = VK_NULL_HANDLE;
-    BEE_VK_CHECK(vkCreateImageView(device.handle, &view_info, nullptr, &img_view));
+    BEE_VK_CHECK(vkCreateImageView(device->handle, &view_info, nullptr, &img_view));
 
     if (create_info.debug_name != nullptr)
     {
-        set_vk_object_name(device.handle, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT, img_view, create_info.debug_name);
+        set_vk_object_name(device->handle, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT, img_view, create_info.debug_name);
     }
 
-    const auto handle = device.texture_views.allocate();
-    auto& texture_view = device.texture_views[handle];
+    const auto handle = device->texture_views.allocate();
+    auto& texture_view = device->texture_views[handle];
     texture_view.handle = img_view;
     texture_view.viewed_texture = create_info.texture;
     texture_view.format = texture.format;
     texture_view.samples = texture.samples;
     return handle;
+}
+
+TextureViewHandle gpu_create_texture_view(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info)
+{
+    if (BEE_FAIL_F(create_info.texture.is_valid(), "Invalid texture handle given as source texture to TextureViewCreateInfo"))
+    {
+        return TextureViewHandle{};
+    }
+
+    auto& device = validate_device(device_handle);
+    return vk_create_texture_view(&device, create_info);
 }
 
 void gpu_destroy_texture_view(const DeviceHandle& device_handle, const TextureViewHandle& texture_view_handle)
@@ -1914,7 +2012,7 @@ void gpu_wait_for_fence(const DeviceHandle& device_handle, const FenceHandle& fe
 bool gpu_wait_for_fences(const DeviceHandle& device_handle, const u32 count, const FenceHandle* fence_handles, const FenceWaitType wait_type, const u64 timeout)
 {
     auto& device = validate_device(device_handle);
-    auto fences = BEE_ALLOCA_ARRAY(VkFence, count);
+    auto* fences = BEE_ALLOCA_ARRAY(VkFence, count);
     for (u32 f = 0; f < count; ++f)
     {
         fences[f] = device.fences[fence_handles[f]];
@@ -1928,7 +2026,7 @@ bool gpu_wait_for_fences(const DeviceHandle& device_handle, const u32 count, con
 void gpu_reset_fences(const DeviceHandle& device_handle, const u32 count, const FenceHandle* fence_handles)
 {
     auto& device = validate_device(device_handle);
-    auto fences = BEE_ALLOCA_ARRAY(VkFence, count);
+    auto* fences = BEE_ALLOCA_ARRAY(VkFence, count);
 
     for (u32 f = 0; f < count; ++f)
     {
@@ -1984,7 +2082,7 @@ void VulkanQueue::submit_threadsafe(const u32 submit_count, const VkSubmitInfo* 
     BEE_VK_CHECK(vkQueueSubmit(handle, submit_count, submits, fence));
 }
 
-void VulkanQueue::present_threadsafe(const VkPresentInfoKHR* present_info)
+VkResult VulkanQueue::present_threadsafe(const VkPresentInfoKHR* present_info)
 {
     /*
      * vkQueuePresentKHR can access a queue across multiple threads as long as it's externally
@@ -1992,80 +2090,10 @@ void VulkanQueue::present_threadsafe(const VkPresentInfoKHR* present_info)
      * see: Vulkan Spec - 2.6. Threading Behavior
      */
     scoped_recursive_spinlock_t lock(*mutex);
-    BEE_VK_CHECK(vkQueuePresentKHR(handle, present_info));
+    return vkQueuePresentKHR(handle, present_info);
 }
 
-struct QueueSubmit
-{
-    VkSubmitInfo                    info { VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr };
-    DynamicArray<VkCommandBuffer>   command_buffers;
-
-    QueueSubmit() = default;
-
-    QueueSubmit(VulkanDevice* device, Allocator* allocator)
-        : command_buffers(allocator)
-    {}
-
-    void push_command_buffer(const CommandBuffer* cmd)
-    {
-        command_buffers.push_back(cmd->native->handle);
-        ++info.commandBufferCount;
-        info.pCommandBuffers = command_buffers.data();
-    }
-};
-
-
-void submit_job(VulkanDevice* device, const FenceHandle& fence, const FixedArray<const CommandBuffer*>& command_buffers)
-{
-    static constexpr VkPipelineStageFlags swapchain_wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-
-    QueueSubmit submissions[vk_max_queues];
-    for (auto& submission : submissions)
-    {
-        new (&submission) QueueSubmit(device, temp_allocator());
-    }
-
-    // Gather all the command buffers into per-queue submissions
-    for (auto& command_buffer : command_buffers)
-    {
-        auto native_cmd = command_buffer->native;
-        auto& submission = submissions[native_cmd->queue];
-
-        // we have to add a semaphore if the command buffer is targeting the swapchain
-        if (native_cmd->target_swapchain.is_valid())
-        {
-            auto& swapchain = device->swapchains[native_cmd->target_swapchain];
-
-            if (BEE_FAIL_F(!swapchain.pending_image_acquire, "Swapchain cannot be rendered to without first acquiring its current texture"))
-            {
-                return;
-            }
-
-            submission.info.waitSemaphoreCount = 1;
-            submission.info.pWaitSemaphores = &swapchain.acquire_semaphore[device->current_frame];
-            submission.info.pWaitDstStageMask = &swapchain_wait_stage;
-            submission.info.signalSemaphoreCount = 1;
-            submission.info.pSignalSemaphores = &swapchain.render_semaphore[device->current_frame];
-        }
-
-        submission.push_command_buffer(command_buffer);
-    }
-
-    auto& vk_fence = device->fences[fence];
-
-    for (int queue = 0; queue < vk_max_queues; ++queue)
-    {
-        auto& submission = submissions[queue];
-        if (submission.command_buffers.empty())
-        {
-            continue;
-        }
-
-        device->queues[queue].submit_threadsafe(1, &submission.info, vk_fence);
-    }
-}
-
-void gpu_submit(JobGroup* wait_handle, const DeviceHandle& device_handle, const SubmitInfo& info)
+void gpu_submit(const DeviceHandle& device_handle, const SubmitInfo& info)
 {
     if (info.command_buffer_count == 0)
     {
@@ -2077,18 +2105,58 @@ void gpu_submit(JobGroup* wait_handle, const DeviceHandle& device_handle, const 
 
     auto& device = validate_device(device_handle);
 
-    auto cmds = FixedArray<const CommandBuffer*>::with_size(info.command_buffer_count, temp_allocator());
-    memcpy(cmds.data(), info.command_buffers, sizeof(CommandBuffer*) * info.command_buffer_count);
+    static constexpr VkPipelineStageFlags swapchain_wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-    auto* job = create_job(submit_job, &device, info.fence, std::move(cmds));
-    job_schedule(wait_handle, job);
-}
+    VkSubmitInfo submit_infos[vk_max_queues]{ VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr };
+    DynamicArray<VkCommandBuffer> cmd_buffers[vk_max_queues];
 
-void gpu_submit(const DeviceHandle& device_handle, const SubmitInfo& info)
-{
-    JobGroup wait_handle;
-    gpu_submit(&wait_handle, device_handle, info);
-    job_wait(&wait_handle);
+    // Gather all the command buffers into per-queue submissions
+    for (u32 i = 0; i < info.command_buffer_count; ++i)
+    {
+        const auto& cmd = info.command_buffers[i];
+        auto* native_cmd = cmd->native;
+        auto& submission = submit_infos[cmd->native->queue];
+
+        // we have to add a semaphore if the command buffer is targeting the swapchain
+        if (native_cmd->target_swapchain.is_valid())
+        {
+            auto& swapchain = device.swapchains[native_cmd->target_swapchain];
+
+            if (BEE_FAIL_F(!swapchain.pending_image_acquire, "Swapchain cannot be rendered to without first acquiring its current texture"))
+            {
+                return;
+            }
+
+            submission.waitSemaphoreCount = 1;
+            submission.pWaitSemaphores = &swapchain.acquire_semaphore[swapchain.present_index];
+            submission.pWaitDstStageMask = &swapchain_wait_stage;
+            submission.signalSemaphoreCount = 1;
+            submission.pSignalSemaphores = &swapchain.render_semaphore[swapchain.present_index];
+        }
+
+        ++submission.commandBufferCount;
+
+        auto& queue_cmds = cmd_buffers[cmd->native->queue];
+        if (queue_cmds.allocator() == nullptr)
+        {
+            new (&queue_cmds) DynamicArray<VkCommandBuffer>(temp_allocator());
+        }
+        queue_cmds.push_back(cmd->native->handle);
+    }
+
+    auto& vk_fence = device.fences[info.fence];
+
+    for (int queue = 0; queue < vk_max_queues; ++queue)
+    {
+        auto& submission = cmd_buffers[queue];
+        if (submission.empty())
+        {
+            continue;
+        }
+
+        submit_infos[queue].pCommandBuffers = submission.data();
+        device.queues[queue].submit_threadsafe(1, &submit_infos[queue], vk_fence);
+    }
 }
 
 void gpu_present(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle)
@@ -2097,20 +2165,33 @@ void gpu_present(const DeviceHandle& device_handle, const SwapchainHandle& swapc
     auto& swapchain = device.swapchains[swapchain_handle];
 
     // ensure the swapchain has acquired its next image before presenting if not already acquired
-    get_or_acquire_swapchain_image(&device, &swapchain);
+    if (BEE_FAIL_F(!swapchain.pending_image_acquire, "GPU: it's not valid to present a swapchain before acquiring its next texture index"))
+    {
+        return;
+    }
 
     auto info = VkPresentInfoKHR{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, nullptr };
     info.waitSemaphoreCount = 1;
-    info.pWaitSemaphores = &swapchain.render_semaphore[swapchain.current_image];
+    info.pWaitSemaphores = &swapchain.render_semaphore[swapchain.present_index];
     info.swapchainCount = 1;
     info.pSwapchains = &swapchain.handle;
     info.pImageIndices = &swapchain.current_image;
     info.pResults = nullptr;
 
-    device.graphics_queue.present_threadsafe(&info);
+    const auto result = device.graphics_queue.present_threadsafe(&info);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+    {
+        vk_recreate_swapchain(&device, &swapchain, swapchain_handle);
+    }
+    else
+    {
+        BEE_ASSERT_F(result == VK_SUCCESS, "Vulkan: %s", bee::vk_result_string(result));
+    }
 
     // prepare to acquire next image in the next present
     swapchain.pending_image_acquire = true;
+    swapchain.present_index = (swapchain.present_index + 1) % BEE_GPU_MAX_FRAMES_IN_FLIGHT;
 }
 
 void gpu_commit_frame(const DeviceHandle& device_handle)

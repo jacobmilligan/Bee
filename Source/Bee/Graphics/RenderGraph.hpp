@@ -108,7 +108,7 @@ struct RenderGraphPass
     i32                         write_count { 0 };
     i32                         read_count { 0 };
     RenderGraphResource         resources_read[BEE_RENDERGRAPH_PASS_MAX_READS];
-    RenderGraphResource         attachment_textures[BEE_GPU_MAX_ATTACHMENTS];
+    RenderGraphResource         attachment_rg_resources[BEE_GPU_MAX_ATTACHMENTS];
     RenderGraphAttachmentType   attachment_types[BEE_GPU_MAX_ATTACHMENTS];
     SubPassDescriptor           subpasses[BEE_RENDERGRAPH_PASS_MAX_SUBPASSES];
 

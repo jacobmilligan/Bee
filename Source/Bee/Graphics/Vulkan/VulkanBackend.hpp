@@ -80,7 +80,7 @@ struct VulkanQueue
 
     void submit_threadsafe(const u32 submit_count, const VkSubmitInfo* submits, VkFence fence);
 
-    void present_threadsafe(const VkPresentInfoKHR* present_info);
+    VkResult present_threadsafe(const VkPresentInfoKHR* present_info);
 };
 
 
@@ -93,11 +93,11 @@ struct VulkanSwapchain
 
     RecursiveSpinLock               mutex;
     bool                            pending_image_acquire { true };
-    i32                             current_acquire { 0 };
+    i32                             present_index { 0 };
     u32                             current_image { 0 };
     FixedArray<TextureHandle>       images;
     FixedArray<TextureViewHandle>   image_views;
-    Extent                          extent;
+    SwapchainCreateInfo             create_info;
 
     char                            id_string[16];
 };
@@ -148,16 +148,16 @@ struct VulkanTexture
     VmaAllocation       allocation { VK_NULL_HANDLE };
     VmaAllocationInfo   allocation_info;
     VkImage             handle {VK_NULL_HANDLE };
-    SwapchainHandle     swapchain_handle;
+    SwapchainHandle     swapchain;
 };
 
 struct VulkanTextureView
 {
     VkImageView     handle { VK_NULL_HANDLE };
     TextureHandle   viewed_texture;
-    SwapchainHandle swapchain_handle;
     PixelFormat     format { PixelFormat::unknown };
     u32             samples { 0 };
+    SwapchainHandle swapchain;
 };
 
 struct VulkanDevice;
@@ -555,7 +555,7 @@ struct VulkanBackend
 
 
 // Implemented by platform-specific code
-VkSurfaceKHR gpu_create_wsi_surface(VkInstance instance, const WindowHandle& window);
+VkSurfaceKHR vk_create_wsi_surface(VkInstance instance, const WindowHandle& window);
 
 VulkanDevice& validate_device(const DeviceHandle& device);
 
@@ -564,6 +564,8 @@ BEE_FORCE_INLINE i32 queue_type_index(const QueueType type)
     BEE_ASSERT(type != QueueType::none);
     return math::log2i(static_cast<u32>(type));
 }
+
+TextureViewHandle vk_create_texture_view(VulkanDevice* device, const TextureViewCreateInfo& create_info);
 
 
 /*

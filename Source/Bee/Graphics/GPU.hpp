@@ -1253,9 +1253,6 @@ struct CommandPoolCreateInfo
 };
 
 
-class JobGroup;
-
-
 struct SubmitInfo
 {
     FenceHandle                     fence;
@@ -1318,6 +1315,8 @@ BEE_RUNTIME_API TextureViewHandle gpu_get_swapchain_texture_view(const DeviceHan
 
 BEE_RUNTIME_API Extent gpu_get_swapchain_extent(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle);
 
+BEE_RUNTIME_API PixelFormat gpu_get_swapchain_texture_format(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle);
+
 BEE_RUNTIME_API RenderPassHandle gpu_create_render_pass(const DeviceHandle& device_handle, const RenderPassCreateInfo& create_info);
 
 BEE_RUNTIME_API void gpu_destroy_render_pass(const DeviceHandle& device_handle, const RenderPassHandle& handle);
@@ -1367,8 +1366,6 @@ BEE_RUNTIME_API void gpu_reset_fences(const DeviceHandle& device_handle, const u
 BEE_RUNTIME_API void gpu_reset_fence(const DeviceHandle& device_handle, const FenceHandle& fence_handle);
  
 BEE_RUNTIME_API FenceState gpu_get_fence_state(const DeviceHandle& device_handle, const FenceHandle& fence_handle);
-
-BEE_RUNTIME_API void gpu_submit(JobGroup* wait_handle, const DeviceHandle& device_handle, const SubmitInfo& info);
 
 BEE_RUNTIME_API void gpu_submit(const DeviceHandle& device_handle, const SubmitInfo& info);
 
