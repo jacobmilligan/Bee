@@ -13,7 +13,7 @@
 #include "Bee/Core/Time.hpp"
 
 #if BEE_OS_WINDOWS == 1
-    #include "Bee/Core/Win32/Win32Concurrency.hpp"
+    #include "Bee/Core/Win32/Win32_Concurrency.hpp"
 #else
     #error Platform not supported
 #endif // BEE_OS_WINDOWS == 1
@@ -68,11 +68,16 @@ struct BEE_CORE_API Barrier
 struct BEE_CORE_API SpinLock
 {
 public:
+    SpinLock()
+    {
+        lock_.clear();
+    }
+
     void lock();
 
     void unlock();
 private:
-    std::atomic_flag lock_ { false };
+    std::atomic_flag lock_;
 };
 
 class BEE_CORE_API RecursiveSpinLock

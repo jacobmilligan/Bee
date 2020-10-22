@@ -60,9 +60,9 @@ struct HandleGenerator
     static constexpr IdType min_high        = static_cast<IdType>(1);
     static constexpr IdType invalid_id      = limits::max<IdType>();
 
-    static constexpr IdType make_handle(const IdType& index, const IdType& version) noexcept
+    static constexpr IdType make_handle(const IdType& low, const IdType& high) noexcept
     {
-        return (version << low_bits) | index;
+        return (high << low_bits) | low;
     }
 
     static constexpr IdType get_high(const IdType& id) noexcept
@@ -110,28 +110,31 @@ struct name                                                                     
     inline constexpr bool operator!=(const name& other) const { return id != other.id; }        \
 }
 
-#define BEE_SPLIT_HANDLE(name, IdType, LowBits, HighBits)                                       \
-struct name                                                                                     \
-{                                                                                               \
+#define BEE_SPLIT_HANDLE_BODY(Name, IdType, LowBits, HighBits, LowName, HighName)               \
     using generator_t = bee::HandleGenerator<IdType, LowBits, HighBits>;                        \
                                                                                                 \
     IdType id { generator_t::invalid_id };                                                      \
                                                                                                 \
-    constexpr name() noexcept = default;                                                        \
+    constexpr Name() noexcept = default;                                                        \
                                                                                                 \
-    explicit constexpr name(const IdType new_id) noexcept                                       \
+    explicit constexpr Name(const IdType new_id) noexcept                                       \
         : id(new_id)                                                                            \
     {}                                                                                          \
                                                                                                 \
-    constexpr name(const IdType low, const IdType high) noexcept                                \
-        : id(generator_t::make_handle(low, high))                                               \
+    constexpr Name(const IdType LowName, const IdType HighName) noexcept                        \
+        : id(generator_t::make_handle(LowName, HighName))                                       \
     {}                                                                                          \
                                                                                                 \
-    inline constexpr IdType low() const noexcept { return generator_t::get_low(id); }           \
-    inline constexpr IdType high() const noexcept { return generator_t::get_high(id); }         \
+    inline constexpr IdType LowName() const noexcept { return generator_t::get_low(id); }       \
+    inline constexpr IdType HighName() const noexcept { return generator_t::get_high(id); }     \
     inline constexpr bool is_valid() const noexcept { return generator_t::is_valid(id); }       \
-    inline constexpr bool operator==(const name& other) const { return id == other.id; }        \
-    inline constexpr bool operator!=(const name& other) const { return id != other.id; }        \
+    inline constexpr bool operator==(const Name& other) const { return id == other.id; }        \
+    inline constexpr bool operator!=(const Name& other) const { return id != other.id; }        \
+
+#define BEE_SPLIT_HANDLE(Name, IdType, LowBits, HighBits, LowName, HighName)                    \
+struct Name                                                                                     \
+{                                                                                               \
+    BEE_SPLIT_HANDLE_BODY(Name, IdType, LowBits, HighBits, LowName, HighName)                   \
 }
 
 

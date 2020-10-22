@@ -1,5 +1,5 @@
 /*
- *  PluginV2.hpp
+ *  Plugin.hpp
  *  Bee
  *
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
@@ -7,51 +7,41 @@
 
 #pragma once
 
-#include "Bee/Core/Containers/HashMap.hpp"
-#include "Bee/Core/DynamicLibrary.hpp"
+#include "Bee/Core/Config.hpp"
+#include "Bee/Core/NumericTypes.hpp"
+#include "Bee/Core/String.hpp"
+#include "Bee/Core/Hash.hpp"
 #include "Bee/Core/Path.hpp"
-#include "Bee/Core/Concurrency.hpp"
-#include "Bee/Core/Filesystem.hpp"
-#include "Bee/Core/Random.hpp"
-#include "Bee/Core/Memory/PoolAllocator.hpp"
 
 
 namespace bee {
 
 
-enum class PluginEventType
-{
-    none,
-    add_module,
-    remove_module,
-    load_plugin,
-    unload_plugin
-};
+#define BEE_PLUGIN_API extern "C" BEE_EXPORT_SYMBOL
 
-enum class RegisterPluginMode
-{
-    auto_load,
-    manual_load
-};
+#define BEE_PLUGIN_VERSION(v_major, v_minor, v_patch) \
+    extern "C" BEE_EXPORT_SYMBOL void bee_get_plugin_version(bee::PluginVersion* version)   \
+    {                                                                                       \
+        version->major = v_major;                                                           \
+        version->minor = v_minor;                                                           \
+        version->patch = v_patch;                                                           \
+    }
+
 
 enum class PluginState
 {
     loading,
-    unloading
+    unloading,
+    loaded,
+    unloaded
 };
-
-
-class PluginRegistry;
-
 
 struct PluginVersion
 {
-    u8 major { 0 };
-    u8 minor { 0 };
-    u8 patch { 0 };
+    i32 major { -1 };
+    i32 minor { -1 };
+    i32 patch { -1 };
 };
-
-constexpr PluginVersion plugin_version_any { limits::max<u8>(), limits::max<u8>(), limits::max<u8>() };
 
 inline constexpr bool operator==(const PluginVersion& lhs, const PluginVersion& rhs)
 {
@@ -63,264 +53,91 @@ inline constexpr bool operator!=(const PluginVersion& lhs, const PluginVersion& 
     return !(lhs == rhs);
 }
 
-struct PluginDependency
+inline constexpr bool operator>(const PluginVersion& lhs, const PluginVersion& rhs)
 {
-    const char*     name { nullptr };
-    PluginVersion   version;
-};
-
-struct PluginDescriptor
-{
-    PluginVersion           version;
-    const char*             name { nullptr };
-    const char*             description { nullptr };
-    const char*             source_location { nullptr };
-    i32                     dependency_count { 0 };
-    const PluginDependency* dependencies { nullptr };
-
-    PluginDescriptor() = default;
-
-    template <i32 Size>
-    PluginDescriptor(
-        const PluginVersion& new_version,
-        const char* new_name,
-        const char* new_description,
-        const char* new_source_location,
-        const PluginDependency(&dependency_array)[Size]
-    )
-        : version(new_version),
-          name(new_name),
-          description(new_description),
-          source_location(new_source_location),
-          dependency_count(Size),
-          dependencies(dependency_array)
-    {}
-
-    PluginDescriptor(
-        const PluginVersion& new_version,
-        const char* new_name,
-        const char* new_description,
-        const char* new_source_location
-    )
-        : version(new_version),
-          name(new_name),
-          description(new_description),
-          source_location(new_source_location)
-    {}
-
-    inline void get_full_path(Path* dst) const
+    if (lhs.major != rhs.major)
     {
-        dst->clear();
-        dst->append(fs::get_root_dirs().install_root).append(source_location);
+        return lhs.major > rhs.major;
     }
-};
 
+    if (lhs.minor != rhs.minor)
+    {
+        return lhs.minor > rhs.minor;
+    }
 
-using load_plugin_function_t = void*(*)(PluginRegistry* registry, PluginState state);
+    return lhs.patch > rhs.patch;
+}
 
-using plugin_observer_t = void(*)(const PluginEventType event, const PluginDescriptor& plugin, const StringView& module_name, void* module, void* user_data);
-
-using module_observer_t = void(*)(const PluginEventType event, void* module, void* user_data);
-
-
-class BEE_CORE_API PluginRegistry
+inline constexpr bool operator>=(const PluginVersion& lhs, const PluginVersion& rhs)
 {
-public:
-    PluginRegistry();
+    return lhs == rhs || lhs > rhs;
+}
 
-    ~PluginRegistry();
+inline constexpr bool operator<(const PluginVersion& lhs, const PluginVersion& rhs)
+{
+    return !(lhs > rhs);
+}
 
-    bool add_search_path(const Path& path, const RegisterPluginMode register_mode = RegisterPluginMode::manual_load);
+inline constexpr bool operator<=(const PluginVersion& lhs, const PluginVersion& rhs)
+{
+    return lhs == rhs || lhs < rhs;
+}
 
-    void remove_search_path(const Path& path);
+struct BEE_CORE_API PluginLoader
+{
+    bool get_static(void** dst, const u32 hash, const size_t size, const size_t alignment);
 
-    bool load_plugin(const StringView& name, const PluginVersion& required_version);
-
-    bool unload_plugin(const StringView& name);
-
-    void add_module(const StringView& name, const void* interface_ptr, const size_t size);
-
-    void remove_module(const void* interface_ptr);
+    bool require_plugin(const StringView& name, const PluginVersion& minimum_version) const;
 
     void* get_module(const StringView& name);
 
-    bool has_module(const StringView& name);
+    void add_module_interface(const StringView& name, const void* module, const size_t module_size);
 
-    void refresh_plugins();
+    void remove_module_interface(const void* module);
 
-    bool is_plugin_registered(const StringView& name);
-
-    bool is_plugin_loaded(const StringView& name, const PluginVersion& version);
-
-    i32 get_loaded_plugins(PluginDescriptor* descriptors);
-
-    void add_observer(plugin_observer_t observer, void* user_data = nullptr);
-
-    void remove_observer(plugin_observer_t observer, void* user_data = nullptr);
-
-    void* get_or_create_persistent(const u32 unique_hash, const size_t size);
-
-    template <typename T>
-    inline void add_module(const StringView& name, const T* module)
+    template <typename T, i32 Size, typename... ConstructorArgs>
+    inline T* get_static(const char(&name)[Size], ConstructorArgs&&... args)
     {
-        add_module(name, module, sizeof(T));
+        void* ptr = nullptr;
+        if (get_static(&ptr, get_static_string_hash(name), sizeof(T), alignof(T)))
+        {
+            return static_cast<T*>(ptr);
+        }
+
+        new (static_cast<T*>(ptr)) T(std::forward<ConstructorArgs>(args)...);
+        return static_cast<T*>(ptr);
     }
 
     template <typename T>
-    inline T* get_module(const StringView& name)
-    {
-        return static_cast<T*>(get_module(name));
-    }
-
-    template <typename T>
-    inline void toggle_module(const PluginState state, const StringView& name, const T* module)
+    inline void set_module(const StringView& name, const T* module, const PluginState state)
     {
         if (state == PluginState::loading)
         {
-            add_module(name, module);
+            add_module_interface(name, module, sizeof(T));
         }
         else
         {
-            remove_module(module);
+            remove_module_interface(module);
         }
-    }
-
-    template <typename T, i32 Size, typename... ConstructorArgs>
-    inline T* get_or_create_persistent(const char(&name)[Size], ConstructorArgs&&... args)
-    {
-        T* ptr = nullptr;
-        if (!get_or_create_persistent(get_static_string_hash(name), sizeof(T), &static_cast<void*>(ptr)))
-        {
-            new (ptr) T(std::forward<ConstructorArgs>(args)...);
-        }
-        return ptr;
-    }
-private:
-    struct Plugin
-    {
-        bool                        is_loaded { false };
-        PluginDescriptor            desc;
-        String                      name;
-        u32                         name_hash { 0 };
-        Path                        source_path;
-        Path                        library_path;
-        Path                        current_version_path;
-        Path                        old_version_path;
-        DynamicLibrary              library;
-        load_plugin_function_t      load_function { nullptr };
-
-        Plugin() = default;
-
-        explicit Plugin(const Path& path, const StringView& new_name)
-            : is_loaded(false),
-              library_path(path),
-              name(new_name)
-        {
-            name_hash = get_hash(new_name);
-        }
-    };
-
-    struct Observer
-    {
-        plugin_observer_t   callback { nullptr };
-        void*               user_data { nullptr };
-
-        Observer() = default;
-
-        Observer(plugin_observer_t new_callback, void* new_user_data)
-            : callback(new_callback),
-              user_data(new_user_data)
-        {}
-    };
-
-    struct ModuleObserver
-    {
-        module_observer_t   callback { nullptr };
-        void*               user_data { nullptr };
-
-        ModuleObserver() = default;
-
-        ModuleObserver(module_observer_t new_callback, void* new_user_data)
-            : callback(new_callback),
-              user_data(new_user_data)
-        {}
-    };
-
-    struct Module
-    {
-        u32                             hash { 0 };
-        StaticString<256>               name;
-        const void*                     current {nullptr };
-        void*                           storage;
-    };
-
-    static constexpr size_t                     module_size_ = 1024;
-    static constexpr size_t                     module_storage_capacity_ = module_size_ - sizeof(Module);
-
-    DynamicArray<Module*>                       modules_;
-    DynamicArray<Observer>                      observers_;
-    DynamicHashMap<u32, DynamicArray<u8>>       persistent_;
-    DynamicHashMap<u32, Plugin>                 plugins_;
-    DynamicHashMap<Path, DynamicArray<u32>>     search_paths_;
-    fs::DirectoryWatcher                        directory_watcher_;
-    DynamicArray<Plugin*>                       load_stack_;
-
-    bool register_plugins_at_path(const Path& root, const RegisterPluginMode search_path_type);
-
-    void register_plugin(const Path& path, const RegisterPluginMode register_mode);
-
-    void unregister_plugin(const Path& path);
-
-    bool load_plugin(Plugin* plugin, const PluginVersion& required_version);
-
-    void unload_plugin(Plugin* plugin);
-
-    Module& get_or_create_module(const StringView& name);
-
-    bool get_or_create_persistent(const u32 unique_hash, const size_t size, void** out_data);
-
-    void notify_observers(const PluginEventType event, const Plugin* plugin, const Module* module);
-
-    inline Module* create_module(const u32 hash, const StringView& name)
-    {
-        auto* module_memory = static_cast<u8*>(BEE_MALLOC(system_allocator(), module_size_));
-        auto* module = reinterpret_cast<Module*>(module_memory);
-
-        new (module) Module{};
-        module->hash = hash;
-        module->name = name;
-        module->current = nullptr;
-        module->storage = module_memory + sizeof(Module);
-        memset(module->storage, 0, module_storage_capacity_);
-
-        return module;
-    }
-
-    inline void destroy_module(Module* module)
-    {
-        destruct(module);
-        BEE_FREE(system_allocator(), module);
     }
 };
 
+BEE_CORE_API void init_plugins();
 
-struct BEE_CORE_API StaticPluginAutoRegistration
-{
-    StaticPluginAutoRegistration*   next { nullptr };
-    load_plugin_function_t          load_plugin {nullptr };
+BEE_CORE_API void shutdown_plugins();
 
-    StaticPluginAutoRegistration(const char* name, load_plugin_function_t load_function);
-};
+BEE_CORE_API bool load_plugin(const StringView& name);
 
+BEE_CORE_API void unload_plugin(const StringView& name);
 
-#define BEE_PLUGIN_API extern "C" BEE_EXPORT_SYMBOL
+BEE_CORE_API void refresh_plugins();
 
-#if BEE_CONFIG_MONOLITHIC_BUILD == 0
-    #define BEE_REGISTER_PLUGIN(name)
-#else
-    #define BEE_REGISTER_PLUGIN(name) \
-        StaticPluginAutoRegistration auto_plugin_registration(#name, bee_load_plugin, bee_unload_plugin)
-#endif // BEE_CONFIG_MONOLITHIC_BUILD == 0
+BEE_CORE_API void add_plugin_search_path(const Path& path);
+
+BEE_CORE_API void remove_plugin_search_path(const Path& path);
+
+BEE_CORE_API void* get_module(const StringView& name);
+
 
 
 } // namespace bee

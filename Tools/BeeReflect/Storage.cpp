@@ -24,7 +24,7 @@ const char* ReflectionAllocator::allocate_name(const llvm::StringRef& src)
 {
     static constexpr const char* empty_string = "";
 
-    auto data = static_cast<char*>(BEE_MALLOC(name_allocator_, src.size() + 1));
+    auto* data = static_cast<char*>(BEE_MALLOC(name_allocator_, src.size() + 1));
     if (data == nullptr)
     {
         return empty_string;
@@ -44,7 +44,7 @@ const char* ReflectionAllocator::allocate_name(const llvm::StringRef& src)
 }
 
 
-bool ReflectedFile::try_insert_type(const Type* type)
+bool ReflectedFile::try_insert_type(const TypeInfo* type) const
 {
     BEE_ASSERT(parent_map != nullptr);
 
@@ -60,11 +60,11 @@ bool ReflectedFile::try_insert_type(const Type* type)
 }
 
 
-bool TypeMap::try_add_type(const Type* type, const clang::Decl& decl, ReflectedFile** reflected_file)
+bool TypeMap::try_add_type(const TypeInfo* type, const clang::Decl& decl, ReflectedFile** reflected_file)
 {
     BEE_ASSERT(reflected_file != nullptr);
 
-    auto existing_type = type_lookup.find(type->hash);
+    auto* existing_type = type_lookup.find(type->hash);
     if (existing_type != nullptr)
     {
         *reflected_file = &reflected_files.find(existing_type->value.owning_file_hash)->value;
@@ -78,13 +78,13 @@ bool TypeMap::try_add_type(const Type* type, const clang::Decl& decl, ReflectedF
 
     if (decl.getLocation().isFileID())
     {
-        const auto file = src_manager.getFileEntryForID(src_manager.getFileID(decl.getLocation()));
+        const auto* file = src_manager.getFileEntryForID(src_manager.getFileID(decl.getLocation()));
         filename_ref = file->getName();
     }
     else
     {
         const auto file_loc = src_manager.getFileLoc(src_manager.getExpansionLoc(decl.getLocation()));
-        const auto file = src_manager.getFileEntryForID(src_manager.getFileID(file_loc));
+        const auto* file = src_manager.getFileEntryForID(src_manager.getFileID(file_loc));
         filename_ref = file->getName();
     }
 
@@ -112,7 +112,7 @@ bool TypeMap::try_add_type(const Type* type, const clang::Decl& decl, ReflectedF
     mapped_type.owning_file_hash = get_hash(filepath);
     type_lookup.insert(type->hash, mapped_type);
 
-    auto file_keyval = reflected_files.find(mapped_type.owning_file_hash);
+    auto* file_keyval = reflected_files.find(mapped_type.owning_file_hash);
 
     if (file_keyval == nullptr)
     {
@@ -164,9 +164,9 @@ void TypeMap::add_enum(EnumTypeStorage* enum_storage, const clang::Decl& decl)
     enum_storage->location->enums.push_back(enum_storage);
 }
 
-const Type* TypeMap::find_type(const u32 hash)
+const TypeInfo* TypeMap::find_type(const u32 hash)
 {
-    auto type = type_lookup.find(hash);
+    auto* type = type_lookup.find(hash);
     return type == nullptr ? nullptr : type->value.type;
 }
 

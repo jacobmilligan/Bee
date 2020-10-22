@@ -66,7 +66,7 @@ TEST(SerializationTestsV2, primitives)
     stream.seek(0, io::SeekOrigin::begin);
     stream.read(&header, sizeof(RecordHeader));
 
-    for (const Field& field : get_type_as<PrimitivesStruct, RecordType>()->fields)
+    for (const Field& field : get_type_as<PrimitivesStruct, RecordTypeInfo>()->fields)
     {
         if (field.version_added <= 0)
         {
@@ -106,7 +106,7 @@ TEST(SerializationTestsV2, primitives)
 
     FieldHeader field_header{};
 
-    for (const Field& field : get_type_as<PrimitivesStructV2, RecordType>()->fields)
+    for (const Field& field : get_type_as<PrimitivesStructV2, RecordTypeInfo>()->fields)
     {
         if (field.version_added > 0 && 3 >= field.version_added && 3 < field.version_removed)
         {

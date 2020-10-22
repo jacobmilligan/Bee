@@ -162,7 +162,7 @@ BEE_CORE_API const char* format_guid(const GUID& guid, GUIDFormat format);
 BEE_CORE_API GUID guid_from_string(const StringView& string);
 
 
-inline void serialize_type(SerializationBuilder* builder, GUID* guid)
+BEE_SERIALIZE_TYPE(SerializationBuilder* builder, GUID* guid)
 {
     static constexpr auto guid_as_digits_size = 32;
     static thread_local char string_buffer[guid_as_digits_size + 1];

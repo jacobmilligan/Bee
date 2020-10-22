@@ -7,6 +7,10 @@
 
 #pragma once
 
+#if BEE_CONFIG_USE_REFLECTION_2 == 1
+    #include "Bee/Core/Reflection2.hpp"
+#else
+
 #include "Bee/Core/Enum.hpp"
 #include "Bee/Core/Logger.hpp"
 #include "Bee/Core/IO.hpp"
@@ -141,30 +145,30 @@ enum class FundamentalKind
 #undef BEE_BUILTIN_TYPE
 
 
-struct Type;
+struct TypeInfo;
 
-class BEE_CORE_API TypeRef
+class BEE_CORE_API Type
 {
 public:
-    TypeRef();
+    Type();
 
-    explicit constexpr TypeRef(const Type* type)
+    explicit constexpr Type(const TypeInfo* type)
         : type_(type)
     {}
 
-    inline constexpr const Type* operator->() const
+    inline constexpr const TypeInfo* operator->() const
     {
         BEE_ASSERT(type_ != nullptr);
         return type_;
     }
 
-    inline constexpr const Type& operator*() const
+    inline constexpr const TypeInfo& operator*() const
     {
         BEE_ASSERT(type_ != nullptr);
         return *type_;
     }
 
-    inline constexpr const Type* get() const
+    inline constexpr const TypeInfo* get() const
     {
         return type_;
     }
@@ -172,21 +176,21 @@ public:
     inline bool is_unknown() const;
 
 private:
-    const Type* type_ { nullptr };
+    const TypeInfo* type_ { nullptr };
 };
 
 template <typename T>
-class ConcreteTypeRef
+class SpecializedType
 {
 public:
-    static_assert(std::is_base_of_v<Type, T>, "`T` must derive from bee::Type");
+    static_assert(std::is_base_of_v<TypeInfo, T>, "`T` must derive from bee::Type");
 
-    ~ConcreteTypeRef()
+    ~SpecializedType()
     {
         type_ = nullptr;
     }
 
-    explicit constexpr ConcreteTypeRef(const T* type)
+    explicit constexpr SpecializedType(const T* type)
         : type_(type)
     {}
 
@@ -221,7 +225,7 @@ public:
     using reference     = StringView&;
     using pointer       = StringView*;
 
-    explicit namespace_iterator(const TypeRef& type);
+    explicit namespace_iterator(const Type& type);
 
     explicit namespace_iterator(const StringView& fully_qualified_name);
 
@@ -254,7 +258,7 @@ private:
 
 struct BEE_CORE_API NamespaceRangeAdapter
 {
-    const Type* type { nullptr };
+    const TypeInfo* type { nullptr };
 
     namespace_iterator begin() const;
 
@@ -298,7 +302,7 @@ struct Attribute
         int             integer;
         float           floating_point;
         const char*     string;
-        TypeRef         type;
+        Type         type;
 
         explicit Value(const bool b)
             : boolean(b)
@@ -316,7 +320,7 @@ struct Attribute
             : string(s)
         {}
 
-        explicit Value(const Type* t)
+        explicit Value(const TypeInfo* t)
             : type(t)
         {}
     };
@@ -363,8 +367,8 @@ struct Field
     Qualifier                   qualifier { Qualifier::none };
     StorageClass                storage_class { StorageClass::none };
     const char*                 name { nullptr };
-    TypeRef                     type { nullptr };
-    Span<TypeRef>               template_arguments;
+    Type                     type {nullptr };
+    Span<Type>               template_arguments;
     Span<Attribute>             attributes;
     serialization_function_t    serializer_function { nullptr };
     i32                         version_added { 0 };
@@ -379,8 +383,8 @@ struct Field
         const Qualifier new_qualifier,
         const StorageClass new_storage_class,
         const char* new_name,
-        const TypeRef& new_type,
-        const Span<TypeRef> new_template_args,
+        const Type& new_type,
+        const Span<Type> new_template_args,
         const Span<Attribute> new_attributes,
         serialization_function_t new_serializer_function,
         const i32 new_version_added = 0,
@@ -410,7 +414,7 @@ public:
 
     TypeInstance() = default;
 
-    TypeInstance(const TypeRef& type, void* data, Allocator* allocator, copier_t copier, deleter_t deleter);
+    TypeInstance(const Type& type, void* data, Allocator* allocator, copier_t copier, deleter_t deleter);
 
     ~TypeInstance();
 
@@ -432,7 +436,7 @@ public:
         return allocator_;
     }
 
-    inline const TypeRef& type() const
+    inline const Type& type() const
     {
         return type_;
     }
@@ -457,7 +461,7 @@ public:
 private:
     Allocator*  allocator_ { nullptr };
     void*       data_ { nullptr };
-    TypeRef     type_;
+    Type     type_;
     copier_t    copier_ { nullptr };
     deleter_t   deleter_ { nullptr };
 
@@ -467,7 +471,7 @@ private:
 
     void move_construct(TypeInstance& other) noexcept;
 
-    bool validate_type(const TypeRef& type) const;
+    bool validate_type(const Type& type) const;
 };
 
 template <typename T>
@@ -494,7 +498,7 @@ inline TypeInstance make_type_instance<void>(Allocator* /* allocator */)
 }
 
 
-struct Type
+struct TypeInfo
 {
     using create_instance_t = TypeInstance(*)(Allocator*);
 
@@ -508,9 +512,9 @@ struct Type
     create_instance_t       create_instance { nullptr };
     Span<TemplateParameter> template_parameters;
 
-    Type() noexcept = default;
+    TypeInfo() noexcept = default;
 
-    Type(
+    TypeInfo(
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
@@ -529,7 +533,7 @@ struct Type
         create_instance(create_instance_function)
     {}
 
-    Type(
+    TypeInfo(
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
@@ -560,10 +564,10 @@ struct Type
     }
 
     template <typename T>
-    inline ConcreteTypeRef<T> as() const
+    inline SpecializedType<T> as() const
     {
         BEE_ASSERT_F((T::static_kind & kind) != TypeKind::unknown, "Invalid type cast");
-        return ConcreteTypeRef<T>(reinterpret_cast<const T*>(this));
+        return SpecializedType<T>(reinterpret_cast<const T*>(this));
     }
 
     inline NamespaceRangeAdapter namespaces() const
@@ -573,7 +577,7 @@ struct Type
 
     inline namespace_iterator namespaces_begin() const
     {
-        return namespace_iterator(TypeRef(this));
+        return namespace_iterator(Type(this));
     }
 
     inline namespace_iterator namespaces_end() const
@@ -588,7 +592,7 @@ struct Type
 };
 
 template <TypeKind Kind>
-struct TypeSpec : public Type
+struct TypeSpec : public TypeInfo
 {
     static constexpr TypeKind static_kind = Kind;
 
@@ -602,7 +606,7 @@ struct TypeSpec : public Type
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
         create_instance_t create_instance_function
-    ) noexcept : Type(new_hash, new_size, new_alignment, Kind, new_name, new_serialized_version, new_serialization_flags, create_instance_function)
+    ) noexcept : TypeInfo(new_hash, new_size, new_alignment, Kind, new_name, new_serialized_version, new_serialization_flags, create_instance_function)
     {}
 
     TypeSpec(
@@ -614,7 +618,7 @@ struct TypeSpec : public Type
         const i32 new_serialized_version,
         const SerializationFlags new_serialization_flags,
         create_instance_t create_instance_function
-    ) noexcept : Type(new_hash, new_size, new_alignment, specialized_kind, new_name, new_serialized_version, new_serialization_flags, create_instance_function)
+    ) noexcept : TypeInfo(new_hash, new_size, new_alignment, specialized_kind, new_name, new_serialized_version, new_serialization_flags, create_instance_function)
     {}
 
     TypeSpec(
@@ -627,7 +631,7 @@ struct TypeSpec : public Type
         const SerializationFlags new_serialization_flags,
         create_instance_t create_instance_function,
         const Span<TemplateParameter> new_template_parameters
-    ) noexcept : Type(new_hash, new_size, new_alignment, Kind | TypeKind::template_decl, new_name, new_serialized_version, new_serialization_flags, create_instance_function, new_template_parameters)
+    ) noexcept : TypeInfo(new_hash, new_size, new_alignment, Kind | TypeKind::template_decl, new_name, new_serialized_version, new_serialization_flags, create_instance_function, new_template_parameters)
     {
         BEE_ASSERT(!new_template_parameters.empty());
     }
@@ -646,15 +650,15 @@ struct TypeSpec : public Type
 };
 
 
-struct ArrayType final : public TypeSpec<TypeKind::array>
+struct ArrayTypeInfo final : public TypeSpec<TypeKind::array>
 {
     i32                             element_count { 0 };
-    TypeRef                         element_type { nullptr };
+    Type                         element_type {nullptr };
     Field::serialization_function_t serializer_function { nullptr };
 
-    ArrayType() noexcept = default;
+    ArrayTypeInfo() noexcept = default;
 
-    ArrayType(
+    ArrayTypeInfo(
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
@@ -663,7 +667,7 @@ struct ArrayType final : public TypeSpec<TypeKind::array>
         const SerializationFlags new_serialization_flags,
         create_instance_t create_instance_function,
         const i32 count,
-        const TypeRef& type,
+        const Type& type,
         Field::serialization_function_t new_serializer_function
     ) noexcept : TypeSpec(new_hash, new_size, new_alignment, new_name, new_serialized_version, new_serialization_flags, create_instance_function),
         element_count(count),
@@ -672,16 +676,16 @@ struct ArrayType final : public TypeSpec<TypeKind::array>
     {}
 };
 
-using ArrayTypeRef = ConcreteTypeRef<ArrayType>;
+using ArrayType = SpecializedType<ArrayTypeInfo>;
 
 
-struct FundamentalType final : public TypeSpec<TypeKind::fundamental>
+struct FundamentalTypeInfo final : public TypeSpec<TypeKind::fundamental>
 {
     FundamentalKind fundamental_kind { FundamentalKind::count };
 
-    FundamentalType() noexcept = default;
+    FundamentalTypeInfo() noexcept = default;
 
-    FundamentalType(
+    FundamentalTypeInfo(
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
@@ -694,7 +698,7 @@ struct FundamentalType final : public TypeSpec<TypeKind::fundamental>
     {}
 };
 
-using FundamentalTypeRef = ConcreteTypeRef<FundamentalType>;
+using FundamentalType = SpecializedType<FundamentalTypeInfo>;
 
 
 struct EnumConstant
@@ -702,12 +706,12 @@ struct EnumConstant
     const char* name { nullptr };
     u32         hash { 0 };
     isize       value { 0 };
-    TypeRef     underlying_type { nullptr };
+    Type     underlying_type {nullptr };
     bool        is_flag { false };
 
     EnumConstant() noexcept = default;
 
-    EnumConstant(const char* new_name, const u32 new_hash, const isize new_value, const TypeRef& new_underlying_type, const bool flag) noexcept
+    EnumConstant(const char* new_name, const u32 new_hash, const isize new_value, const Type& new_underlying_type, const bool flag) noexcept
         : name(new_name),
           hash(new_hash),
           value(new_value),
@@ -716,17 +720,17 @@ struct EnumConstant
     {}
 };
 
-struct EnumType final : public TypeSpec<TypeKind::enum_decl>
+struct EnumTypeInfo final : public TypeSpec<TypeKind::enum_decl>
 {
     bool                is_scoped { false };
     bool                is_flags { false };
     Span<EnumConstant>  constants;
     Span<Attribute>     attributes;
-    TypeRef             underlying_type { nullptr };
+    Type             underlying_type {nullptr };
 
-    EnumType() noexcept = default;
+    EnumTypeInfo() noexcept = default;
 
-    EnumType(
+    EnumTypeInfo(
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
@@ -748,14 +752,14 @@ struct EnumType final : public TypeSpec<TypeKind::enum_decl>
     }
 };
 
-using EnumTypeRef = ConcreteTypeRef<EnumType>;
+using EnumType = SpecializedType<EnumTypeInfo>;
 
 template <typename T>
 inline const EnumConstant& enum_to_type(const T& value)
 {
-    static EnumConstant default_constant("<unknown>", 0, 0, get_type<UnknownType>(), false);
+    static EnumConstant default_constant("<unknown>", 0, 0, get_type<UnknownTypeInfo>(), false);
 
-    auto type = get_type_as<T, EnumType>();
+    auto type = get_type_as<T, EnumTypeInfo>();
 
     if (type->is(TypeKind::unknown))
     {
@@ -773,7 +777,7 @@ inline const EnumConstant& enum_to_type(const T& value)
 template <typename T>
 inline void enum_to_string(io::StringStream* stream, const T& value)
 {
-    auto type = get_type_as<T, EnumType>();
+    auto type = get_type_as<T, EnumTypeInfo>();
     if (!type->is_flags)
     {
         const auto const_index = find_index_if(type->constants, [&](const EnumConstant& c)
@@ -829,12 +833,12 @@ inline String enum_to_string(const T& value, Allocator* allocator = system_alloc
     return std::move(result);
 }
 
-BEE_CORE_API isize enum_from_string(const EnumTypeRef& type, const StringView& string);
+BEE_CORE_API isize enum_from_string(const EnumType& type, const StringView& string);
 
 template <typename T>
 inline T enum_from_string(const StringView& string)
 {
-    return static_cast<T>(enum_from_string(get_type_as<T, EnumType>(), string));
+    return static_cast<T>(enum_from_string(get_type_as<T, EnumTypeInfo>(), string));
 }
 
 
@@ -886,7 +890,7 @@ private:
 };
 
 
-struct FunctionType final : public TypeSpec<TypeKind::function>
+struct FunctionTypeInfo final : public TypeSpec<TypeKind::function>
 {
     StorageClass        storage_class { StorageClass::none };
     bool                is_constexpr { false };
@@ -897,9 +901,9 @@ struct FunctionType final : public TypeSpec<TypeKind::function>
 
     using TypeSpec::TypeSpec;
 
-    FunctionType() = default;
+    FunctionTypeInfo() = default;
 
-    FunctionType(
+    FunctionTypeInfo(
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
@@ -922,7 +926,7 @@ struct FunctionType final : public TypeSpec<TypeKind::function>
         invoker(callable_invoker)
     {}
 
-    FunctionType(
+    FunctionTypeInfo(
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
@@ -959,23 +963,23 @@ struct FunctionType final : public TypeSpec<TypeKind::function>
     }
 };
 
-using FunctionTypeRef = ConcreteTypeRef<FunctionType>;
+using FunctionType = SpecializedType<FunctionTypeInfo>;
 
 
-struct RecordType final : public TypeSpec<TypeKind::record>
+struct RecordTypeInfo final : public TypeSpec<TypeKind::record>
 {
     Span<Field>                         fields;
-    Span<FunctionType>                  functions;
+    Span<FunctionTypeInfo>                  functions;
     Span<Attribute>                     attributes;
-    Span<EnumTypeRef>                   enums;
-    Span<ConcreteTypeRef<RecordType>>   records;
-    Span<TypeRef>                       base_records;
+    Span<EnumType>                   enums;
+    Span<SpecializedType<RecordTypeInfo>>   records;
+    Span<Type>                       base_records;
 
     using TypeSpec::TypeSpec;
 
-    RecordType() noexcept = default;
+    RecordTypeInfo() noexcept = default;
 
-    RecordType(
+    RecordTypeInfo(
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
@@ -985,11 +989,11 @@ struct RecordType final : public TypeSpec<TypeKind::record>
         const SerializationFlags new_serialization_flags,
         create_instance_t create_instance_function,
         const Span<Field>& new_fields,
-        const Span<FunctionType> new_functions,
+        const Span<FunctionTypeInfo> new_functions,
         const Span<Attribute> new_attributes,
-        const Span<EnumTypeRef> nested_enums,
-        const Span<ConcreteTypeRef<RecordType>> nested_records,
-        const Span<TypeRef> bases
+        const Span<EnumType> nested_enums,
+        const Span<SpecializedType<RecordTypeInfo>> nested_records,
+        const Span<Type> bases
     ) noexcept : TypeSpec(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags, create_instance_function),
         fields(new_fields),
         functions(new_functions),
@@ -999,7 +1003,7 @@ struct RecordType final : public TypeSpec<TypeKind::record>
         base_records(bases)
     {}
 
-    RecordType(
+    RecordTypeInfo(
         const u32 new_hash,
         const size_t new_size,
         const size_t new_alignment,
@@ -1010,11 +1014,11 @@ struct RecordType final : public TypeSpec<TypeKind::record>
         create_instance_t create_instance_function,
         const Span<TemplateParameter> new_template_parameters,
         const Span<Field>& new_fields,
-        const Span<FunctionType> new_functions,
+        const Span<FunctionTypeInfo> new_functions,
         const Span<Attribute> new_attributes,
-        const Span<EnumTypeRef> nested_enums,
-        const Span<ConcreteTypeRef<RecordType>> nested_records,
-        const Span<TypeRef> bases
+        const Span<EnumType> nested_enums,
+        const Span<SpecializedType<RecordTypeInfo>> nested_records,
+        const Span<Type> bases
     ) noexcept : TypeSpec(new_hash, new_size, new_alignment, new_kind, new_name, new_serialized_version, new_serialization_flags, create_instance_function, new_template_parameters),
         fields(new_fields),
         functions(new_functions),
@@ -1025,16 +1029,16 @@ struct RecordType final : public TypeSpec<TypeKind::record>
     {}
 };
 
-using RecordTypeRef = ConcreteTypeRef<RecordType>;
+using RecordType = SpecializedType<RecordTypeInfo>;
 
-struct UnknownType final : public TypeSpec<TypeKind::unknown>
+struct UnknownTypeInfo final : public TypeSpec<TypeKind::unknown>
 {
-    UnknownType() noexcept
+    UnknownTypeInfo() noexcept
         : TypeSpec(0, 0, 0, "bee::UnknownType", 0, SerializationFlags::none, nullptr)
     {}
 };
 
-using unknown_typeref_t = ConcreteTypeRef<UnknownType>();
+using UnknownType = SpecializedType<UnknownTypeInfo>();
 
 template <u32 Hash>
 struct ComplexTypeTag
@@ -1049,18 +1053,18 @@ struct TypeTag
 };
 
 
-inline constexpr bool operator==(const TypeRef& lhs, const TypeRef& rhs)
+inline constexpr bool operator==(const Type& lhs, const Type& rhs)
 {
     return lhs->hash == rhs->hash;
 }
 
-inline constexpr bool operator!=(const TypeRef& lhs, const TypeRef& rhs)
+inline constexpr bool operator!=(const Type& lhs, const Type& rhs)
 {
     return lhs->hash != rhs->hash;
 }
 
 template <typename T>
-inline constexpr bool operator==(const ConcreteTypeRef<T>& lhs, const ConcreteTypeRef<T>& rhs)
+inline constexpr bool operator==(const SpecializedType<T>& lhs, const SpecializedType<T>& rhs)
 {
     if (lhs.get() == nullptr || rhs.get() == nullptr)
     {
@@ -1071,13 +1075,13 @@ inline constexpr bool operator==(const ConcreteTypeRef<T>& lhs, const ConcreteTy
 }
 
 template <typename T>
-inline constexpr bool operator!=(const ConcreteTypeRef<T>& lhs, const ConcreteTypeRef<T>& rhs)
+inline constexpr bool operator!=(const SpecializedType<T>& lhs, const SpecializedType<T>& rhs)
 {
     return !(lhs == rhs);
 }
 
 template <typename T>
-inline constexpr bool operator==(const TypeRef& lhs, const ConcreteTypeRef<T>& rhs)
+inline constexpr bool operator==(const Type& lhs, const SpecializedType<T>& rhs)
 {
     if (lhs.get() == nullptr || rhs.get() == nullptr)
     {
@@ -1088,7 +1092,7 @@ inline constexpr bool operator==(const TypeRef& lhs, const ConcreteTypeRef<T>& r
 }
 
 template <typename T>
-inline constexpr bool operator==(const ConcreteTypeRef<T>& lhs, const TypeRef& rhs)
+inline constexpr bool operator==(const SpecializedType<T>& lhs, const Type& rhs)
 {
     if (lhs.get() == nullptr || rhs.get() == nullptr)
     {
@@ -1099,13 +1103,13 @@ inline constexpr bool operator==(const ConcreteTypeRef<T>& lhs, const TypeRef& r
 }
 
 template <typename T>
-inline constexpr bool operator!=(const TypeRef& lhs, const ConcreteTypeRef<T>& rhs)
+inline constexpr bool operator!=(const Type& lhs, const SpecializedType<T>& rhs)
 {
     return !(lhs == rhs);
 }
 
 template <typename T>
-inline constexpr bool operator!=(const ConcreteTypeRef<T>& lhs, const TypeRef& rhs)
+inline constexpr bool operator!=(const SpecializedType<T>& lhs, const Type& rhs)
 {
     return !(lhs == rhs);
 }
@@ -1113,10 +1117,10 @@ inline constexpr bool operator!=(const ConcreteTypeRef<T>& lhs, const TypeRef& r
 
 
 template <typename T>
-TypeRef get_type(const TypeTag<T>& tag);
+Type get_type(const TypeTag<T>& tag);
 
 template <typename T>
-BEE_FORCE_INLINE TypeRef get_type()
+BEE_FORCE_INLINE Type get_type()
 {
     return get_type(TypeTag<T>{});
 }
@@ -1124,10 +1128,10 @@ BEE_FORCE_INLINE TypeRef get_type()
 BEE_CORE_API u32 get_type_hash(const StringView& type_name);
 
 // Thread-safe as long as nothing is calling `register_type`
-BEE_CORE_API TypeRef get_type(const u32 hash);
+BEE_CORE_API Type get_type(const u32 hash);
 
 template <typename ReflectedType, typename T>
-BEE_FORCE_INLINE ConcreteTypeRef<T> get_type_as()
+BEE_FORCE_INLINE SpecializedType<T> get_type_as()
 {
     return get_type<ReflectedType>()->as<T>();
 }
@@ -1135,18 +1139,18 @@ BEE_FORCE_INLINE ConcreteTypeRef<T> get_type_as()
 BEE_CORE_API void reflection_register_builtin_types();
 
 // NOT THREAD SAFE - should only ever be done at initialization by `reflection_init`
-BEE_CORE_API void register_type(const TypeRef& type);
-BEE_CORE_API void unregister_type(const TypeRef& type);
+BEE_CORE_API void register_type(const Type& type);
+BEE_CORE_API void unregister_type(const Type& type);
 
-BEE_CORE_API const Attribute* find_attribute(const TypeRef& type, const char* attribute_name);
+BEE_CORE_API const Attribute* find_attribute(const Type& type, const char* attribute_name);
 
 BEE_CORE_API const Attribute* find_attribute(const Field& field, const char* attribute_name);
 
-BEE_CORE_API const Attribute* find_attribute(const TypeRef& type, const char* attribute_name, const AttributeKind kind);
+BEE_CORE_API const Attribute* find_attribute(const Type& type, const char* attribute_name, const AttributeKind kind);
 
 BEE_CORE_API const Attribute* find_attribute(const Field& field, const char* attribute_name, const AttributeKind kind);
 
-BEE_CORE_API const Attribute* find_attribute(const TypeRef& type, const char* attribute_name, const AttributeKind kind, const Attribute::Value& value);
+BEE_CORE_API const Attribute* find_attribute(const Type& type, const char* attribute_name, const AttributeKind kind, const Attribute::Value& value);
 
 BEE_CORE_API const Attribute* find_attribute(const Field& field, const char* attribute_name, const AttributeKind kind, const Attribute::Value& value);
 
@@ -1204,3 +1208,5 @@ const char* reflection_dump_flags(const FlagType flag)
 #include "Bee.Core/ReflectedTemplates/Array.generated.inl"
 #include "Bee.Core/ReflectedTemplates/String.generated.inl"
 #endif // BEE_ENABLE_REFLECTION
+
+#endif // BEE_CONFIG_USE_REFLECTION_2 == 1

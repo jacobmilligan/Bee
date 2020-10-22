@@ -17,10 +17,10 @@ bee_test(Bee.Tests.Core
         StringTests.cpp
         FunctionalTests.cpp
         HashTests.cpp
-        GUIDTests.cpp
-        SerializationTestsTypes.hpp
-        SerializationTests.cpp
-        ReflectionTests.cpp
+#        GUIDTests.cpp
+#        SerializationTestsTypes.hpp
+#        SerializationTests.cpp
+#        ReflectionTests.cpp
         PathTests.cpp
         HandleTableTests.cpp
         SoATests.cpp
@@ -48,4 +48,9 @@ bee_relacy_test(Bee.Tests.WorkStealingQueue
 
 target_include_directories(Bee.Tests.Core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-bee_reflect(Bee.Tests.Core)
+#bee_reflect(Bee.Tests.Core)
+
+bee_new_source_root()
+bee_add_sources(ChunkAllocatorTest.cpp)
+bee_exe(Bee.Tests.Core.ChunkAllocator
+        LINK_LIBRARIES Bee.Core)

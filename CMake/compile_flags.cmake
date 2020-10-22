@@ -33,7 +33,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
         /Zo             # generate enhanced debugging info - needed due to disabling inline expansion
         /Od             # turn off optimizations
         /Ob0            # disable inlining expansion
-        /RTC1           # enable stack frame run-time error checks and unintialized variable usage
+#        /RTC1           # enable stack frame run-time error checks and unintialized variable usage
         /GS             # enable buffer security checks
         /DDEBUG
         /D_DEBUG
@@ -70,7 +70,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE    "/DEBUG" CACHE STRING "Link flags for release" FORCE)
     set(CMAKE_MODULE_LINKER_FLAGS_RELEASE "${msvc_release_linker_flags}" CACHE STRING "Release link flags" FORCE)
 
-    # Flags added to Skyrocket targets only
+    # Flags added to Bee targets only
     set(bee_compile_flags
             /W4             # set error level to 4
             /WX             # warnings are errors
@@ -78,6 +78,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
             /wd4201         # enable anonymous struct
             /wd4100         # disable 'identifier' : unreferenced formal parameter
             /wd4267         # disable 'var' : conversion from 'size_t' to 'type', possible loss of data
+            /wd5059         # runtime checks and address sanitizer is not currently supported - disabling runtime checks
         )
 
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
@@ -100,12 +101,12 @@ endif()
 # check for ASAN & TSAN availability
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     if (USE_ASAN)
-        bee_global_log("Compiling with LLVM Address Sanitizer")
+        MESSAGE(STATUS "Bee: Compiling with LLVM Address Sanitizer")
         list(APPEND bee_compile_flags "-fsanitize=address" "-fno-omit-frame-pointer")
     endif ()
 
     if (USE_TSAN)
-        bee_global_log("Compiling with LLVM Thread Sanitizer")
+        MESSAGE(STATUS "Bee: Compiling with LLVM Thread Sanitizer")
         list(APPEND bee_compile_flags "-fsanitize=thread" "-O1" "-fno-omit-frame-pointer")
     endif ()
 endif()
@@ -123,4 +124,5 @@ function(__bee_set_compile_options target)
     endif()
     set_target_properties(${target} PROPERTIES COMPILE_OPTIONS "${new_options}")
     target_compile_options(${target} PRIVATE ${bee_compile_flags})
+
 endfunction()

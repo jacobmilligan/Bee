@@ -552,6 +552,84 @@ Path user_local_appdata_path()
     return appdata;
 }
 
+/*
+ ******************************************
+ *
+ * Memory mapped files - implementation
+ *
+ ******************************************
+ */
+bool mmap_file_map(MemoryMappedFile* file, const Path& path, const FileAccess access)
+{
+    const DWORD desired_access = decode_flag(access, FileAccess::read, GENERIC_READ)
+                               | decode_flag(access, FileAccess::write, GENERIC_WRITE);
+
+    const DWORD create_disposition = decode_flag(access, FileAccess::read, OPEN_EXISTING)
+                                   | decode_flag(access, FileAccess::write, CREATE_NEW);
+
+    file->handles[0] = CreateFile(
+        path.c_str(),
+        desired_access,
+        FILE_SHARE_READ,
+        nullptr,
+        create_disposition,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr
+    );
+
+    if (file->handles[0] == INVALID_HANDLE_VALUE)
+    {
+        log_error("Failed to create memory mapped file %s: %s", path.c_str(), win32_get_last_error_string());
+        file->handles[0] = nullptr;
+        return false;
+    }
+
+    const DWORD protect = decode_flag(access, FileAccess::read, PAGE_READONLY)
+                        | decode_flag(access, FileAccess::write, PAGE_READWRITE);
+
+    file->handles[1] = CreateFileMapping(
+        file->handles[0],
+        nullptr,
+        protect,
+        0, 0,       // 0,0 - maxsize == sizeof file
+        nullptr
+    );
+
+    if (file->handles[1] == nullptr)
+    {
+        log_error("Failed to memory map file %s: %s", path.c_str(), win32_get_last_error_string());
+        CloseHandle(file->handles[0]);
+        return false;
+    }
+
+    const DWORD view_access = decode_flag(access, FileAccess::read, FILE_MAP_READ)
+                            | decode_flag(access, FileAccess::write, FILE_MAP_WRITE);
+    file->data = MapViewOfFile(file->handles[1], view_access, 0, 0, 0);
+    if (file->data == nullptr)
+    {
+        log_error("Failed to map file view %s: %s", path.c_str(), win32_get_last_error_string());
+        CloseHandle(file->handles[0]);
+        CloseHandle(file->handles[1]);
+        return false;
+    }
+
+    return true;
+}
+
+bool mmap_file_unmap(MemoryMappedFile* file)
+{
+    if (UnmapViewOfFile(file->data) == FALSE)
+    {
+        log_error("Failed to unmap file view: %s", win32_get_last_error_string());
+        return false;
+    }
+
+    CloseHandle(file->handles[0]);
+    CloseHandle(file->handles[1]);
+    new (file) MemoryMappedFile{};
+    return true;
+}
+
 
 } // namespace fs
 } // namespace bee

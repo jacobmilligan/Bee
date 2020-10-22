@@ -28,6 +28,7 @@ enum class BuildPlatform
 enum class BBGenerator
 {
     vs2017,
+    vs2019,
     clion,
     unknown
 };
@@ -35,6 +36,7 @@ enum class BBGenerator
 enum class CMakeGenerator
 {
     visual_studio_15_2017_win64,
+    visual_studio_16_2019_win64,
     codeblocks_ninja,
     codeblocks_nmake_makefiles,
     unknown
@@ -54,11 +56,19 @@ BEE_TRANSLATION_TABLE(get_platform_string, BuildPlatform, const char*, BuildPlat
 
 BEE_TRANSLATION_TABLE(get_bb_generator_string, BBGenerator, const char*, BBGenerator::unknown,
     "VS2017",   // vs2017
+    "VS2019",   // vs2019
     "CLion"     // clion
+)
+
+BEE_TRANSLATION_TABLE(get_bb_vs_version, BBGenerator, const char*, BBGenerator::unknown,
+    "15.0",     // vs2017
+    "16.0",     // vs2019
+    nullptr     // clion
 )
 
 BEE_TRANSLATION_TABLE(get_cmake_generator_string, CMakeGenerator, const char*, CMakeGenerator::unknown,
     "Visual Studio 15 2017 Win64",  // visual_studio_15_2017_win64
+    "Visual Studio 16 2019",        // visual_studio_16_2019_win64
     "CodeBlocks - Ninja",           // ninja
     "CodeBlocks - NMake Makefiles"  // nmake
 )
@@ -69,6 +79,13 @@ BEE_TRANSLATION_TABLE(get_build_type_string, BuildType, const char*, BuildType::
     "MultiConfig"
 )
 
+BEE_TRANSLATION_TABLE(get_extra_cmake_args, CMakeGenerator, const char*, CMakeGenerator::unknown,
+    nullptr,        // visual_studio_15_2017_win64
+    "-A x64",       // visual_studio_16_2019_win64
+    nullptr,        // ninja
+    nullptr         // nmake
+)
+
 struct BuildEnvironment
 {
     BuildPlatform   platform { BuildPlatform::unknown };
@@ -76,12 +93,13 @@ struct BuildEnvironment
     Path            build_dir;
     Path            install_dir;
     Path            cmake_path;
-    Path            vcvarsall_path;
+    Path            vcvarsall_path[underlying_t(BBGenerator::unknown)];
+    i32             default_vcvarsall_path { -1 };
 };
 
 struct GeneratorInfo
 {
-    BBGenerator    bb {BBGenerator::unknown };
+    BBGenerator     bb {BBGenerator::unknown };
     CMakeGenerator  cmake { CMakeGenerator::unknown };
 };
 
@@ -100,6 +118,7 @@ struct ConfigureInfo
  */
 static constexpr GeneratorInfo g_generators[] = {
     { BBGenerator::vs2017, CMakeGenerator::visual_studio_15_2017_win64 },
+    { BBGenerator::vs2019, CMakeGenerator::visual_studio_16_2019_win64 },
     { BBGenerator::clion,  CMakeGenerator::codeblocks_nmake_makefiles }
 };
 
@@ -116,6 +135,7 @@ GeneratorInfo find_generator(const char* name)
 bool init_build_environment(BuildEnvironment* env)
 {
 #if BEE_OS_WINDOWS == 1
+
     env->platform = BuildPlatform::windows;
 #else
     env->platform = BuildPlatform::unknown;
@@ -139,42 +159,59 @@ bool init_build_environment(BuildEnvironment* env)
 
         // Run cmake in a shell with vcvarsall if the CLion generator is used otherwise NMake won't know where to find VS
         const auto vswhere_location = bin_root.join("vswhere.exe");
-        auto vswhere_cmd = str::format(
-            "%s -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath",
-            vswhere_location.c_str()
-        );
 
         // Run vswhere to get VS2017 install directory
-        bee::ProcessHandle vswhere{};
-
-        bee::CreateProcessInfo proc_info{};
-        proc_info.handle = &vswhere;
-        proc_info.flags = bee::CreateProcessFlags::priority_high
-            | bee::CreateProcessFlags::create_hidden
-            | bee::CreateProcessFlags::create_read_write_pipes;
-        proc_info.command_line = vswhere_cmd.c_str();
-
-        if (!bee::create_process(proc_info))
+        for (int i = 0; i < underlying_t(BBGenerator::unknown); ++i)
         {
-            bee::log_error("Couldn't find vswhere.exe - unable to use CLion generator");
-            return false;
-        }
+            const char* vs_version = get_bb_vs_version(static_cast<BBGenerator>(i));
+            if (vs_version == nullptr || str::length(vs_version) <= 0)
+            {
+                continue;
+            }
 
-        bee::wait_for_process(vswhere);
-        auto vs_location = bee::read_process(vswhere);
-        bee::destroy_process(vswhere);
+            auto vswhere_cmd = str::format(
+                "%s -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath -version %s",
+                vswhere_location.c_str(), vs_version
+            );
 
-        bee::str::replace(&vs_location, "\r\n", "");
-        if (vs_location.empty())
-        {
-            bee::log_error("Couldn't find a visual studio installation on this machine");
+            bee::ProcessHandle vswhere{};
+
+            bee::CreateProcessInfo proc_info{};
+            proc_info.handle = &vswhere;
+            proc_info.flags = bee::CreateProcessFlags::priority_high
+                | bee::CreateProcessFlags::create_hidden
+                | bee::CreateProcessFlags::create_read_write_pipes;
+            proc_info.command_line = vswhere_cmd.c_str();
+
+            if (!bee::create_process(proc_info))
+            {
+                bee::log_error("Couldn't find vswhere.exe - unable to use CLion generator");
+                return false;
+            }
+
+            bee::wait_for_process(vswhere);
+            auto vs_location = bee::read_process(vswhere);
+            bee::destroy_process(vswhere);
+
+            bee::str::replace(&vs_location, "\r\n", "");
+            if (!vs_location.empty())
+            {
+                if (env->default_vcvarsall_path < 0)
+                {
+                    env->default_vcvarsall_path = i;
+                }
+
+                // Setup path to vcvarsall.bat so we can run the shell with all the VS vars
+                env->vcvarsall_path[i] = str::format(R"(%s\VC\Auxiliary\Build\vcvarsall.bat)", vs_location.c_str()).view();
+                env->vcvarsall_path[i].normalize();
+            }
         }
-        else
-        {
-            // Setup path to vcvarsall.bat so we can run the shell with all the VS vars
-            env->vcvarsall_path = str::format(R"(%s\VC\Auxiliary\Build\vcvarsall.bat)", vs_location.c_str()).view();
-            env->vcvarsall_path.normalize();
-        }
+    }
+
+    if (env->default_vcvarsall_path < 0)
+    {
+        bee::log_error("Couldn't find a visual studio installation on this machine");
+        return false;
     }
 
     return true;
@@ -216,25 +253,34 @@ bool configure(const ConfigureInfo& config_info)
         if (generator_info.bb == BBGenerator::clion)
         {
             // Call vcvarsall before running cmake for clion builds
-            stream.write_fmt(R"("%s" x64 && )", config_info.environment->vcvarsall_path.c_str());
+            const auto* env = config_info.environment;
+            const auto& vsvarsall = env->vcvarsall_path[env->default_vcvarsall_path];
+            stream.write_fmt(R"("%s" x64 && )", vsvarsall.c_str());
         }
 
+        // build the cmake.exe command
         stream.write_fmt(
-            R"("%s" "%s" -G "%s" -B )",
+            R"("%s" "%s" -G "%s" )",
             config_info.environment->cmake_path.c_str(),
             config_info.environment->project_root.c_str(),
             cmake_generator_string
         );
 
+        const char* extra_args = get_extra_cmake_args(generator_info.cmake);
+        if (extra_args != nullptr)
+        {
+            stream.write_fmt("%s ", extra_args);
+        }
+
         if (build_type != BuildType::multi_config)
         {
-            stream.write_fmt(R"("%s" )", output_directory.c_str());
+            stream.write_fmt(R"(-B "%s" )", output_directory.c_str());
             stream.write_fmt(" -DCMAKE_BUILD_TYPE=%s", build_type_string);
             stream.write_fmt(R"( -DCMAKE_INSTALL_PREFIX="%s" )", install_dir.join(build_type_string).c_str());
         }
         else
         {
-            stream.write_fmt(R"("%s" )", output_directory.c_str());
+            stream.write_fmt(R"(-B "%s" )", output_directory.c_str());
             stream.write_fmt(R"(-DCMAKE_INSTALL_PREFIX="%s" )", install_dir.c_str());
         }
 

@@ -25,17 +25,17 @@ BEE_FLAGS(MemoryProtectionMode, u8) {
 * Helpers
 */
 
-constexpr size_t kibibytes(const size_t amount) noexcept
+constexpr size_t kilobytes(const size_t amount) noexcept
 {
     return 1024 * amount;
 }
 
-constexpr size_t mebibytes(const size_t amount) noexcept
+constexpr size_t megabytes(const size_t amount) noexcept
 {
     return (1024 * 1024) * amount;
 }
 
-constexpr size_t gibibytes(const size_t amount) noexcept
+constexpr size_t gigabytes(const size_t amount) noexcept
 {
     return (1024 * 1024 * 1024) * amount;
 }

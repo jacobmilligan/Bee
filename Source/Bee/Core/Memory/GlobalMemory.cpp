@@ -14,6 +14,7 @@ namespace bee {
 
 // Global system allocator
 static MallocAllocator          g_system_allocator;
+static Allocator*               g_default_allocator;
 
 
 // Temp allocators
@@ -145,7 +146,13 @@ void global_allocators_shutdown()
 
 Allocator* system_allocator() noexcept
 {
-    return &g_system_allocator;
+    bool init = false;
+    if (!init)
+    {
+        new (&g_system_allocator) MallocAllocator{};
+        init = true;
+    }
+    return g_default_allocator == nullptr ? &g_system_allocator : g_default_allocator;
 }
 
 Allocator* temp_allocator() noexcept

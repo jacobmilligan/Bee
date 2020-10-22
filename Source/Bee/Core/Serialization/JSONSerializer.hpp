@@ -50,7 +50,7 @@ public:
 
     bool begin() override;
     void end() override;
-    void begin_record(const RecordTypeRef& type) override;
+    void begin_record(const RecordType& type) override;
     void end_record() override;
     void begin_object(i32* member_count) override;
     void end_object() override;

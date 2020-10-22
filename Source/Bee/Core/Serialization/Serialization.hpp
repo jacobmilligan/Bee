@@ -12,6 +12,10 @@
 #include "Bee/Core/Path.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
 
+
+#define BEE_SERIALIZE_TYPE inline void custom_serialize_type
+
+
 namespace bee {
 
 
@@ -44,8 +48,6 @@ BEE_FLAGS(SerializerSourceFlags, u32)
     all                     = unversioned | dont_serialize_flags
 };
 
-class SerializationBuilder;
-
 
 struct BEE_CORE_API Serializer
 {
@@ -57,7 +59,7 @@ struct BEE_CORE_API Serializer
 
     virtual bool begin() = 0;
     virtual void end() = 0;
-    virtual void begin_record(const RecordTypeRef& type) = 0;
+    virtual void begin_record(const RecordType& type) = 0;
     virtual void end_record() = 0;
     virtual void begin_object(i32* member_count) = 0;
     virtual void end_object() = 0;
@@ -84,18 +86,16 @@ struct BEE_CORE_API Serializer
 };
 
 
-BEE_CORE_API void serialize_type(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator = system_allocator());
+BEE_CORE_API void serialize_type(Serializer* serializer, const Type& type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator = system_allocator());
 
-BEE_CORE_API void serialize_type(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, const Span<const TypeRef>& template_type_arguments, Allocator* builder_allocator = system_allocator());
+BEE_CORE_API void serialize_type(Serializer* serializer, const Type& type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type>& template_type_arguments, Allocator* builder_allocator = system_allocator());
 
-BEE_CORE_API void serialize_type_append(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator = system_allocator());
+BEE_CORE_API void serialize_type_append(Serializer* serializer, const Type& type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator = system_allocator());
 
-BEE_CORE_API void serialize_type_append(Serializer* serializer, const TypeRef& type, Field::serialization_function_t serialization_function, u8* data, const Span<const TypeRef>& template_type_arguments, Allocator* builder_allocator = system_allocator());
-
+BEE_CORE_API void serialize_type_append(Serializer* serializer, const Type& type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type>& template_type_arguments, Allocator* builder_allocator = system_allocator());
 
 template <typename T>
-void serialize_type(SerializationBuilder* builder, T* data) {}
-
+void custom_serialize_type(bee::SerializationBuilder* builder, T* data) {}
 
 struct FieldHeader
 {
@@ -123,7 +123,7 @@ inline bool operator!=(const FieldHeader& lhs, const FieldHeader& rhs)
 class BEE_CORE_API SerializationBuilder
 {
 public:
-    SerializationBuilder(Serializer* new_serializer, const RecordTypeRef& type, Allocator* allocator);
+    SerializationBuilder(Serializer* new_serializer, const RecordType& type, Allocator* allocator);
 
     ~SerializationBuilder();
 
@@ -149,8 +149,8 @@ public:
 
         if ((field_type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
         {
-            SerializationBuilder builder(serializer_, field_type->as<RecordType>(), allocator_);
-            serialize_type(&builder, field);
+            SerializationBuilder builder(serializer_, field_type->as<RecordTypeInfo>(), allocator_);
+            custom_serialize_type(&builder, field);
         }
         else
         {
@@ -181,8 +181,8 @@ public:
 
         if ((field_type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
         {
-            SerializationBuilder builder(serializer_, field_type->as<RecordType>(), allocator_);
-            serialize_type(&builder, &removed_data);
+            SerializationBuilder builder(serializer_, field_type->template as<RecordTypeInfo>(), allocator_);
+            custom_serialize_type(&builder, &removed_data);
         }
         else
         {
@@ -209,8 +209,8 @@ public:
 
         if ((type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
         {
-            SerializationBuilder builder(serializer_, type->as<RecordType>(), allocator_);
-            serialize_type(&builder, data);
+            SerializationBuilder builder(serializer_, type->as<RecordTypeInfo>(), allocator_);
+            custom_serialize_type(&builder, data);
         }
         else
         {
@@ -237,7 +237,7 @@ public:
 
 private:
     Serializer*             serializer_ { nullptr };
-    RecordTypeRef           type_ { nullptr };
+    RecordType              type_ { nullptr };
     Allocator*              allocator_ { nullptr };
     SerializedContainerKind container_kind_ { SerializedContainerKind::none };
     i32                     version_ { -1 };
@@ -264,8 +264,8 @@ inline void serialize(const SerializerMode mode, Serializer* serializer, DataTyp
 
     if ((type->serialization_flags & SerializationFlags::uses_builder) != SerializationFlags::none)
     {
-        SerializationBuilder builder(serializer, type->as<RecordType>(), builder_allocator);
-        serialize_type(&builder, data);
+        SerializationBuilder builder(serializer, type->as<RecordTypeInfo>(), builder_allocator);
+        custom_serialize_type(&builder, data);
     }
     else
     {
@@ -289,12 +289,12 @@ inline void serialize(const SerializerMode mode, const SerializerSourceFlags sou
  *
  ******************************
  */
-inline void serialize_type(SerializationBuilder* builder, TypeInstance* instance)
+BEE_SERIALIZE_TYPE(SerializationBuilder* builder, TypeInstance* instance)
 {
-    builder->serializer()->begin_record(get_type_as<TypeInstance, RecordType>());
+    builder->serializer()->begin_record(get_type_as<TypeInstance, RecordTypeInfo>());
 
     builder->serializer()->serialize_field("bee::type");
-    u32 type_hash = instance->is_valid() ? instance->type()->hash : get_type<UnknownType>()->hash;
+    u32 type_hash = instance->is_valid() ? instance->type()->hash : get_type<UnknownTypeInfo>()->hash;
     builder->serializer()->serialize_fundamental(&type_hash);
 
     if (builder->mode() == SerializerMode::reading)
@@ -328,7 +328,7 @@ inline void serialize_type(SerializationBuilder* builder, TypeInstance* instance
  **********************
  */
 template <typename T, ContainerMode Mode>
-inline void serialize_type(SerializationBuilder* builder, Array<T, Mode>* array)
+BEE_SERIALIZE_TYPE(SerializationBuilder* builder, Array<T, Mode>* array)
 {
     int size = array->size();
     builder->container(SerializedContainerKind::sequential, &size);
@@ -359,7 +359,7 @@ template <
     typename        Hasher,
     typename        KeyEqual
 >
-inline void serialize_type(SerializationBuilder* builder, HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>* map)
+BEE_SERIALIZE_TYPE(SerializationBuilder* builder, HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>* map)
 {
     int size = map->size();
     builder->container(SerializedContainerKind::key_value, &size);
@@ -392,7 +392,7 @@ inline void serialize_type(SerializationBuilder* builder, HashMap<KeyType, Value
  *
  **********************
  */
-inline void serialize_type(SerializationBuilder* builder, String* string)
+BEE_SERIALIZE_TYPE(SerializationBuilder* builder, String* string)
 {
     int size = string->size();
     builder->container(SerializedContainerKind::text, &size);
@@ -413,7 +413,7 @@ inline void serialize_type(SerializationBuilder* builder, String* string)
  ******************************
  */
 template <i32 Size>
-inline void serialize_type(SerializationBuilder* builder, StaticString<Size>* string)
+BEE_SERIALIZE_TYPE(SerializationBuilder* builder, StaticString<Size>* string)
 {
     int size = string->size();
     builder->container(SerializedContainerKind::text, &size);
@@ -434,7 +434,7 @@ inline void serialize_type(SerializationBuilder* builder, StaticString<Size>* st
  *
  **********************
  */
-inline void serialize_type(SerializationBuilder* builder, Path* path)
+BEE_SERIALIZE_TYPE(SerializationBuilder* builder, Path* path)
 {
     int size = path->size();
     builder->container(SerializedContainerKind::text, &size);

@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "Bee/Core/Reflection.hpp"
+#include "Bee/Core/Reflection-Deprecated.hpp"
 #include "Bee/Core/Math/float4.hpp"
 #include "Bee/Entity/Entity.hpp"
 

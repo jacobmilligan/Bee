@@ -34,7 +34,7 @@ private:
 struct BeeReflectFrontendActionFactory : public clang::tooling::FrontendActionFactory
 {
     ReflectionAllocator     allocator;
-    TypeMap             storage;
+    TypeMap                 storage;
 
     BeeReflectFrontendActionFactory();
 

@@ -15,7 +15,7 @@
 TEST(StringTests, construct_copy_move)
 {
     bee::MallocAllocator malloc_allocator;
-    bee::LinearAllocator linear_allocator(bee::kibibytes(4));
+    bee::LinearAllocator linear_allocator(bee::kilobytes(4));
 
     const char* raw_test_string = "Test string 1";
 

@@ -9,7 +9,6 @@
 
 #include <Bee/Core/Reflection.hpp>
 #include <Bee/Core/Serialization/Serialization.hpp>
-#include "../../../../Tools/BeeReflect/Tests/BasicStruct.hpp"
 
 namespace bee {
 
@@ -122,8 +121,7 @@ inline bool operator!=(const PrimitivesStructV3& lhs, const PrimitivesStructV3& 
     return !(lhs == rhs);
 }
 
-template <>
-inline void serialize_type(SerializationBuilder* builder, PrimitivesStructV3* data)
+BEE_SERIALIZE_TYPE(SerializationBuilder* builder, PrimitivesStructV3* data)
 {
     builder->structure(3)
         .add_field(1, &data->intval, "intval")

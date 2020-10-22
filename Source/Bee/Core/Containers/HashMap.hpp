@@ -701,8 +701,7 @@ void HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::rehash(const i32 new_c
             BEE_ASSERT_F(new_hash_idx != hash_idx, "Invalid HashMap state");
         }
 
-        // Copy by value rather than memcpy in case T has virtuals
-        *new_node = std::move(*old_node);
+        ::bee::move_range(new_node, old_node, 1);
 
         if (new_node->active)
         {

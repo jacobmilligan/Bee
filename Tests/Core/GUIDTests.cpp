@@ -79,7 +79,7 @@ TEST(GUIDTests, guid_serialization)
     memset(stringbuf, 0, bee::static_array_length(stringbuf));
 
     const auto offset = offsetof(bee::GUID, data);
-    const auto guid_type = bee::get_type_as<bee::GUID, bee::RecordType>();
+    const auto guid_type = bee::get_type_as<bee::GUID, bee::RecordTypeInfo>();
     ASSERT_EQ(offset, guid_type->fields[0].offset);
 
     bee::DynamicArray<bee::u8> stream;

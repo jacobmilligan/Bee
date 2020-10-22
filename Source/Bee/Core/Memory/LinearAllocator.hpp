@@ -43,6 +43,13 @@ public:
         offset_ = 0;
     }
 
+    inline void reset_offset(const size_t new_offset)
+    {
+        // TODO(Jacob): protect against leaks
+        BEE_ASSERT(new_offset < offset_);
+        offset_ = new_offset;
+    }
+
     inline bool is_valid(const void* ptr) const override
     {
         return (memory_ == nullptr && ptr == nullptr ) || (ptr >= memory_ && ptr < memory_ + capacity_);

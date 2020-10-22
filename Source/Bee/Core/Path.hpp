@@ -225,7 +225,7 @@ public:
     }
 
 private:
-    friend void serialize_type(SerializationBuilder* builder, Path* path);
+    friend void custom_serialize_type(SerializationBuilder* builder, Path* path);
 
     String data_;
 

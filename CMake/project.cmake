@@ -312,9 +312,63 @@ endfunction()
 # Adds a new plugin target with the given name, linking against the libraries
 # specified in `link_libraries`
 #
+# REQUIRED ARGS:
+#   * `VERSION` - Plugin semantic version
+#   * `DESCRIPTION` - string describing the plugin
 # OPTIONAL ARGS:
 #   * `LINK_LIBRARIES` - a series of library names to link via
 #     `target_link_libraries`
+#   * `DEPENDENCIES` - a list of other plugins that the runtime ensures are
+#     loaded before this plugin
+#
+################################################################################
+function(bee_plugin2 name)
+    cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES" ${ARGN})
+
+    __bee_get_api_macro(${name} api_macro)
+
+    if (MONOLITHIC_BUILD)
+        add_library(${name} STATIC ${__bee_sources})
+    else()
+        add_library(${name} SHARED ${__bee_sources})
+        target_compile_definitions(${name} PRIVATE BEE_DLL)
+    endif ()
+
+    target_compile_definitions(${name} PRIVATE ${api_macro}=BEE_EXPORT_SYMBOL)
+
+    if (ARGS_LINK_LIBRARIES)
+        target_link_libraries(${name} PUBLIC ${ARGS_LINK_LIBRARIES})
+    endif ()
+
+    set(__bee_plugins ${__bee_plugins} ${name} CACHE INTERNAL "")
+
+    if (WIN32)
+        set(lib_path "${BEE_DEBUG_BINARY_DIR}/${output_directory}/${name}")
+        add_custom_command(
+                TARGET ${name} PRE_BUILD
+                COMMAND ${BB_COMMAND} prepare-plugin ${lib_path}
+                COMMENT "Preparing plugin ${lib_path} to enable hot reloading on Windows"
+                VERBATIM
+        )
+    endif ()
+
+    target_include_directories(${name} PRIVATE ${BEE_GENERATED_ROOT}/${name})
+    __bee_finalize_target(${name} "Plugins")
+endfunction()
+
+################################################################################
+#
+# Adds a new plugin target with the given name, linking against the libraries
+# specified in `link_libraries`
+#
+# REQUIRED ARGS:
+#   * `VERSION` - Plugin semantic version
+#   * `DESCRIPTION` - string describing the plugin
+# OPTIONAL ARGS:
+#   * `LINK_LIBRARIES` - a series of library names to link via
+#     `target_link_libraries`
+#   * `DEPENDENCIES` - a list of other plugins that the runtime ensures are
+#     loaded before this plugin
 #
 ################################################################################
 function(bee_plugin name)
@@ -368,9 +422,7 @@ function(bee_plugin name)
             bee_parse_version(major minor patch ${version})
             set(TARGET_DEPENDENCIES "${TARGET_DEPENDENCIES}        { \"${dep_name}\", { ${major}, ${minor}, ${patch} } },\n")
 
-            if (TARGET ${dep_name})
-                add_dependencies(${name} ${dep_name})
-            endif ()
+            add_dependencies(${name} ${dep_name})
         endforeach()
     endif ()
 

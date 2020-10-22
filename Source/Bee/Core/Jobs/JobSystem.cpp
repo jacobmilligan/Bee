@@ -123,7 +123,7 @@ void worker_execute_one_job(Worker* local_worker)
 {
     // check the thread local queue for a node
     auto worker_idx = local_worker->thread_local_idx;
-    auto node = local_worker->job_queue.pop();
+    auto* node = local_worker->job_queue.pop();
 
     // Try and steal a node from another local_worker if we couldn't pop one from the local local_worker
     if (node == nullptr)
@@ -152,7 +152,7 @@ void worker_execute_one_job(Worker* local_worker)
     // Found a job
     if (node != nullptr)
     {
-        auto job = static_cast<Job*>(node->data[0]);
+        auto* job = static_cast<Job*>(node->data[0]);
 
         // Wait on any dependencies the group the node belongs to might have
         while (job->parent() != nullptr && job->parent()->has_dependencies())
@@ -265,6 +265,11 @@ bool job_system_init(const JobSystemInitInfo& info)
     return true;
 }
 
+bool is_job_system_running()
+{
+    return g_job_system.initialized.load(std::memory_order_relaxed);
+}
+
 void job_system_shutdown()
 {
     const auto pending_job_count = g_job_system.pending_job_count.load(std::memory_order_seq_cst);
@@ -291,7 +296,7 @@ void job_system_shutdown()
 
 void job_system_complete_all()
 {
-    auto local_worker = &g_job_system.workers[get_local_job_worker_id()];
+    auto local_worker = &g_job_system.workers[job_worker_id()];
 
     // Try and help execute jobs while we're waiting for all jobs to complete
     while (g_job_system.pending_job_count.load(std::memory_order_relaxed) > 0)
@@ -332,7 +337,7 @@ void job_schedule_group(JobGroup* group, Job** dependencies, const i32 dependenc
 {
     BEE_ASSERT_F(g_job_system.initialized.load(), "Attempted to run jobs without initializing the job system");
 
-    const auto local_worker_idx = get_local_job_worker_id();
+    const auto local_worker_idx = job_worker_id();
     auto& local_worker = g_job_system.workers[local_worker_idx];
 
     for (int d = 0; d < dependency_count; ++d)
@@ -355,7 +360,7 @@ bool job_wait(JobGroup* group)
     BEE_ASSERT_F(g_job_system.initialized.load(), "Attempted to wait on a job without initializing the job system");
 
     // Wait on the job to finish before we actually go and complete it
-    const auto local_worker_idx = get_local_job_worker_id();
+    const auto local_worker_idx = job_worker_id();
     if (BEE_FAIL_F(local_worker_idx >= 0, "Couldn't find a worker for the current thread. Ensure you're not calling job system functions from an non-worker, external thread"))
     {
         return false;
@@ -377,11 +382,11 @@ bool job_wait(JobGroup* group)
 
 Job* get_local_executing_job()
 {
-    const auto local_worker = get_local_job_worker_id();
+    const auto local_worker = job_worker_id();
     return g_job_system.workers[local_worker].current_executing_job;
 }
 
-i32 get_local_job_worker_id()
+i32 job_worker_id()
 {
     static thread_local i32 thread_local_idx = -1;
 
@@ -414,7 +419,7 @@ i32 get_local_job_worker_id()
     BEE_UNREACHABLE("Couldn't find a worker for the current thread: there may be an error setting thread affinities at startup");
 }
 
-i32 get_job_worker_count()
+i32 job_system_worker_count()
 {
     return g_job_system.workers.size(); // last 'worker' is the main thread
 }

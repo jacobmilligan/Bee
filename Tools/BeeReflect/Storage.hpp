@@ -26,7 +26,7 @@ struct FieldStorage
     i32                         order { -1 };
     clang::SourceLocation       location;
     DynamicArray<Attribute>     attributes;
-    DynamicArray<TypeRef>       template_arguments;
+    DynamicArray<Type>          template_arguments;
     const char*                 specialized_type {nullptr };
 };
 
@@ -72,7 +72,7 @@ struct RecordTypeStorage
     ReflectedFile*                          location { nullptr };
     const clang::CXXRecordDecl*             decl { nullptr };
     bool                                    has_explicit_version { false };
-    RecordType                              type;
+    RecordTypeInfo                              type;
     DynamicArray<FieldStorage>              fields;
     DynamicArray<Attribute>                 attributes;
     DynamicArray<FunctionTypeStorage*>      functions;
@@ -111,7 +111,7 @@ struct RecordTypeStorage
 struct FunctionTypeStorage
 {
     ReflectedFile*              location { nullptr };
-    FunctionType                type;
+    FunctionTypeInfo                type;
     FieldStorage                return_field;
     DynamicArray<FieldStorage>  parameters;
     DynamicArray<Attribute>     attributes;
@@ -136,7 +136,7 @@ struct FunctionTypeStorage
 struct EnumTypeStorage
 {
     ReflectedFile*              location { nullptr };
-    EnumType                    type;
+    EnumTypeInfo                    type;
     DynamicArray<EnumConstant>  constants;
     DynamicArray<Attribute>     attributes;
 
@@ -157,7 +157,7 @@ struct ArrayTypeStorage
     const char* element_type_name { nullptr };
     bool        is_generated { false };
     bool        uses_builder {false };
-    ArrayType   type;
+    ArrayTypeInfo   type;
 };
 
 
@@ -229,9 +229,9 @@ struct ReflectedFile
     DynamicArray<const FunctionTypeStorage*>    functions;
     DynamicArray<const EnumTypeStorage*>        enums;
     DynamicArray<ArrayTypeStorage*>             arrays;
-    DynamicArray<const Type*>                   all_types;
+    DynamicArray<const TypeInfo*>               all_types;
 
-    bool try_insert_type(const Type* type);
+    bool try_insert_type(const TypeInfo* type) const;
 };
 
 
@@ -239,8 +239,8 @@ struct TypeMap
 {
     struct MappedType
     {
-        u32         owning_file_hash { 0 };
-        const Type* type { nullptr };
+        u32             owning_file_hash { 0 };
+        const TypeInfo* type { nullptr };
     };
     DynamicHashMap<u32, ReflectedFile>      reflected_files;
     DynamicHashMap<u32, MappedType>         type_lookup;
@@ -252,7 +252,7 @@ struct TypeMap
           include_dirs(allocator)
     {}
 
-    bool try_add_type(const Type* type, const clang::Decl& decl, ReflectedFile** reflected_file);
+    bool try_add_type(const TypeInfo* type, const clang::Decl& decl, ReflectedFile** reflected_file);
 
     void add_array(ArrayTypeStorage* type, const clang::Decl& decl);
 
@@ -262,7 +262,7 @@ struct TypeMap
 
     void add_enum(EnumTypeStorage* enum_storage, const clang::Decl& decl);
 
-    const Type* find_type(const u32 hash);
+    const TypeInfo* find_type(const u32 hash);
 };
 
 

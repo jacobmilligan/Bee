@@ -22,7 +22,7 @@ namespace reflect {
 
 
 BeeReflectFrontendActionFactory::BeeReflectFrontendActionFactory()
-    : allocator(mebibytes(8), mebibytes(8)),
+    : allocator(megabytes(8), megabytes(8)),
       storage(system_allocator())
 {}
 

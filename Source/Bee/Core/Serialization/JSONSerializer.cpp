@@ -113,7 +113,7 @@ void JSONSerializer::end()
     // no-op
 }
 
-void JSONSerializer::begin_record(const RecordTypeRef& /* type */)
+void JSONSerializer::begin_record(const RecordType& /* type */)
 {
     begin_record();
 }
@@ -485,7 +485,7 @@ void JSONSerializer::serialize_fundamental(u128* data)
 
     if (json_validate_type(rapidjson::kStringType, current_value()))
     {
-        str::to_u128(StringView(current_value()->GetString(), current_value()->GetStringLength()), data);
+        *data = str::to_u128(StringView(current_value()->GetString(), current_value()->GetStringLength()));
         end_read_scope();
     }
 }

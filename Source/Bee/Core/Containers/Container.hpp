@@ -43,7 +43,7 @@ using dynamic_container_mode_t = container_mode_constant<ContainerMode::dynamic_
 template <typename T>
 inline void memcpy_or_assign(T* dst, const T* src, const i32 count, const std::true_type& /* true_type */)
 {
-    memcpy(dst, src, sizeof(T) * count);
+    ::memcpy(dst, src, sizeof(T) * count);
 }
 
 template <typename T>
@@ -58,7 +58,7 @@ inline void memcpy_or_assign(T* dst, const T* src, const i32 count, const std::f
 template <typename T>
 inline void memcpy_or_construct(T* dst, const T* src, const i32 count, const std::true_type& /* true_type */)
 {
-    memcpy(dst, src, sizeof(T) * count);
+    ::memcpy(dst, src, sizeof(T) * count);
 }
 
 template <typename T>
@@ -67,6 +67,21 @@ inline void memcpy_or_construct(T* dst, const T* src, const i32 count, const std
     for (int index = 0; index < count; ++index)
     {
         new (dst + index) T(src[index]);
+    }
+}
+
+template <typename T>
+inline void memmove_or_move(T* dst, T* src, const i32 count, const std::true_type& /* true_type */)
+{
+    ::memmove(dst, src, sizeof(T) * count);
+}
+
+template <typename T>
+inline void memmove_or_move(T* dst, T* src, const i32 count, const std::false_type& /* false_type */)
+{
+    for (int index = 0; index < count; ++index)
+    {
+        new (dst + index) T(std::move(src[index]));
     }
 }
 
@@ -89,6 +104,16 @@ template <typename T>
 inline void copy_uninitialized(T* dst, const T* src, const i32 count)
 {
     memcpy_or_construct(dst, src, count, std::is_trivially_copyable<T>{});
+}
+
+/**
+ * Copies the `src` range into `dst` if `T` is trivially-copyable via memcpy, otherwise the range is moved into `dst`
+ * via T's move constructor.
+ */
+template <typename T>
+inline void move_range(T* dst, T* src, const i32 count)
+{
+    memmove_or_move(dst, src, count, std::is_trivially_copyable<T>{});
 }
 
 

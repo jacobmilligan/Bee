@@ -71,8 +71,8 @@ int bee_main(int argc, char** argv)
     }
 
     // Keep track of all the reflected files absolute paths for later so we can delete old, nonreflected files
-    bee::DynamicArray<bee::Path> reflectd_abs_paths;
-    bee::DynamicArray<const bee::Type*> reflected_types;
+    bee::DynamicArray<bee::Path> reflected_abs_paths;
+    bee::DynamicArray<const bee::TypeInfo*> reflected_types;
 
     const auto src_path_list = options_parser.getSourcePathList();
 
@@ -109,10 +109,10 @@ int bee_main(int argc, char** argv)
             bee::reflect::generate_empty_reflection(file.value.location.c_str(), &stream);
         }
 
-        auto output_path = output_dir.join(file.value.location.filename(), bee::temp_allocator())
-                                     .set_extension("generated")
-                                     .append_extension(output_extension);
-        bee::fs::write(output_path, output.view());
+        auto output_file = output_dir.join(file.value.location.filename(), bee::temp_allocator())
+                                .set_extension("generated")
+                                .append_extension(output_extension);
+        bee::fs::write(output_file, output.view());
 
         // Output a generated.inl file if required - a type in the file is templated and requires a `get_type` specialization
         output.clear();
@@ -126,7 +126,7 @@ int bee_main(int argc, char** argv)
             bee::fs::write(inl_path, output.view());
         }
 
-        reflectd_abs_paths.push_back(file.value.location);
+        reflected_abs_paths.push_back(file.value.location);
         reflected_types.append(file.value.all_types.const_span()); // keep track of these for generating typelists
     }
 
@@ -135,7 +135,7 @@ int bee_main(int argc, char** argv)
 
     for (const std::string& compilation : options_parser.getSourcePathList())
     {
-        const auto was_reflected = bee::find_index_if(reflectd_abs_paths, [&](const bee::Path& reflected)
+        const auto was_reflected = bee::find_index_if(reflected_abs_paths, [&](const bee::Path& reflected)
         {
             return compilation.c_str() == reflected.view();
         }) >= 0;
@@ -151,7 +151,8 @@ int bee_main(int argc, char** argv)
         }
     }
 
-    bee::reflect::generate_typelist(output_dir, reflected_types.span());
+    const auto typelist_mode = inline_opt ? bee::reflect::CodegenMode::inl : bee::reflect::CodegenMode::cpp;
+    bee::reflect::generate_typelist(output_dir, reflected_types.span(), typelist_mode, reflected_abs_paths.const_span());
 
     return EXIT_SUCCESS;
 }

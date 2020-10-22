@@ -236,7 +236,7 @@ Array<T, Mode>::Array(const i32 size, const T& value, Allocator* allocator) noex
     size_ = size;
     for (int value_idx = 0; value_idx < size; ++value_idx)
     {
-        new(&data_[value_idx]) T(value);
+        new(&data_[value_idx]) T { value };
     }
 }
 
@@ -620,7 +620,7 @@ void Array<T, Mode>::push_back(T&& value)
     }
 
     size_ = new_size;
-    new(&data_[size_ - 1]) T(std::move(value));
+    ::bee::move_range(data_ + size_ - 1, &value, 1);
 }
 
 template <typename T, ContainerMode Mode>
@@ -646,7 +646,7 @@ void Array<T, Mode>::emplace_back(Args&&... args)
     }
 
     size_ = new_size;
-    new (&data_[size_ - 1]) T(std::forward<Args>(args)...);
+    new (&data_[size_ - 1]) T { std::forward<Args>(args)... };
 }
 
 template <typename T, ContainerMode Mode>
@@ -674,7 +674,7 @@ template <typename T, ContainerMode Mode>
 void Array<T, Mode>::insert(const i32 index, T&& data)
 {
     shift_right(index);
-    new (&data_[index]) T(std::move(data));
+    ::bee::move_range(data_ + index, &data, 1);
     ++size_;
 }
 
@@ -789,15 +789,12 @@ bool Array<T, Mode>::ensure_capacity(const dynamic_container_mode_t& dynamic_con
     BEE_ASSERT(resize_amount > capacity_);
 
     // Allocate new data and copy over the old data to the new allocation if it exists
-    auto new_data = static_cast<T*>(BEE_MALLOC_ALIGNED(allocator_, resize_amount * sizeof(T), alignof(T)));
+    auto* new_data = static_cast<T*>(BEE_MALLOC_ALIGNED(allocator_, resize_amount * sizeof(T), alignof(T)));
     BEE_ASSERT_F(new_data != nullptr, "Failed to reallocate memory while resizing a buffer");
 
     if (data_ != nullptr)
     {
-        for (int i = 0; i < size_; ++i)
-        {
-            new (new_data + i) T(std::move(data_[i]));
-        }
+        ::bee::move_range(new_data, data_, size_);
 
         // deallocate the old data that was copied
         BEE_FREE(allocator_, data_);

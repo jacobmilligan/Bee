@@ -64,7 +64,7 @@ size_t get_canonical_stack_size() noexcept
 {
     // The default stack size set by the MSVC linker is 1MB
     // see: https://docs.microsoft.com/en-us/windows/desktop/procthread/thread-stack-size
-    return mebibytes(1);
+    return megabytes(1);
 }
 
 bool guard_memory(void* memory, size_t num_bytes, MemoryProtectionMode protection) noexcept

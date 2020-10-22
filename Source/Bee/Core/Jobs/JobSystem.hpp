@@ -32,7 +32,10 @@ struct JobSystemInitInfo
     size_t  per_worker_temp_allocator_capacity { 1024 * 16 }; // capacity of the per-worker thread-local temp allocator used for jobs
 };
 
+
 BEE_CORE_API bool job_system_init(const JobSystemInitInfo& info);
+
+BEE_CORE_API bool is_job_system_running();
 
 BEE_CORE_API void job_system_shutdown();
 
@@ -50,9 +53,9 @@ BEE_CORE_API bool job_wait(JobGroup* group);
 
 BEE_CORE_API Job* get_local_executing_job();
 
-BEE_CORE_API i32 get_local_job_worker_id();
+BEE_CORE_API i32 job_worker_id();
 
-BEE_CORE_API i32 get_job_worker_count();
+BEE_CORE_API i32 job_system_worker_count();
 
 BEE_CORE_API Job* allocate_job();
 

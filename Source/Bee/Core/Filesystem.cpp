@@ -122,16 +122,18 @@ i32 DirectoryWatcher::find_entry(const Path &path)
     });
 }
 
-DynamicArray<FileNotifyInfo> DirectoryWatcher::pop_events()
+void DirectoryWatcher::pop_events(DynamicArray<FileNotifyInfo>* dst)
 {
     if (!mutex_.try_lock())
     {
-        return {};
+        return;
     }
 
-    auto events = std::move(events_);
+    dst->clear();
+    dst->copy(0, events_.begin(), events_.end());
+    events_.clear();
+
     mutex_.unlock();
-    return std::move(events);
 }
 
 /*

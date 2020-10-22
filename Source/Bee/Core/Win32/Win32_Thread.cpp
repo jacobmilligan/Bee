@@ -39,12 +39,13 @@ BEE_TRANSLATION_TABLE(translate_thread_priority, ThreadPriority, int, ThreadPrio
 namespace current_thread {
 
 
-uint64_t id()
+thread_id_t id()
 {
-    return GetCurrentThreadId();
+    const thread_id_t thread_id = GetCurrentThreadId();
+    return thread_id;
 }
 
-void sleep(const uint64_t ticks_to_sleep)
+void sleep(const u64 ticks_to_sleep)
 {
     const auto milliseconds = ticks_to_sleep / time::ticks_per_millisecond();
     const auto start_time = time::now();
@@ -74,7 +75,7 @@ void sleep(const uint64_t ticks_to_sleep)
     }
 }
 
-void set_affinity(const int32_t cpu)
+void set_affinity(const i32 cpu)
 {
     auto new_affinity_mask = static_cast<DWORD_PTR>(1) << cpu;
     const auto affinity_success = SetThreadAffinityMask(GetCurrentThread(), new_affinity_mask);
@@ -110,7 +111,7 @@ void Thread::detach()
     BEE_ASSERT_F(close_handle_result != 0, "Thread: failed to detach thread: Win32 error code: %lu", GetLastError());
 }
 
-void Thread::set_affinity(const int32_t cpu)
+void Thread::set_affinity(const i32 cpu)
 {
     BEE_ASSERT_F(native_thread_ != nullptr, "Thread: cannot set affinity for invalid thread");
     auto new_affinity_mask = static_cast<DWORD_PTR>(1) << cpu;

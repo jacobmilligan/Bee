@@ -27,6 +27,13 @@ enum class FileAction
     modified
 };
 
+BEE_FLAGS(FileAccess, u32)
+{
+    none    = 0u,
+    read    = 1u << 0u,
+    write   = 1u << 1u
+};
+
 
 BEE_VERSIONED_HANDLE_32(DirectoryEntryHandle);
 
@@ -103,7 +110,7 @@ public:
 
     void remove_directory(const Path& path);
 
-    DynamicArray<FileNotifyInfo> pop_events();
+    void pop_events(DynamicArray<FileNotifyInfo>* dst);
 
     inline bool is_running() const
     {
@@ -192,6 +199,25 @@ BEE_CORE_API DirectoryIterator end(const DirectoryIterator&);
 BEE_CORE_API const BeeRootDirs& get_root_dirs();
 
 BEE_CORE_API Path user_local_appdata_path();
+
+
+/*
+ *********************************
+ *
+ * Memory mapped files
+ *
+ *********************************
+ */
+struct MemoryMappedFile
+{
+    FileAccess  access { FileAccess::none };
+    void*       data { nullptr };
+    void*       handles[2] { nullptr };
+};
+
+BEE_CORE_API bool mmap_file_map(MemoryMappedFile* file, const Path& path, const FileAccess access);
+
+BEE_CORE_API bool mmap_file_unmap(MemoryMappedFile* file);
 
 
 } // namespace fs

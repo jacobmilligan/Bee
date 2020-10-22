@@ -37,7 +37,7 @@ bool TestObjectBase::constructed = false;
 
 TEST(MemoryTests, FixedTempAllocator_make_unique_constructs_and_destructs)
 {
-    bee::LinearAllocator allocator(bee::kibibytes(1));
+    bee::LinearAllocator allocator(bee::kilobytes(1));
     // create scope to test deallocation
     TestObject<int>* other = nullptr;
     {

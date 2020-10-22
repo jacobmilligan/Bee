@@ -104,6 +104,35 @@ wchar_array_t to_wchar(const StringView& src, Allocator* allocator)
     return result;
 }
 
+i32 to_wchar(const StringView& src, wchar_t* buffer, const i32 buffer_size)
+{
+    if (src.empty())
+    {
+        return 0;
+    }
+
+    // Get num characters that will be written
+    auto wstring_size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src.c_str(), src.size(), nullptr, 0);
+    if (BEE_FAIL_F(wstring_size != 0, "Failed to convert utf8 string to wchar string: %s", win32_get_last_error_string()))
+    {
+        return 0;
+    }
+
+    if (buffer == nullptr || buffer_size <= 0)
+    {
+        return wstring_size;
+    }
+
+    // Convert to wchar - add 1 extra for null-termination
+    wstring_size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src.c_str(), src.size(), buffer, buffer_size);
+    if (BEE_FAIL_F(wstring_size != 0, "Failed to convert UTF-8 string to wchar string: %s", win32_get_last_error_string()))
+    {
+        return 0;
+    }
+
+    return wstring_size;
+}
+
 
 } // namespace str
 } // namespace bee

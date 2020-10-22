@@ -40,33 +40,6 @@ enum class CodegenMode
     templates_only
 };
 
-/*
- * .registration files are defined in memory as:
- *
- * magic | type_count | hashes_offset | get_type_offset | hash_0,offset_0 | hash_1,offset1 | get_type_0 | get_type_1 | ...
- *
- * A registration header contains the size and hash for a single type in the file
- */
-struct RegistrationHeader
-{
-    unsigned char       magic[8];
-    RegistrationVersion version { RegistrationVersion::unknown };
-    i32                 type_count { 0 };
-    u32                 source_location_offset { 0 };
-    u32                 source_location_size { 0 };
-    u32                 hashes_offset { 0 };
-    u32                 types_offset { 0 };
-    u32                 types_byte_count { 0 };
-};
-
-
-struct RegistrationTypeOffset
-{
-    u32 hash { 0 };
-    u32 offset { 0 };
-};
-
-
 class CodeGenerator
 {
 public:
@@ -80,13 +53,13 @@ public:
 
     void newline();
 
-    bool should_generate(const Type& type);
+    bool should_generate(const TypeInfo& type);
 
     void write_header_comment(const char* source_location);
 
     void write_header_comment(const Path& source_location);
 
-    void write_type_signature(const Type& type);
+    void write_type_signature(const TypeInfo& type);
 
     void append_line(const char* format, ...) BEE_PRINTFLIKE(2, 3);
 
@@ -134,7 +107,7 @@ void generate_empty_reflection(const char* location, io::StringStream* stream);
 
 i32 generate_reflection(const ReflectedFile& file, io::StringStream* stream, CodegenMode mode);
 
-void generate_typelist(const Path& target_dir, const Span<const Type*>& all_types);
+void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_types, CodegenMode mode, const Span<const Path>& written_files);
 
 void link_typelists(const Path& output_path, const Span<const Path>& search_paths);
 

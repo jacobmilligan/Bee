@@ -75,7 +75,7 @@ void BeeJsonReader::end()
     // no-op
 }
 
-void BeeJsonReader::begin_record(const RecordType* type)
+void BeeJsonReader::begin_record(const RecordTypeInfo* type)
 {
     if (stack_.empty())
     {
@@ -341,7 +341,7 @@ void BeeJsonReader::serialize_fundamental(u128* data)
         return;
     }
 
-    str::to_u128(doc_.get_data(stack_.back()).as_string(), data);
+    *data = str::to_u128(doc_.get_data(stack_.back()).as_string());
     end_read_scope();
 }
 

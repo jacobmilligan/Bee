@@ -6,11 +6,11 @@
  */
 
 #include <Bee/Core/Memory/LinearAllocator.hpp>
-#include <Bee/Core/Memory/VariableSizedPoolAllocator.hpp>
 #include <Bee/Core/Memory/PoolAllocator.hpp>
 #include <Bee/Core/Memory/ThreadSafeLinearAllocator.hpp>
 #include <Bee/Core/Containers/Array.hpp>
 #include <Bee/Core/Concurrency.hpp>
+#include <Bee/Core/Memory/ChunkAllocator.hpp>
 
 #include <gtest/gtest.h>
 #include <thread>
@@ -55,65 +55,6 @@ TEST(AllocatorTests, linear_allocator)
     ASSERT_FALSE(allocator.is_valid(invalid_ptr));
     invalid_ptr = nullptr;
     ASSERT_FALSE(allocator.is_valid(invalid_ptr));
-}
-
-TEST(AllocatorTests, variable_sized_pool_allocator)
-{
-    bee::VariableSizedPoolAllocator allocator(1, 512, 256);
-
-    // Test single values
-    auto new_int = static_cast<int*>(allocator.allocate(sizeof(int)));
-    *new_int = 23;
-    ASSERT_EQ(allocator.allocated_size(), sizeof(int));
-    allocator.deallocate(new_int);
-    ASSERT_EQ(allocator.allocated_size(), 0);
-
-    // Test bucket capacities
-    size_t alloc_size = 0;
-    void* alloc = nullptr;
-    for (size_t j = 0; j < allocator.chunk_count(); ++j)
-    {
-        const auto bucket_size = 1u << j;
-        for (int i = 0; i < allocator.item_count_per_chunk(); ++i)
-        {
-            alloc = allocator.allocate(bucket_size);
-            alloc_size += bucket_size;
-            ASSERT_EQ(allocator.allocated_size(), alloc_size) << "Index: " << i << ". Bucket size: " << bucket_size;
-        }
-        ASSERT_DEATH(allocator.allocate(bucket_size), "Pool memory is exhausted");
-    }
-
-    allocator.reset();
-
-    ASSERT_EQ(allocator.allocated_size(), 0);
-
-    for (int i = 0; i < allocator.item_count_per_chunk(); ++i)
-    {
-        alloc = allocator.allocate(8);
-        ASSERT_NE(alloc, nullptr);
-
-        for (int j = 0; j < allocator.item_count_per_chunk() - 1; ++j)
-        {
-            auto inner_alloc = allocator.allocate(8);
-            ASSERT_NE(inner_alloc, nullptr);
-            ASSERT_NE(inner_alloc, alloc);
-        }
-
-        allocator.reset();
-    }
-
-    ASSERT_EQ(allocator.allocated_size(), 0);
-
-    // Test single bucket - fixed size pool
-    allocator = bee::VariableSizedPoolAllocator(512, 512, 1024);
-    ASSERT_EQ(allocator.capacity(), 557104); // (512 + sizeof(Allocation)) * 1024 + sizeof(size_t) + sizeof(Chunk)
-    ASSERT_DEATH(allocator.allocate(256), "Allocation size was smaller");
-    ASSERT_DEATH(allocator.allocate(623), "Allocation size exceeds");
-    ASSERT_DEATH(allocator.allocate(513), "Allocation size exceeds"); // really close to 512
-    ASSERT_NO_FATAL_FAILURE(allocator.allocate(257)); // sits inside the 512 bucket
-    ASSERT_NO_FATAL_FAILURE(allocator.allocate(512));
-    ASSERT_EQ(allocator.allocated_size(), 512 * 2);
-    ASSERT_EQ(allocator.chunk_count(), 1);
 }
 
 TEST(AllocatorTests, pool_allocator)
@@ -240,7 +181,7 @@ TEST(AllocatorTests, ThreadSafeLinearAllocator)
 
     while (count.load() < bee::static_array_length(threads)) {};
 
-    const auto single_alloc_size = bee::round_up((sizeof(size_t) + sizeof(int)), alignof(int));
+    const auto single_alloc_size = sizeof(int);
 
     ASSERT_EQ(allocator.allocated_size(), single_alloc_size * allocations_per_thread * thread_count);
 
@@ -274,3 +215,16 @@ TEST(AllocatorTests, ThreadSafeLinearAllocator)
     ASSERT_EQ(allocator.allocated_size(), 0);
 }
 
+TEST(AllocatorTests, ChunkAllocator)
+{
+    struct TestData { int data[512]; };
+
+    bee::ChunkAllocator allocator(bee::megabytes(4), 64, 1);
+
+    bee::DynamicArray<TestData> array(&allocator);
+
+    for (int i = 0; i < bee::megabytes(4) / sizeof(TestData); ++i)
+    {
+        array.push_back(TestData{});
+    }
+}

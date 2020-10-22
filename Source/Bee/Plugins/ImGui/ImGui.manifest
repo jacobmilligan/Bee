@@ -1,6 +1,0 @@
-{
-    "name": "ImGui",
-    "assets": {
-        "Material": "builtin://Assets/Materials/ImGui.mat"
-    }
-}

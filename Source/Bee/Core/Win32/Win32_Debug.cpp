@@ -199,12 +199,11 @@ void capture_stack_trace(StackTrace* trace, i32 captured_frame_count, i32 skippe
 
     scoped_recursive_spinlock_t  lock(g_dbghelp.mutex);
 
-    ULONG backtrace_hash = 0;
     trace->frame_count = g_dbghelp.fp_RtlCaptureStackBackTrace(
         static_cast<DWORD>(1 + skipped_frame_count),
         static_cast<DWORD>(captured_frame_count),
         trace->frames,
-        &backtrace_hash
+        0
     );
 
     BEE_ASSERT(trace->frame_count <= StackTrace::max_frame_count);
@@ -220,10 +219,12 @@ void symbolize_stack_trace(DebugSymbol* dst_symbols, const StackTrace& trace, co
         return;
     }
 
-    static constexpr i32 syminfo_name_length = 1024;
+    static constexpr i32 syminfo_name_length = 4096;
     static constexpr i32 syminfo_buffer_size = sizeof(SYMBOL_INFO) + syminfo_name_length * sizeof(TCHAR);
+    static char syminfo_buffer[syminfo_buffer_size];
 
-    char syminfo_buffer[syminfo_buffer_size];
+    scoped_recursive_spinlock_t lock(g_dbghelp.mutex);
+
     auto syminfo = reinterpret_cast<SYMBOL_INFO*>(syminfo_buffer);
 
     ZeroMemory(syminfo, sizeof(IMAGEHLP_SYMBOL64));
@@ -242,8 +243,6 @@ void symbolize_stack_trace(DebugSymbol* dst_symbols, const StackTrace& trace, co
     DWORD64 sym_displacement = 0;
     DWORD line_displacement = 0;
 
-    scoped_recursive_spinlock_t  lock(g_dbghelp.mutex);
-
     const auto frames_to_symbolize = frame_count > 0 ? frame_count : trace.frame_count;
 
     for (int f = 0; f < frames_to_symbolize; ++f)
@@ -255,7 +254,6 @@ void symbolize_stack_trace(DebugSymbol* dst_symbols, const StackTrace& trace, co
         symbol.address = trace.frames[f];
         symbol.line = -1;
 
-
         auto addr = (DWORD64)trace.frames[f];
         auto success = g_dbghelp.fp_SymFromAddr(process_handle, addr, &sym_displacement, syminfo);
 
@@ -263,7 +261,6 @@ void symbolize_stack_trace(DebugSymbol* dst_symbols, const StackTrace& trace, co
         {
             str::copy(symbol.module_name, DebugSymbol::name_size, "Unknown");
             str::copy(symbol.function_name, DebugSymbol::name_size, "unknown");
-            //BEE_DEBUG_BREAK();
             continue;
         }
 

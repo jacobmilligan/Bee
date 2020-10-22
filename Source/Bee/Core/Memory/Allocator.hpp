@@ -211,6 +211,23 @@ BEE_CORE_API void global_allocators_shutdown();
  */
 BEE_CORE_API Allocator* system_allocator() noexcept;
 
+/*
+ ****************************************************************************************
+ *
+ * # Virtual memory
+ *
+ * API for mapping/unmapping virtual address spaces
+ *
+ ****************************************************************************************
+ */
+BEE_CORE_API void* vm_map(const size_t size);
+
+BEE_CORE_API void vm_unmap(void* ptr, const size_t size);
+
+BEE_CORE_API void* vm_reserve(const size_t size);
+
+BEE_CORE_API void vm_commit(void* ptr, const size_t size);
+
 
 /*
  ****************************************************************************************
@@ -234,16 +251,6 @@ BEE_CORE_API void temp_allocator_reset() noexcept;
 BEE_CORE_API void temp_allocator_register_thread() noexcept;
 
 BEE_CORE_API void temp_allocator_unregister_thread() noexcept;
-
-/*
- **********************************************************
- *
- * Dumps an allocation report with all recorded allocation
- * event to the current log file (stdout by default)
- *
- **********************************************************
- */
-BEE_CORE_API void log_allocations();
 
 
 } // namespace bee

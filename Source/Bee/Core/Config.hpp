@@ -116,6 +116,9 @@ namespace bee {
 
 #define BEE_STRINGIFY(x) #x
 
+#define BEE_CONCAT_BASE(x, y) x##y
+#define BEE_CONCAT(x, y) BEE_CONCAT_BASE(x, y)
+
 #define BEE_UNUSED(x) (void)(x)
 
 
@@ -313,6 +316,9 @@ namespace bee {
 #define BEE_END_MACRO_BLOCK } while (false)
 
 #define BEE_EXPLICIT_SCOPE(x) do { x } while (false)
+
+// Allows using NOLINT for clang-tidy inside macros
+#define BEE_NOLINT(...) __VA_ARGS__ // NOLINT
 
 /*
  * Graphics API platform macros

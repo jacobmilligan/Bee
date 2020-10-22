@@ -61,15 +61,15 @@
     <DisplayString>{high}{low}</DisplayString>
   </Type>
 
-    <Type Name="bee::Type">
+    <Type Name="bee::TypeInfo">
         <DisplayString>{name}</DisplayString>
     </Type>
 
-    <Type Name="bee::TypeRef">
+    <Type Name="bee::Type">
         <DisplayString>{type_->name}</DisplayString>
     </Type>
 
-   <Type Name="bee::ConcreteTypeRef&lt;*&gt;">
+   <Type Name="bee::SpecializedType&lt;*&gt;">
      <DisplayString>{type_->name}</DisplayString>
    </Type>
 </AutoVisualizer>

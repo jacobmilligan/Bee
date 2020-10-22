@@ -2,7 +2,7 @@ RenderPass DefaultPass
 {                 
     Attachment MainColor
     {
-        type: color
+        type: present
         format: bgra8
         load_op: clear
         store_op: store
@@ -30,31 +30,11 @@ SamplerState DefaultSampler
     w_address: clamp_to_edge
 }
 
-ResourceLayout DefaultLayout
-{
-    Params: 
-    {
-        type: uniform_buffer
-        shader_stages: vertex
-    }
-    
-    main_tex: 
-    {
-        type: sampled_texture
-        shader_stages: fragment
-    }
-
-    main_sampler:
-    {
-        type: sampler
-        shader_stages: fragment
-    }
-}
-
 Shader TriangleShader
 {
     vertex: vert
     fragment: frag
+    resource_layouts: [ per_frame ]
     code:
     {
         BEE_BINDING(0, 0) cbuffer Params
@@ -92,6 +72,7 @@ Shader TriangleShader
         float4 frag(FragIn IN): SV_TARGET
         {
             return main_tex.Sample(main_sampler, IN.texcoord) * IN.color;
+            return float4(0.0, 1.0, 0.0, 1.0);
         }
     }
 }
@@ -104,5 +85,4 @@ PipelineState DefaultPipelineState
     raster_state: DefaultRasterState
     vertex_stage: TriangleShader
     fragment_stage: TriangleShader
-    resource_layouts: [ DefaultLayout ]
 }

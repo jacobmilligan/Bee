@@ -7,6 +7,8 @@
 
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/Math/Math.hpp"
+#include "Bee/Core/Containers/HashMap.hpp"
+#include "Bee/Core/Concurrency.hpp"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -18,7 +20,6 @@
 #if BEE_COMPILER_MSVC == 1 && _MSC_VER < 1900
     #define BEE_MSVC_REQUIRE_REPLACEMENT_SNPRINTF
 #endif // BEE_COMPILER_MSVC == 1
-
 
 namespace bee {
 
@@ -218,6 +219,27 @@ String& String::append(const String& other)
 String& String::append(const char* c_str)
 {
     return append(StringView(c_str, str::length(c_str)));
+}
+
+String& String::assign(const String& other)
+{
+    clear();
+    append(other);
+    return *this;
+}
+
+String& String::assign(const char* c_str)
+{
+    clear();
+    append(c_str);
+    return *this;
+}
+
+String& String::assign(const StringView& string_view)
+{
+    clear();
+    append(string_view);
+    return *this;
 }
 
 String& String::insert(const i32 index, const i32 count, const char character)
@@ -620,7 +642,7 @@ i32 last_index_of_n(const String& src, const char* substring, const i32 substrin
 i32 last_index_of(const StringView& src, char character)
 {
     // Empty string - no matches
-    if (src.size() <= 0)
+    if (src.empty())
     {
         return -1;
     }
@@ -678,6 +700,12 @@ i32 last_index_of(const StringView& src, const String& substring)
 i32 first_index_of_n(const StringView& src, const char* substring, const i32 substring_size)
 {
     BEE_ASSERT(substring != nullptr);
+
+    // substring is assumed to be the empty string ""
+    if (substring_size <= 0)
+    {
+        return 0;
+    }
 
     // Empty string - no matches
     if (src.empty())
@@ -1062,6 +1090,40 @@ bool is_alpha(const char character)
 /*
  * Conversion utilities implementation
  */
+i32 to_string_buffer(const i32 value, char* buffer, const i32 size)
+{
+    return format_buffer(buffer, size, "%" PRIi32, value);
+}
+
+i32 to_string_buffer(const u32 value, char* buffer, const i32 size)
+{
+    return format_buffer(buffer, size, "%" PRIu32, value);
+}
+
+i32 to_string_buffer(const i64 value, char* buffer, const i32 size)
+{
+    return format_buffer(buffer, size, "%" PRIi64, value);
+}
+
+i32 to_string_buffer(const u64 value, char* buffer, const i32 size)
+{
+    return format_buffer(buffer, size, "%" PRIu64, value);
+}
+
+i32 to_string_buffer(const float value, char* buffer, const i32 size)
+{
+    return format_buffer(buffer, size, "%f", value);
+}
+
+i32 to_string_buffer(const double value, char* buffer, const i32 size)
+{
+    return format_buffer(buffer, size, "%f", value);
+}
+
+i32 to_string_buffer(const u128& value, char* buffer, const i32 size)
+{
+    return format_buffer(buffer, size, "%" BEE_PRIxu128, BEE_FMT_u128(value));
+}
 
 String to_string(const i32 value, Allocator* allocator)
 {
@@ -1098,13 +1160,46 @@ String to_string(const u128& value, Allocator* allocator)
     return format(allocator, "%" BEE_PRIxu128, BEE_FMT_u128(value));
 }
 
-void to_u128(const StringView& src, u128* value)
+i32 to_i32(const StringView& src)
+{
+    return sign_cast<i32>(strtol(src.c_str(), nullptr, 10));
+}
+
+u32 to_u32(const StringView& src)
+{
+    return sign_cast<u32>(strtoul(src.c_str(), nullptr, 10));
+}
+
+i64 to_i64(const StringView& src)
+{
+    return sign_cast<i64>(strtoimax(src.c_str(), nullptr, 10));
+}
+
+u64 to_u64(const StringView& src)
+{
+    return sign_cast<u64>(strtoumax(src.c_str(), nullptr, 10));
+}
+
+float to_float(const StringView& src)
+{
+    return strtof(src.c_str(), nullptr);
+}
+
+double to_double(const StringView& src)
+{
+    return strtod(src.c_str(), nullptr);
+}
+
+u128 to_u128(const StringView& src)
 {
     BEE_ASSERT(src.size() == 32);
 
-    const auto scan_result = sscanf(src.c_str(), "%16zx%16zx", &value->high, &value->low);
+    u128 value{};
+    const auto scan_result = sscanf(src.c_str(), "%16zx%16zx", &value.high, &value.low);
 
     BEE_ASSERT(scan_result == 2);
+
+    return value;
 }
 
 /*

@@ -23,7 +23,7 @@ void pretty_print_type(const bee::Type* type, bee::io::StringStream* stream)
 
     if (type->kind == bee::TypeKind::class_decl || type->kind == bee::TypeKind::struct_decl || type->kind == bee::TypeKind::union_decl)
     {
-        auto as_class = reinterpret_cast<const bee::RecordType*>(type);
+        auto as_class = reinterpret_cast<const bee::RecordTypeInfo*>(type);
 
         stream->write("- fields:\n");
 

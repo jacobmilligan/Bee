@@ -12,7 +12,7 @@ if NOT EXIST .\Binaries (
     mkdir .\Binaries
 )
 
-set VSWHERE_URL=https://github.com/microsoft/vswhere/releases/download/2.7.1/vswhere.exe
+set VSWHERE_URL=https://github.com/microsoft/vswhere/releases/download/2.8.4/vswhere.exe
 set VSWHERE=.\Binaries\vswhere.exe
 
 if NOT EXIST %VSWHERE% (
@@ -23,7 +23,7 @@ if NOT EXIST %VSWHERE% (
     %CURL% -L %VSWHERE_URL% --output %VSWHERE%
 )
 
-set CMAKE_VER=3.15.4
+set CMAKE_VER=3.18.2
 set CMAKE_FILENAME=cmake-%CMAKE_VER%-win64-x64
 set CMAKE_URL=https://github.com/Kitware/CMake/releases/download/v%CMAKE_VER%/%CMAKE_FILENAME%.zip
 set CMAKE=.\Binaries\cmake

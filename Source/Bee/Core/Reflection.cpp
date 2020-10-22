@@ -45,9 +45,9 @@ constexpr size_t sizeof_helper<void>()
     {                                                                   \
         return make_type_instance<builtin_type>(allocator);             \
     }                                                                   \
-    template <> BEE_CORE_API  TypeRef get_type<builtin_type>(const TypeTag<builtin_type>& tag)      \
+    template <> BEE_CORE_API  Type get_type<builtin_type>(const TypeTag<builtin_type>& tag)      \
     {                                                                   \
-        static FundamentalType instance                                 \
+        static FundamentalTypeInfo instance                             \
         {                                                               \
             get_type_hash(#builtin_type),                               \
             sizeof_helper<builtin_type>(),                              \
@@ -57,7 +57,7 @@ constexpr size_t sizeof_helper<void>()
             create_##function_name##_instance,                          \
             FundamentalKind::function_name##_kind                       \
         };                                                              \
-        return TypeRef(&instance);                                      \
+        return Type(&instance);                                         \
     }
 
 BEE_BUILTIN_TYPES
@@ -72,18 +72,18 @@ struct NullPtrType final : public TypeSpec<TypeKind::unknown>
     {}
 };
 
-static UnknownType g_unknown_type{};
+static UnknownTypeInfo g_unknown_type{};
 static NullPtrType g_nullptr_type{};
 
 
-template <> BEE_CORE_API TypeRef get_type<UnknownType>(const TypeTag<UnknownType>& tag)
+template <> BEE_CORE_API Type get_type<UnknownTypeInfo>(const TypeTag<UnknownTypeInfo>& tag)
 {
-    return TypeRef(&g_unknown_type);
+    return Type(&g_unknown_type);
 }
 
-template <> BEE_CORE_API TypeRef get_type<nullptr_t>(const TypeTag<nullptr_t>& tag)
+template <> BEE_CORE_API Type get_type<nullptr_t>(const TypeTag<nullptr_t>& tag)
 {
-    return TypeRef(&g_nullptr_type);
+    return Type(&g_nullptr_type);
 }
 
 
@@ -94,7 +94,7 @@ template <> BEE_CORE_API TypeRef get_type<nullptr_t>(const TypeTag<nullptr_t>& t
  *
  ****************************************
  */
-namespace_iterator::namespace_iterator(const TypeRef& type)
+namespace_iterator::namespace_iterator(const Type& type)
     : namespace_iterator(type->name)
 {}
 
@@ -178,7 +178,7 @@ namespace_iterator NamespaceRangeAdapter::end() const
  *
  ****************************************
  */
-TypeInstance::TypeInstance(const TypeRef& type, void* data, Allocator* allocator, copier_t copier, deleter_t deleter)
+TypeInstance::TypeInstance(const Type& type, void* data, Allocator* allocator, copier_t copier, deleter_t deleter)
     : allocator_(allocator),
       data_(data),
       type_(type),
@@ -265,24 +265,24 @@ void TypeInstance::move_construct(TypeInstance& other) noexcept
     other.deleter_ = nullptr;
 }
 
-bool TypeInstance::validate_type(const TypeRef& type) const
+bool TypeInstance::validate_type(const Type& type) const
 {
     BEE_ASSERT_F(type_.get() != nullptr, "TypeInstance: instance is not valid - no type information is available");
     BEE_ASSERT_F(data_ != nullptr, "TypeInstance: instance is null");
     return BEE_CHECK_F(type == type_, "TypeInstance: cannot cast from %s to %s", type_->name, type->name);
 }
 
-TypeRef::TypeRef()
+Type::Type()
     : type_(&g_unknown_type)
 {}
 
-bool TypeRef::is_unknown() const
+bool Type::is_unknown() const
 {
     return type_ == nullptr || type_ == &g_unknown_type;
 }
 
 template <typename T>
-bool ConcreteTypeRef<T>::is_unknown() const
+bool SpecializedType<T>::is_unknown() const
 {
     return type_ == nullptr || type_ == &g_unknown_type;
 }
@@ -294,10 +294,10 @@ bool ConcreteTypeRef<T>::is_unknown() const
  *
  ****************************************
  */
-static DynamicHashMap<u32, const Type*> g_type_map;
+static DynamicHashMap<u32, const TypeInfo*> g_type_map;
 
 
-void register_type(const TypeRef& type)
+void register_type(const Type& type)
 {
     if (g_type_map.find(type->hash) == nullptr)
     {
@@ -305,7 +305,7 @@ void register_type(const TypeRef& type)
     }
 }
 
-void unregister_type(const TypeRef& type)
+void unregister_type(const Type& type)
 {
     if (g_type_map.find(type->hash) != nullptr)
     {
@@ -318,22 +318,22 @@ u32 get_type_hash(const StringView& type_name)
     return get_hash(type_name.data(), type_name.size(), 0xb12e92e);
 }
 
-TypeRef get_type(const u32 hash)
+Type get_type(const u32 hash)
 {
     auto* type = g_type_map.find(hash);
     if (type != nullptr)
     {
-        return TypeRef(type->value);
+        return Type(type->value);
     }
 
-    return get_type<UnknownType>();
+    return get_type<UnknownTypeInfo>();
 }
 
 BEE_CORE_API void reflection_register_builtin_types()
 {
 #define BEE_BUILTIN_TYPE(builtin_type, function_name) get_type<builtin_type>(),
 
-    static TypeRef builtin_types[] { BEE_BUILTIN_TYPES };
+    static Type builtin_types[] { BEE_BUILTIN_TYPES };
 
     for (auto& type : builtin_types)
     {
@@ -341,7 +341,7 @@ BEE_CORE_API void reflection_register_builtin_types()
     }
 }
 
-isize enum_from_string(const EnumTypeRef& type, const StringView& string)
+isize enum_from_string(const EnumType& type, const StringView& string)
 {
     if (!type->is_flags)
     {
@@ -448,7 +448,7 @@ const Attribute* find_attribute(const Span<Attribute>& attributes, const char* a
     return nullptr;
 }
 
-const Attribute* find_attribute(const TypeRef& type, const char* attribute_name)
+const Attribute* find_attribute(const Type& type, const char* attribute_name)
 {
     switch(type->kind)
     {
@@ -456,15 +456,15 @@ const Attribute* find_attribute(const TypeRef& type, const char* attribute_name)
         case TypeKind::struct_decl:
         case TypeKind::union_decl:
         {
-            return find_attribute(type->as<RecordType>()->attributes, attribute_name);
+            return find_attribute(type->as<RecordTypeInfo>()->attributes, attribute_name);
         }
         case TypeKind::enum_decl:
         {
-            return find_attribute(type->as<EnumType>()->attributes, attribute_name);
+            return find_attribute(type->as<EnumTypeInfo>()->attributes, attribute_name);
         }
         case TypeKind::function:
         {
-            return find_attribute(type->as<FunctionType>()->attributes, attribute_name);
+            return find_attribute(type->as<FunctionTypeInfo>()->attributes, attribute_name);
         }
         default: break;
     }
@@ -472,7 +472,7 @@ const Attribute* find_attribute(const TypeRef& type, const char* attribute_name)
     return nullptr;
 }
 
-const Attribute* find_attribute(const TypeRef& type, const char* attribute_name, const AttributeKind kind)
+const Attribute* find_attribute(const Type& type, const char* attribute_name, const AttributeKind kind)
 {
     switch(type->kind)
     {
@@ -480,15 +480,15 @@ const Attribute* find_attribute(const TypeRef& type, const char* attribute_name,
         case TypeKind::struct_decl:
         case TypeKind::union_decl:
         {
-            return find_attribute(type->as<RecordType>()->attributes, attribute_name, kind);
+            return find_attribute(type->as<RecordTypeInfo>()->attributes, attribute_name, kind);
         }
         case TypeKind::enum_decl:
         {
-            return find_attribute(type->as<EnumType>()->attributes, attribute_name, kind);
+            return find_attribute(type->as<EnumTypeInfo>()->attributes, attribute_name, kind);
         }
         case TypeKind::function:
         {
-            return find_attribute(type->as<FunctionType>()->attributes, attribute_name, kind);
+            return find_attribute(type->as<FunctionTypeInfo>()->attributes, attribute_name, kind);
         }
         default: break;
     }
@@ -496,7 +496,7 @@ const Attribute* find_attribute(const TypeRef& type, const char* attribute_name,
     return nullptr;
 }
 
-const Attribute* find_attribute(const TypeRef& type, const char* attribute_name, const AttributeKind kind, const Attribute::Value& value)
+const Attribute* find_attribute(const Type& type, const char* attribute_name, const AttributeKind kind, const Attribute::Value& value)
 {
     switch(type->kind)
     {
@@ -504,15 +504,15 @@ const Attribute* find_attribute(const TypeRef& type, const char* attribute_name,
         case TypeKind::struct_decl:
         case TypeKind::union_decl:
         {
-            return find_attribute(type->as<RecordType>()->attributes, attribute_name, kind, value);
+            return find_attribute(type->as<RecordTypeInfo>()->attributes, attribute_name, kind, value);
         }
         case TypeKind::enum_decl:
         {
-            return find_attribute(type->as<EnumType>()->attributes, attribute_name, kind, value);
+            return find_attribute(type->as<EnumTypeInfo>()->attributes, attribute_name, kind, value);
         }
         case TypeKind::function:
         {
-            return find_attribute(type->as<FunctionType>()->attributes, attribute_name, kind, value);
+            return find_attribute(type->as<FunctionTypeInfo>()->attributes, attribute_name, kind, value);
         }
         default: break;
     }

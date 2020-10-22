@@ -565,6 +565,91 @@ void ASTMatcher::reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* pa
     }
 }
 
+void ASTMatcher::reflect_array(const clang::FieldDecl& decl, RecordTypeStorage* parent, const clang::QualType& qualtype, AttributeParser* attr_parser)
+{
+    const auto array_type_name = print_qualtype_name(qualtype, decl.getASTContext());
+    const auto hash = get_type_hash({ array_type_name.data(), static_cast<i32>(array_type_name.size()) });
+    if (type_map->find_type(hash) == nullptr)
+    {
+        const auto* clang_type = llvm::dyn_cast<clang::ConstantArrayType>(qualtype);
+        auto* array_storage = allocator->allocate_storage<ArrayTypeStorage>();
+        const auto element_type = clang_type->getElementType().getCanonicalType();
+
+        auto& new_array_type = array_storage->type;
+        new_array_type.hash = hash;
+        new_array_type.name = allocator->allocate_name(array_type_name);
+        new_array_type.kind = TypeKind::array;
+        new_array_type.element_count = sign_cast<i32>(*clang_type->getSize().getRawData());
+        new_array_type.size = 0; // functions only have size when used as function pointer
+        new_array_type.alignment = 0;
+        new_array_type.serialized_version = 1;
+
+        const auto element_type_name = print_qualtype_name(element_type, decl.getASTContext());
+        array_storage->element_type_name = allocator->allocate_name(element_type_name);
+
+        const auto element_type_hash = get_type_hash({ element_type_name.data(), static_cast<i32>(element_type_name.size()) });
+        new_array_type.element_type = Type(type_map->find_type(element_type_hash));
+
+        if (new_array_type.element_type.is_unknown())
+        {
+            new_array_type.element_type = get_type(element_type_hash);
+        }
+
+        if (!new_array_type.element_type.is_unknown())
+        {
+            new_array_type.size = decl.getASTContext().getTypeSize(element_type) * new_array_type.element_count;
+            new_array_type.alignment = decl.getASTContext().getTypeAlign(element_type);
+        }
+        else
+        {
+            // fallback - we need to know if the type in the array uses a builder for serialization
+            // not sure if this is a great way to do this but considering we need this, it might be the only way
+            if (element_type->isConstantArrayType())
+            {
+                reflect_array(decl, parent, element_type, attr_parser);
+            }
+            else if (!element_type->isRecordType() || element_type->getAsCXXRecordDecl() == nullptr)
+            {
+                diagnostics.Report(decl.getLocation(), diagnostics.warn_unknown_field_type).AddString(element_type_name);
+            }
+            else
+            {
+                // if the type is a template we already know it needs a builder
+                auto* element_type_decl = element_type->getAsCXXRecordDecl();
+                array_storage->uses_builder = element_type_decl->getTemplateSpecializationKind() != clang::TSK_Undeclared;
+
+                if (!array_storage->uses_builder)
+                {
+                    // ugh the worst part - now we need to reparse the attributes in-place to see if use_builder is in them
+                    AttributeParser element_type_attr_parser{};
+                    if (!element_type_attr_parser.init(*element_type_decl, &diagnostics))
+                    {
+                        return;
+                    }
+
+                    DynamicArray<Attribute> tmp_attributes(temp_allocator());
+                    SerializationInfo serialization_info{};
+                    if (!attr_parser->parse(&tmp_attributes, &serialization_info, allocator))
+                    {
+                        return;
+                    }
+
+                    array_storage->uses_builder = (serialization_info.flags & SerializationFlags::uses_builder) != SerializationFlags::none;
+                }
+            }
+        }
+
+        if (parent == nullptr)
+        {
+            type_map->add_array(array_storage, decl);
+        }
+        else
+        {
+            parent->add_array_type(array_storage);
+        }
+    }
+}
+
 void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRecordLayout& enclosing_layout, RecordTypeStorage* parent)
 {
     if (decl.isAnonymousStructOrUnion())
@@ -584,83 +669,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
     auto qualtype = decl.getType().getCanonicalType();
     if (qualtype->isConstantArrayType())
     {
-        const auto array_type_name = print_qualtype_name(qualtype, decl.getASTContext());
-        const auto hash = get_type_hash({ array_type_name.data(), static_cast<i32>(array_type_name.size()) });
-        if (type_map->find_type(hash) == nullptr)
-        {
-            const auto* clang_type = llvm::dyn_cast<clang::ConstantArrayType>(qualtype);
-            auto* array_storage = allocator->allocate_storage<ArrayTypeStorage>();
-            const auto element_type = clang_type->getElementType().getCanonicalType();
-
-            auto& new_array_type = array_storage->type;
-            new_array_type.hash = hash;
-            new_array_type.name = allocator->allocate_name(array_type_name);
-            new_array_type.kind = TypeKind::array;
-            new_array_type.element_count = sign_cast<i32>(*clang_type->getSize().getRawData());
-            new_array_type.size = 0; // functions only have size when used as function pointer
-            new_array_type.alignment = 0;
-            new_array_type.serialized_version = 1;
-
-            const auto element_type_name = print_qualtype_name(element_type, decl.getASTContext());
-            array_storage->element_type_name = allocator->allocate_name(element_type_name);
-
-            const auto element_type_hash = get_type_hash({ element_type_name.data(), static_cast<i32>(element_type_name.size()) });
-            new_array_type.element_type = TypeRef(type_map->find_type(element_type_hash));
-
-            if (new_array_type.element_type.is_unknown())
-            {
-                new_array_type.element_type = get_type(element_type_hash);
-            }
-
-            if (!new_array_type.element_type.is_unknown())
-            {
-                new_array_type.size = decl.getASTContext().getTypeSize(element_type) * new_array_type.element_count;
-                new_array_type.alignment = decl.getASTContext().getTypeAlign(element_type);
-            }
-            else
-            {
-                // fallback - we need to know if the type in the array uses a builder for serialization
-                // not sure if this is a great way to do this but considering we need this, it might be the only way
-                if (!element_type->isRecordType() || element_type->getAsCXXRecordDecl() == nullptr)
-                {
-                    diagnostics.Report(decl.getLocation(), diagnostics.warn_unknown_field_type).AddString(element_type_name);
-                }
-                else
-                {
-                    // if the type is a template we already know it needs a builder
-                    auto* element_type_decl = element_type->getAsCXXRecordDecl();
-                    array_storage->uses_builder = element_type_decl->getTemplateSpecializationKind() != clang::TSK_Undeclared;
-
-                    if (!array_storage->uses_builder)
-                    {
-                        // ugh the worst part - now we need to reparse the attributes in-place to see if use_builder is in them
-                        AttributeParser element_type_attr_parser{};
-                        if (!element_type_attr_parser.init(*element_type_decl, &diagnostics))
-                        {
-                            return;
-                        }
-
-                        DynamicArray<Attribute> tmp_attributes(temp_allocator());
-                        SerializationInfo serialization_info{};
-                        if (!attr_parser.parse(&tmp_attributes, &serialization_info, allocator))
-                        {
-                            return;
-                        }
-
-                        array_storage->uses_builder = (serialization_info.flags & SerializationFlags::uses_builder) != SerializationFlags::none;
-                    }
-                }
-            }
-
-            if (parent == nullptr)
-            {
-                type_map->add_array(array_storage, decl);
-            }
-            else
-            {
-                parent->add_array_type(array_storage);
-            }
-        }
+        reflect_array(decl, parent, qualtype, &attr_parser);
     }
 
     // We need to parse the attributes before allocating storage to ensure ignored fields aren't reflected
@@ -881,14 +890,14 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
 
                 if (!is_type && !is_integral)
                 {
-                    storage.template_arguments.push_back(get_type<UnknownType>());
+                    storage.template_arguments.push_back(get_type<UnknownTypeInfo>());
                     continue;
                 }
 
                 const auto arg_qualtype = is_type ? arg.getAsType() : arg.getIntegralType();
                 const auto templ_type_name = print_qualtype_name(arg_qualtype, specialization->getASTContext());
                 const auto arg_type_hash = get_type_hash(templ_type_name.c_str());
-                auto arg_type = TypeRef(type_map->find_type(arg_type_hash));
+                auto arg_type = Type(type_map->find_type(arg_type_hash));
 
                 if (arg_type.is_unknown())
                 {
@@ -919,7 +928,7 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
         }
     }
 
-    auto type = TypeRef(type_map->find_type(type_hash));
+    auto type = Type(type_map->find_type(type_hash));
     if (type.is_unknown())
     { 
         /*

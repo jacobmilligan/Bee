@@ -136,6 +136,8 @@ struct ASTMatcher final : public clang::ast_matchers::MatchFinder::MatchCallback
 
     void reflect_function(const clang::FunctionDecl& decl, RecordTypeStorage* parent = nullptr);
 
+    void reflect_array(const clang::FieldDecl& decl, RecordTypeStorage* parent, const clang::QualType& qualtype, AttributeParser* attr_parser);
+
     FieldStorage create_field(const llvm::StringRef& name, const i32 index, const clang::ASTContext& ast_context, const clang::ASTRecordLayout* enclosing_layout, const RecordTypeStorage* parent, const clang::QualType& qual_type, const clang::SourceLocation& location);
 };
 

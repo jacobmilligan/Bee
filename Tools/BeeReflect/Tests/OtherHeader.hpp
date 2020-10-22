@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "Bee/Core/Reflection.hpp"
+#include "Bee/Core/Reflection-Deprecated.hpp"
 
 struct BEE_REFLECT() BaseClass
 {

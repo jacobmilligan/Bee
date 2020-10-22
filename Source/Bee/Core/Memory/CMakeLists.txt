@@ -2,13 +2,11 @@ bee_add_sources(
         Memory.hpp
 
         Allocator.hpp
-        VMAllocator.hpp
         MallocAllocator.hpp             MallocAllocator.cpp
         LinearAllocator.hpp             LinearAllocator.cpp
         PoolAllocator.hpp               PoolAllocator.cpp
         ThreadSafeLinearAllocator.hpp   ThreadSafeLinearAllocator.cpp
-        VariableSizedPoolAllocator.hpp  VariableSizedPoolAllocator.cpp
-
+        ChunkAllocator.hpp              ChunkAllocator.cpp
         GlobalMemory.cpp
         MemoryTracker.hpp               MemoryTracker.cpp
 )

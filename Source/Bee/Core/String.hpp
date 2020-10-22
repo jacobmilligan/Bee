@@ -191,6 +191,12 @@ public:
 
     String& append(const StringView& string_view);
 
+    String& assign(const String& other);
+
+    String& assign(const char* c_str);
+
+    String& assign(const StringView& string_view);
+
     String& insert(i32 index, i32 count, char character);
 
     String& insert(i32 index, const char* c_str);
@@ -801,6 +807,8 @@ BEE_CORE_API void from_wchar(String* dst, const wchar_t* wchar_str, const i32 by
 
 BEE_CORE_API wchar_array_t to_wchar(const StringView& src, Allocator* allocator = system_allocator());
 
+BEE_CORE_API i32 to_wchar(const StringView& src, wchar_t* buffer, const i32 buffer_size);
+
 /**
  * String inspection utilities
  */
@@ -813,6 +821,20 @@ BEE_CORE_API bool is_alpha(const char character);
 /**
  * Conversion utilities
  */
+BEE_CORE_API i32 to_string_buffer(const i32 value, char* buffer, const i32 size);
+
+BEE_CORE_API i32 to_string_buffer(const u32 value, char* buffer, const i32 size);
+
+BEE_CORE_API i32 to_string_buffer(const i64 value, char* buffer, const i32 size);
+
+BEE_CORE_API i32 to_string_buffer(const u64 value, char* buffer, const i32 size);
+
+BEE_CORE_API i32 to_string_buffer(const float value, char* buffer, const i32 size);
+
+BEE_CORE_API i32 to_string_buffer(const double value, char* buffer, const i32 size);
+
+BEE_CORE_API i32 to_string_buffer(const u128& value, char* buffer, const i32 size);
+
 BEE_CORE_API String to_string(const i32 value, Allocator* allocator = system_allocator());
 
 BEE_CORE_API String to_string(const u32 value, Allocator* allocator = system_allocator());
@@ -827,7 +849,76 @@ BEE_CORE_API String to_string(const double value, Allocator* allocator = system_
 
 BEE_CORE_API String to_string(const u128& value, Allocator* allocator = system_allocator());
 
-BEE_CORE_API void to_u128(const StringView& src, u128* value);
+template <i32 Size>
+inline void to_static_string(const i32 value, StaticString<Size>* str)
+{
+    const i32 size = to_string_buffer(value, nullptr, 0);
+    str->resize(size);
+    to_string_buffer(value, str->data(), str->size());
+}
+
+template <i32 Size>
+inline void to_static_string(const u32 value, StaticString<Size>* str)
+{
+    const i32 size = to_string_buffer(value, nullptr, 0);
+    str->resize(size);
+    to_string_buffer(value, str->data(), str->size());
+}
+
+template <i32 Size>
+inline void to_static_string(const i64 value, StaticString<Size>* str)
+{
+    const i32 size = to_string_buffer(value, nullptr, 0);
+    str->resize(size);
+    to_string_buffer(value, str->data(), str->size());
+}
+
+template <i32 Size>
+inline void to_static_string(const u64 value, StaticString<Size>* str)
+{
+    const i32 size = to_string_buffer(value, nullptr, 0);
+    str->resize(size);
+    to_string_buffer(value, str->data(), str->size());
+}
+
+template <i32 Size>
+inline void to_static_string(const float value, StaticString<Size>* str)
+{
+    const i32 size = to_string_buffer(value, nullptr, 0);
+    str->resize(size);
+    to_string_buffer(value, str->data(), str->size());
+}
+
+template <i32 Size>
+inline void to_static_string(const double value, StaticString<Size>* str)
+{
+    const i32 size = to_string_buffer(value, nullptr, 0);
+    str->resize(size);
+    to_string_buffer(value, str->data(), str->size());
+}
+
+template <i32 Size>
+inline void to_static_string(const u128& value, StaticString<Size>* str)
+{
+    const i32 size = to_string_buffer(value, nullptr, 0);
+    str->resize(size);
+    to_string_buffer(value, str->data(), str->size());
+}
+
+BEE_CORE_API i32 to_i32(const StringView& src);
+
+BEE_CORE_API u32 to_u32(const StringView& src);
+
+BEE_CORE_API i64 to_i64(const StringView& src);
+
+BEE_CORE_API u64 to_u64(const StringView& src);
+
+BEE_CORE_API u128 to_u128(const StringView& src);
+
+BEE_CORE_API float to_float(const StringView& src);
+
+BEE_CORE_API double to_double(const StringView& src);
+
 
 /**
  * `trim` functions - for removing all occurrences of a character at the start/end of a string

@@ -416,8 +416,7 @@ String make_help_string(const char* program_name, const ParserDescriptor& desc)
     return result;
 }
 
-void parse_recursive(const char* prog_name, const i32 argc, char** const argv, const ParserDescriptor& desc,
-                     Results* results)
+void parse_recursive(const char* prog_name, const i32 argc, char** const argv, const ParserDescriptor& desc, Results* results)
 {
     results->argc = argc;
     results->argv = argv;
@@ -454,12 +453,18 @@ void parse_recursive(const char* prog_name, const i32 argc, char** const argv, c
         // Process the subparser and not the rest of the command line
         if (found_subparser >= 0)
         {
-            auto subparser_results = results->subparsers
-                                            .insert(String(desc.subparsers[found_subparser].command_name), Results());
+            auto* subparser_results = results->subparsers.insert(String(desc.subparsers[found_subparser].command_name), Results());
+
             parse_recursive(prog_name, argc - 1, argv + 1, desc.subparsers[found_subparser], &subparser_results->value);
+
             results->requested_help_string = subparser_results->value.requested_help_string;
             results->help_requested = subparser_results->value.help_requested;
             results->argv_parsed_count += subparser_results->value.argv_parsed_count;
+            results->success = subparser_results->value.success;
+            if (!results->success)
+            {
+                results->error_message = subparser_results->value.error_message;
+            }
             return;
         }
     }
@@ -486,8 +491,7 @@ void parse_recursive(const char* prog_name, const i32 argc, char** const argv, c
         }
 
         // try and parse as an option, if it's not one then it's a positional or invalid
-        const auto new_arg_idx = parse_option(results->argv_parsed_count, argc, argv, desc.options, desc.option_count,
-            results);
+        const auto new_arg_idx = parse_option(results->argv_parsed_count, argc, argv, desc.options, desc.option_count, results);
         if (new_arg_idx >= 0 && new_arg_idx != results->argv_parsed_count)
         {
             results->argv_parsed_count = new_arg_idx;
@@ -507,6 +511,22 @@ void parse_recursive(const char* prog_name, const i32 argc, char** const argv, c
 
         results->positionals.push_back({results->argv_parsed_count, 1});
         ++results->argv_parsed_count;
+    }
+
+    if (results->positionals.size() < desc.positional_count)
+    {
+        String required("Missing required positionals: ");
+        for (int i = results->positionals.size(); i < desc.positional_count; ++i)
+        {
+            required += desc.positionals[i].name;
+            if (i < desc.positional_count - 1)
+            {
+                required += ", ";
+            }
+        }
+
+        set_result_error(results, required);
+        return;
     }
 
     // Check all required options were present
@@ -549,13 +569,21 @@ Results parse(const i32 argc, char** const argv, const ParserDescriptor& desc)
 #else
     constexpr auto slash_char = '/';
 #endif // BEE_OS_WINDOWS == 1
-
-    const auto last_slash_pos = str::last_index_of(argv[0], slash_char);
-    const char* prog_name = &argv[0][last_slash_pos + 1];
-
     Results results{};
-    parse_recursive(prog_name, argc - 1, argv + 1, desc, &results);
-    ++results.argv_parsed_count; // program name
+
+    if (argc > 0)
+    {
+        const auto last_slash_pos = str::last_index_of(argv[0], slash_char);
+        const char* prog_name = &argv[0][last_slash_pos + 1];
+
+        parse_recursive(prog_name, argc - 1, argv + 1, desc, &results);
+        ++results.argv_parsed_count; // program name
+    }
+    else
+    {
+        parse_recursive("<>", argc, argv, desc, &results);
+    }
+
     return results;
 }
 
@@ -567,7 +595,7 @@ Results parse(i32 argc, const char** argv, const ParserDescriptor& desc)
 Results parse(const char* program_name, const char* command_line, const ParserDescriptor& desc, Allocator* allocator)
 {
     Results results(command_line, allocator);
-    auto argv = const_cast<char**>(results.argv);
+    auto* argv = const_cast<char**>(results.argv);
     parse_recursive(program_name, results.argc, argv, desc, &results);
     return results;
 }
