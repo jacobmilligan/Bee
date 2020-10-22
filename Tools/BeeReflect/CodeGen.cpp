@@ -858,25 +858,27 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
 }
 
 
-void generate_empty_reflection(const char* location, io::StringStream* stream)
+void generate_empty_reflection(const Path& dst_path, const char* location, io::StringStream* stream)
 {
     CodeGenerator codegen(CodegenMode::cpp, stream);
-    codegen.write_header_comment(location);
+    const auto relative_location = Path(location).relative_to(dst_path).make_generic();
+    codegen.write_header_comment(relative_location);
     codegen.write_line("// THIS FILE IS INTENTIONALLY EMPTY - NO REFLECTION DATA WAS GENERATED");
 }
 
 
-i32 generate_reflection(const ReflectedFile& file, io::StringStream* src_stream, const CodegenMode mode)
+i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::StringStream* src_stream, const CodegenMode mode)
 {
     CodeGenerator codegen(mode, src_stream);
+    const auto relative_location = file.location.relative_to(dst_path, temp_allocator()).make_generic();
 
     int types_generated = 0;
-    codegen.write_header_comment(file.location);
+    codegen.write_header_comment(relative_location);
     codegen.newline();
 
     if (mode == CodegenMode::cpp)
     {
-        codegen.write_line("#include \"%s\"", file.location.to_generic_string(temp_allocator()).c_str());
+        codegen.write_line("#include \"%s\"", relative_location.c_str());
         codegen.write_line("#include <Bee/Core/Reflection.hpp>");
         codegen.newline();
     }

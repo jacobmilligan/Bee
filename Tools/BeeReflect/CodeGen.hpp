@@ -103,9 +103,9 @@ private:
 
 void pretty_print_types(const Span<const Type*>& types, io::StringStream* stream);
 
-void generate_empty_reflection(const char* location, io::StringStream* stream);
+void generate_empty_reflection(const Path& dst_path, const char* location, io::StringStream* stream);
 
-i32 generate_reflection(const ReflectedFile& file, io::StringStream* stream, CodegenMode mode);
+i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::StringStream* stream, CodegenMode mode);
 
 void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_types, CodegenMode mode, const Span<const Path>& written_files);
 
