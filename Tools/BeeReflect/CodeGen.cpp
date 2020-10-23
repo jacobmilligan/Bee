@@ -39,6 +39,11 @@ void CodeGenerator::reset(io::StringStream *new_stream)
     indent_ = 0;
 }
 
+i32 CodeGenerator::generated_count()
+{
+    return generated_count_;
+}
+
 i32 CodeGenerator::set_indent(const i32 indent)
 {
     const auto old_indent = indent_;
@@ -276,7 +281,7 @@ void codegen_template_parameters(const Span<const TemplateParameter>& parameters
         for (const TemplateParameter& param : parameters)
         {
             codegen->write_line(
-                R"(TemplateParameter { %u, "%s", "%s" },)",
+                R"(TemplateParameter { 0x%)" PRIx32 R"(, "%s", "%s" },)",
                 param.hash,
                 param.name,
                 param.type_name
@@ -310,7 +315,7 @@ void codegen_type(const CodegenTypeOptions options, const TypeInfo& type, CodeGe
     const auto* const size_align_type = type.is(TypeKind::function) ? "void*" : type.name;
 
     codegen->write(
-        "%u, sizeof(%s), alignof(%s), ",
+        "0x%" PRIx32 ", sizeof(%s), alignof(%s), ",
         type.hash,
         size_align_type,
         size_align_type
@@ -341,7 +346,7 @@ void codegen_attribute(const Attribute& attr, CodeGenerator* codegen)
     codegen->scope([&]()
     {
         codegen->write(
-            "%s, %u, \"%s\", Attribute::Value(",
+            "%s, 0x%" PRIx32 ", \"%s\", Attribute::Value(",
             reflection_attribute_kind_to_string(attr.kind),
             attr.hash,
             attr.name
@@ -453,7 +458,7 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
         if (field.type->is(TypeKind::template_decl))
         {
             codegen->write(
-                "%u, %zu, %s, %s, \"%s\", get_type<%s>(), Span<Type>(%s), %s, %s, %d, %d, %d",
+                "0x%" PRIx32 ", %zu, %s, %s, \"%s\", get_type<%s>(), Span<Type>(%s), %s, %s, %d, %d, %d",
                 field.hash,
                 field.offset,
                 reflection_dump_flags(field.qualifier),
@@ -471,7 +476,7 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
         else
         {
             codegen->write(
-                "%u, %zu, %s, %s, \"%s\", get_type<%s>(), Span<Type>(%s), %s, %s, %d, %d, %d",
+                "0x%" PRIx32 ", %zu, %s, %s, \"%s\", get_type<%s>(), Span<Type>(%s), %s, %s, %d, %d, %d",
                 field.hash,
                 field.offset,
                 reflection_dump_flags(field.qualifier),
@@ -646,7 +651,7 @@ void codegen_enum(CodeGenerator* codegen, const EnumTypeStorage* storage)
             for (const EnumConstant& constant : storage->constants)
             {
                 codegen->write_line(
-                    "EnumConstant { \"%s\", %u, %" PRIi64 ", get_type<%s>(), %s },",
+                    "EnumConstant { \"%s\", 0x%" PRIx32 ", %" PRIi64 ", get_type<%s>(), %s },",
                     constant.name,
                     get_type_hash(constant.name),
                     constant.value,
@@ -919,7 +924,7 @@ i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::Str
     CodeGenerator codegen(mode, src_stream);
     const auto relative_location = file.location.relative_to(dst_path, temp_allocator()).make_generic();
 
-    int types_generated = 0;
+    int functions_generated = 0;
     codegen.write_header_comment(relative_location);
     codegen.newline();
 
@@ -949,7 +954,6 @@ i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::Str
             }
 
             codegen.generate(type, codegen_array_type);
-            ++types_generated;
         }
 
         for (const RecordTypeStorage* type : file.records)
@@ -960,7 +964,6 @@ i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::Str
             }
 
             codegen.generate(type, codegen_record);
-            ++types_generated;
         }
 
         for (const FunctionTypeStorage* function : file.functions)
@@ -975,13 +978,13 @@ i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::Str
             codegen.scope([&]()
             {
                 codegen_create_instance(function->type, &codegen);
-                codegen_function(&codegen, function);
+                codegen.generate_no_guard(function, codegen_function);
                 codegen.newline();
                 codegen.write_line("return &%s;", get_name_as_ident(function->type, temp_allocator()).c_str());
             });
             codegen.write_line("// get_type<%s>()\n", function->type.name);
             codegen.type_guard_end(&function->type);
-            ++types_generated;
+            ++functions_generated;
         }
 
         for (const EnumTypeStorage* type : file.enums)
@@ -992,12 +995,11 @@ i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::Str
             }
 
             codegen.generate(type, codegen_enum);
-            ++types_generated;
         }
     }, " // namespace bee\n");
     codegen.newline();
 
-    return types_generated;
+    return codegen.generated_count();
 }
 
 

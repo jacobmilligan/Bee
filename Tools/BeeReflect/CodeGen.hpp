@@ -47,6 +47,8 @@ public:
 
     void reset(io::StringStream* new_stream);
 
+    i32 generated_count();
+
     i32 set_indent(const i32 indent);
 
     void indent();
@@ -77,6 +79,14 @@ public:
         type_guard_begin(&storage->type);
         callback(this, storage);
         type_guard_end(&storage->type);
+        ++generated_count_;
+    }
+
+    template <typename StorageType, typename CallbackType>
+    void generate_no_guard(StorageType* storage, CallbackType&& callback)
+    {
+        callback(this, storage);
+        ++generated_count_;
     }
 
     template <typename LambdaType>
@@ -111,6 +121,7 @@ private:
     io::StringStream*   stream_ { nullptr };
     i32                 indent_size_ { 0 };
     i32                 indent_ { 0 };
+    i32                 generated_count_ { 0 };
 };
 
 void pretty_print_types(const Span<const Type*>& types, io::StringStream* stream);
