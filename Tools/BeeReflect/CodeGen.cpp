@@ -179,6 +179,7 @@ String get_name_as_ident(const TypeInfo& type, Allocator* allocator = system_all
     str::replace(&name_as_ident, ">", "_");
     str::replace(&name_as_ident, "[", "_");
     str::replace(&name_as_ident, "]", "_");
+    str::replace(&name_as_ident, ",", "_");
     return name_as_ident;
 }
 
@@ -197,6 +198,70 @@ String get_target_name_as_ident(const StringView& target_name, Allocator* alloca
     return name_as_ident;
 }
 
+void get_kind_as_macro(String* dst, const TypeKind kind)
+{
+    dst->clear();
+
+#define TYPE_KIND(x) case TypeKind::x: if (!dst->empty()) { dst->append('_'); } dst->append(#x); break;
+
+    for_each_flag(kind, [&](const TypeKind k)
+    {
+        switch (k)
+        {
+            TYPE_KIND(unknown);
+            TYPE_KIND(class_decl);
+            TYPE_KIND(struct_decl);
+            TYPE_KIND(enum_decl);
+            TYPE_KIND(union_decl);
+            TYPE_KIND(template_decl);
+            TYPE_KIND(field);
+            TYPE_KIND(function);
+            TYPE_KIND(method);
+            TYPE_KIND(fundamental);
+            TYPE_KIND(array);
+            default:
+            {
+                BEE_UNREACHABLE("Missing TypeKind string representation: %u", static_cast<u32>(k));
+            }
+        }
+    });
+#undef TYPE_KIND
+
+    str::uppercase_ascii(dst);
+}
+
+/*
+ * Avoids issues where types may be included multiple times i.e. with array types (an int[4] defined
+ * in two places is effectively the same type) - this is really an issue only with inline get_types and arrays
+ */
+void CodeGenerator::type_guard_begin(const TypeInfo* type)
+{
+    const auto ident = get_name_as_ident(*type, temp_allocator());
+    String type_kind(temp_allocator());
+    get_kind_as_macro(&type_kind, type->kind);
+
+    auto old_indent = set_indent(0);
+    {
+        write_line("#ifndef BEE_%s_TYPE__%s", type_kind.c_str(), ident.c_str());
+        write_line("#define BEE_%s_TYPE__%s", type_kind.c_str(), ident.c_str());
+        newline();
+    }
+    set_indent(old_indent);
+}
+
+void CodeGenerator::type_guard_end(const TypeInfo* type)
+{
+    const auto ident = get_name_as_ident(*type, temp_allocator());
+    String type_kind(temp_allocator());
+    get_kind_as_macro(&type_kind, type->kind);
+
+    auto old_indent = set_indent(0);
+    {
+        write_line("#endif // BEE_%s_TYPE__%s", type_kind.c_str(), ident.c_str());
+        newline();
+    }
+    set_indent(old_indent);
+}
 
 void codegen_template_parameters(const Span<const TemplateParameter>& parameters, CodeGenerator* codegen)
 {
@@ -424,7 +489,7 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
     });
 }
 
-void codegen_array_type(ArrayTypeStorage* storage, CodeGenerator* codegen)
+void codegen_array_type(CodeGenerator* codegen, ArrayTypeStorage* storage)
 {
     if (storage->is_generated)
     {
@@ -433,20 +498,6 @@ void codegen_array_type(ArrayTypeStorage* storage, CodeGenerator* codegen)
 
     storage->is_generated = true;
     auto& type = storage->type;
-
-    const auto ident = get_name_as_ident(type, temp_allocator());
-
-    /*
-     * Generate a macro guard so array types aren't multiply defined. Because array types
-     * are defined in the same place they're declared, the same array type can be generated
-     * all over the code so we add a macro guard to allow them to be generated multiple times
-     * but only actually #included once
-     */
-    auto old_indent = codegen->set_indent(0);
-    codegen->write_line("#ifndef BEE_ARRAY_TYPE__%s", ident.c_str());
-    codegen->set_indent(old_indent);
-
-    codegen->write_line("#define BEE_ARRAY_TYPE__%s", ident.c_str());
 
     codegen->write_type_signature(type);
     codegen->scope([&]()
@@ -472,14 +523,11 @@ void codegen_array_type(ArrayTypeStorage* storage, CodeGenerator* codegen)
     });
     codegen->write("// get_type<%s>()\n", type.name);
 
-    old_indent = codegen->set_indent(0);
-    codegen->write_line("#endif // BEE_ARRAY_TYPE__%s", ident.c_str());
-    codegen->set_indent(old_indent);
     codegen->newline();
 }
 
 
-void codegen_function(const FunctionTypeStorage* storage, CodeGenerator* codegen)
+void codegen_function(CodeGenerator* codegen, const FunctionTypeStorage* storage)
 {
     const auto function_name_as_ident = get_name_as_ident(storage->type, temp_allocator());
 
@@ -572,7 +620,7 @@ void codegen_function(const FunctionTypeStorage* storage, CodeGenerator* codegen
     }, ";");
 }
 
-void codegen_enum(const EnumTypeStorage* storage, CodeGenerator* codegen)
+void codegen_enum(CodeGenerator* codegen, const EnumTypeStorage* storage)
 {
     codegen->write_type_signature(storage->type);
     codegen->scope([&]()
@@ -629,22 +677,22 @@ void codegen_enum(const EnumTypeStorage* storage, CodeGenerator* codegen)
     codegen->write_line("// get_type<%s>()\n", storage->type.name);
 }
 
-void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
+void codegen_record(CodeGenerator* codegen, const RecordTypeStorage* storage)
 {
     // Generate all the dependent types first - including any array types declared on this record
     for (ArrayTypeStorage* array_type : storage->field_array_types)
     {
-        codegen_array_type(array_type, codegen);
+        codegen->generate(array_type, codegen_array_type);
     }
 
     for (const EnumTypeStorage* nested_enum : storage->enums)
     {
-        codegen_enum(nested_enum, codegen);
+        codegen->generate(nested_enum, codegen_enum);
     }
 
     for (const RecordTypeStorage* nested_record : storage->nested_records)
     {
-        codegen_record(nested_record, codegen);
+        codegen->generate(nested_record, codegen_record);
     }
 
     if (storage->type.is(TypeKind::template_decl))
@@ -724,7 +772,7 @@ void codegen_record(const RecordTypeStorage* storage, CodeGenerator* codegen)
         {
             for (const FunctionTypeStorage* function : storage->functions)
             {
-                codegen_function(function, codegen);
+                codegen_function(codegen, function);
                 codegen->newline();
             }
 
@@ -866,7 +914,6 @@ void generate_empty_reflection(const Path& dst_path, const char* location, io::S
     codegen.write_line("// THIS FILE IS INTENTIONALLY EMPTY - NO REFLECTION DATA WAS GENERATED");
 }
 
-
 i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::StringStream* src_stream, const CodegenMode mode)
 {
     CodeGenerator codegen(mode, src_stream);
@@ -901,7 +948,7 @@ i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::Str
                 continue;
             }
 
-            codegen_array_type(type, &codegen);
+            codegen.generate(type, codegen_array_type);
             ++types_generated;
         }
 
@@ -912,7 +959,7 @@ i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::Str
                 continue;
             }
 
-            codegen_record(type, &codegen);
+            codegen.generate(type, codegen_record);
             ++types_generated;
         }
 
@@ -923,16 +970,17 @@ i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::Str
                 continue;
             }
 
+            codegen.type_guard_begin(&function->type);
             codegen.write_type_signature(function->type);
             codegen.scope([&]()
             {
                 codegen_create_instance(function->type, &codegen);
-                codegen_function(function, &codegen);
+                codegen_function(&codegen, function);
                 codegen.newline();
                 codegen.write_line("return &%s;", get_name_as_ident(function->type, temp_allocator()).c_str());
             });
             codegen.write_line("// get_type<%s>()\n", function->type.name);
-            codegen_function(function, &codegen);
+            codegen.type_guard_end(&function->type);
             ++types_generated;
         }
 
@@ -943,7 +991,7 @@ i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::Str
                 continue;
             }
 
-            codegen_enum(type, &codegen);
+            codegen.generate(type, codegen_enum);
             ++types_generated;
         }
     }, " // namespace bee\n");

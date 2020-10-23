@@ -439,7 +439,7 @@ public:
 
     StaticString& append(const String& other)
     {
-        return append(other.view())
+        return append(other.view());
     }
 
     StaticString& append(const char* c_str)
@@ -457,7 +457,7 @@ public:
             return *this;
         }
 
-        const auto actual_count = count;
+        auto actual_count = count;
 
         if (index + count <= Capacity)
         {
@@ -523,7 +523,7 @@ public:
         BEE_ASSERT(index + count <= size_);
         memmove(&buffer[index], &buffer_[index + count], size_ - (index + count));
         set_size(size_ - count);
-        return *this
+        return *this;
     }
 
     StaticString& remove(const i32 index)
@@ -929,10 +929,49 @@ BEE_CORE_API String& trim_end(String* src, char character);
 
 BEE_CORE_API String& trim(String* src, char character);
 
-/*
+/**
  * `split` - split a StringView using the delimiter character into an array of substrings
  */
 BEE_CORE_API void split(const StringView& src, DynamicArray<StringView>* dst, char delimiter);
+
+BEE_CORE_API bool is_ascii(const char c);
+
+/**
+ * `to_uppercase_ascii` & `to_lowercase_ascii - convert a utf8 character to it's ASCII uppercase/lowercase equivalent.
+ * Returns `c` unchanged if it is not an ASCII character
+ */
+BEE_CORE_API char to_uppercase_ascii(const char c);
+
+BEE_CORE_API char to_lowercase_ascii(const char c);
+
+/**
+ * `uppercase_ascii` - converts `src` to it's ASCII uppercase equivalent, leaving any non-ascii characters unchanged
+ */
+BEE_CORE_API void uppercase_ascii(String* src);
+
+/**
+ * `lowercase_ascii` - converts `src` to it's ASCII uppercase equivalent, leaving any non-ascii characters unchanged
+ */
+BEE_CORE_API void lowercase_ascii(String* src);
+
+template <i32 Size>
+void uppercase_ascii(StaticString<Size>* src)
+{
+    for (int i = 0; i < src->size(); ++i)
+    {
+        (*src)[i] = to_uppercase_ascii((*src)[i]);
+    }
+}
+
+
+template <i32 Size>
+void lowercase_ascii(StaticString<Size>* src)
+{
+    for (int i = 0; i < src->size(); ++i)
+    {
+        (*src)[i] = to_lowercase_ascii((*src)[i]);
+    }
+}
 
 
 } // namespace str

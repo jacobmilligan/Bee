@@ -718,6 +718,18 @@ const char* reflection_flag_to_string(const TypeKind type_kind)
 #undef TYPE_KIND
 }
 
+const char* reflection_type_kind_to_string(const TypeKind type_kind)
+{
+#define TYPE_KIND(x, str) if ((type_kind & TypeKind::x) != TypeKind::unknown) return str
+
+    TYPE_KIND(class_decl, "class");
+    TYPE_KIND(struct_decl, "struct");
+    TYPE_KIND(enum_decl, "enum class");
+    TYPE_KIND(union_decl, "union");
+
+    return "";
+#undef TYPE_KIND
+}
 
 const char* reflection_type_kind_to_code_string(const TypeKind type_kind)
 {

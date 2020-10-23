@@ -111,7 +111,7 @@ struct RecordTypeStorage
 struct FunctionTypeStorage
 {
     ReflectedFile*              location { nullptr };
-    FunctionTypeInfo                type;
+    FunctionTypeInfo            type;
     FieldStorage                return_field;
     DynamicArray<FieldStorage>  parameters;
     DynamicArray<Attribute>     attributes;

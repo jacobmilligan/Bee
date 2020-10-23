@@ -1270,6 +1270,37 @@ void split(const StringView& src, DynamicArray<StringView>* dst, char delimiter)
     }
 }
 
+bool is_ascii(const char c)
+{
+    return (c & ~0x7f) == 0;
+}
+
+char to_uppercase_ascii(const char c)
+{
+    return is_ascii(c) ? static_cast<char>(toupper(c)) : c;
+}
+
+char to_lowercase_ascii(const char c)
+{
+    return is_ascii(c) ? static_cast<char>(tolower(c)) : c;
+}
+
+void uppercase_ascii(String* src)
+{
+    for (int i = 0; i < src->size(); ++i)
+    {
+        (*src)[i] = to_uppercase_ascii((*src)[i]);
+    }
+}
+
+void lowercase_ascii(String* src)
+{
+    for (int i = 0; i < src->size(); ++i)
+    {
+        (*src)[i] = to_lowercase_ascii((*src)[i]);
+    }
+}
+
 
 } // namespace string
 } // namespace bee

@@ -1168,6 +1168,8 @@ BEE_CORE_API const char* reflection_flag_to_string(const TypeKind type_kind);
 
 BEE_CORE_API const char* reflection_type_kind_to_code_string(const TypeKind type_kind);
 
+BEE_CORE_API const char* reflection_type_kind_to_string(const TypeKind type_kind);
+
 BEE_CORE_API const char* reflection_attribute_kind_to_string(const AttributeKind attr_kind);
 
 template <typename FlagType>

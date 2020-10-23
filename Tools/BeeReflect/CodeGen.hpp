@@ -67,6 +67,18 @@ public:
 
     void write_line(const char* format, ...) BEE_PRINTFLIKE(2, 3);
 
+    void type_guard_begin(const TypeInfo* type);
+
+    void type_guard_end(const TypeInfo* type);
+
+    template <typename StorageType, typename CallbackType>
+    void generate(StorageType* storage, CallbackType&& callback)
+    {
+        type_guard_begin(&storage->type);
+        callback(this, storage);
+        type_guard_end(&storage->type);
+    }
+
     template <typename LambdaType>
     void scope(LambdaType&& lambda)
     {
