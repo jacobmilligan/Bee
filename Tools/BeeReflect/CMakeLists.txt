@@ -1,7 +1,7 @@
 bee_new_source_root()
 bee_add_sources(
     ASTMatcher.hpp      ASTMatcher.cpp
-    CodeGen.hpp         CodeGen2.cpp
+    CodeGen.hpp         CodeGen.cpp
     Frontend.hpp        Frontend.cpp
     Storage.hpp         Storage.cpp
     Main.cpp

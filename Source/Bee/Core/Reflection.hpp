@@ -7,10 +7,6 @@
 
 #pragma once
 
-#if BEE_CONFIG_USE_REFLECTION_2 == 1
-    #include "Bee/Core/Reflection2.hpp"
-#else
-
 #include "Bee/Core/Enum.hpp"
 #include "Bee/Core/IO.hpp"
 
@@ -1215,5 +1211,3 @@ const char* reflection_dump_flags(const FlagType flag)
 
 
 } // namespace bee
-
-#endif // BEE_CONFIG_USE_REFLECTION_2 == 1

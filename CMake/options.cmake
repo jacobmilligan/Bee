@@ -23,7 +23,6 @@ bee_option_with_definition(ENABLE_MEMORY_TRACKING "Allows dynamically switching 
 bee_option_with_definition(FORCE_MEMORY_TRACKING "Forces memory tracking on even in release builds" OFF)
 bee_option_with_definition(FORCE_ASSERTIONS_ENABLED "Enable assertions messages - crash and logging behaviour is build-type dependent" OFF)
 bee_option_with_definition(DISABLE_REFLECTION "Disables generating reflection data as a build step" OFF)
-bee_option_with_definition(USE_REFLECTION_2 "Uses experimental in-progress reflection API and tools" OFF)
 
 # Validate LLVM install directory
 if (${BUILD_CLANG_TOOLS} MATCHES ON)

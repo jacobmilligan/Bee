@@ -5,7 +5,6 @@
         "LLVM_INSTALL_DIR": "D:/Code/llvm-project/install/Release",
         "FORCE_ASSERTIONS_ENABLED": "ON",
         "FORCE_MEMORY_TRACKING": "OFF",
-        "BUILD_TESTS": "ON",
-        "USE_REFLECTION_2": "OFF"
+        "BUILD_TESTS": "ON"
     }
 }

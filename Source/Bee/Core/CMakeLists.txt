@@ -27,19 +27,13 @@ bee_add_sources(
         Path.hpp            Path.cpp
         Process.hpp
         Random.hpp          Random.cpp
-#        Reflection-Deprecated.hpp Reflection-Deprecated.cpp
+        Reflection.hpp      Reflection.cpp
         Span.hpp
         Socket.hpp
         String.hpp          String.cpp
         Thread.hpp          Thread.cpp
         Time.hpp            Time.cpp
 )
-
-if (USE_REFLECTION_2)
-    bee_add_sources(Reflection2.hpp Reflection2.cpp)
-else()
-    bee_add_sources(Reflection.hpp Reflection.cpp)
-endif ()
 
 add_subdirectory(Containers)
 add_subdirectory(Memory)
