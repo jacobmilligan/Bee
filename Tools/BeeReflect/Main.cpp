@@ -75,6 +75,7 @@ int bee_main(int argc, char** argv)
     bee::DynamicArray<const bee::TypeInfo*> reflected_types;
 
     const auto src_path_list = options_parser.getSourcePathList();
+    int type_count_for_inl = 0;
 
     // Output a .generated.cpp file for each of the reflected headers
     for (auto& file : factory.storage.reflected_files)
@@ -90,16 +91,14 @@ int bee_main(int argc, char** argv)
         }
 
         auto src_codegen_mode = bee::reflect::CodegenMode::cpp;
-        const char* output_extension = "cpp";
         if (inline_opt)
         {
-            output_extension = "inl";
             src_codegen_mode = bee::reflect::CodegenMode::inl;
         }
 
         auto output_path = output_dir.join(file.value.location.filename(), bee::temp_allocator())
                                      .set_extension("generated")
-                                     .append_extension(output_extension);
+                                     .append_extension(".cpp");
 
         // Generate all non-templated types into a generated.cpp file
         bee::String output;
@@ -111,8 +110,26 @@ int bee_main(int argc, char** argv)
             stream.seek(0, bee::io::SeekOrigin::begin);
             bee::reflect::generate_empty_reflection(output_path, file.value.location.c_str(), &stream);
         }
-
         bee::fs::write(output_path, output.view());
+
+        // Generate a matching .inl file with just the get_type(module, index) portion if inline mode and the file has
+        // non-template types
+        if (src_codegen_mode == bee::reflect::CodegenMode::inl)
+        {
+            output_path.set_extension(".inl");
+            output.clear();
+            stream.seek(0, bee::io::SeekOrigin::begin);
+
+            type_count_for_inl += bee::reflect::generate_reflection_header(
+                output_path,
+                file.value,
+                type_count_for_inl,
+                &stream,
+                src_codegen_mode
+            );
+
+            bee::fs::write(output_path, output.view());
+        }
 
         // Output a generated.inl file if required - a type in the file is templated and requires a `get_type` specialization
         const auto inl_path = generated_inl_dir.join(file.value.location.filename(), bee::temp_allocator())
@@ -122,7 +139,6 @@ int bee_main(int argc, char** argv)
         stream.seek(0, bee::io::SeekOrigin::begin);
         if (bee::reflect::generate_reflection(inl_path, file.value, &stream, bee::reflect::CodegenMode::templates_only) > 0)
         {
-
             bee::fs::write(inl_path, output.view());
         }
 

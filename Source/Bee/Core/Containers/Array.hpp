@@ -816,3 +816,7 @@ bool Array<T, Mode>::ensure_capacity(const fixed_container_mode_t& fixed_contain
 
 
 } // namespace bee
+
+#ifdef BEE_ENABLE_REFLECTION
+    #include "Bee.Core/ReflectedTemplates/Array.generated.inl"
+#endif // BEE_ENABLE_REFLECTION

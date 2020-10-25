@@ -410,6 +410,35 @@ public:
         set_size(0);
     }
 
+    StaticString& assign(const String& string)
+    {
+        clear();
+        append(string.view());
+        return *this;
+    }
+
+    StaticString& assign(const char* c_str)
+    {
+        clear();
+        append(c_str);
+        return *this;
+    }
+
+    StaticString& assign(const StringView& string_view)
+    {
+        clear();
+        append(string_view);
+        return *this;
+    }
+
+    StaticString& assign(const StaticString& static_string)
+    {
+        clear();
+        append(StringView(static_string.data(), math::min(static_string.size(), size_)));
+        return *this;
+    }
+
+
     StaticString& append(char character)
     {
         if (size_ + 1 <= Capacity)
@@ -1318,3 +1347,7 @@ inline bool operator>=(const char* lhs, const String& rhs)
 
 
 } // namespace bee
+
+#ifdef BEE_ENABLE_REFLECTION
+    #include "Bee.Core/ReflectedTemplates/String.generated.inl"
+#endif // BEE_ENABLE_REFLECTION

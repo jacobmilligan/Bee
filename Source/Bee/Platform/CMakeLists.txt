@@ -6,3 +6,4 @@ if (WIN32)
 endif ()
 
 bee_plugin2(Bee.Platform LINK_LIBRARIES Bee.Core)
+bee_reflect(Bee.Platform)

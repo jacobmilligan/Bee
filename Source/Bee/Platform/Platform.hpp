@@ -9,6 +9,7 @@
 
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Handle.hpp"
+#include "Bee/Core/Reflection.hpp"
 
 namespace bee {
 
@@ -38,7 +39,7 @@ struct MonitorInfo
     Point           position;
 };
 
-struct WindowCreateInfo
+struct BEE_REFLECT() WindowCreateInfo
 {
     const char*     title { "Bee Application" };
     MonitorHandle   monitor;
@@ -81,3 +82,7 @@ struct PlatformModule
 
 
 } // namespace bee
+
+#ifdef BEE_ENABLE_REFLECTION
+    #include "Bee.Platform/Platform.generated.inl"
+#endif // BEE_ENABLE_REFLECTION

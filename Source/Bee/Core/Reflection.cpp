@@ -58,7 +58,8 @@ constexpr size_t sizeof_helper<void>()
             FundamentalKind::function_name##_kind                       \
         };                                                              \
         return Type(&instance);                                         \
-    }
+    }                                                                   \
+    Type bee_get_type__##function_name() { return get_type<builtin_type>(); }
 
 BEE_BUILTIN_TYPES
 
@@ -294,23 +295,88 @@ bool SpecializedType<T>::is_unknown() const
  *
  ****************************************
  */
-static DynamicHashMap<u32, const TypeInfo*> g_type_map;
+struct ReflectionModule
+{
+    u32                         hash { 0 };
+    i32                         type_count { 0 };
+    const char*                 name { nullptr };
+    const get_type_callback_t*  types { nullptr };
+};
 
+static DynamicHashMap<u32, get_type_callback_t> g_type_map;
+static DynamicHashMap<u32, ReflectionModule*>   g_modules;
 
 void register_type(const Type& type)
 {
-    if (g_type_map.find(type->hash) == nullptr)
-    {
-        g_type_map.insert(type->hash, type.get());
-    }
+//    if (g_type_map.find(type->hash) == nullptr)
+//    {
+//        g_type_map.insert(type->hash, type.get());
+//    }
 }
 
 void unregister_type(const Type& type)
 {
-    if (g_type_map.find(type->hash) != nullptr)
+//    if (g_type_map.find(type->hash) != nullptr)
+//    {
+//        g_type_map.erase(type->hash);
+//    }
+}
+
+const ReflectionModule* create_reflection_module(const StringView& name, const i32 type_count, const u32* hashes, const get_type_callback_t* callbacks)
+{
+    const u32 hash = get_hash(name);
+
+    if (BEE_FAIL_F(g_modules.find(hash) != nullptr, "Reflection module %" BEE_PRIsv " already exists", BEE_FMT_SV(name)))
     {
-        g_type_map.erase(type->hash);
+        return nullptr;
     }
+
+    const size_t name_bytecount = name.size() * sizeof(char);
+    const size_t types_bytecount = sizeof(get_type_callback_t) * (type_count + 1); // for null terminator
+
+    auto* mem = BEE_MALLOC(system_allocator(), sizeof(ReflectionModule) + name_bytecount + types_bytecount);
+    auto* module = static_cast<ReflectionModule*>(mem);
+    new (module) ReflectionModule{};
+
+    auto* name_ptr = reinterpret_cast<char*>(static_cast<u8*>(mem) + sizeof(ReflectionModule));
+    str::copy(name_ptr, name_bytecount, name);
+
+    auto* types_ptr = reinterpret_cast<get_type_callback_t*>(static_cast<u8*>(mem) + sizeof(ReflectionModule) + name_bytecount);
+    memcpy(types_ptr, callbacks, type_count * sizeof(get_type_callback_t));
+
+    module->hash = hash;
+    module->type_count = type_count;
+    module->name = name_ptr;
+    module->types = types_ptr;
+
+    g_modules.insert(module->hash, module);
+
+    for (int i = 0; i < type_count; ++i)
+    {
+        g_type_map.insert(hashes[i], callbacks[i]);
+    }
+
+    return module;
+}
+
+void destroy_reflection_module(const ReflectionModule* module)
+{
+    auto* stored_module = g_modules.find(module->hash);
+
+    if (BEE_FAIL_F(stored_module == nullptr, "Reflection module %s was destroyed twice", module->name))
+    {
+        return;
+    }
+
+    BEE_FREE(system_allocator(), stored_module->value);
+    g_modules.erase(module->hash);
+}
+
+const ReflectionModule* get_reflection_module(const StringView& name)
+{
+    auto* stored_module = g_modules.find(get_hash(name));
+    BEE_ASSERT(stored_module != nullptr);
+    return stored_module ? stored_module->value : nullptr;
 }
 
 u32 get_type_hash(const StringView& type_name)
@@ -323,23 +389,36 @@ Type get_type(const u32 hash)
     auto* type = g_type_map.find(hash);
     if (type != nullptr)
     {
-        return Type(type->value);
+        return type->value();
     }
 
     return get_type<UnknownTypeInfo>();
 }
 
+Type get_type(const ReflectionModule* module, const i32 index)
+{
+    if (BEE_FAIL_F(index >= module->type_count, "Invalid type index %d for reflection module %s", index, module->name))
+    {
+        return Type(&g_unknown_type);
+    }
+
+    return module->types[index]();
+}
+
 BEE_CORE_API void reflection_register_builtin_types()
 {
-#define BEE_BUILTIN_TYPE(builtin_type, function_name) get_type<builtin_type>(),
+#define BEE_BUILTIN_TYPE(builtin_type, function_name) { get_type<builtin_type>()->hash, bee_get_type__##function_name },
 
-    static Type builtin_types[] { BEE_BUILTIN_TYPES };
+    struct GetTypeParams { u32 hash { 0 }; get_type_callback_t callback { nullptr }; };
+    static GetTypeParams builtin_types[] { BEE_BUILTIN_TYPES };
 
     for (auto& type : builtin_types)
     {
-        register_type(type);
+        g_type_map.insert(type.hash, type.callback);
     }
 }
+
+
 
 isize enum_from_string(const EnumType& type, const StringView& string)
 {

@@ -6,6 +6,11 @@ else()
     add_definitions(-DBEE_LITTLE_ENDIAN)
 endif ()
 
+define_property(TARGET PROPERTY PLUGIN
+    BRIEF_DOCS "Whether the target is a plugin or not"
+    FULL_DOCS "Whether the target is a plugin or not"
+)
+
 ################################################################################
 #
 # Setup global properties and variables for the build system to use
@@ -354,6 +359,7 @@ function(bee_plugin2 name)
 
     target_include_directories(${name} PRIVATE ${BEE_GENERATED_ROOT}/${name})
     __bee_finalize_target(${name} "Plugins")
+    set_property(TARGET ${name} PROPERTY PLUGIN TRUE)
 endfunction()
 
 ################################################################################
@@ -527,13 +533,14 @@ function(bee_reflect target)
     set(output_dir ${PROJECT_SOURCE_DIR}/Build/Generated)
 
     get_target_property(source_list ${target} SOURCES)
+    get_target_property(plugin_prop ${target} PLUGIN)
 
     if (NOT ARGS_INCLUDE_NON_HEADERS)
         list(FILTER source_list EXCLUDE REGEX ".*\\.(cpp|cxx|c|inl)$")
     endif ()
 
     set(generated_extension cpp)
-    if (ARGS_INLINE)
+    if ()
         set(generated_extension inl)
     endif ()
 
@@ -575,7 +582,13 @@ function(bee_reflect target)
             if (position GREATER_EQUAL 0)
                 # All good - we can include this file in the reflection generation
                 get_filename_component(filename ${src} NAME_WE)
-                list(APPEND expected_output "${output_dir}/${target}/${filename}.generated.${generated_extension}")
+                set(generated_name "${output_dir}/${target}/${filename}.generated")
+
+                list(APPEND expected_output "${generated_name}.cpp")
+                if (ARGS_INLINE OR plugin_prop)
+                    list(APPEND expected_output "${generated_name}.inl")
+                endif ()
+
                 list(APPEND reflected_sources "${src}")
             endif ()
         endif ()
@@ -639,7 +652,7 @@ function(bee_reflect target)
     list(APPEND defines ${build_type_define})
 
     set(inline_opt)
-    if (ARGS_INLINE)
+    if (ARGS_INLINE OR plugin_prop)
         set(inline_opt --inline)
     endif ()
 

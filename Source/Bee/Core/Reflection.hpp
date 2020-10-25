@@ -12,7 +12,6 @@
 #else
 
 #include "Bee/Core/Enum.hpp"
-#include "Bee/Core/Logger.hpp"
 #include "Bee/Core/IO.hpp"
 
 #include <inttypes.h>
@@ -146,6 +145,8 @@ enum class FundamentalKind
 
 
 struct TypeInfo;
+struct ReflectionModule;
+
 
 class BEE_CORE_API Type
 {
@@ -302,7 +303,7 @@ struct Attribute
         int             integer;
         float           floating_point;
         const char*     string;
-        Type         type;
+        Type            type;
 
         explicit Value(const bool b)
             : boolean(b)
@@ -367,8 +368,8 @@ struct Field
     Qualifier                   qualifier { Qualifier::none };
     StorageClass                storage_class { StorageClass::none };
     const char*                 name { nullptr };
-    Type                     type {nullptr };
-    Span<Type>               template_arguments;
+    Type                        type {nullptr };
+    Span<Type>                  template_arguments;
     Span<Attribute>             attributes;
     serialization_function_t    serializer_function { nullptr };
     i32                         version_added { 0 };
@@ -461,7 +462,7 @@ public:
 private:
     Allocator*  allocator_ { nullptr };
     void*       data_ { nullptr };
-    Type     type_;
+    Type        type_;
     copier_t    copier_ { nullptr };
     deleter_t   deleter_ { nullptr };
 
@@ -653,7 +654,7 @@ struct TypeSpec : public TypeInfo
 struct ArrayTypeInfo final : public TypeSpec<TypeKind::array>
 {
     i32                             element_count { 0 };
-    Type                         element_type {nullptr };
+    Type                            element_type {nullptr };
     Field::serialization_function_t serializer_function { nullptr };
 
     ArrayTypeInfo() noexcept = default;
@@ -706,7 +707,7 @@ struct EnumConstant
     const char* name { nullptr };
     u32         hash { 0 };
     isize       value { 0 };
-    Type     underlying_type {nullptr };
+    Type        underlying_type {nullptr };
     bool        is_flag { false };
 
     EnumConstant() noexcept = default;
@@ -726,7 +727,7 @@ struct EnumTypeInfo final : public TypeSpec<TypeKind::enum_decl>
     bool                is_flags { false };
     Span<EnumConstant>  constants;
     Span<Attribute>     attributes;
-    Type             underlying_type {nullptr };
+    Type                underlying_type {nullptr };
 
     EnumTypeInfo() noexcept = default;
 
@@ -968,12 +969,12 @@ using FunctionType = SpecializedType<FunctionTypeInfo>;
 
 struct RecordTypeInfo final : public TypeSpec<TypeKind::record>
 {
-    Span<Field>                         fields;
+    Span<Field>                             fields;
     Span<FunctionTypeInfo>                  functions;
-    Span<Attribute>                     attributes;
-    Span<EnumType>                   enums;
+    Span<Attribute>                         attributes;
+    Span<EnumType>                          enums;
     Span<SpecializedType<RecordTypeInfo>>   records;
-    Span<Type>                       base_records;
+    Span<Type>                              base_records;
 
     using TypeSpec::TypeSpec;
 
@@ -1130,10 +1131,13 @@ BEE_CORE_API u32 get_type_hash(const StringView& type_name);
 // Thread-safe as long as nothing is calling `register_type`
 BEE_CORE_API Type get_type(const u32 hash);
 
+// Thread-safe as long as nothing is calling `register_type` or any of the reflection module create/destroy functions
+BEE_CORE_API Type get_type(const ReflectionModule* module, const i32 index);
+
 template <typename ReflectedType, typename T>
 BEE_FORCE_INLINE SpecializedType<T> get_type_as()
 {
-    return get_type<ReflectedType>()->as<T>();
+    return get_type<ReflectedType>()->template as<T>();
 }
 
 BEE_CORE_API void reflection_register_builtin_types();
@@ -1141,6 +1145,12 @@ BEE_CORE_API void reflection_register_builtin_types();
 // NOT THREAD SAFE - should only ever be done at initialization by `reflection_init`
 BEE_CORE_API void register_type(const Type& type);
 BEE_CORE_API void unregister_type(const Type& type);
+
+using get_type_callback_t = Type(*)();
+
+BEE_CORE_API const ReflectionModule* create_reflection_module(const StringView& name, const i32 type_count, const u32* hashes, const get_type_callback_t* callbacks);
+BEE_CORE_API void destroy_reflection_module(const ReflectionModule* module);
+BEE_CORE_API const ReflectionModule* get_reflection_module(const StringView& name);
 
 BEE_CORE_API const Attribute* find_attribute(const Type& type, const char* attribute_name);
 
@@ -1205,10 +1215,5 @@ const char* reflection_dump_flags(const FlagType flag)
 
 
 } // namespace bee
-
-#ifdef BEE_ENABLE_REFLECTION
-#include "Bee.Core/ReflectedTemplates/Array.generated.inl"
-#include "Bee.Core/ReflectedTemplates/String.generated.inl"
-#endif // BEE_ENABLE_REFLECTION
 
 #endif // BEE_CONFIG_USE_REFLECTION_2 == 1

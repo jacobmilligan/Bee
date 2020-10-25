@@ -37,7 +37,8 @@ enum class CodegenMode
 {
     cpp,
     inl,
-    templates_only
+    templates_only,
+    none
 };
 
 class CodeGenerator
@@ -47,7 +48,7 @@ public:
 
     void reset(io::StringStream* new_stream);
 
-    i32 generated_count();
+    i32 generated_count() const;
 
     i32 set_indent(const i32 indent);
 
@@ -61,7 +62,11 @@ public:
 
     void write_header_comment(const Path& source_location);
 
-    void write_type_signature(const TypeInfo& type);
+    void write_type_signature(const TypeInfo& type, const CodegenMode force_mode = CodegenMode::none);
+
+    const char* as_ident(const TypeInfo& type);
+
+    const char* as_ident(const StringView& name, const char* prefix = nullptr);
 
     void append_line(const char* format, ...) BEE_PRINTFLIKE(2, 3);
 
@@ -117,6 +122,7 @@ public:
         return mode_;
     }
 private:
+    StaticString<4096>  ident_buffer_;
     CodegenMode         mode_ { CodegenMode::cpp };
     io::StringStream*   stream_ { nullptr };
     i32                 indent_size_ { 0 };
@@ -124,15 +130,13 @@ private:
     i32                 generated_count_ { 0 };
 };
 
-void pretty_print_types(const Span<const Type*>& types, io::StringStream* stream);
-
 void generate_empty_reflection(const Path& dst_path, const char* location, io::StringStream* stream);
 
 i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::StringStream* stream, CodegenMode mode);
 
-void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_types, CodegenMode mode, const Span<const Path>& written_files);
+i32 generate_reflection_header(const Path& dst_path, const ReflectedFile& file, const i32 first_type_index, io::StringStream* stream, CodegenMode mode);
 
-void link_typelists(const Path& output_path, const Span<const Path>& search_paths);
+void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_types, CodegenMode mode, const Span<const Path>& written_files);
 
 
 } // namespace reflect
