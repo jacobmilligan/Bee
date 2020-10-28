@@ -100,7 +100,7 @@ endif ()
 ############################
 bee_add_include_dirs(${BEE_THIRD_PARTY}/Binaries/DirectXShaderCompiler/include)
 
-function(copy_binaries third_party_dir target_name)
+function(copy_third_party_binaries third_party_dir target_name)
     set(binary_dir ${BEE_THIRD_PARTY}/Binaries/${third_party_dir})
     set(output_dir $<TARGET_FILE_DIR:${target_name}>)
     file(GLOB binaries ${binary_dir}/*.dll ${binary_dir}/*.pdb ${binary_dir}/*.exe ${binary_dir}/*.lib)

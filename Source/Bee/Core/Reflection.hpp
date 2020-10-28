@@ -170,7 +170,7 @@ public:
         return type_;
     }
 
-    inline bool is_unknown() const;
+    bool is_unknown() const;
 
 private:
     const TypeInfo* type_ { nullptr };
@@ -208,7 +208,7 @@ public:
         return type_;
     }
 
-    BEE_CORE_API inline bool is_unknown() const;
+    bool is_unknown() const;
 
 private:
     const T* type_ { nullptr };

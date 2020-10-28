@@ -34,6 +34,7 @@ set(BEE_BUILD_ROOT ${BEE_PROJECT_ROOT}/Build)
 set(BEE_DEBUG_BINARY_DIR ${BEE_BUILD_ROOT}/Debug)
 set(BEE_RELEASE_BINARY_DIR ${BEE_BUILD_ROOT}/Release)
 set(BEE_GENERATED_ROOT ${BEE_BUILD_ROOT}/Generated)
+set(BEE_TOOLS_BINARY_DIR ${BEE_PROJECT_ROOT}/Tools/Binaries)
 
 # Setup compiler variables
 set(BEE_COMPILER_IS_MSVC FALSE)
@@ -222,7 +223,6 @@ function(__bee_finalize_target name output_directory)
     endforeach ()
 
     target_compile_definitions(${name} PUBLIC ${__bee_defines})
-    bee_new_source_root()
 endfunction()
 
 
@@ -274,6 +274,7 @@ function(bee_exe name)
     endif ()
 
     __bee_finalize_target(${name} "")
+    bee_new_source_root()
 endfunction()
 
 
@@ -285,12 +286,13 @@ endfunction()
 # OPTIONAL ARGS:
 #   * `STATIC` - adds target as STATIC library otherwise it will be SHARED
 #     (i.e. .dll on windows)
+#   * `KEEP_SOURCE_ROOT` - does not create a new source root implicitly
 #   * `LINK_LIBRARIES` - a series of library names to link via
 #     `target_link_libraries`
 #
 ################################################################################
 function(bee_library name)
-    cmake_parse_arguments(ARGS "STATIC" "" "LINK_LIBRARIES" ${ARGN})
+    cmake_parse_arguments(ARGS "STATIC;KEEP_SOURCE_ROOT" "" "LINK_LIBRARIES" ${ARGN})
 
     __bee_get_api_macro(${name} api_macro)
 
@@ -310,6 +312,10 @@ function(bee_library name)
     set(__bee_libraries ${__bee_libraries} ${name} CACHE INTERNAL "")
 
     __bee_finalize_target(${name} "")
+
+    if (NOT ARGS_KEEP_SOURCE_ROOT)
+        bee_new_source_root()
+    endif ()
 endfunction()
 
 ################################################################################
@@ -359,6 +365,7 @@ function(bee_plugin2 name)
 
     target_include_directories(${name} PRIVATE ${BEE_GENERATED_ROOT}/${name})
     __bee_finalize_target(${name} "Plugins")
+    bee_new_source_root()
     set_property(TARGET ${name} PROPERTY PLUGIN TRUE)
 endfunction()
 
@@ -451,6 +458,7 @@ function(bee_plugin name)
 
     target_include_directories(${name} PRIVATE ${BEE_GENERATED_ROOT}/${name})
     __bee_finalize_target(${name} "Plugins")
+    bee_new_source_root()
 endfunction()
 
 ################################################################################
@@ -518,7 +526,7 @@ endfunction()
 # Bee Reflect
 #
 ################################################################################
-set(bee_reflect_program ${BEE_RELEASE_BINARY_DIR}/bee-reflect)
+set(bee_reflect_program ${BEE_TOOLS_BINARY_DIR}/bee-reflect)
 if (WIN32)
     set(bee_reflect_program ${bee_reflect_program}.exe)
 endif ()

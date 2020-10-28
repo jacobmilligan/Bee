@@ -4,7 +4,11 @@ set BUILD_DIR=.\Build\Bootstrap
 set CMAKE_EXE=.\ThirdParty\Binaries\cmake\bin\cmake.exe
 
 cd .\ThirdParty
-call .\get.bat
+call .\prepare.bat
+cd ..
+
+cd .\Tools
+call .\prepare.bat
 cd ..
 
 if NOT EXIST .\Build\Release\bb.exe (

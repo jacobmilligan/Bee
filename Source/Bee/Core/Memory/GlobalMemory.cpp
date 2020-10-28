@@ -198,6 +198,7 @@ constexpr isize Allocator::deallocated_memory_pattern;
 
 } // namespace bee
 
+#ifdef BEE_DLL
 void* operator new(const size_t size)
 {
     return BEE_MALLOC(bee::system_allocator(), size);
@@ -217,3 +218,4 @@ void operator delete[](void* ptr) noexcept
 {
     BEE_FREE(bee::system_allocator(), ptr);
 }
+#endif
