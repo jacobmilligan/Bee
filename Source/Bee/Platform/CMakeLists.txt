@@ -5,5 +5,5 @@ if (WIN32)
     add_subdirectory(Win32)
 endif ()
 
-bee_plugin2(Bee.Platform LINK_LIBRARIES Bee.Core)
+bee_plugin(Bee.Platform LINK_LIBRARIES Bee.Core)
 bee_reflect(Bee.Platform)

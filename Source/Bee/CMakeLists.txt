@@ -1,3 +1,5 @@
 add_subdirectory(Core)
 add_subdirectory(Platform)
 add_subdirectory(Input)
+add_subdirectory(Gpu)
+add_subdirectory(Vulkan)

@@ -10,8 +10,8 @@
 #include "Bee/Core/Containers/Container.hpp"
 #include "Bee/Core/Memory/Allocator.hpp"
 #include "Bee/Core/Span.hpp"
-
-#include <initializer_list>
+#include "Bee/Core/Forward.hpp"
+#include "Bee/Core/New.hpp"
 
 namespace bee {
 
@@ -265,14 +265,14 @@ Array<T, Mode> Array<T, Mode>::with_size(const i32 size, Allocator* allocator) n
 {
     Array<T, Mode> array(size, allocator);
     array.resize(size);
-    return std::move(array);
+    return BEE_MOVE(array);
 }
 
 template <typename T, ContainerMode Mode>
 Array<T, Mode> Array<T, Mode>::with_size(const i32 size, const T& value, Allocator* allocator) noexcept
 {
     Array<T, Mode> array(size, value, allocator);
-    return std::move(array);
+    return BEE_MOVE(array);
 }
 
 template <typename T, ContainerMode Mode>
@@ -646,7 +646,7 @@ void Array<T, Mode>::emplace_back(Args&&... args)
     }
 
     size_ = new_size;
-    new (&data_[size_ - 1]) T { std::forward<Args>(args)... };
+    new (&data_[size_ - 1]) T { BEE_FORWARD(args)... };
 }
 
 template <typename T, ContainerMode Mode>

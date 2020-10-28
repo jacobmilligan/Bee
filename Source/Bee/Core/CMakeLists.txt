@@ -2,6 +2,7 @@ bee_new_source_root()
 
 bee_add_sources(
         Atomic.hpp
+        Bit.hpp
         Bitset.hpp
         CLI.hpp             CLI.cpp
         Concurrency.hpp     Concurrency.cpp
@@ -13,6 +14,7 @@ bee_add_sources(
         EnumStruct.hpp
         Error.hpp           Error.cpp
         Filesystem.hpp      Filesystem.cpp
+        Forward.hpp
         Functional.hpp
         GUID.hpp            GUID.cpp
         Handle.hpp
@@ -20,8 +22,9 @@ bee_add_sources(
         IO.hpp              IO.cpp      IO.inl
         Logger.hpp          Logger.cpp
         Main.hpp
-        Meta.hpp
+        TypeTraits.hpp
         Plugin.hpp          Plugin.cpp
+        New.hpp
         Noncopyable.hpp
         NumericTypes.hpp
         Path.hpp            Path.cpp
@@ -71,7 +74,7 @@ bee_reflect(
     Thread.hpp
     Process.hpp
     IO.hpp
-    Meta.hpp
+        TypeTraits.hpp
     DynamicLibrary.hpp
     declval.hpp
     Error.hpp

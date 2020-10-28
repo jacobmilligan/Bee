@@ -10,7 +10,6 @@
 #include "Bee/Core/Logger.hpp"
 
 #include <stdio.h>
-#include <fstream>
 
 
 namespace bee {

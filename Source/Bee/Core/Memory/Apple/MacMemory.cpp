@@ -13,7 +13,7 @@
 
 #include "Bee/Core/Memory/Memory.hpp"
 #include "Bee/Core/Error.hpp"
-#include "Bee/Core/Meta.hpp"
+#include "Bee/Core/TypeTraits.hpp"
 
 #include <unistd.h>
 #include <signal.h>

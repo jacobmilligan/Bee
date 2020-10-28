@@ -4,4 +4,4 @@ bee_add_sources(
     Keyboard.hpp
 )
 
-bee_plugin2(Bee.Input LINK_LIBRARIES Bee.Core)
+bee_plugin(Bee.Input LINK_LIBRARIES Bee.Core)

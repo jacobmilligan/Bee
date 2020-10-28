@@ -8,7 +8,7 @@
 #pragma once
 
 #include "Bee/Core/Path.hpp"
-#include "Bee/Core/Meta.hpp"
+#include "Bee/Core/TypeTraits.hpp"
 
 #include <type_traits>
 #include <stdio.h>

@@ -17,7 +17,6 @@
 
 #endif // BEE_CONFIG_ENABLE_MEMORY_TRACKING == 1
 
-#include <new>
 
 namespace bee {
 

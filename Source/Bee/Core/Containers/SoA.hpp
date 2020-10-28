@@ -8,7 +8,7 @@
 #pragma once
 
 #include "Bee/Core/Memory/Allocator.hpp"
-#include "Bee/Core/Meta.hpp"
+#include "Bee/Core/TypeTraits.hpp"
 
 namespace bee {
 

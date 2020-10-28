@@ -6,7 +6,7 @@
  */
 
 #include "Bee/Core/GUID.hpp"
-#include "Bee/Core/Meta.hpp"
+#include "Bee/Core/TypeTraits.hpp"
 #include "Bee/Core/IO.hpp"
 
 #include <stdio.h>

@@ -360,12 +360,21 @@ namespace bee {
     #undef BEE_ENABLE_REFLECTION
 #endif // defined(BEE_COMPILE_REFLECTION) && defined(BEE_ENABLE_REFLECTION)
 
+/*
+ * # BEE_MOVE
+ *
+ * this is a replacement for std::move used to avoid having to include <utility> (which also includes <type_traits>)
+ */
+#define BEE_MOVE(...) static_cast<decltype(__VA_ARGS__)&&>(__VA_ARGS__)
 
+
+#ifndef BEE_STATIC_ARRAY_LENGTH_INLINE
+#define BEE_STATIC_ARRAY_LENGTH_INLINE
 template <typename T, int Size>
 inline constexpr int static_array_length(T(&)[Size])
 {
      return Size;
 }
-
+#endif // BEE_STATIC_ARRAY_LENGTH_INLINE
 
 } // namespace bee

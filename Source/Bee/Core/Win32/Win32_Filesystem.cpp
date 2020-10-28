@@ -10,6 +10,7 @@
 #include "Bee/Core/Thread.hpp"
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/Logger.hpp"
+#include "Bee/Core/Bit.hpp"
 
 #define BEE_MINWINDOWS_ENABLE_SHELLAPI
 #include "Bee/Core/Win32/MinWindows.h"

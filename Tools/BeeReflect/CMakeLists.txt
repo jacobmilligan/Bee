@@ -16,6 +16,6 @@ add_custom_command(
         TARGET bee-reflect
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bee-reflect> ${BEE_TOOLS}/Binaries
-        COMMENT "${command_message}"
+        COMMENT "Bee: Copying bee-reflect.exe to Tools/Binaries"
 )
 

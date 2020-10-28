@@ -20,3 +20,18 @@ if (BUILD_CLANG_TOOLS)
 
     add_subdirectory(BeeReflect)
 endif ()
+
+if (WIN32)
+    add_custom_target(Bee.Tools.PackageBinaries ALL)
+    add_custom_command(
+        TARGET Bee.Tools.PackageBinaries
+        COMMAND cmd.exe /c .\\package.bat
+        WORKING_DIRECTORY ${BEE_PROJECT_ROOT}/Tools
+        COMMENT "Bee: packaging tool binaries..."
+        USES_TERMINAL
+        VERBATIM
+    )
+
+else()
+    bee_fail("Tool binary package target not implemented on ${BEE_PLATFORM}")
+endif ()

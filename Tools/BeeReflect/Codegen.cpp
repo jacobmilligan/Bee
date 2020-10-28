@@ -9,6 +9,7 @@
 #include "Storage.hpp"
 
 #include "Bee/Core/Filesystem.hpp"
+#include "Bee/Core/Bit.hpp"
 
 
 namespace bee {

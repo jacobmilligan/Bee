@@ -333,7 +333,7 @@ endfunction()
 #     loaded before this plugin
 #
 ################################################################################
-function(bee_plugin2 name)
+function(bee_plugin name)
     cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES" ${ARGN})
 
     __bee_get_api_macro(${name} api_macro)
@@ -367,98 +367,6 @@ function(bee_plugin2 name)
     __bee_finalize_target(${name} "Plugins")
     bee_new_source_root()
     set_property(TARGET ${name} PROPERTY PLUGIN TRUE)
-endfunction()
-
-################################################################################
-#
-# Adds a new plugin target with the given name, linking against the libraries
-# specified in `link_libraries`
-#
-# REQUIRED ARGS:
-#   * `VERSION` - Plugin semantic version
-#   * `DESCRIPTION` - string describing the plugin
-# OPTIONAL ARGS:
-#   * `LINK_LIBRARIES` - a series of library names to link via
-#     `target_link_libraries`
-#   * `DEPENDENCIES` - a list of other plugins that the runtime ensures are
-#     loaded before this plugin
-#
-################################################################################
-function(bee_plugin name)
-    cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES;VERSION;DESCRIPTION;DEPENDENCIES" ${ARGN})
-
-    # Ensure required args are set
-    if (NOT ARGS_VERSION)
-        bee_fail("bee_plugin requires VERSION to be set to a semantic version string, i.e. 0.1.0")
-    endif ()
-
-    if (NOT ARGS_DESCRIPTION)
-        bee_fail("bee_plugin requires DESCRIPTION to be set")
-    endif ()
-
-    __bee_get_api_macro(${name} api_macro)
-
-    if (MONOLITHIC_BUILD)
-        add_library(${name} STATIC ${__bee_sources})
-    else()
-        add_library(${name} SHARED ${__bee_sources})
-        target_compile_definitions(${name} PRIVATE BEE_DLL)
-    endif ()
-
-    target_compile_definitions(${name} PRIVATE ${api_macro}=BEE_EXPORT_SYMBOL)
-
-    if (ARGS_LINK_LIBRARIES)
-        target_link_libraries(${name} PUBLIC ${ARGS_LINK_LIBRARIES})
-    endif ()
-
-    set(__bee_plugins ${__bee_plugins} ${name} CACHE INTERNAL "")
-
-    if (WIN32)
-        set(lib_path "${BEE_DEBUG_BINARY_DIR}/${output_directory}/${name}")
-        add_custom_command(
-                TARGET ${name} PRE_BUILD
-                COMMAND ${BB_COMMAND} prepare-plugin ${lib_path}
-                COMMENT "Preparing plugin ${lib_path} to enable hot reloading on Windows"
-                VERBATIM
-        )
-    endif ()
-
-    if (ARGS_DEPENDENCIES)
-        target_compile_definitions(${name} PRIVATE BEE_TARGET_PLUGIN_HAS_DEPENDENCIES)
-        set(TARGET_DEPENDENCIES)
-        list(LENGTH ARGS_DEPENDENCIES count)
-        MATH(EXPR end "${count} - 1")
-        foreach(index RANGE 0 ${end} 2)
-            MATH(EXPR version_index "${index} + 1")
-            list(GET ARGS_DEPENDENCIES ${index} dep_name)
-            list(GET ARGS_DEPENDENCIES ${version_index} version)
-            bee_parse_version(major minor patch ${version})
-            set(TARGET_DEPENDENCIES "${TARGET_DEPENDENCIES}        { \"${dep_name}\", { ${major}, ${minor}, ${patch} } },\n")
-
-            add_dependencies(${name} ${dep_name})
-        endforeach()
-    endif ()
-
-    bee_parse_version(major minor patch ${ARGS_VERSION})
-    file(RELATIVE_PATH target_relpath ${BEE_PROJECT_ROOT} ${CMAKE_CURRENT_LIST_DIR})
-
-    set(TARGET_VERSION_MAJOR ${major})
-    set(TARGET_VERSION_MINOR ${minor})
-    set(TARGET_VERSION_PATCH ${patch})
-    set(TARGET_NAME ${name})
-    set(TARGET_DESCRIPTION ${ARGS_DESCRIPTION})
-    set(TARGET_RELATIVE_ROOT ${target_relpath})
-
-    configure_file(
-        ${CMAKE_MODULE_PATH}/PluginDescriptor.cpp.in
-        ${BEE_GENERATED_ROOT}/${name}/${name}.Descriptor.cpp
-    )
-
-    target_sources(${name} PRIVATE ${BEE_GENERATED_ROOT}/${name}/${name}.Descriptor.cpp)
-
-    target_include_directories(${name} PRIVATE ${BEE_GENERATED_ROOT}/${name})
-    __bee_finalize_target(${name} "Plugins")
-    bee_new_source_root()
 endfunction()
 
 ################################################################################
@@ -667,7 +575,7 @@ function(bee_reflect target)
     set(bee_reflect_command ${bee_reflect_program} ${inline_opt} ${reflected_sources} --output ${output_dir}/${target} -- ${defines} ${include_dirs} ${system_include_dirs})
 
     add_custom_command(
-            DEPENDS ${reflected_sources} ${bee_reflect_program}
+            DEPENDS ${reflected_sources} ${bee_reflect_program} # add dependency on bee-reflect itself so a new version of the tool triggers a re-generation of reflection
             OUTPUT ${expected_output}
             COMMAND ${bee_reflect_command}
             USES_TERMINAL

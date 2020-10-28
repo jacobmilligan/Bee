@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "Bee/Core/Meta.hpp"
+#include "Bee/Core/TypeTraits.hpp"
 
 
 namespace bee {

@@ -7,7 +7,9 @@
 
 
 #include "ASTMatcher.hpp"
+
 #include "Bee/Core/IO.hpp"
+#include "Bee/Core/Bit.hpp"
 
 #include <clang/Lex/PreprocessorOptions.h>
 #include <clang/ASTMatchers/ASTMatchFinder.h>
