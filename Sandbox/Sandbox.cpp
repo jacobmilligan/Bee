@@ -29,7 +29,6 @@ struct SandboxApp
     bee::DeviceHandle       device;
     bee::SwapchainHandle    swapchain;
     bee::RenderPassHandle   render_pass;
-    bee::GpuCommandBuffer   cmd;
 };
 
 static bool start_app(SandboxApp* app)
@@ -190,31 +189,33 @@ static bool tick_app(SandboxApp* app)
         bee::log_info("Clicked!");
     }
 
-    if (!app->backend->allocate_command_buffer(app->device, &app->cmd, bee::QueueType::graphics))
+    auto* cmd = app->backend->get_command_backend();
+    auto* cmdbuf = app->backend->allocate_command_buffer(app->device, bee::QueueType::graphics);
+
+    if (cmdbuf == nullptr)
     {
         return true;
     }
 
-    auto& cmd = app->cmd;
-    cmd.begin(cmd.instance, bee::CommandBufferUsage::submit_once);
+    cmd->begin(cmdbuf, bee::CommandBufferUsage::submit_once);
     {
         const auto fb_size = app->platform->get_framebuffer_size(app->window);
         const auto swapchain_texture = app->backend->get_swapchain_texture_view(app->device, app->swapchain);
         bee::ClearValue clear_value(0.0f, 0.0f, 0.0f, 0.0f);
 
-        cmd.begin_render_pass(cmd.instance,
+        cmd->begin_render_pass(cmdbuf,
             app->render_pass,
             1, &swapchain_texture,
             bee::RenderRect(0, 0, static_cast<bee::u32>(fb_size.x), static_cast<bee::u32>(fb_size.y)),
             1, &clear_value);
 
-        cmd.end_render_pass(cmd.instance);
+        cmd->end_render_pass(cmdbuf);
     }
-    cmd.end(cmd.instance);
+    cmd->end(cmdbuf);
 
     bee::SubmitInfo submit_info{};
     submit_info.command_buffer_count = 1;
-    submit_info.command_buffers = &cmd.instance;
+    submit_info.command_buffers = &cmdbuf;
     app->backend->submit(app->device, submit_info);
     app->backend->present(app->device, app->swapchain);
     app->backend->commit_frame(app->device);

@@ -83,7 +83,7 @@ struct VulkanQueueSubmit
 
     void reset();
 
-    void add(RawCommandBuffer* cmd);
+    void add(CommandBuffer* cmd);
 
     void submit(VulkanDevice* device, VkFence fence);
 };
@@ -110,7 +110,7 @@ struct VulkanCommandPool;
 struct VulkanPipelineState;
 struct VulkanResourceBinding;
 
-struct RawCommandBuffer
+struct CommandBuffer
 {
     CommandBufferState      state { CommandBufferState::invalid };
     VulkanQueue*            queue { nullptr };
@@ -129,7 +129,7 @@ struct RawCommandBuffer
 struct VulkanCommandPool
 {
     VkCommandPool   handle { VK_NULL_HANDLE };
-    RawCommandBuffer   command_buffers[BEE_GPU_MAX_COMMAND_BUFFERS_PER_THREAD];
+    CommandBuffer   command_buffers[BEE_GPU_MAX_COMMAND_BUFFERS_PER_THREAD];
     i32             command_buffer_count { 0 };
 };
 
@@ -450,6 +450,7 @@ struct VulkanDevice
 struct VulkanBackend // NOLINT
 {
     GpuBackend                          api;
+    GpuCommandBackend                   command_backend;
     VkInstance                          instance { nullptr };
 
     i32                                 physical_device_count { 0 };

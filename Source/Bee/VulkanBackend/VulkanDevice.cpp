@@ -232,6 +232,11 @@ bool is_initialized()
     return g_backend->instance != nullptr;
 }
 
+GpuCommandBackend* get_command_backend()
+{
+    return &g_backend->command_backend;
+}
+
 
 #define BEE_GPU_VALIDATE_BACKEND() BEE_ASSERT_F(is_initialized(), "GPU backend has not been initialized")
 
@@ -760,7 +765,7 @@ void VulkanQueueSubmit::reset()
     info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 }
 
-void VulkanQueueSubmit::add(RawCommandBuffer* cmd)
+void VulkanQueueSubmit::add(CommandBuffer* cmd)
 {
     cmd->state = CommandBufferState::pending;
     cmd_buffers.push_back(cmd->handle);
@@ -1377,9 +1382,7 @@ i32 get_current_frame(const DeviceHandle& device_handle)
  *
  ********************
  */
-extern void load_command_buffer_functions(GpuCommandBuffer* cmd);
-
-bool allocate_command_buffer(const DeviceHandle& device_handle, GpuCommandBuffer* cmd, const QueueType queue)
+CommandBuffer* allocate_command_buffer(const DeviceHandle& device_handle, const QueueType queue)
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread();
@@ -1388,7 +1391,7 @@ bool allocate_command_buffer(const DeviceHandle& device_handle, GpuCommandBuffer
     if (cmd_pool.command_buffer_count >= static_array_length(cmd_pool.command_buffers))
     {
         log_error("Failed to create command buffer: Command pool for thread %d exhausted", thread.index);
-        return false;
+        return nullptr;
     }
 
     const i32 cmd_buffer_index = cmd_pool.command_buffer_count++;
@@ -1428,14 +1431,10 @@ bool allocate_command_buffer(const DeviceHandle& device_handle, GpuCommandBuffer
     }
 
     cmd_buffer.reset(&device);
-
-    cmd->instance = &cmd_buffer;
-    load_command_buffer_functions(cmd);
-
-    return true;
+    return &cmd_buffer;
 }
 
-void RawCommandBuffer::reset(VulkanDevice* new_device)
+void CommandBuffer::reset(VulkanDevice* new_device)
 {
     state = CommandBufferState::initial;
     device = new_device;
@@ -2477,6 +2476,8 @@ void destroy_sampler(const DeviceHandle& device_handle, const SamplerHandle& sam
 
 } // namespace bee
 
+extern void bee_load_command_backend(bee::GpuCommandBackend* api);
+
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::PluginState state)
 {
     if (!loader->require_plugin("Bee.Gpu", bee::PluginVersion{0, 0, 0}))
@@ -2487,11 +2488,12 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     bee::g_platform = static_cast<bee::PlatformModule*>(loader->get_module(BEE_PLATFORM_MODULE_NAME));
     bee::g_backend = loader->get_static<bee::VulkanBackend>("BeeVulkanBackend");
 
+    bee::g_backend->api.init = bee::init;
+    bee::g_backend->api.destroy = bee::destroy;
     bee::g_backend->api.get_api = bee::get_api;
     bee::g_backend->api.get_name = bee::get_name;
     bee::g_backend->api.is_initialized = bee::is_initialized;
-    bee::g_backend->api.init = bee::init;
-    bee::g_backend->api.destroy = bee::destroy;
+    bee::g_backend->api.get_command_backend = bee::get_command_backend;
     bee::g_backend->api.enumerate_physical_devices = bee::enumerate_physical_devices;
     bee::g_backend->api.create_device = bee::create_device;
     bee::g_backend->api.destroy_device = bee::destroy_device;
@@ -2531,6 +2533,8 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     bee::g_backend->api.destroy_resource_binding = bee::destroy_resource_binding;
     bee::g_backend->api.create_sampler = bee::create_sampler;
     bee::g_backend->api.destroy_sampler = bee::destroy_sampler;
+
+    bee_load_command_backend(&bee::g_backend->command_backend);
 
     auto* gpu_module = static_cast<bee::GpuModule*>(loader->get_module(BEE_GPU_MODULE_NAME));
 

@@ -100,7 +100,7 @@ BEE_GPU_HANDLE(PipelineStateHandle) BEE_REFLECT();
 BEE_GPU_HANDLE(FenceHandle) BEE_REFLECT();
 BEE_GPU_HANDLE(SamplerHandle) BEE_REFLECT();
 BEE_GPU_HANDLE(ResourceBindingHandle) BEE_REFLECT();
-struct RawCommandBuffer;
+struct CommandBuffer;
 
 /*
  ********************************************************
@@ -1356,7 +1356,7 @@ struct CommandPoolCreateInfo
 struct SubmitInfo
 {
     u32                         command_buffer_count { 0 };
-    RawCommandBuffer* const*    command_buffers {nullptr };
+    CommandBuffer* const*    command_buffers {nullptr };
 };
 
 
@@ -1405,9 +1405,9 @@ enum class CommandBufferState
 };
 
 
-struct GpuCommandBuffer
+struct GpuCommandBackend
 {
-    RawCommandBuffer* instance {nullptr };
+    CommandBuffer* instance {nullptr };
     /*
      ***********************************
      *
@@ -1415,13 +1415,13 @@ struct GpuCommandBuffer
      *
      ***********************************
      */
-    void (*begin)(RawCommandBuffer* cmd, const CommandBufferUsage usage) {nullptr };
+    void (*begin)(CommandBuffer* cmd, const CommandBufferUsage usage) {nullptr };
 
-    void (*end)(RawCommandBuffer* cmd) {nullptr };
+    void (*end)(CommandBuffer* cmd) {nullptr };
 
-    void (*reset)(RawCommandBuffer* cmd, const CommandStreamReset hint) {nullptr };
+    void (*reset)(CommandBuffer* cmd, const CommandStreamReset hint) {nullptr };
 
-    CommandBufferState (*get_state)(RawCommandBuffer* cmd) {nullptr };
+    CommandBufferState (*get_state)(CommandBuffer* cmd) {nullptr };
 
     /*
      ********************
@@ -1431,7 +1431,7 @@ struct GpuCommandBuffer
      ********************
      */
     void (*begin_render_pass)(
-        RawCommandBuffer*              cmd,
+        CommandBuffer*              cmd,
         const RenderPassHandle&     pass_handle,
         const u32                   attachment_count,
         const TextureViewHandle*    attachments,
@@ -1440,24 +1440,24 @@ struct GpuCommandBuffer
         const ClearValue*           clear_values
     ) { nullptr };
 
-    void (*end_render_pass)(RawCommandBuffer* cmd) {nullptr };
+    void (*end_render_pass)(CommandBuffer* cmd) {nullptr };
 
-    void (*bind_pipeline_state)(RawCommandBuffer* cmd, const PipelineStateHandle& pipeline_handle) {nullptr };
+    void (*bind_pipeline_state)(CommandBuffer* cmd, const PipelineStateHandle& pipeline_handle) {nullptr };
 
-    void (*bind_vertex_buffer)(RawCommandBuffer* cmd, const BufferHandle& buffer_handle, const u32 binding, const u64 offset) {nullptr };
+    void (*bind_vertex_buffer)(CommandBuffer* cmd, const BufferHandle& buffer_handle, const u32 binding, const u64 offset) {nullptr };
 
     void (*bind_vertex_buffers)(
-        RawCommandBuffer*      cmd,
+        CommandBuffer*      cmd,
         const u32           first_binding,
         const u32           count,
         const BufferHandle* buffers,
         const u64*          offsets
     ) { nullptr };
 
-    void (*bind_index_buffer)(RawCommandBuffer* cmd, const BufferHandle& buffer_handle, const u64 offset, const IndexFormat index_format) {nullptr };
+    void (*bind_index_buffer)(CommandBuffer* cmd, const BufferHandle& buffer_handle, const u64 offset, const IndexFormat index_format) {nullptr };
 
     void (*copy_buffer)(
-        RawCommandBuffer*      cmd,
+        CommandBuffer*      cmd,
         const BufferHandle& src_handle,
         const i32           src_offset,
         const BufferHandle& dst_handle,
@@ -1466,7 +1466,7 @@ struct GpuCommandBuffer
     ) { nullptr };
 
     void (*draw)(
-        RawCommandBuffer* cmd,
+        CommandBuffer* cmd,
         const u32 vertex_count,
         const u32 instance_count,
         const u32 first_vertex,
@@ -1474,7 +1474,7 @@ struct GpuCommandBuffer
     ) { nullptr };
 
     void (*draw_indexed)(
-        RawCommandBuffer*  cmd,
+        CommandBuffer*  cmd,
         const u32       index_count,
         const u32       instance_count,
         const u32       vertex_offset,
@@ -1482,27 +1482,29 @@ struct GpuCommandBuffer
         const u32       first_instance
     ) { nullptr };
 
-    void (*set_viewport)(RawCommandBuffer* cmd, const Viewport& viewport) {nullptr };
+    void (*set_viewport)(CommandBuffer* cmd, const Viewport& viewport) {nullptr };
 
-    void (*set_scissor)(RawCommandBuffer* cmd, const RenderRect& scissor) {nullptr };
+    void (*set_scissor)(CommandBuffer* cmd, const RenderRect& scissor) {nullptr };
 
-    void (*transition_resources)(RawCommandBuffer* cmd, const u32 count, const GpuTransition* transitions) {nullptr };
+    void (*transition_resources)(CommandBuffer* cmd, const u32 count, const GpuTransition* transitions) {nullptr };
 
-    void (*bind_resources)(RawCommandBuffer* cmd, const u32 layout_index, const ResourceBindingHandle& resource_binding) {nullptr };
+    void (*bind_resources)(CommandBuffer* cmd, const u32 layout_index, const ResourceBindingHandle& resource_binding) {nullptr };
 };
 
 
 struct GpuBackend
 {
+    bool (*init)() { nullptr };
+
+    void (*destroy)() { nullptr };
+
     GpuApi (*get_api)() { nullptr };
 
     const char* (*get_name)() { nullptr };
 
     bool (*is_initialized)() { nullptr };
 
-    bool (*init)() { nullptr };
-
-    void (*destroy)() { nullptr };
+    GpuCommandBackend* (*get_command_backend)() {nullptr };
 
     i32 (*enumerate_physical_devices)(PhysicalDeviceInfo* dst_buffer, const i32 buffer_size) { nullptr };
 
@@ -1543,7 +1545,7 @@ struct GpuBackend
      *
      ***********************************
      */
-    bool (*allocate_command_buffer)(const DeviceHandle& device_handle, GpuCommandBuffer* cmd, const QueueType queue) {nullptr };
+    CommandBuffer* (*allocate_command_buffer)(const DeviceHandle& device_handle, const QueueType queue) {nullptr };
 
     RenderPassHandle (*create_render_pass)(const DeviceHandle& device_handle, const RenderPassCreateInfo& create_info) { nullptr };
 
