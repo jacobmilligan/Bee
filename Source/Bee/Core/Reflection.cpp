@@ -326,7 +326,7 @@ const ReflectionModule* create_reflection_module(const StringView& name, const i
 {
     const u32 hash = get_hash(name);
 
-    if (BEE_FAIL_F(g_modules.find(hash) != nullptr, "Reflection module %" BEE_PRIsv " already exists", BEE_FMT_SV(name)))
+    if (BEE_FAIL_F(g_modules.find(hash) == nullptr, "Reflection module %" BEE_PRIsv " already exists", BEE_FMT_SV(name)))
     {
         return nullptr;
     }

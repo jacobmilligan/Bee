@@ -54,7 +54,7 @@ public:
 
     void indent();
 
-    void newline();
+    void newline(const i32 count = 1);
 
     bool should_generate(const TypeInfo& type);
 

@@ -87,9 +87,12 @@ void CodeGenerator::indent()
     }
 }
 
-void CodeGenerator::newline()
+void CodeGenerator::newline(const i32 count)
 {
-    stream_->write("\n");
+    for (int i = 0; i < count; ++i)
+    {
+        stream_->write("\n");
+    }
 }
 
 bool CodeGenerator::should_generate(const TypeInfo& type)
@@ -222,7 +225,14 @@ void CodeGenerator::write_type_signature(const TypeInfo& type, const CodegenMode
         }
         case CodegenMode::inl:
         {
-            write("Type get_type__%s()", as_ident(type));
+            if (!type.is(TypeKind::array))
+            {
+                write("Type get_type__%s()", as_ident(type));
+            }
+            else
+            {
+                write("template <> Type get_type<%s>(const TypeTag<%s>& tag)", type.name, type.name);
+            }
             break;
         }
         default: break;
@@ -316,8 +326,7 @@ void codegen_template_parameters(const Span<const TemplateParameter>& parameters
             );
         }
     }, ";");
-    codegen->newline();
-    codegen->newline();
+    codegen->newline(2);
 }
 
 void codegen_create_instance(const TypeInfo& type, CodeGenerator* codegen)
@@ -334,8 +343,7 @@ void codegen_create_instance(const TypeInfo& type, CodeGenerator* codegen)
             codegen->write("return bee::make_type_instance<%s>(allocator);", type.name);
         }
     }, ";");
-    codegen->newline();
-    codegen->newline();
+    codegen->newline(2);
 }
 
 void codegen_type(const CodegenTypeOptions options, const TypeInfo& type, CodeGenerator* codegen)
@@ -430,8 +438,7 @@ void codegen_serializer_function(CodeGenerator* codegen, const char* field_name,
 {
     // [](SerializationBuilder* builder, void* data) { serialize_type(builder, static_cast<bee::GUID*>(data)); };
     codegen->write("static auto %s__serializer_function = [](SerializationBuilder* builder, void* data) { serialize_type(builder, static_cast<%s*>(data)); };", field_name, specialized_type_name);
-    codegen->newline();
-    codegen->newline();
+    codegen->newline(2);
 }
 
 void codegen_field_extra_info(const FieldStorage& storage, CodeGenerator* codegen)
@@ -449,8 +456,7 @@ void codegen_field_extra_info(const FieldStorage& storage, CodeGenerator* codege
             }
         }, ";");
 
-        codegen->newline();
-        codegen->newline();
+        codegen->newline(2);
     }
 
 
@@ -573,8 +579,7 @@ void codegen_function(CodeGenerator* codegen, const FunctionTypeStorage* storage
                 codegen->append_line(",\n");
             }
         }, ";");
-        codegen->newline();
-        codegen->newline();
+        codegen->newline(2);
     }
 
     if (!storage->parameters.empty())
@@ -594,8 +599,7 @@ void codegen_function(CodeGenerator* codegen, const FunctionTypeStorage* storage
                 codegen->append_line(",\n");
             }
         }, ";");
-        codegen->newline();
-        codegen->newline();
+        codegen->newline(2);
     }
 
     codegen_field_extra_info(storage->return_field, codegen); // generate return value template args if needed
@@ -667,8 +671,7 @@ void codegen_enum(CodeGenerator* codegen, const EnumTypeStorage* storage)
                     codegen->append_line(",\n");
                 }
             }, ";");
-            codegen->newline();
-            codegen->newline();
+            codegen->newline(2);
         }
 
         codegen->write("static EnumConstant constants[] =");
@@ -686,8 +689,7 @@ void codegen_enum(CodeGenerator* codegen, const EnumTypeStorage* storage)
                 );
             }
         }, ";");
-        codegen->newline();
-        codegen->newline();
+        codegen->newline(2);
 
         codegen_create_instance(storage->type, codegen);
 
@@ -701,8 +703,7 @@ void codegen_enum(CodeGenerator* codegen, const EnumTypeStorage* storage)
                 storage->attributes.empty() ? "{}" : "Span<Attribute>(attributes)"
             );
         }, ";");
-        codegen->newline();
-        codegen->newline();
+        codegen->newline(2);
         codegen->write_line("return Type(&instance);");
     });
     codegen->write_line("// get_type<%s>()\n", storage->type.name);
@@ -748,8 +749,7 @@ void codegen_record(CodeGenerator* codegen, const RecordTypeStorage* storage)
                     codegen->append_line(",\n");
                 }
             }, ";");
-            codegen->newline();
-            codegen->newline();
+            codegen->newline(2);
         }
 
         if (!storage->fields.empty())
@@ -775,8 +775,7 @@ void codegen_record(CodeGenerator* codegen, const RecordTypeStorage* storage)
                     }
                 }, ";");
 
-                codegen->newline();
-                codegen->newline();
+                codegen->newline(2);
             }
 
             codegen->write("static Field %s__fields[] =", codegen->as_ident(storage->type));
@@ -1037,6 +1036,9 @@ i32 generate_reflection_header(const Path& dst_path, const ReflectedFile& file, 
     const auto target_path = dst_path.parent_path();
     const auto relative_location = file.location.relative_to(target_path, temp_allocator()).make_generic();
     const auto target_name = target_path.filename();
+    const auto target_as_ident = codegen.as_ident(target_name);
+    String target_as_macro(target_as_ident);
+    str::uppercase_ascii(&target_as_macro);
 
     codegen.write_header_comment(relative_location);
     codegen.newline();
@@ -1045,7 +1047,20 @@ i32 generate_reflection_header(const Path& dst_path, const ReflectedFile& file, 
 
     codegen.write_line("namespace bee {");
     {
+        codegen.newline(2);
+        codegen.write_line("#ifndef BEE_INLINE_GET_REFLECTION_MODULE__%s", target_as_macro.c_str());
+        codegen.write_line("#define BEE_INLINE_GET_REFLECTION_MODULE__%s", target_as_macro.c_str());
+        codegen.write("inline const ReflectionModule* get_reflection_module__%s()", target_as_ident);
+        codegen.scope([&]()
+        {
+            codegen.write_line(
+                "static const ReflectionModule* module = get_reflection_module(\"%" BEE_PRIsv "\");",
+                BEE_FMT_SV(target_name)
+            );
+            codegen.write("return module;");
+        });
         codegen.newline();
+        codegen.write_line("#endif // BEE_INLINE_GET_REFLECTION_MODULE__%s", target_as_macro.c_str());
         codegen.newline();
 
         for (const auto* type : file.all_types)
@@ -1058,18 +1073,17 @@ i32 generate_reflection_header(const Path& dst_path, const ReflectedFile& file, 
             codegen.write_type_signature(*type, CodegenMode::cpp);
             codegen.scope([&]()
             {
-                codegen.write_line(
-                    "static const ReflectionModule* module = get_reflection_module(\"%" BEE_PRIsv "\");",
-                    BEE_FMT_SV(target_name)
+                codegen.write(
+                    "return get_type(get_reflection_module__%s(), %d);",
+                    target_as_ident,
+                    first_type_index + generated_count
                 );
-                codegen.write("return get_type(module, %d);", first_type_index + generated_count);
             });
-            codegen.newline();
+            codegen.newline(2);
             ++generated_count;
         }
 
-        codegen.newline();
-        codegen.newline();
+        codegen.newline(2);
     }
     codegen.write_line("} // namespace bee");
 
@@ -1092,8 +1106,7 @@ void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_
 
     codegen.write("namespace bee {");
     {
-        codegen.newline();
-        codegen.newline();
+        codegen.newline(2);
         for (const auto* type : all_types)
         {
             if (type->is(TypeKind::template_decl))
@@ -1103,8 +1116,7 @@ void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_
             codegen.write_line("extern Type get_type__%s();", codegen.as_ident(*type));
             ++callback_count;
         }
-        codegen.newline();
-        codegen.newline();
+        codegen.newline(2);
     }
     codegen.write_line("} // namespace bee");
 
@@ -1133,8 +1145,7 @@ void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_
             }
         }, ";");
 
-        codegen.newline();
-        codegen.newline();
+        codegen.newline(2);
 
         codegen.write("bee::get_type_callback_t callbacks[] =");
         codegen.scope([&]()
@@ -1157,8 +1168,7 @@ void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_
             }
         }, ";");
 
-        codegen.newline();
-        codegen.newline();
+        codegen.newline(2);
 
         codegen.write(
             "return bee::create_reflection_module(\"%" BEE_PRIsv "\", %d, hashes, callbacks);",
@@ -1167,8 +1177,7 @@ void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_
         );
     });
 
-    codegen.newline();
-    codegen.newline();
+    codegen.newline(2);
 
     if (mode == CodegenMode::cpp)
     {
@@ -1180,8 +1189,7 @@ void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_
             codegen.write("%s_AutoTypeRegistration() noexcept { bee_load_reflection(); }", target_ident);
         }, ";");
 
-        codegen.newline();
-        codegen.newline();
+        codegen.newline(2);
 
         codegen.write_line("static %s_AutoTypeRegistration %s_auto_type_registration{};", target_ident, target_ident);
     }

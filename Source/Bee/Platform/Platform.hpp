@@ -77,6 +77,8 @@ struct PlatformModule
 
     bool (*window_close_requested)(const WindowHandle handle) { nullptr };
 
+    void* (*get_os_window)(const WindowHandle handle) { nullptr };
+
     void (*poll_input)() { nullptr };
 };
 

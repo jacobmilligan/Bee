@@ -9,6 +9,7 @@
 #include "Bee/Core/Containers/Array.hpp"
 #include "Bee/Core/DynamicLibrary.hpp"
 #include "Bee/Core/Filesystem.hpp"
+#include "Bee/Core/Reflection.hpp"
 
 #include <algorithm>
 
@@ -25,9 +26,11 @@ namespace bee {
  */
 using load_plugin_t = void (*)(PluginLoader* loader, const PluginState state);
 using get_version_t = void (*)(PluginVersion* version);
+using load_reflection_t = void* (*)();
 
 static constexpr auto g_load_plugin_name = "bee_load_plugin";
 static constexpr auto g_get_version_name = "bee_get_plugin_version";
+static constexpr auto g_load_reflection_name = "bee_load_reflection";
 
 #if BEE_OS_WINDOWS == 1
 static constexpr auto g_plugin_extension = ".dll";
@@ -57,6 +60,7 @@ struct Plugin
     PluginState         state { PluginState::unloaded };
     load_plugin_t       load_function { nullptr };
     get_version_t       get_version_function { nullptr };
+    ReflectionModule*   reflection_module { nullptr };
     DynamicArray<void*> static_data;
     DynamicArray<u32>   static_data_hashes;
 };
@@ -238,6 +242,21 @@ static bool reload_plugin(Plugin* plugin)
         }
     }
 
+    // Now that we 100% have a successfully loaded plugin it's safe to load/reload reflection data
+    if (plugin->reflection_module != nullptr)
+    {
+        // reload
+        destroy_reflection_module(plugin->reflection_module);
+    }
+
+    // get the new reflection module
+    auto* new_load_reflection_function = reinterpret_cast<load_reflection_t>(get_library_symbol(new_library, g_load_reflection_name));
+    if (new_load_reflection_function != nullptr)
+    {
+        plugin->reflection_module = static_cast<ReflectionModule*>(new_load_reflection_function());
+        BEE_ASSERT(plugin->reflection_module != nullptr);
+    }
+
     plugin->state = PluginState::loaded;
     plugin->library = new_library;
     plugin->load_function = new_load_function;
@@ -306,6 +325,12 @@ static void unload_plugin(Plugin* plugin)
         {
             BEE_FREE(system_allocator(), static_data);
         }
+    }
+
+    // unload the reflection module if there is one
+    if (plugin->reflection_module != nullptr)
+    {
+        destroy_reflection_module(plugin->reflection_module);
     }
 
     plugin->static_data.clear();

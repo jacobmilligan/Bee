@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "Bee/Plugins/Gpu/Gpu.hpp"
+#include "Bee/Gpu/Gpu.hpp"
 
 #include <volk.h>
 #include <vk_mem_alloc.h>

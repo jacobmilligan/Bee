@@ -6,14 +6,14 @@
  */
 
 #include "Bee/Core/Plugin.hpp"
-#include "Bee/Plugins/VulkanBackend/VulkanDevice.hpp"
-#include "Bee/Plugins/VulkanBackend/VulkanConvert.hpp"
+#include "Bee/VulkanBackend/VulkanDevice.hpp"
+#include "Bee/VulkanBackend/VulkanConvert.hpp"
 
 
 namespace bee {
 
 
-void begin(CommandBuffer* cmd_buf, const CommandBufferUsage usage)
+void begin(RawCommandBuffer* cmd_buf, const CommandBufferUsage usage)
 {
     VkCommandBufferBeginInfo info { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr };
     info.flags = convert_command_buffer_usage(usage);
@@ -22,14 +22,14 @@ void begin(CommandBuffer* cmd_buf, const CommandBufferUsage usage)
     cmd_buf->state = CommandBufferState::recording;
 }
 
-void end(CommandBuffer* cmd_buf)
+void end(RawCommandBuffer* cmd_buf)
 {
     BEE_VK_CHECK(vkEndCommandBuffer(cmd_buf->handle));
 
     cmd_buf->state = CommandBufferState::executable;
 }
 
-void reset(CommandBuffer* cmd_buf, const CommandStreamReset hint)
+void reset(RawCommandBuffer* cmd_buf, const CommandStreamReset hint)
 {
     const auto flags = convert_command_buffer_reset_hint(hint);
     BEE_VK_CHECK(vkResetCommandBuffer(cmd_buf->handle, flags));
@@ -37,7 +37,7 @@ void reset(CommandBuffer* cmd_buf, const CommandStreamReset hint)
     cmd_buf->reset(cmd_buf->device);
 }
 
-CommandBufferState get_state(CommandBuffer* cmd_buf)
+CommandBufferState get_state(RawCommandBuffer* cmd_buf)
 {
     return cmd_buf->state;
 }
@@ -55,7 +55,7 @@ void allocate_dynamic_binding(VulkanDevice* device, VulkanResourceBinding* bindi
     binding->allocated_frame = device->current_frame;
 }
 
-bool setup_draw(CommandBuffer* cmd_buf)
+bool setup_draw(RawCommandBuffer* cmd_buf)
 {
     if (cmd_buf->bound_pipeline == nullptr)
     {
@@ -91,7 +91,7 @@ bool setup_draw(CommandBuffer* cmd_buf)
  ********************
  */
 void begin_render_pass(
-    CommandBuffer*              cmd_buf,
+    RawCommandBuffer*              cmd_buf,
     const RenderPassHandle&     pass_handle,
     const u32                   attachment_count,
     const TextureViewHandle*    attachments,
@@ -148,12 +148,12 @@ void begin_render_pass(
     vkCmdBeginRenderPass(cmd_buf->handle, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
 }
 
-void end_render_pass(CommandBuffer* cmd_buf)
+void end_render_pass(RawCommandBuffer* cmd_buf)
 {
     vkCmdEndRenderPass(cmd_buf->handle);
 }
 
-void bind_pipeline_state(CommandBuffer* cmd_buf, const PipelineStateHandle& pipeline_handle)
+void bind_pipeline_state(RawCommandBuffer* cmd_buf, const PipelineStateHandle& pipeline_handle)
 {
     auto& pipeline_thread = cmd_buf->device->get_thread(pipeline_handle);
     auto* pipeline = static_cast<VulkanPipelineState*>(pipeline_thread.pipeline_states.get(pipeline_handle));
@@ -161,7 +161,7 @@ void bind_pipeline_state(CommandBuffer* cmd_buf, const PipelineStateHandle& pipe
 }
 
 void bind_vertex_buffers(
-    CommandBuffer*      cmd_buf,
+    RawCommandBuffer*      cmd_buf,
     const u32           first_binding,
     const u32           count,
     const BufferHandle* buffers,
@@ -179,19 +179,19 @@ void bind_vertex_buffers(
     vkCmdBindVertexBuffers(cmd_buf->handle, first_binding, count, vk_buffers, offsets);
 }
 
-void bind_vertex_buffer(CommandBuffer* cmd_buf, const BufferHandle& buffer_handle, const u32 binding, const u64 offset)
+void bind_vertex_buffer(RawCommandBuffer* cmd_buf, const BufferHandle& buffer_handle, const u32 binding, const u64 offset)
 {
     bind_vertex_buffers(cmd_buf, binding, 1, &buffer_handle, &offset);
 }
 
-void bind_index_buffer(CommandBuffer* cmd_buf, const BufferHandle& buffer_handle, const u64 offset, const IndexFormat index_format)
+void bind_index_buffer(RawCommandBuffer* cmd_buf, const BufferHandle& buffer_handle, const u64 offset, const IndexFormat index_format)
 {
     auto* buffer = cmd_buf->device->buffers_get(buffer_handle);
     vkCmdBindIndexBuffer(cmd_buf->handle, buffer->handle, offset, convert_index_type(index_format));
 }
 
 void copy_buffer(
-    CommandBuffer*      cmd_buf,
+    RawCommandBuffer*      cmd_buf,
     const BufferHandle& src_handle,
     const i32           src_offset,
     const BufferHandle& dst_handle,
@@ -211,7 +211,7 @@ void copy_buffer(
 }
 
 void draw(
-    CommandBuffer* cmd_buf,
+    RawCommandBuffer* cmd_buf,
     const u32 vertex_count,
     const u32 instance_count,
     const u32 first_vertex,
@@ -222,7 +222,7 @@ void draw(
 }
 
 void draw_indexed(
-    CommandBuffer*  cmd_buf,
+    RawCommandBuffer*  cmd_buf,
     const u32       index_count,
     const u32       instance_count,
     const u32       vertex_offset,
@@ -240,7 +240,7 @@ void draw_indexed(
     );
 }
 
-void set_viewport(CommandBuffer* cmd_buf, const Viewport& viewport)
+void set_viewport(RawCommandBuffer* cmd_buf, const Viewport& viewport)
 {
     VkViewport vk_viewport{};
     vk_viewport.x = viewport.x;
@@ -253,7 +253,7 @@ void set_viewport(CommandBuffer* cmd_buf, const Viewport& viewport)
     vkCmdSetViewport(cmd_buf->handle, 0, 1, &vk_viewport);
 }
 
-void set_scissor(CommandBuffer* cmd_buf, const RenderRect& scissor)
+void set_scissor(RawCommandBuffer* cmd_buf, const RenderRect& scissor)
 {
     VkRect2D rect{};
     rect.offset.x = scissor.x_offset;
@@ -264,7 +264,7 @@ void set_scissor(CommandBuffer* cmd_buf, const RenderRect& scissor)
     vkCmdSetScissor(cmd_buf->handle, 0, 1, &rect);
 }
 
-void transition_resources(CommandBuffer* cmd_buf, const u32 count, const GpuTransition* transitions)
+void transition_resources(RawCommandBuffer* cmd_buf, const u32 count, const GpuTransition* transitions)
 {
     DynamicArray<VkImageMemoryBarrier> image_barriers(temp_allocator());
     DynamicArray<VkBufferMemoryBarrier> buffer_barriers(temp_allocator());
@@ -375,7 +375,7 @@ void transition_resources(CommandBuffer* cmd_buf, const u32 count, const GpuTran
     );
 }
 
-void bind_resources(CommandBuffer* cmd_buf, const u32 layout_index, const ResourceBindingHandle& resource_binding)
+void bind_resources(RawCommandBuffer* cmd_buf, const u32 layout_index, const ResourceBindingHandle& resource_binding)
 {
     if (layout_index >= BEE_GPU_MAX_RESOURCE_LAYOUTS)
     {
@@ -394,33 +394,28 @@ void bind_resources(CommandBuffer* cmd_buf, const u32 layout_index, const Resour
 }
 
 
-} // namespace bee
-
-
-static bee::GpuCommandsModule g_cmd;
-
-void bee_load_cmd_module(bee::PluginRegistry* registry, const bee::PluginState state)
+void load_command_buffer_functions(GpuCommandBuffer* cmd)
 {
     // Control commands
-    g_cmd.reset = bee::reset;
-    g_cmd.begin = bee::begin;
-    g_cmd.end = bee::end;
-    g_cmd.get_state = bee::get_state;
+    cmd->reset = reset;
+    cmd->begin = begin;
+    cmd->end = end;
+    cmd->get_state = get_state;
 
     // Render commands
-    g_cmd.begin_render_pass = bee::begin_render_pass;
-    g_cmd.end_render_pass = bee::end_render_pass;
-    g_cmd.bind_pipeline_state = bee::bind_pipeline_state;
-    g_cmd.bind_vertex_buffer = bee::bind_vertex_buffer;
-    g_cmd.bind_vertex_buffers = bee::bind_vertex_buffers;
-    g_cmd.bind_index_buffer = bee::bind_index_buffer;
-    g_cmd.copy_buffer = bee::copy_buffer;
-    g_cmd.draw = bee::draw;
-    g_cmd.draw_indexed = bee::draw_indexed;
-    g_cmd.set_viewport = bee::set_viewport;
-    g_cmd.set_scissor = bee::set_scissor;
-    g_cmd.transition_resources = bee::transition_resources;
-    g_cmd.bind_resources = bee::bind_resources;
-
-    registry->toggle_module(state, BEE_GPU_COMMANDS_MODULE_NAME, &g_cmd);
+    cmd->begin_render_pass = begin_render_pass;
+    cmd->end_render_pass = end_render_pass;
+    cmd->bind_pipeline_state = bind_pipeline_state;
+    cmd->bind_vertex_buffer = bind_vertex_buffer;
+    cmd->bind_vertex_buffers = bind_vertex_buffers;
+    cmd->bind_index_buffer = bind_index_buffer;
+    cmd->copy_buffer = copy_buffer;
+    cmd->draw = draw;
+    cmd->draw_indexed = draw_indexed;
+    cmd->set_viewport = set_viewport;
+    cmd->set_scissor = set_scissor;
+    cmd->transition_resources = transition_resources;
+    cmd->bind_resources = bind_resources;
 }
+
+} // namespace bee

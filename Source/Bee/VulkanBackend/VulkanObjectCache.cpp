@@ -5,9 +5,9 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Plugins/VulkanBackend/VulkanObjectCache.hpp"
-#include "Bee/Plugins/VulkanBackend/VulkanDevice.hpp"
-#include "Bee/Plugins/VulkanBackend/VulkanConvert.hpp"
+#include "Bee/VulkanBackend/VulkanObjectCache.hpp"
+#include "Bee/VulkanBackend/VulkanDevice.hpp"
+#include "Bee/VulkanBackend/VulkanConvert.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
 
 namespace bee {

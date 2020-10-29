@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include "Bee/Plugins/Gpu/Gpu.hpp"
-#include "Bee/Plugins/VulkanBackend/VulkanDevice.hpp"
+#include "Bee/Gpu/Gpu.hpp"
+#include "Bee/VulkanBackend/VulkanDevice.hpp"
 
 namespace bee {
 

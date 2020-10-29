@@ -5,8 +5,8 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Plugins/VulkanBackend/VulkanConvert.hpp"
-#include "Bee/Core/TypeTraits.hpp"
+#include "Bee/VulkanBackend/VulkanConvert.hpp"
+#include "Bee/Core/Bit.hpp"
 
 
 namespace bee {

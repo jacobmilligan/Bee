@@ -10,7 +10,6 @@ if (Vulkan_FOUND)
     bee_add_include_dirs(${Vulkan_INCLUDE_DIRS})
 
     bee_add_sources(
-            VulkanBackend.hpp
             VulkanCommand.cpp
             VulkanConvert.hpp       VulkanConvert.cpp
             VulkanDevice.hpp        VulkanDevice.cpp

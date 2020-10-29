@@ -11,6 +11,8 @@
 #include "Bee/Core/Handle.hpp"
 #include "Bee/Core/Hash.hpp"
 
+#include "Bee/Platform/Platform.hpp"
+
 
 namespace bee {
 
@@ -98,7 +100,7 @@ BEE_GPU_HANDLE(PipelineStateHandle) BEE_REFLECT();
 BEE_GPU_HANDLE(FenceHandle) BEE_REFLECT();
 BEE_GPU_HANDLE(SamplerHandle) BEE_REFLECT();
 BEE_GPU_HANDLE(ResourceBindingHandle) BEE_REFLECT();
-struct CommandBuffer;
+struct RawCommandBuffer;
 
 /*
  ********************************************************
@@ -111,10 +113,11 @@ struct CommandBuffer;
  *
  ********************************************************
  */
-enum class GraphicsApi
+enum class GpuApi
 {
     none,
-    vulkan
+    vulkan,
+    other
 };
 
 BEE_FLAGS(QueueType, u32)
@@ -791,11 +794,6 @@ struct Extent
           height(size_height),
           depth(size_depth)
     {}
-
-    static inline Extent from_platform_size(const PlatformSize& size)
-    {
-        return Extent { sign_cast<u32>(size.width), sign_cast<u32>(size.height), 0 };
-    }
 };
 
 union ClearValue
@@ -866,11 +864,6 @@ struct RenderRect
           width(in_width),
           height(in_height)
     {}
-
-    static RenderRect from_platform_size(const PlatformSize& size)
-    {
-        return { 0, 0, sign_cast<u32>(size.width), sign_cast<u32>(size.height) };
-    }
 };
 
 /**
@@ -1362,8 +1355,8 @@ struct CommandPoolCreateInfo
 
 struct SubmitInfo
 {
-    u32                     command_buffer_count { 0 };
-    CommandBuffer* const*   command_buffers {nullptr };
+    u32                         command_buffer_count { 0 };
+    RawCommandBuffer* const*    command_buffers {nullptr };
 };
 
 
@@ -1411,10 +1404,102 @@ enum class CommandBufferState
     pending
 };
 
-#define BEE_GPU_MODULE_NAME "BEE_GPU_MODULE"
 
-struct GpuModule
+struct GpuCommandBuffer
 {
+    RawCommandBuffer* instance {nullptr };
+    /*
+     ***********************************
+     *
+     * Command functions
+     *
+     ***********************************
+     */
+    void (*begin)(RawCommandBuffer* cmd, const CommandBufferUsage usage) {nullptr };
+
+    void (*end)(RawCommandBuffer* cmd) {nullptr };
+
+    void (*reset)(RawCommandBuffer* cmd, const CommandStreamReset hint) {nullptr };
+
+    CommandBufferState (*get_state)(RawCommandBuffer* cmd) {nullptr };
+
+    /*
+     ********************
+     *
+     * Render commands
+     *
+     ********************
+     */
+    void (*begin_render_pass)(
+        RawCommandBuffer*              cmd,
+        const RenderPassHandle&     pass_handle,
+        const u32                   attachment_count,
+        const TextureViewHandle*    attachments,
+        const RenderRect&           render_area,
+        const u32                   clear_value_count,
+        const ClearValue*           clear_values
+    ) { nullptr };
+
+    void (*end_render_pass)(RawCommandBuffer* cmd) {nullptr };
+
+    void (*bind_pipeline_state)(RawCommandBuffer* cmd, const PipelineStateHandle& pipeline_handle) {nullptr };
+
+    void (*bind_vertex_buffer)(RawCommandBuffer* cmd, const BufferHandle& buffer_handle, const u32 binding, const u64 offset) {nullptr };
+
+    void (*bind_vertex_buffers)(
+        RawCommandBuffer*      cmd,
+        const u32           first_binding,
+        const u32           count,
+        const BufferHandle* buffers,
+        const u64*          offsets
+    ) { nullptr };
+
+    void (*bind_index_buffer)(RawCommandBuffer* cmd, const BufferHandle& buffer_handle, const u64 offset, const IndexFormat index_format) {nullptr };
+
+    void (*copy_buffer)(
+        RawCommandBuffer*      cmd,
+        const BufferHandle& src_handle,
+        const i32           src_offset,
+        const BufferHandle& dst_handle,
+        const i32           dst_offset,
+        const i32           size
+    ) { nullptr };
+
+    void (*draw)(
+        RawCommandBuffer* cmd,
+        const u32 vertex_count,
+        const u32 instance_count,
+        const u32 first_vertex,
+        const u32 first_instance
+    ) { nullptr };
+
+    void (*draw_indexed)(
+        RawCommandBuffer*  cmd,
+        const u32       index_count,
+        const u32       instance_count,
+        const u32       vertex_offset,
+        const u32       first_index,
+        const u32       first_instance
+    ) { nullptr };
+
+    void (*set_viewport)(RawCommandBuffer* cmd, const Viewport& viewport) {nullptr };
+
+    void (*set_scissor)(RawCommandBuffer* cmd, const RenderRect& scissor) {nullptr };
+
+    void (*transition_resources)(RawCommandBuffer* cmd, const u32 count, const GpuTransition* transitions) {nullptr };
+
+    void (*bind_resources)(RawCommandBuffer* cmd, const u32 layout_index, const ResourceBindingHandle& resource_binding) {nullptr };
+};
+
+
+struct GpuBackend
+{
+    GpuApi (*get_api)() { nullptr };
+
+    const char* (*get_name)() { nullptr };
+
+    bool (*is_initialized)() { nullptr };
+
     bool (*init)() { nullptr };
 
     void (*destroy)() { nullptr };
@@ -1423,9 +1508,11 @@ struct GpuModule
 
     DeviceHandle (*create_device)(const DeviceCreateInfo& create_info) { nullptr };
 
-    void (*destroy_device)(const DeviceHandle& handle) { nullptr };
+    void (*destroy_device)(const DeviceHandle& device_handle) { nullptr };
 
-    void (*device_wait)(const DeviceHandle& handle) { nullptr };
+    void (*device_wait)(const DeviceHandle& device_handle) { nullptr };
+
+    void (*submissions_wait)(const DeviceHandle& device_handle) { nullptr };
 
     SwapchainHandle (*create_swapchain)(const DeviceHandle& device_handle, const SwapchainCreateInfo& create_info) { nullptr };
 
@@ -1456,7 +1543,7 @@ struct GpuModule
      *
      ***********************************
      */
-    CommandBuffer* (*allocate_command_buffer)(const DeviceHandle& device_handle, const QueueType queue) { nullptr };
+    bool (*allocate_command_buffer)(const DeviceHandle& device_handle, GpuCommandBuffer* cmd, const QueueType queue) {nullptr };
 
     RenderPassHandle (*create_render_pass)(const DeviceHandle& device_handle, const RenderPassCreateInfo& create_info) { nullptr };
 
@@ -1499,95 +1586,28 @@ struct GpuModule
     void (*destroy_sampler)(const DeviceHandle& device_handle, const SamplerHandle& sampler_handle) { nullptr };
 };
 
-#define BEE_GPU_COMMANDS_MODULE_NAME "BEE_GPU_COMMANDS_MODULE"
+/*
+ *******************************************************
+ *
+ * # Gpu module
+ *
+ * manages different GPU backends
+ *
+ *******************************************************
+ */
+#define BEE_GPU_MODULE_NAME "BEE_GPU_MODULE"
 
-struct GpuCommandsModule
+struct GpuModule
 {
-    void (*begin)(CommandBuffer* cmd_buf, const CommandBufferUsage usage) { nullptr };
+    void (*register_backend)(GpuBackend* backend) { nullptr };
 
-    void (*end)(CommandBuffer* cmd_buf) { nullptr };
+    void (*unregister_backend)(const GpuBackend* backend) { nullptr };
 
-    void (*reset)(CommandBuffer* cmd_buf, const CommandStreamReset hint) { nullptr };
+    i32 (*enumerate_available_backends)(GpuBackend** dst) { nullptr };
 
-    CommandBufferState (*get_state)(CommandBuffer* cmd_buf) { nullptr };
+    GpuBackend* (*get_default_backend)(const GpuApi api) { nullptr };
 
-    /*
-     ********************
-     *
-     * Render commands
-     *
-     ********************
-     */
-    void (*begin_render_pass)(
-        CommandBuffer*              cmd_buf,
-        const RenderPassHandle&     pass_handle,
-        const u32                   attachment_count,
-        const TextureViewHandle*    attachments,
-        const RenderRect&           render_area,
-        const u32                   clear_value_count,
-        const ClearValue*           clear_values
-    ) { nullptr };
-
-    void (*end_render_pass)(CommandBuffer* cmd_buf) { nullptr };
-
-    void (*bind_pipeline_state)(CommandBuffer* cmd_buf, const PipelineStateHandle& pipeline_handle) { nullptr };
-
-    void (*bind_vertex_buffer)(CommandBuffer* cmd_buf, const BufferHandle& buffer_handle, const u32 binding, const u64 offset) { nullptr };
-
-    void (*bind_vertex_buffers)(
-        CommandBuffer*      cmd_buf,
-        const u32           first_binding,
-        const u32           count,
-        const BufferHandle* buffers,
-        const u64*          offsets
-    ) { nullptr };
-
-    void (*bind_index_buffer)(CommandBuffer* cmd_buf, const BufferHandle& buffer_handle, const u64 offset, const IndexFormat index_format) { nullptr };
-
-    void (*copy_buffer)(
-        CommandBuffer*      cmd_buf,
-        const BufferHandle& src_handle,
-        const i32           src_offset,
-        const BufferHandle& dst_handle,
-        const i32           dst_offset,
-        const i32           size
-    ) { nullptr };
-
-    void (*draw)(
-        CommandBuffer* cmd_buf,
-        const u32 vertex_count,
-        const u32 instance_count,
-        const u32 first_vertex,
-        const u32 first_instance
-    ) { nullptr };
-
-    void (*draw_indexed)(
-        CommandBuffer*  cmd_buf,
-        const u32       index_count,
-        const u32       instance_count,
-        const u32       vertex_offset,
-        const u32       first_index,
-        const u32       first_instance
-    ) { nullptr };
-
-    void (*set_viewport)(CommandBuffer* cmd_buf, const Viewport& viewport) { nullptr };
-
-    void (*set_scissor)(CommandBuffer* cmd_buf, const RenderRect& scissor) { nullptr };
-
-    void (*transition_resources)(CommandBuffer* cmd_buf, const u32 count, const GpuTransition* transitions) { nullptr };
-
-    void (*bind_resources)(CommandBuffer* cmd_buf, const u32 layout_index, const ResourceBindingHandle& resource_binding) { nullptr };
-};
-
-#define BEE_GPU_SETUP_MODULE_NAME "BEE_GPU_SETUP_MODULE"
-
-struct GpuSetupModule
-{
-    i32 (*enumerate_available_backends)(GraphicsApi* dst) { nullptr };
-
-    GpuModule* (*load_backend)(const GraphicsApi api) { nullptr };
-
-    GraphicsApi (*current_backend)() { nullptr };
+    GpuBackend* (*get_backend)(const char* name) { nullptr };
 };
 
 

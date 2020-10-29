@@ -10,12 +10,17 @@
 
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
-#include "Bee/Plugins/Gpu/Gpu.hpp"
-#include "Bee/Plugins/VulkanBackend/VulkanDevice.hpp"
-#include "Bee/Plugins/VulkanBackend/VulkanConvert.hpp"
+#include "Bee/Core/Bit.hpp"
+
+#include "Bee/Gpu/Gpu.hpp"
+
+#include "Bee/VulkanBackend/VulkanDevice.hpp"
+#include "Bee/VulkanBackend/VulkanConvert.hpp"
 
 namespace bee {
 
+
+static PlatformModule* g_platform = nullptr;
 
 /*
  ************************************************
@@ -212,8 +217,24 @@ void set_vk_object_name(VulkanDevice* /* device */, VkDebugReportObjectTypeEXT /
  */
 static VulkanBackend* g_backend { nullptr };
 
+GpuApi get_api()
+{
+    return GpuApi::vulkan;
+}
 
-#define BEE_GPU_VALIDATE_BACKEND() BEE_ASSERT_F(g_backend->instance != nullptr, "GPU backend has not been initialized")
+const char* get_name()
+{
+    return "Bee.VulkanBackend";
+}
+
+bool is_initialized()
+{
+    return g_backend->instance != nullptr;
+}
+
+
+#define BEE_GPU_VALIDATE_BACKEND() BEE_ASSERT_F(is_initialized(), "GPU backend has not been initialized")
+
 
 VulkanDevice& validate_device(const DeviceHandle& device)
 {
@@ -614,9 +635,77 @@ DeviceHandle create_device(const DeviceCreateInfo& create_info)
     return DeviceHandle(sign_cast<u32>(device_idx));
 }
 
-void destroy_device(const DeviceHandle& handle)
+static void cleanup_command_buffers(VulkanDevice* device, VulkanCommandPool* pool)
 {
-    auto& device = validate_device(handle); 
+    BEE_VK_CHECK(vkResetCommandPool(device->handle, pool->handle, 0));
+
+    for (auto& cmd : pool->command_buffers)
+    {
+        if (cmd.handle != VK_NULL_HANDLE)
+        {
+            vkFreeCommandBuffers(device->handle, pool->handle, 1, &cmd.handle);
+        }
+    }
+}
+
+static void submissions_wait(VulkanDevice* device, const i32 frame)
+{
+    if (device->used_submit_fences[frame].empty())
+    {
+        return;
+    }
+
+    // Wait on all the executing submissions from the new frame
+    const auto wait_result = vkWaitForFences(
+        device->handle,
+        device->used_submit_fences[frame].size(),
+        device->used_submit_fences[frame].data(),
+        VK_TRUE,
+        limits::max<u64>()
+    );
+    BEE_ASSERT_F(wait_result == VK_SUCCESS || wait_result == VK_TIMEOUT, "Vulkan: %s", vk_result_string(wait_result));
+
+    BEE_VK_CHECK(vkResetFences(
+        device->handle,
+        device->used_submit_fences[frame].size(),
+        device->used_submit_fences[frame].data()
+    ));
+
+    // Return the submit fences to the free pool
+    for (auto& fence : device->used_submit_fences[frame])
+    {
+        device->free_submit_fences[frame].push_back(fence);
+    }
+    device->used_submit_fences[frame].clear();
+}
+
+static void cleanup_fences(VulkanDevice* device)
+{
+    for (int i = 0; i < BEE_GPU_MAX_DEVICES; ++i)
+    {
+        submissions_wait(device, i);
+    }
+
+    // Destroy the free fences
+    for (auto& fences : device->free_submit_fences)
+    {
+        for (auto& fence : fences)
+        {
+            if (fence != VK_NULL_HANDLE)
+            {
+                vkDestroyFence(device->handle, fence, nullptr);
+            }
+        }
+
+        fences.clear();
+    }
+}
+
+void destroy_device(const DeviceHandle& device_handle)
+{
+    auto& device = validate_device(device_handle);
+
+    cleanup_fences(&device);
 
     // Destroy cached objects
     device.descriptor_set_layout_cache.destroy();
@@ -626,6 +715,12 @@ void destroy_device(const DeviceHandle& handle)
     // Destroy the vulkan-related thread data
     for (auto& thread : device.thread_data)
     {
+        for (auto& command_pool : thread.command_pool)
+        {
+            cleanup_command_buffers(&device, &command_pool);
+            vkDestroyCommandPool(device.handle, command_pool.handle, nullptr);
+        }
+
         thread.staging.destroy();
 
         for (auto& descriptor_cache : thread.dynamic_descriptor_pools)
@@ -643,9 +738,19 @@ void destroy_device(const DeviceHandle& handle)
     device.vma_allocator = VK_NULL_HANDLE;
 }
 
-void device_wait(const DeviceHandle& handle)
+void device_wait(const DeviceHandle& device_handle)
 {
-    vkDeviceWaitIdle(validate_device(handle).handle);
+    vkDeviceWaitIdle(validate_device(device_handle).handle);
+}
+
+void submissions_wait(const DeviceHandle& device_handle)
+{
+    auto& device = validate_device(device_handle);
+
+    for (int i = 0; i < BEE_GPU_MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        submissions_wait(&device, i);
+    }
 }
 
 void VulkanQueueSubmit::reset()
@@ -655,7 +760,7 @@ void VulkanQueueSubmit::reset()
     info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 }
 
-void VulkanQueueSubmit::add(CommandBuffer* cmd)
+void VulkanQueueSubmit::add(RawCommandBuffer* cmd)
 {
     cmd->state = CommandBufferState::pending;
     cmd_buffers.push_back(cmd->handle);
@@ -728,7 +833,7 @@ bool recreate_swapchain(VulkanDevice* device, VulkanSwapchain* swapchain, const 
 
     if (surface == VK_NULL_HANDLE)
     {
-        surface = vk_create_wsi_surface(g_backend->instance, create_info.window);
+        surface = vk_create_wsi_surface(g_backend->instance, g_platform->get_os_window(create_info.window));
         BEE_ASSERT(surface != VK_NULL_HANDLE);
     }
 
@@ -838,6 +943,11 @@ bool recreate_swapchain(VulkanDevice* device, VulkanSwapchain* swapchain, const 
     // destroy the old swapchain after transitioning it into the new one
     if (swapchain_info.oldSwapchain != VK_NULL_HANDLE)
     {
+        for (int i = 0; i < BEE_GPU_MAX_FRAMES_IN_FLIGHT; ++i)
+        {
+            submissions_wait(device, i);
+        }
+
         vkDestroySwapchainKHR(device->handle, swapchain_info.oldSwapchain, nullptr);
 
         // destroy the old semaphores
@@ -856,10 +966,14 @@ bool recreate_swapchain(VulkanDevice* device, VulkanSwapchain* swapchain, const 
 
     swapchain->handle       = vk_handle;
     swapchain->surface      = surface;
-    swapchain->images       = FixedArray<TextureHandle>::with_size(image_count);
-    swapchain->image_views  = FixedArray<TextureViewHandle>::with_size(image_count);
     swapchain->create_info  = create_info;
     swapchain->create_info.texture_extent = actual_extent; // fixup the extent in the stored create info
+
+    if (swapchain_info.oldSwapchain == VK_NULL_HANDLE)
+    {
+        swapchain->images       = FixedArray<TextureHandle>::with_size(image_count);
+        swapchain->image_views  = FixedArray<TextureViewHandle>::with_size(image_count);
+    }
 
     if (create_info.debug_name != nullptr)
     {
@@ -972,8 +1086,6 @@ void destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHandle&
     auto& device = validate_device(device_handle);
     auto& swapchain = device.swapchains[swapchain_handle.id];
 
-    BEE_VK_CHECK(vkDeviceWaitIdle(device.handle));
-
     for (int i = 0; i < swapchain.images.size(); ++i)
     {
         if (swapchain.image_views[i].is_valid())
@@ -990,7 +1102,6 @@ void destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHandle&
             auto handle = swapchain.images[i];
             auto& thread = device.get_thread(handle);
             auto* texture = static_cast<VulkanTexture*>(thread.textures.remove(handle));
-            vkDestroyImage(device.handle, texture->handle, nullptr);
             BEE_DELETE(device.get_thread(handle).allocator, texture);
         }
 
@@ -1163,7 +1274,7 @@ void present(const DeviceHandle& device_handle, const SwapchainHandle& swapchain
     auto& swapchain = device.swapchains[swapchain_handle.id];
 
     // ensure the swapchain has acquired its next image before presenting if not already acquired
-    if (BEE_FAIL_F(!swapchain.pending_image_acquire, "GPU: it's not valid to present a swapchain before acquiring its next texture index"))
+    if (BEE_FAIL_F(!swapchain.pending_image_acquire, "it is not valid to present a swapchain before acquiring its next texture index"))
     {
         return;
     }
@@ -1231,31 +1342,7 @@ void commit_frame(const DeviceHandle& device_handle)
     device.framebuffer_cache.sync();
     device.current_frame = (device.current_frame + 1) % BEE_GPU_MAX_FRAMES_IN_FLIGHT;
 
-    if (!device.used_submit_fences[device.current_frame].empty())
-    {
-        // Wait on all the executing submissions from the new frame
-        const auto wait_result = vkWaitForFences(
-            device.handle,
-            device.used_submit_fences[device.current_frame].size(),
-            device.used_submit_fences[device.current_frame].data(),
-            VK_TRUE,
-            limits::max<u64>()
-        );
-        BEE_ASSERT_F(wait_result == VK_SUCCESS || wait_result == VK_TIMEOUT, "Vulkan: %s", vk_result_string(wait_result));
-
-        BEE_VK_CHECK(vkResetFences(
-            device.handle,
-            device.used_submit_fences[device.current_frame].size(),
-            device.used_submit_fences[device.current_frame].data()
-        ));
-
-        // Return the submit fences to the free pool
-        for (auto& fence : device.used_submit_fences[device.current_frame])
-        {
-            device.free_submit_fences[device.current_frame].push_back(fence);
-        }
-        device.used_submit_fences[device.current_frame].clear();
-    }
+    submissions_wait(&device, device.current_frame);
 
     // Reset all the per-thread command pools for the current frame
     for (auto& thread : device.thread_data)
@@ -1290,7 +1377,9 @@ i32 get_current_frame(const DeviceHandle& device_handle)
  *
  ********************
  */
-CommandBuffer* allocate_command_buffer(const DeviceHandle& device_handle, const QueueType queue)
+extern void load_command_buffer_functions(GpuCommandBuffer* cmd);
+
+bool allocate_command_buffer(const DeviceHandle& device_handle, GpuCommandBuffer* cmd, const QueueType queue)
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread();
@@ -1299,7 +1388,7 @@ CommandBuffer* allocate_command_buffer(const DeviceHandle& device_handle, const 
     if (cmd_pool.command_buffer_count >= static_array_length(cmd_pool.command_buffers))
     {
         log_error("Failed to create command buffer: Command pool for thread %d exhausted", thread.index);
-        return nullptr;
+        return false;
     }
 
     const i32 cmd_buffer_index = cmd_pool.command_buffer_count++;
@@ -1339,10 +1428,14 @@ CommandBuffer* allocate_command_buffer(const DeviceHandle& device_handle, const 
     }
 
     cmd_buffer.reset(&device);
-    return &cmd_buffer;
+
+    cmd->instance = &cmd_buffer;
+    load_command_buffer_functions(cmd);
+
+    return true;
 }
 
-void CommandBuffer::reset(VulkanDevice* new_device)
+void RawCommandBuffer::reset(VulkanDevice* new_device)
 {
     state = CommandBufferState::initial;
     device = new_device;
@@ -2384,57 +2477,71 @@ void destroy_sampler(const DeviceHandle& device_handle, const SamplerHandle& sam
 
 } // namespace bee
 
-
-static bee::GpuModule g_gpu;
-
-void bee_load_cmd_module(bee::PluginRegistry* registry, const bee::PluginState state);
-
-BEE_PLUGIN_API void bee_load_plugin(bee::PluginRegistry* registry, const bee::PluginState state)
+BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::PluginState state)
 {
-    bee::g_backend = registry->get_or_create_persistent<bee::VulkanBackend>("BeeVulkanBackend");
+    if (!loader->require_plugin("Bee.Gpu", bee::PluginVersion{0, 0, 0}))
+    {
+        return;
+    }
 
-    g_gpu.init = bee::init;
-    g_gpu.destroy = bee::destroy;
-    g_gpu.enumerate_physical_devices = bee::enumerate_physical_devices;
-    g_gpu.create_device = bee::create_device;
-    g_gpu.destroy_device = bee::destroy_device;
-    g_gpu.device_wait = bee::device_wait;
-    g_gpu.create_swapchain = bee::create_swapchain;
-    g_gpu.destroy_swapchain = bee::destroy_swapchain;
-    g_gpu.acquire_swapchain_texture = bee::acquire_swapchain_texture;
-    g_gpu.get_swapchain_texture_view = bee::get_swapchain_texture_view;
-    g_gpu.get_swapchain_extent = bee::get_swapchain_extent;
-    g_gpu.get_swapchain_texture_format = bee::get_swapchain_texture_format;
-    g_gpu.get_texture_format = bee::get_texture_format;
-    g_gpu.submit = bee::submit;
-    g_gpu.present = bee::present;
-    g_gpu.commit_frame = bee::commit_frame;
-    g_gpu.get_current_frame = bee::get_current_frame;
+    bee::g_platform = static_cast<bee::PlatformModule*>(loader->get_module(BEE_PLATFORM_MODULE_NAME));
+    bee::g_backend = loader->get_static<bee::VulkanBackend>("BeeVulkanBackend");
+
+    bee::g_backend->api.get_api = bee::get_api;
+    bee::g_backend->api.get_name = bee::get_name;
+    bee::g_backend->api.is_initialized = bee::is_initialized;
+    bee::g_backend->api.init = bee::init;
+    bee::g_backend->api.destroy = bee::destroy;
+    bee::g_backend->api.enumerate_physical_devices = bee::enumerate_physical_devices;
+    bee::g_backend->api.create_device = bee::create_device;
+    bee::g_backend->api.destroy_device = bee::destroy_device;
+    bee::g_backend->api.device_wait = bee::device_wait;
+    bee::g_backend->api.submissions_wait = bee::submissions_wait;
+    bee::g_backend->api.create_swapchain = bee::create_swapchain;
+    bee::g_backend->api.destroy_swapchain = bee::destroy_swapchain;
+    bee::g_backend->api.acquire_swapchain_texture = bee::acquire_swapchain_texture;
+    bee::g_backend->api.get_swapchain_texture_view = bee::get_swapchain_texture_view;
+    bee::g_backend->api.get_swapchain_extent = bee::get_swapchain_extent;
+    bee::g_backend->api.get_swapchain_texture_format = bee::get_swapchain_texture_format;
+    bee::g_backend->api.get_texture_format = bee::get_texture_format;
+    bee::g_backend->api.submit = bee::submit;
+    bee::g_backend->api.present = bee::present;
+    bee::g_backend->api.commit_frame = bee::commit_frame;
+    bee::g_backend->api.get_current_frame = bee::get_current_frame;
 
     // Resource functions
-    g_gpu.allocate_command_buffer = bee::allocate_command_buffer;
-    g_gpu.create_render_pass = bee::create_render_pass;
-    g_gpu.destroy_render_pass = bee::destroy_render_pass;
-    g_gpu.create_shader = bee::create_shader;
-    g_gpu.destroy_shader = bee::destroy_shader;
-    g_gpu.create_pipeline_state = bee::create_pipeline_state;
-    g_gpu.destroy_pipeline_state = bee::destroy_pipeline_state;
-    g_gpu.create_buffer = bee::create_buffer;
-    g_gpu.destroy_buffer = bee::destroy_buffer;
-    g_gpu.update_buffer = bee::update_buffer;
-    g_gpu.create_texture = bee::create_texture;
-    g_gpu.destroy_texture = bee::destroy_texture;
-    g_gpu.update_texture = bee::update_texture;
-    g_gpu.create_texture_view = bee::create_texture_view;
-    g_gpu.destroy_texture_view = bee::destroy_texture_view;
-    g_gpu.create_fence = bee::create_fence;
-    g_gpu.destroy_fence = bee::destroy_fence;
-    g_gpu.create_resource_binding = bee::create_resource_binding;
-    g_gpu.destroy_resource_binding = bee::destroy_resource_binding;
-    g_gpu.create_sampler = bee::create_sampler;
-    g_gpu.destroy_sampler = bee::destroy_sampler;
+    bee::g_backend->api.allocate_command_buffer = bee::allocate_command_buffer;
+    bee::g_backend->api.create_render_pass = bee::create_render_pass;
+    bee::g_backend->api.destroy_render_pass = bee::destroy_render_pass;
+    bee::g_backend->api.create_shader = bee::create_shader;
+    bee::g_backend->api.destroy_shader = bee::destroy_shader;
+    bee::g_backend->api.create_pipeline_state = bee::create_pipeline_state;
+    bee::g_backend->api.destroy_pipeline_state = bee::destroy_pipeline_state;
+    bee::g_backend->api.create_buffer = bee::create_buffer;
+    bee::g_backend->api.destroy_buffer = bee::destroy_buffer;
+    bee::g_backend->api.update_buffer = bee::update_buffer;
+    bee::g_backend->api.create_texture = bee::create_texture;
+    bee::g_backend->api.destroy_texture = bee::destroy_texture;
+    bee::g_backend->api.update_texture = bee::update_texture;
+    bee::g_backend->api.create_texture_view = bee::create_texture_view;
+    bee::g_backend->api.destroy_texture_view = bee::destroy_texture_view;
+    bee::g_backend->api.create_fence = bee::create_fence;
+    bee::g_backend->api.destroy_fence = bee::destroy_fence;
+    bee::g_backend->api.create_resource_binding = bee::create_resource_binding;
+    bee::g_backend->api.destroy_resource_binding = bee::destroy_resource_binding;
+    bee::g_backend->api.create_sampler = bee::create_sampler;
+    bee::g_backend->api.destroy_sampler = bee::destroy_sampler;
 
-    registry->toggle_module(state, BEE_GPU_MODULE_NAME, &g_gpu);
+    auto* gpu_module = static_cast<bee::GpuModule*>(loader->get_module(BEE_GPU_MODULE_NAME));
 
-    bee_load_cmd_module(registry, state);
+    if (state == bee::PluginState::loading)
+    {
+        gpu_module->register_backend(&bee::g_backend->api);
+    }
+    else
+    {
+        gpu_module->unregister_backend(&bee::g_backend->api);
+    }
 }
+
+BEE_PLUGIN_VERSION(0, 0, 0)

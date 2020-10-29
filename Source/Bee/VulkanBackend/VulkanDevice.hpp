@@ -7,9 +7,12 @@
 
 #pragma once
 
+#include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/Memory/ChunkAllocator.hpp"
-#include "Bee/Plugins/Gpu/ResourceTable.hpp"
-#include "Bee/Plugins/VulkanBackend/VulkanObjectCache.hpp"
+
+#include "Bee/Gpu/ResourceTable.hpp"
+
+#include "Bee/VulkanBackend/VulkanObjectCache.hpp"
 
 #include <volk.h>
 
@@ -80,7 +83,7 @@ struct VulkanQueueSubmit
 
     void reset();
 
-    void add(CommandBuffer* cmd);
+    void add(RawCommandBuffer* cmd);
 
     void submit(VulkanDevice* device, VkFence fence);
 };
@@ -107,7 +110,7 @@ struct VulkanCommandPool;
 struct VulkanPipelineState;
 struct VulkanResourceBinding;
 
-struct CommandBuffer
+struct RawCommandBuffer
 {
     CommandBufferState      state { CommandBufferState::invalid };
     VulkanQueue*            queue { nullptr };
@@ -126,7 +129,7 @@ struct CommandBuffer
 struct VulkanCommandPool
 {
     VkCommandPool   handle { VK_NULL_HANDLE };
-    CommandBuffer   command_buffers[BEE_GPU_MAX_COMMAND_BUFFERS_PER_THREAD];
+    RawCommandBuffer   command_buffers[BEE_GPU_MAX_COMMAND_BUFFERS_PER_THREAD];
     i32             command_buffer_count { 0 };
 };
 
@@ -446,6 +449,7 @@ struct VulkanDevice
  */
 struct VulkanBackend // NOLINT
 {
+    GpuBackend                          api;
     VkInstance                          instance { nullptr };
 
     i32                                 physical_device_count { 0 };
@@ -501,7 +505,7 @@ struct VulkanBackend // NOLINT
 const char* vk_result_string(VkResult result);
 
 // Implemented by platform-specific code
-VkSurfaceKHR vk_create_wsi_surface(VkInstance instance, const WindowHandle& window);
+VkSurfaceKHR vk_create_wsi_surface(VkInstance instance, void* os_window);
 
 BEE_FORCE_INLINE i32 queue_type_index(const QueueType type)
 {

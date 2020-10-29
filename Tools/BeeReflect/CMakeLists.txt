@@ -15,7 +15,7 @@ add_subdirectory(Tests)
 add_custom_command(
         TARGET bee-reflect
         POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bee-reflect> ${BEE_TOOLS}/Binaries
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bee-reflect> ${BEE_TOOLS_BINARY_DIR}
         COMMENT "Bee: Copying bee-reflect.exe to Tools/Binaries"
 )
 

@@ -375,6 +375,10 @@ bool is_window_close_requested(const WindowHandle handle)
     return window.hwnd == nullptr || window.close_requested;
 }
 
+void* get_os_window(const WindowHandle handle)
+{
+    return g_platform->windows[handle.id].hwnd;
+}
 
 void poll_input()
 {
@@ -420,6 +424,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     g_module.get_window_size = bee::get_window_size;
     g_module.get_framebuffer_size = bee::get_framebuffer_size;
     g_module.window_close_requested = bee::is_window_close_requested;
+    g_module.get_os_window = bee::get_os_window;
     g_module.poll_input = bee::poll_input;
 
     loader->require_plugin("Bee.Input", { 0, 0, 0 });

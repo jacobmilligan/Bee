@@ -7,8 +7,10 @@
 
 #pragma once
 
-#include "Bee/Plugins/Gpu/Gpu.hpp"
+#include "Bee/Core/Containers/HashMap.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
+
+#include "Bee/Gpu/Gpu.hpp"
 
 #include <volk.h>
 

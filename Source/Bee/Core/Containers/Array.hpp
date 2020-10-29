@@ -646,7 +646,7 @@ void Array<T, Mode>::emplace_back(Args&&... args)
     }
 
     size_ = new_size;
-    new (&data_[size_ - 1]) T { BEE_FORWARD(args)... };
+    new (&data_[size_ - 1]) T (BEE_FORWARD(args)...);
 }
 
 template <typename T, ContainerMode Mode>

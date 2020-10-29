@@ -9,7 +9,7 @@
 
 #include "Bee/Core/Memory/Allocator.hpp"
 #include "Bee/Core/Handle.hpp"
-#include "Bee/Plugins/Gpu/Gpu.hpp"
+#include "Bee/Gpu/Gpu.hpp"
 
 
 namespace bee {
