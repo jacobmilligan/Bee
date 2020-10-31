@@ -5,10 +5,11 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Core/Main.hpp"
+#include "Sandbox.hpp"
+
 #include "Bee/Core/Plugin.hpp"
-#include "Bee/Core/Filesystem.hpp"
-#include "Bee/Core/Jobs/JobSystem.hpp"
+#include "Bee/Core/Math/Math.hpp"
+#include "Bee/Core/Time.hpp"
 
 #include "Bee/Input/Input.hpp"
 #include "Bee/Input/Keyboard.hpp"
@@ -18,235 +19,282 @@
 
 #include "Bee/RenderGraph/RenderGraph.hpp"
 
+
+namespace bee {
+
+
 struct SandboxApp
 {
-    bool                    platform_running { false };
-    bee::PlatformModule*    platform { nullptr };
-    bee::InputModule*       input { nullptr };
-    bee::GpuModule*         gpu { nullptr };
-    bee::GpuBackend*        backend { nullptr };
-    bee::RenderGraphModule* render_graph { nullptr };
-    bee::RenderGraph*       graph { nullptr };
-    bee::WindowHandle       window;
-    const bee::InputDevice* keyboard { nullptr };
-    const bee::InputDevice* mouse { nullptr };
-    bee::DeviceHandle       device;
-    bee::SwapchainHandle    swapchain;
+    bool                platform_running { false };
+    bool                needs_reload { false };
+    GpuBackend*         backend { nullptr };
+    RenderGraph*        graph { nullptr };
+    RenderGraphPass*    pass { nullptr };
+    WindowHandle        window;
+    const InputDevice*  keyboard { nullptr };
+    const InputDevice*  mouse { nullptr };
+    DeviceHandle        device;
+    SwapchainHandle     swapchain;
 };
 
 struct SandboxPassData
 {
-    bee::RenderGraphResource backbuffer;
+    RenderGraphResource backbuffer;
+    int                 color;
+    float               time;
+    ClearValue          colors[3];
 };
 
-static void setup_pass(bee::RenderGraphPass* pass, bee::RenderGraphBuilderModule* builder, const void* external_data, void* pass_data)
+static PlatformModule*      g_platform { nullptr };
+static InputModule*         g_input { nullptr };
+static GpuModule*           g_gpu { nullptr };
+static RenderGraphModule*   g_render_graph { nullptr };
+static SandboxApp*          g_app = nullptr;
+
+
+static void init_pass(const void* external_data, void* pass_data)
 {
-    const auto* app = *static_cast<SandboxApp* const*>(external_data);
     auto* sandbox_pass = static_cast<SandboxPassData*>(pass_data);
-    sandbox_pass->backbuffer = builder->import_backbuffer(pass, "Swapchain", app->swapchain);
-    builder->write_color(pass, sandbox_pass->backbuffer, bee::LoadOp::dont_care, bee::StoreOp::store, 1);
+
+    sandbox_pass->colors[0] = ClearValue(1.0f, 0.2f, 0.3f, 1.0f);
+    sandbox_pass->colors[1] = ClearValue(0.0f, 1.0f, 0.2f, 1.0f);
+    sandbox_pass->colors[2] = ClearValue(0.1f, 0.3f, 1.0f, 1.0f);
+}
+
+static void setup_pass(RenderGraphPass* pass, RenderGraphBuilderModule* builder, const void* external_data, void* pass_data)
+{
+    auto* sandbox_pass = static_cast<SandboxPassData*>(pass_data);
+
+    sandbox_pass->time += 0.01f;
+    if (sandbox_pass->time > 1.0f)
+    {
+        sandbox_pass->time = 0.0f;
+        sandbox_pass->color = (sandbox_pass->color + 1) % static_array_length(sandbox_pass->colors);
+    }
+
+    sandbox_pass->backbuffer = builder->import_backbuffer(pass, "Swapchain", g_app->swapchain);
+    builder->write_color(pass, sandbox_pass->backbuffer, LoadOp::clear, StoreOp::store, 1);
 }
 
 static void execute_pass(
-    bee::RenderGraphPass* pass,
-    bee::RenderGraphStorage* storage,
-    bee::GpuCommandBackend* cmd,
-    bee::CommandBuffer* cmdbuf,
+    RenderGraphPass* pass,
+    RenderGraphStorage* storage,
+    GpuCommandBackend* cmd,
+    CommandBuffer* cmdbuf,
     const void* external_data,
     void* pass_data
 )
 {
     auto* sandbox_pass = static_cast<SandboxPassData*>(pass_data);
-    const bee::TextureViewHandle* attachments = nullptr;
+    const TextureViewHandle* attachments = nullptr;
     const int attachment_count = storage->get_attachments(pass, &attachments);
-    bee::ClearValue clear_value(0.0f, 0.0f, 0.0f, 0.0f);
+    const auto backbuffer_rect = storage->get_backbuffer_rect(pass, sandbox_pass->backbuffer);
+    auto& current_color = sandbox_pass->colors[sandbox_pass->color].color;
+    auto& next_color = sandbox_pass->colors[(sandbox_pass->color + 1) % static_array_length(sandbox_pass->colors)].color;
+
+    ClearValue clear_value(
+        math::lerp(current_color[0], next_color[0], sandbox_pass->time),
+        math::lerp(current_color[1], next_color[1], sandbox_pass->time),
+        math::lerp(current_color[2], next_color[2], sandbox_pass->time),
+        1.0f
+    );
 
     cmd->begin_render_pass(
         cmdbuf,
         storage->get_gpu_pass(pass),
         attachment_count, attachments,
-        storage->get_backbuffer_rect(pass, sandbox_pass->backbuffer),
+        backbuffer_rect,
         attachment_count, &clear_value
     );
+    cmd->set_scissor(cmdbuf, backbuffer_rect);
+    cmd->set_viewport(cmdbuf, Viewport(0, 0, static_cast<float>(backbuffer_rect.width), static_cast<float>(backbuffer_rect.height)));
     cmd->end_render_pass(cmdbuf);
 }
 
-static bool start_app(SandboxApp* app)
+static bool startup()
 {
-    bee::init_plugins();
-    bee::add_plugin_search_path(bee::fs::get_root_dirs().binaries_root.join("Plugins"));
-    bee::refresh_plugins();
-    // Vulkan has deps on GPU & Platform
-    if (!bee::load_plugin("Bee.VulkanBackend"))
+    if (!g_platform->start("Bee.Sandbox"))
     {
         return false;
     }
 
-    if (!bee::load_plugin("Bee.RenderGraph"))
-    {
-        return false;
-    }
+    g_app->platform_running = true;
 
-    app->platform = static_cast<bee::PlatformModule*>(bee::get_module(BEE_PLATFORM_MODULE_NAME));
-    app->input = static_cast<bee::InputModule*>(bee::get_module(BEE_INPUT_MODULE_NAME));
-
-    if (!app->platform->start("Bee.Sandbox"))
-    {
-        return false;
-    }
-
-    app->platform_running = true;
-
-    bee::WindowCreateInfo window_info{};
+    WindowCreateInfo window_info{};
     window_info.title = "Bee Sandbox";
-    window_info.monitor = app->platform->get_primary_monitor()->handle;
-    app->window = app->platform->create_window(window_info);
-    if (!app->window.is_valid())
+    window_info.monitor = g_platform->get_primary_monitor()->handle;
+    g_app->window = g_platform->create_window(window_info);
+    if (!g_app->window.is_valid())
     {
         return false;
     }
 
-    app->keyboard = app->input->default_device(bee::InputDeviceType::keyboard);
-    app->mouse = app->input->default_device(bee::InputDeviceType::mouse);
+    g_app->keyboard = g_input->default_device(InputDeviceType::keyboard);
+    g_app->mouse = g_input->default_device(InputDeviceType::mouse);
 
-    if (app->keyboard == nullptr || app->mouse == nullptr)
+    if (g_app->keyboard == nullptr || g_app->mouse == nullptr)
     {
         return false;
     }
 
-    bee::log_info("Keyboard: %s", app->keyboard->name);
-    bee::log_info("Mouse: %s", app->mouse->name);
+    log_info("Keyboard: %s", g_app->keyboard->name);
+    log_info("Mouse: %s", g_app->mouse->name);
 
     // Initialize Vulkan backend
-    app->gpu = static_cast<bee::GpuModule*>(bee::get_module(BEE_GPU_MODULE_NAME));
-    app->backend = app->gpu->get_default_backend(bee::GpuApi::vulkan);
+    g_app->backend = g_gpu->get_default_backend(GpuApi::vulkan);
 
-    if (app->backend == nullptr || !app->backend->init())
+    if (g_app->backend == nullptr || !g_app->backend->init())
     {
-        bee::log_error("Failed to load Vulkan backend");
+        log_error("Failed to load Vulkan backend");
         return false;
     }
 
-    app->device = app->backend->create_device(bee::DeviceCreateInfo{ 0 });
-    if (!app->device.is_valid())
+    g_app->device = g_app->backend->create_device(DeviceCreateInfo{ 0 });
+    if (!g_app->device.is_valid())
     {
-        bee::log_error("Failed to create Vulkan device");
+        log_error("Failed to create Vulkan device");
         return false;
     }
 
-    const auto fb_size = app->platform->get_framebuffer_size(app->window);
+    const auto fb_size = g_platform->get_framebuffer_size(g_app->window);
 
-    bee::SwapchainCreateInfo swapchain_info{};
-    swapchain_info.vsync = false;
-    swapchain_info.window = app->window;
+    SwapchainCreateInfo swapchain_info{};
+    swapchain_info.vsync = true;
+    swapchain_info.window = g_app->window;
     swapchain_info.debug_name = "SandboxSwapchain";
-    swapchain_info.texture_format = bee::PixelFormat::rgba8;
-    swapchain_info.texture_extent.width = bee::sign_cast<bee::u32>(fb_size.x);
-    swapchain_info.texture_extent.height = bee::sign_cast<bee::u32>(fb_size.y);
-    app->swapchain = app->backend->create_swapchain(app->device, swapchain_info);
+    swapchain_info.texture_format = PixelFormat::rgba8;
+    swapchain_info.texture_extent.width = sign_cast<u32>(fb_size.x);
+    swapchain_info.texture_extent.height = sign_cast<u32>(fb_size.y);
+    g_app->swapchain = g_app->backend->create_swapchain(g_app->device, swapchain_info);
 
-    if (!app->swapchain.is_valid())
+    if (!g_app->swapchain.is_valid())
     {
-        bee::log_error("Failed to create swapchain");
+        log_error("Failed to create swapchain3");
         return false;
     }
 
-    app->render_graph = static_cast<bee::RenderGraphModule*>(bee::get_module(BEE_RENDER_GRAPH_MODULE));
-    app->graph = app->render_graph->create_graph(app->backend, app->device);
-    app->render_graph->add_pass<SandboxPassData>(app->graph, "SandboxPass", app, setup_pass, execute_pass);
+    g_app->graph = g_render_graph->create_graph(g_app->backend, g_app->device);
     return true;
 }
 
-static void cleaup_app(SandboxApp* app)
+static void shutdown()
 {
-    if (app->backend != nullptr && app->backend->is_initialized())
+    if (g_app->backend != nullptr && g_app->backend->is_initialized())
     {
-        if (app->render_graph != nullptr && app->graph != nullptr)
+        if (g_render_graph != nullptr && g_app->graph != nullptr)
         {
-            app->render_graph->destroy_graph(app->graph);
+            g_render_graph->destroy_graph(g_app->graph);
         }
 
-        if (app->device.is_valid())
+        if (g_app->device.is_valid())
         {
             // the submissions will have already been flushed by destroying the render graph
-            if (app->swapchain.is_valid())
+            if (g_app->swapchain.is_valid())
             {
-                app->backend->destroy_swapchain(app->device, app->swapchain);
-                app->swapchain = bee::SwapchainHandle{};
+                g_app->backend->destroy_swapchain(g_app->device, g_app->swapchain);
+                g_app->swapchain = SwapchainHandle{};
             }
 
-            app->backend->destroy_device(app->device);
-            app->device = bee::DeviceHandle{};
+            g_app->backend->destroy_device(g_app->device);
+            g_app->device = DeviceHandle{};
         }
 
-        app->backend->destroy();
+        g_app->backend->destroy();
     }
 
-    if (app->window.is_valid())
+    if (g_app->window.is_valid())
     {
-        app->platform->destroy_window(app->window);
+        g_platform->destroy_window(g_app->window);
     }
 
-    if (app->platform != nullptr && app->platform_running)
+    if (g_platform != nullptr && g_app->platform_running)
     {
-        app->platform->shutdown();
-        app->platform_running = false;
+        g_platform->shutdown();
+        g_app->platform_running = false;
     }
 }
 
-static bool tick_app(SandboxApp* app)
+static bool tick()
 {
-    if (app->platform->quit_requested() || app->platform->window_close_requested(app->window))
+    if (g_platform->quit_requested() || g_platform->window_close_requested(g_app->window))
     {
         return false;
     }
 
-    app->platform->poll_input();
+    if (g_app->needs_reload)
+    {
+        if (g_app->pass != nullptr)
+        {
+            g_render_graph->remove_pass(g_app->pass);
+        }
 
-    const bool escape_typed = app->keyboard->get_state(bee::Key::escape)->values[0].flag
-                           && !app->keyboard->get_previous_state(bee::Key::escape)->values[0].flag;
+        g_app->pass = g_render_graph->add_pass<SandboxPassData>(
+            g_app->graph,
+            "SandboxPass",
+            setup_pass,
+            execute_pass,
+            init_pass
+        );
+        g_app->needs_reload = false;
+    }
+
+    g_platform->poll_input();
+
+    const bool escape_typed = g_app->keyboard->get_state(Key::escape)->values[0].flag
+        && !g_app->keyboard->get_previous_state(Key::escape)->values[0].flag;
     if (escape_typed)
     {
         return false;
     }
 
-    const bool left_mouse_clicked = app->mouse->get_state(bee::MouseButton::left)->values[0].flag
-                                 && !app->mouse->get_previous_state(bee::MouseButton::left)->values[0].flag;
+    const bool left_mouse_clicked = g_app->mouse->get_state(MouseButton::left)->values[0].flag
+        && !g_app->mouse->get_previous_state(MouseButton::left)->values[0].flag;
     if (left_mouse_clicked)
     {
-        bee::log_info("Clicked!");
+        log_info("Clicked!");
     }
 
-    app->render_graph->setup(app->graph);
-    app->render_graph->execute(app->graph);
-    app->backend->commit_frame(app->device);
+    g_render_graph->setup(g_app->graph);
+    g_render_graph->execute(g_app->graph);
+    g_app->backend->commit_frame(g_app->device);
     return true;
 }
 
-int bee_main(int argc, char** argv)
+
+} // namespace bee
+
+static bee::SandboxModule g_module;
+
+BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::PluginState state)
 {
-    bee::JobSystemInitInfo job_system_info{};
-    bee::job_system_init(job_system_info);
-
-    SandboxApp app{};
-
-    if (!start_app(&app))
+    if (!loader->require_plugin("Bee.VulkanBackend", bee::PluginVersion{ 0, 0, 0 }))
     {
-        cleaup_app(&app);
-        return EXIT_FAILURE;
+        bee::log_error("Missing dependency: Bee.VulkanBackend");
+        return;
     }
 
-    while (true)
+    if (!loader->require_plugin("Bee.RenderGraph", bee::PluginVersion{ 0, 0, 0 }))
     {
-        bee::refresh_plugins();
-        if (!tick_app(&app))
-        {
-            break;
-        }
+        bee::log_error("Missing dependency: Bee.RenderGraph");
+        return;
     }
 
-    cleaup_app(&app);
+    bee::g_app = loader->get_static<bee::SandboxApp>("Bee.SandboxApp");
 
-    bee::job_system_shutdown();
-    return EXIT_SUCCESS;
+    g_module.startup = bee::startup;
+    g_module.shutdown = bee::shutdown;
+    g_module.tick = bee::tick;
+
+    loader->set_module(BEE_SANDBOX_MODULE_NAME, &g_module, state);
+
+    if (state == bee::PluginState::loading)
+    {
+        bee::g_app->needs_reload = true;
+        bee::g_platform = static_cast<bee::PlatformModule*>(loader->get_module(BEE_PLATFORM_MODULE_NAME));
+        bee::g_input = static_cast<bee::InputModule*>(loader->get_module(BEE_INPUT_MODULE_NAME));
+        bee::g_render_graph = static_cast<bee::RenderGraphModule*>(loader->get_module(BEE_RENDER_GRAPH_MODULE));
+        bee::g_gpu = static_cast<bee::GpuModule*>(loader->get_module(BEE_GPU_MODULE_NAME));
+    }
 }
+
+BEE_PLUGIN_VERSION(0, 0, 0)
