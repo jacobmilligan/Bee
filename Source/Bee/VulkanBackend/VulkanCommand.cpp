@@ -302,7 +302,7 @@ void transition_resources(CommandBuffer* cmd_buf, const u32 count, const GpuTran
                 barrier.subresourceRange.layerCount = texture->layers;
 
                 src_access |= barrier.srcAccessMask;
-                dst_access |= barrier.srcAccessMask;
+                dst_access |= barrier.dstAccessMask;
                 break;
             }
             case GpuBarrierType::buffer:
@@ -328,7 +328,7 @@ void transition_resources(CommandBuffer* cmd_buf, const u32 count, const GpuTran
                 }
 
                 src_access |= barrier.srcAccessMask;
-                dst_access |= barrier.srcAccessMask;
+                dst_access |= barrier.dstAccessMask;
                 break;
             }
             case GpuBarrierType::memory:
@@ -342,7 +342,7 @@ void transition_resources(CommandBuffer* cmd_buf, const u32 count, const GpuTran
                 barrier.dstAccessMask = convert_access_mask(transition.new_state);
 
                 src_access |= barrier.srcAccessMask;
-                dst_access |= barrier.srcAccessMask;
+                dst_access |= barrier.dstAccessMask;
                 break;
             }
             default:
