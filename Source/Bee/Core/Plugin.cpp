@@ -127,6 +127,27 @@ static Plugin* get_loading_plugin()
     return g_registry->load_stack.back();
 }
 
+static bool is_temp_hot_reload_file(const Path& path)
+{
+    const auto ext = path.extension();
+    if (ext != g_plugin_extension && ext != ".pdb")
+    {
+        return false;
+    }
+
+    const auto name = path.stem();
+    const auto timestamp_begin = str::last_index_of(name, '.') + 1;
+
+    for (int i = timestamp_begin; i < name.size(); ++i)
+    {
+        if (!str::is_digit(name[i]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 /*
  ****************************************
@@ -144,10 +165,13 @@ void init_plugins()
     }
 
     g_registry = BEE_NEW(system_allocator(), PluginRegistry);
+    g_registry->directory_watcher.start("Bee.PluginWatcher");
 }
 
 void shutdown_plugins()
 {
+    g_registry->directory_watcher.stop();
+
     if (g_registry == nullptr)
     {
         log_error("Plugin registry is already shutdown");
@@ -232,7 +256,10 @@ static bool reload_plugin(Plugin* plugin)
 
     if (reload)
     {
-        plugin->load_function(&loader, PluginState::unloading);
+        {
+            BEE_PLUGIN_LOAD_SCOPE(plugin);
+            plugin->load_function(&loader, PluginState::unloading);
+        }
         unload_library(plugin->library);
 
         if (!refresh_debug_symbols())
@@ -356,24 +383,20 @@ void unload_plugin(const StringView& name)
     unload_plugin(&g_registry->plugins[index]);
 }
 
-static bool is_temp_hot_reload_file(const Path& path)
-{
-    const auto name = path.stem();
-    const auto timestamp_begin = str::last_index_of(name, '.') + 1;
-
-    for (int i = timestamp_begin; i < name.size(); ++i)
-    {
-        if (!str::is_digit(name[i]))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 static void register_plugin(const Path& lib_path)
 {
+    /*
+     * skip registering any .dll or .pdb with the pattern <Name>.<timestamp>.<dll/pdb>
+     * but clean it from the filesystem
+     */
+    if (is_temp_hot_reload_file(lib_path))
+    {
+        g_registry->directory_watcher.suspend();
+        fs::remove(lib_path);
+        g_registry->directory_watcher.resume();
+        return;
+    }
+
     if (lib_path.extension() != g_plugin_extension)
     {
         return;
@@ -384,17 +407,6 @@ static void register_plugin(const Path& lib_path)
     {
         log_error("Plugin \"%" BEE_PRIsv "\" is already registered", BEE_FMT_SV(name));
         return;
-    }
-
-    /*
-     * skip registering any .dll with the pattern <Name>.<timestamp>.dll
-     * but clean it from the filesystem
-     */
-    if (is_temp_hot_reload_file(lib_path))
-    {
-        g_registry->directory_watcher.suspend();
-        fs::remove(lib_path);
-        g_registry->directory_watcher.resume();
     }
 
     Plugin plugin;
@@ -525,6 +537,11 @@ void* PluginLoader::get_module(const StringView& name)
 
 bool PluginLoader::require_plugin(const StringView& name, const PluginVersion& minimum_version) const
 {
+    if (get_loading_plugin()->state == PluginState::unloading)
+    {
+        return true;
+    }
+
     const i32 index = find_plugin(name);
 
     if (index < 0)
@@ -574,11 +591,6 @@ static void* get_module_storage(const i32 index)
 void PluginLoader::add_module_interface(const StringView& name, const void* module, const size_t module_size)
 {
     i32 index = find_module(name);
-    if (index >= 0 && g_registry->modules[index]->references > 0)
-    {
-        log_error("Module %" BEE_PRIsv " was already added to the plugin registry", BEE_FMT_SV(name));
-        return;
-    }
 
     if (sizeof(ModuleHeader) + module_size >= g_max_module_size)
     {
@@ -613,7 +625,6 @@ void PluginLoader::remove_module_interface(const void* module)
 
     if (index < 0)
     {
-        log_error("Unable to find module with address %p in the plugin registry", module);
         return;
     }
 

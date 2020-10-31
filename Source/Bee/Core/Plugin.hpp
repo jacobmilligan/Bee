@@ -112,9 +112,9 @@ public:
         callbacks.construct = constructor;
         callbacks.destruct = destructor;
 
-        void* ptr = get_static(callbacks, get_static_string_hash(name), sizeof(T), alignof(T));
+        T* ptr = static_cast<T*>(get_static(callbacks, get_static_string_hash(name), sizeof(T), alignof(T)));
         BEE_ASSERT_F(ptr != nullptr, "Failed to get or create static plugin data \"%s\"", name);
-        return static_cast<T*>(ptr);
+        return ptr;
     }
 
     template <typename T>
