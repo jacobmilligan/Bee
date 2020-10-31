@@ -83,9 +83,16 @@ inline constexpr bool operator<=(const PluginVersion& lhs, const PluginVersion& 
     return lhs == rhs || lhs < rhs;
 }
 
-struct BEE_CORE_API PluginLoader
+struct PluginStaticDataCallbacks
 {
-    bool get_static(void** dst, const u32 hash, const size_t size, const size_t alignment);
+    void (*construct)(void* data) { nullptr };
+    void (*destruct)(void* data) { nullptr };
+};
+
+class BEE_CORE_API PluginLoader
+{
+public:
+    void* get_static(const PluginStaticDataCallbacks& static_callbacks, const u32 hash, const size_t size, const size_t alignment);
 
     bool require_plugin(const StringView& name, const PluginVersion& minimum_version) const;
 
@@ -98,13 +105,15 @@ struct BEE_CORE_API PluginLoader
     template <typename T, i32 Size, typename... ConstructorArgs>
     inline T* get_static(const char(&name)[Size], ConstructorArgs&&... args)
     {
-        void* ptr = nullptr;
-        if (get_static(&ptr, get_static_string_hash(name), sizeof(T), alignof(T)))
-        {
-            return static_cast<T*>(ptr);
-        }
+        static auto constructor = [](void* data) { new (static_cast<T*>(data)) T(); };
+        static auto destructor = [](void* data) { destruct(static_cast<T*>(data)); };
 
-        new (static_cast<T*>(ptr)) T(std::forward<ConstructorArgs>(args)...);
+        PluginStaticDataCallbacks callbacks{};
+        callbacks.construct = constructor;
+        callbacks.destruct = destructor;
+
+        void* ptr = get_static(callbacks, get_static_string_hash(name), sizeof(T), alignof(T));
+        BEE_ASSERT_F(ptr != nullptr, "Failed to get or create static plugin data \"%s\"", name);
         return static_cast<T*>(ptr);
     }
 

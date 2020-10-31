@@ -50,19 +50,25 @@ struct ModuleHeader
     i32                 references { -1 };
 };
 
+struct StaticData
+{
+    u32                         hash { 0 };
+    void*                       data { nullptr };
+    PluginStaticDataCallbacks   callbacks;
+};
+
 struct Plugin
 {
-    String              name;
-    PluginVersion       version;
-    Path                library_path;
-    Path                hot_reload_path;
-    DynamicLibrary      library;
-    PluginState         state { PluginState::unloaded };
-    load_plugin_t       load_function { nullptr };
-    get_version_t       get_version_function { nullptr };
-    ReflectionModule*   reflection_module { nullptr };
-    DynamicArray<void*> static_data;
-    DynamicArray<u32>   static_data_hashes;
+    String                   name;
+    PluginVersion            version;
+    Path                     library_path;
+    Path                     hot_reload_path;
+    DynamicLibrary           library;
+    PluginState              state { PluginState::unloaded };
+    load_plugin_t            load_function { nullptr };
+    get_version_t            get_version_function { nullptr };
+    ReflectionModule*        reflection_module { nullptr };
+    DynamicArray<StaticData> static_data;
 };
 
 struct PluginRegistry
@@ -321,9 +327,10 @@ static void unload_plugin(Plugin* plugin)
     // Free the static data now the plugin is unloaded
     for (auto& static_data : plugin->static_data)
     {
-        if (static_data != nullptr)
+        if (static_data.data != nullptr)
         {
-            BEE_FREE(system_allocator(), static_data);
+            static_data.callbacks.destruct(static_data.data);
+            BEE_FREE(system_allocator(), static_data.data);
         }
     }
 
@@ -334,7 +341,6 @@ static void unload_plugin(Plugin* plugin)
     }
 
     plugin->static_data.clear();
-    plugin->static_data_hashes.clear();
 
     // reset the plugins state
     plugin->state = PluginState::unloaded;
@@ -485,25 +491,31 @@ void* get_module(const StringView& name)
     return reinterpret_cast<u8*>(g_registry->modules[index].get()) + sizeof(ModuleHeader);
 }
 
-bool PluginLoader::get_static(void** dst, const u32 hash, const size_t size, const size_t alignment)
+void* PluginLoader::get_static(const PluginStaticDataCallbacks& static_callbacks, const u32 hash, const size_t size, const size_t alignment)
 {
     auto* plugin = get_loading_plugin();
     BEE_ASSERT(plugin != nullptr);
 
-    const i32 index = find_index(plugin->static_data_hashes, hash);
+    const i32 index = find_index_if(plugin->static_data, [&](const StaticData& s)
+    {
+        return s.hash == hash;
+    });
+
     if (index >= 0)
     {
-        *dst = plugin->static_data[index];
-        return true;
+        return plugin->static_data[index].data;
     }
 
-    plugin->static_data.push_back(BEE_MALLOC_ALIGNED(system_allocator(), size, alignment));
-    plugin->static_data_hashes.push_back(hash);
+    plugin->static_data.emplace_back();
+    auto& instance = plugin->static_data.back();
 
-    *dst = plugin->static_data.back();
-    memset(*dst, 0, size);
+    instance.data = BEE_MALLOC_ALIGNED(system_allocator(), size, alignment);
+    instance.callbacks = static_callbacks;
+    instance.hash = hash;
 
-    return false;
+    instance.callbacks.construct(instance.data);
+
+    return instance.data;
 }
 
 void* PluginLoader::get_module(const StringView& name)

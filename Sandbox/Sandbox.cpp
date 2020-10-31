@@ -16,6 +16,8 @@
 
 #include "Bee/Gpu/Gpu.hpp"
 
+#include "Bee/RenderGraph/RenderGraph.hpp"
+
 struct SandboxApp
 {
     bool                    platform_running { false };
@@ -23,13 +25,51 @@ struct SandboxApp
     bee::InputModule*       input { nullptr };
     bee::GpuModule*         gpu { nullptr };
     bee::GpuBackend*        backend { nullptr };
+    bee::RenderGraphModule* render_graph { nullptr };
+    bee::RenderGraph*       graph { nullptr };
     bee::WindowHandle       window;
     const bee::InputDevice* keyboard { nullptr };
     const bee::InputDevice* mouse { nullptr };
     bee::DeviceHandle       device;
     bee::SwapchainHandle    swapchain;
-    bee::RenderPassHandle   render_pass;
 };
+
+struct SandboxPassData
+{
+    bee::RenderGraphResource backbuffer;
+};
+
+static void setup_pass(bee::RenderGraphPass* pass, bee::RenderGraphBuilderModule* builder, const void* external_data, void* pass_data)
+{
+    const auto* app = *static_cast<SandboxApp* const*>(external_data);
+    auto* sandbox_pass = static_cast<SandboxPassData*>(pass_data);
+    sandbox_pass->backbuffer = builder->import_backbuffer(pass, "Swapchain", app->swapchain);
+    builder->write_color(pass, sandbox_pass->backbuffer, bee::LoadOp::dont_care, bee::StoreOp::store, 1);
+}
+
+static void execute_pass(
+    bee::RenderGraphPass* pass,
+    bee::RenderGraphStorage* storage,
+    bee::GpuCommandBackend* cmd,
+    bee::CommandBuffer* cmdbuf,
+    const void* external_data,
+    void* pass_data
+)
+{
+    auto* sandbox_pass = static_cast<SandboxPassData*>(pass_data);
+    const bee::TextureViewHandle* attachments = nullptr;
+    const int attachment_count = storage->get_attachments(pass, &attachments);
+    bee::ClearValue clear_value(0.0f, 0.0f, 0.0f, 0.0f);
+
+    cmd->begin_render_pass(
+        cmdbuf,
+        storage->get_gpu_pass(pass),
+        attachment_count, attachments,
+        storage->get_backbuffer_rect(pass, sandbox_pass->backbuffer),
+        attachment_count, &clear_value
+    );
+    cmd->end_render_pass(cmdbuf);
+}
 
 static bool start_app(SandboxApp* app)
 {
@@ -38,6 +78,11 @@ static bool start_app(SandboxApp* app)
     bee::refresh_plugins();
     // Vulkan has deps on GPU & Platform
     if (!bee::load_plugin("Bee.VulkanBackend"))
+    {
+        return false;
+    }
+
+    if (!bee::load_plugin("Bee.RenderGraph"))
     {
         return false;
     }
@@ -92,7 +137,7 @@ static bool start_app(SandboxApp* app)
     const auto fb_size = app->platform->get_framebuffer_size(app->window);
 
     bee::SwapchainCreateInfo swapchain_info{};
-    swapchain_info.vsync = true;
+    swapchain_info.vsync = false;
     swapchain_info.window = app->window;
     swapchain_info.debug_name = "SandboxSwapchain";
     swapchain_info.texture_format = bee::PixelFormat::rgba8;
@@ -106,24 +151,9 @@ static bool start_app(SandboxApp* app)
         return false;
     }
 
-    bee::RenderPassCreateInfo rp_info{};
-    bee::SubPassDescriptor subpass{};
-    subpass.color_attachment_count = 1;
-    subpass.color_attachments[0] = 0;
-    rp_info.subpass_count = 1;
-    rp_info.subpasses = &subpass;
-    rp_info.attachment_count = 1;
-    rp_info.attachments[0].type = bee::AttachmentType::present;
-    rp_info.attachments[0].format = bee::PixelFormat::rgba8;
-    rp_info.attachments[0].store_op = bee::StoreOp::store;
-    app->render_pass = app->backend->create_render_pass(app->device, rp_info);
-
-    if (!app->render_pass.is_valid())
-    {
-        bee::log_error("Failed to create render pass");
-        return false;
-    }
-
+    app->render_graph = static_cast<bee::RenderGraphModule*>(bee::get_module(BEE_RENDER_GRAPH_MODULE));
+    app->graph = app->render_graph->create_graph(app->backend, app->device);
+    app->render_graph->add_pass<SandboxPassData>(app->graph, "SandboxPass", app, setup_pass, execute_pass);
     return true;
 }
 
@@ -131,16 +161,14 @@ static void cleaup_app(SandboxApp* app)
 {
     if (app->backend != nullptr && app->backend->is_initialized())
     {
+        if (app->render_graph != nullptr && app->graph != nullptr)
+        {
+            app->render_graph->destroy_graph(app->graph);
+        }
+
         if (app->device.is_valid())
         {
-            app->backend->submissions_wait(app->device);
-
-            if (app->render_pass.is_valid())
-            {
-                app->backend->destroy_render_pass(app->device, app->render_pass);
-                app->render_pass = bee::RenderPassHandle{};
-            }
-
+            // the submissions will have already been flushed by destroying the render graph
             if (app->swapchain.is_valid())
             {
                 app->backend->destroy_swapchain(app->device, app->swapchain);
@@ -189,37 +217,9 @@ static bool tick_app(SandboxApp* app)
         bee::log_info("Clicked!");
     }
 
-    auto* cmd = app->backend->get_command_backend();
-    auto* cmdbuf = app->backend->allocate_command_buffer(app->device, bee::QueueType::graphics);
-
-    if (cmdbuf == nullptr)
-    {
-        return true;
-    }
-
-    cmd->begin(cmdbuf, bee::CommandBufferUsage::submit_once);
-    {
-        const auto fb_size = app->platform->get_framebuffer_size(app->window);
-        const auto swapchain_texture = app->backend->get_swapchain_texture_view(app->device, app->swapchain);
-        bee::ClearValue clear_value(0.0f, 0.0f, 0.0f, 0.0f);
-
-        cmd->begin_render_pass(cmdbuf,
-            app->render_pass,
-            1, &swapchain_texture,
-            bee::RenderRect(0, 0, static_cast<bee::u32>(fb_size.x), static_cast<bee::u32>(fb_size.y)),
-            1, &clear_value);
-
-        cmd->end_render_pass(cmdbuf);
-    }
-    cmd->end(cmdbuf);
-
-    bee::SubmitInfo submit_info{};
-    submit_info.command_buffer_count = 1;
-    submit_info.command_buffers = &cmdbuf;
-    app->backend->submit(app->device, submit_info);
-    app->backend->present(app->device, app->swapchain);
+    app->render_graph->setup(app->graph);
+    app->render_graph->execute(app->graph);
     app->backend->commit_frame(app->device);
-
     return true;
 }
 
