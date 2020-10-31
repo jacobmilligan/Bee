@@ -42,8 +42,7 @@ BEE_CORE_API double sqrt(double value);
 BEE_CORE_API float sqrtf(float value);
 
 BEE_CORE_API double pow(double base, double exponent);
-
-BEE_CORE_API double powf(float base, float exponent);
+BEE_CORE_API float powf(float base, float exponent);
 
 BEE_CORE_API double floor(double value);
 BEE_CORE_API float floorf(float value);

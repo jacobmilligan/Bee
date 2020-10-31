@@ -37,7 +37,7 @@ double pow(const double base, const double exponent)
     return std::pow(base, exponent);
 }
 
-double powf(const float base, const float exponent)
+float powf(const float base, const float exponent)
 {
     return std::powf(base, exponent);
 }
