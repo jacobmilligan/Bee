@@ -477,7 +477,8 @@ RenderGraphPass* add_static_pass(RenderGraph* graph, const RenderGraphPassDesc& 
 
 void remove_pass(RenderGraphPass* pass)
 {
-    const int index = find_index(pass->graph->virtual_passes, pass);
+    auto* graph = pass->graph;
+    const int index = find_index(graph->virtual_passes, pass);
     if (BEE_FAIL_F(index >= 0, "RenderGraphPass is invalid"))
     {
         return;
@@ -488,8 +489,8 @@ void remove_pass(RenderGraphPass* pass)
         pass->desc.destroy(pass->external_data, pass->data);
     }
 
+    graph->virtual_passes.erase(index);
     BEE_DELETE(g_data->pass_allocator, pass);
-    pass->graph->virtual_passes.erase(index);
 }
 
 void disable_pass(RenderGraphPass* pass)

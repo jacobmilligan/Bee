@@ -147,6 +147,29 @@ struct RenderGraphModule
         desc.execute = execute_pass;
         return add_static_pass(graph, desc);
     }
+
+    template <typename PassDataType>
+    RenderGraphPass* add_pass(
+        RenderGraph* graph,
+        const char* name,
+        render_graph_setup_pass_t setup_pass,
+        render_graph_execute_pass_t execute_pass,
+        render_graph_init_pass_t init_pass = nullptr,
+        render_graph_init_pass_t destroy_pass = nullptr
+    )
+    {
+        static_assert(std::is_trivially_copyable_v<PassDataType>, "PassDataType is not trivially copyable");
+
+        RenderGraphPassDesc desc{};
+        desc.external_data_size = 0;
+        desc.external_data = nullptr;
+        desc.pass_data_size = sizeof(PassDataType);
+        desc.init = init_pass;
+        desc.destroy = destroy_pass;
+        desc.setup = setup_pass;
+        desc.execute = execute_pass;
+        return add_static_pass(graph, desc);
+    }
 };
 
 
