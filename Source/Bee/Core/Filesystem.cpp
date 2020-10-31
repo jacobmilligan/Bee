@@ -129,7 +129,7 @@ void DirectoryWatcher::pop_events(DynamicArray<FileNotifyInfo>* dst)
     }
 
     dst->clear();
-    dst->copy(0, events_.begin(), events_.end());
+    dst->append(events_.const_span());
     events_.clear();
 
     mutex_.unlock();
