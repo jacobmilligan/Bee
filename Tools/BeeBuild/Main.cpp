@@ -322,33 +322,30 @@ int prepare_plugin(const BuildEnvironment& env, const Path& lib_path)
 {
     if (env.platform == BuildPlatform::windows)
     {
-        auto dll_path = lib_path;
-        dll_path.append_extension(".dll");
-
-        if (!dll_path.exists())
+        if (!lib_path.exists() || lib_path.extension() != ".dll")
         {
-            log_info("Skipping hot-reload preperation: no dll found at %s", dll_path.c_str());
+            log_error("Skipping hot-reload preperation: no dll found at %s", lib_path.c_str());
             return EXIT_SUCCESS;
         }
 
         auto pdb_path = lib_path;
-        pdb_path.append_extension(".pdb");
+        pdb_path.set_extension(".pdb");
 
         if (!pdb_path.exists())
         {
-            log_info("Skipping hot-reload preperation: no PDB found at %s", pdb_path.c_str());
+            log_error("Skipping hot-reload preperation: no PDB found at %s", pdb_path.c_str());
             return EXIT_SUCCESS;
         }
 
         const auto timestamp = time::now();
         auto random_pdb_path = lib_path;
-        random_pdb_path.append_extension(str::to_string(timestamp, temp_allocator()).view())
+        random_pdb_path.set_extension(str::to_string(timestamp, temp_allocator()).view())
                        .append_extension(".pdb");
 
         fs::move(pdb_path, random_pdb_path);
         fs::copy(random_pdb_path, pdb_path);
 
-        log_info("Prepared plugin %s for hot reloading", dll_path.c_str());
+        log_info("Prepared plugin %s for hot reloading", lib_path.c_str());
     }
 
     return EXIT_SUCCESS;

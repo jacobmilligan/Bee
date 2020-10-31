@@ -10,7 +10,6 @@ define_property(TARGET PROPERTY PLUGIN
     BRIEF_DOCS "Whether the target is a plugin or not"
     FULL_DOCS "Whether the target is a plugin or not"
 )
-
 ################################################################################
 #
 # Setup global properties and variables for the build system to use
@@ -354,11 +353,10 @@ function(bee_plugin name)
     set(__bee_plugins ${__bee_plugins} ${name} CACHE INTERNAL "")
 
     if (WIN32)
-        set(lib_path "${BEE_DEBUG_BINARY_DIR}/${output_directory}/${name}")
         add_custom_command(
                 TARGET ${name} PRE_BUILD
-                COMMAND ${BB_COMMAND} prepare-plugin ${lib_path}
-                COMMENT "Preparing plugin ${lib_path} to enable hot reloading on Windows"
+                COMMAND ${BB_COMMAND} prepare-plugin $<TARGET_FILE:${name}>
+                COMMENT "Preparing plugin ${name} to enable hot reloading on Windows"
                 VERBATIM
         )
     endif ()
