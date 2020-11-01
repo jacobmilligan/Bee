@@ -932,13 +932,6 @@ void codegen_record(CodeGenerator* codegen, const RecordTypeStorage* storage)
     codegen->write_line("// get_type<%s>()\n", storage->type.name);
 }
 
-
-
-
-
-
-
-
 void generate_empty_reflection(const Path& dst_path, const char* location, io::StringStream* stream)
 {
     CodeGenerator codegen(CodegenMode::cpp, stream);
