@@ -29,7 +29,7 @@ it's less fun than doing graphics code but still important to do one day soon!
 
 Currently `Bee` is more of a loose collection of frameworks than a full-blown engine - there's no editor or anything 
 at the moment and you have to write your own host application - but to see an example of the engine in flight you can
-run the `Bee.Sandbox` application/target (i.e. run the `Bee.Sandbox` project from the visual studio solution). The 
+run the `Bee.Sandbox.Host` application/target (i.e. run the `Bee.Sandbox.Host` project from the visual studio solution). The 
 sandbox app showcases the OS platform, input, Vulkan backend, and render graph modules and how to setup a host
 program with a hot-reloadable client application.
 
