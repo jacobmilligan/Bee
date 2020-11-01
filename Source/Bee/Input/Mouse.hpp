@@ -7,8 +7,7 @@
 
 #pragma once
 
-#include "Bee/Core/NumericTypes.hpp"
-#include "Bee/Core/EnumStruct.hpp"
+#include "Bee/Core/Enum.hpp"
 
 
 namespace bee {

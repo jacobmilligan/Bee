@@ -4,6 +4,5 @@ bee_add_sources(
         HandleTable.hpp HandleTable.inl
         HashMap.hpp
         ResourcePool.hpp
-        RingBuffer.hpp RingBuffer.cpp
         SoA.hpp SoA.inl
 )

@@ -90,5 +90,19 @@ native_type func_name(const enum_type value)                                    
     __BEE_ENUM_FLAG_OPERATOR(E, T, &)                               \
     enum class BEE_REFLECT(flags, __VA_ARGS__) E : T
 
+#define BEE_ENUM_STRUCT(Name)                                                                           \
+    i32 value { 0 };                                                                                    \
+    Name() = default;                                                                                   \
+    BEE_NOLINT(Name(Enum e)) : value(e) {}                                                              \
+    Name(const Name& other) : value(other.value) {}                                                     \
+    inline constexpr operator Name::Enum() const { return static_cast<Name::Enum>(value); }             \
+    inline constexpr bool operator==(const Name& rhs) const { return value == rhs.value; }              \
+    inline constexpr bool operator!=(const Name& rhs) const { return value != rhs.value; }              \
+    inline constexpr bool operator<(const Name& rhs) const { return value < rhs.value; }                \
+    inline constexpr bool operator>(const Name& rhs) const { return value > rhs.value; }                \
+    inline constexpr bool operator<=(const Name& rhs) const { return value <= rhs.value; }              \
+    inline constexpr bool operator>=(const Name& rhs) const { return value >= rhs.value; }
+
+
 
 } // namespace bee

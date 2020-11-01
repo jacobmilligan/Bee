@@ -3,7 +3,6 @@ bee_new_source_root()
 bee_add_sources(
         Atomic.hpp
         Bit.hpp
-        Bitset.hpp
         CLI.hpp             CLI.cpp
         Concurrency.hpp     Concurrency.cpp
         Config.hpp
@@ -11,7 +10,6 @@ bee_add_sources(
         DynamicLibrary.hpp
         Debug.hpp           Debug.cpp
         Enum.hpp
-        EnumStruct.hpp
         Error.hpp           Error.cpp
         Filesystem.hpp      Filesystem.cpp
         Forward.hpp
