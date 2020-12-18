@@ -50,7 +50,7 @@ void ThreadSafeLinearAllocator::move_construct(ThreadSafeLinearAllocator& other)
     offset_.store(other.offset_.load());
     buffer_ = other.buffer_;
     overflow_ = other.overflow_;
-    overflow_stack_ = std::move(other.overflow_stack_);
+    overflow_stack_ = BEE_MOVE(other.overflow_stack_);
 
     other.capacity_ = 0;
     other.allocated_size_.store(0);

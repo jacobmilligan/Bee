@@ -1,0 +1,61 @@
+/*
+ *  Buffer.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
+ */
+
+#pragma once
+
+
+#include "Bee/Core/NumericTypes.hpp"
+
+
+namespace bee {
+
+
+template <typename T, i32 Capacity, typename SizeType = i32>
+struct BEE_REFLECT(serializable) StaticArray
+{
+    static constexpr SizeType capacity = Capacity;
+
+    SizeType    size { 0 };
+    T           data[Capacity];
+
+    T& operator[](const SizeType index)
+    {
+        return data[index];
+    }
+
+    const T& operator[](const SizeType index) const
+    {
+        return data[index];
+    }
+
+    const T* begin() const
+    {
+        return data;
+    }
+
+    T* begin()
+    {
+        return data;
+    }
+
+    const T* end() const
+    {
+        return data + size;
+    }
+
+    T* end()
+    {
+        return data + size;
+    }
+};
+
+
+} // namespace bee
+
+#ifdef BEE_ENABLE_REFLECTION
+    #include "Bee.Core/ReflectedTemplates/StaticArray.generated.inl"
+#endif // BEE_ENABLE_REFLECTION

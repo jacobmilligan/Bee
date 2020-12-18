@@ -251,13 +251,13 @@ template <typename T, typename... Args>
 inline UniquePtr<T> make_unique(Allocator* allocator, Args&& ...args) noexcept
 {
     BEE_ASSERT(allocator != nullptr);
-    return UniquePtr<T>(BEE_NEW(allocator, T)(std::forward<Args>(args)...), allocator);
+    return UniquePtr<T>(BEE_NEW(allocator, T)(BEE_FORWARD(args)...), allocator);
 }
 
 template <typename T, typename... Args>
 inline UniquePtr<T> make_unique(Allocator& allocator, Args&& ...args) noexcept
 {
-    return make_unique<T>(&allocator, std::forward<Args>(args)...);
+    return make_unique<T>(&allocator, BEE_FORWARD(args)...);
 }
 
 

@@ -42,8 +42,8 @@ struct KeyValuePair
     using key_t     = KeyType;
     using value_t   = ValueType;
 
-    KeyType key;
-    ValueType value;
+    KeyType     key;
+    ValueType   value;
 };
 
 template <
@@ -334,9 +334,9 @@ HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::HashMap(std::initializer_li
 
 template <typename KeyType, typename ValueType, ContainerMode Mode, typename Hasher, typename KeyEqual>
 HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::HashMap(HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>&& other) noexcept
-    : hasher_(std::move(other.hasher_)),
-      key_comparer_(std::move(other.key_comparer_)),
-      node_storage_(std::move(other.node_storage_)),
+    : hasher_(BEE_MOVE(other.hasher_)),
+      key_comparer_(BEE_MOVE(other.key_comparer_)),
+      node_storage_(BEE_MOVE(other.node_storage_)),
       hash_shift_(other.hash_shift_),
       load_factor_(other.load_factor_),
       active_node_count_(other.active_node_count_)
@@ -368,9 +368,9 @@ template <typename KeyType, typename ValueType, ContainerMode Mode, typename Has
 HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>&
 HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::operator=(HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>&& other) noexcept
 {
-    hasher_ = std::move(other.hasher_);
-    key_comparer_ = std::move(other.key_comparer_);
-    node_storage_ = std::move(other.node_storage_);
+    hasher_ = BEE_MOVE(other.hasher_);
+    key_comparer_ = BEE_MOVE(other.key_comparer_);
+    node_storage_ = BEE_MOVE(other.node_storage_);
     hash_shift_ = other.hash_shift_;
     load_factor_ = other.load_factor_;
     active_node_count_ = other.active_node_count_;
@@ -487,7 +487,7 @@ KeyValuePair<KeyType, ValueType>*
 HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::insert(const KeyType& key, ValueType&& value)
 {
     auto keyval = insert_no_construct(key);
-    new (&keyval->value) ValueType(std::forward<ValueType>(value));
+    new (&keyval->value) ValueType(BEE_FORWARD(value));
     return keyval;
 }
 
@@ -719,7 +719,7 @@ void HashMap<KeyType, ValueType, Mode, Hasher, KeyEqual>::rehash(const i32 new_c
     active_node_count_ = new_active_node_count;
 
     node_storage_.resize_no_raii(0); // we don't want to destruct the moved-from data
-    node_storage_ = std::move(new_buckets);
+    node_storage_ = BEE_MOVE(new_buckets);
 }
 
 

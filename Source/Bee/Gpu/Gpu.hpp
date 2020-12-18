@@ -10,6 +10,7 @@
 #include "Bee/Core/Enum.hpp"
 #include "Bee/Core/Handle.hpp"
 #include "Bee/Core/Hash.hpp"
+#include "Bee/Core/Containers/StaticArray.hpp"
 
 #include "Bee/Platform/Platform.hpp"
 
@@ -40,9 +41,20 @@ namespace bee {
     #define BEE_GPU_MAX_DEVICES 1u
 #endif // BEE_GPU_MAX_DEVICES
 
-// based off the metal feature set - seems to be the lowest of the API's
-// see: https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf
-#define BEE_GPU_MAX_ATTACHMENTS 8u
+#ifndef BEE_GPU_MAX_ATTACHMENTS
+    // based off the metal feature set - seems to be the lowest of the API's
+    // see: https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf
+    #define BEE_GPU_MAX_ATTACHMENTS 8u
+#endif // BEE_GPU_MAX_ATTACHMENTS
+
+#ifndef BEE_GPU_MAX_VERTEX_LAYOUTS
+    #define BEE_GPU_MAX_VERTEX_LAYOUTS 4u
+#endif // BEE_GPU_MAX_VERTEX_LAYOUTS
+
+#ifndef BEE_GPU_MAX_VERTEX_ATTRIBUTES
+    // 8 unique vertex attributes per vertex layout
+    #define BEE_GPU_MAX_VERTEX_ATTRIBUTES 32u
+#endif // BEE_GPU_MAX_VERTEX_ATTRIBUTES
 
 #ifndef BEE_GPU_MAX_RESOURCE_LAYOUTS
     #define BEE_GPU_MAX_RESOURCE_LAYOUTS 8u
@@ -533,21 +545,24 @@ BEE_REFLECTED_FLAGS(ShaderStageFlags, u32, serializable, version = 1)
     all         = graphics | compute
 };
 
-enum class BEE_REFLECT(serializable, version = 1) ShaderStageIndex : i32
+struct BEE_REFLECT(serializable, version = 1) ShaderStageIndex
 {
-    vertex = 0,
-    fragment,
-    geometry,
-    compute,
-    count
+    enum BEE_REFLECT(serializable, version = 1) Enum
+    {
+        vertex = 0,
+        fragment,
+        geometry,
+        compute,
+        count
+    };
+
+    BEE_ENUM_STRUCT(ShaderStageIndex)
+
+    constexpr ShaderStageFlags to_flags() const
+    {
+        return static_cast<ShaderStageFlags>(1u << static_cast<u32>(value));
+    }
 };
-
-static constexpr i32 gpu_shader_stage_count = static_cast<i32>(ShaderStageIndex::count);
-
-constexpr ShaderStageFlags gpu_shader_index_to_flag(const ShaderStageIndex index)
-{
-    return static_cast<ShaderStageFlags>(1u << static_cast<u32>(index));
-}
 
 
 BEE_FLAGS(TextureUsage, u32)
@@ -1000,28 +1015,24 @@ struct BEE_REFLECT(serializable) AttachmentDescriptor
     u32                 samples { 1 };
 };
 
+using AttachmentDescriptorArray = StaticArray<AttachmentDescriptor, BEE_GPU_MAX_ATTACHMENTS, u32>;
+using AttachmentIndexArray = StaticArray<u32, BEE_GPU_MAX_ATTACHMENTS, u32>;
 
 struct BEE_REFLECT(serializable) SubPassDescriptor
 {
-    u32 input_attachment_count { 0 };
-    u32 input_attachments[BEE_GPU_MAX_ATTACHMENTS];
-    u32 color_attachment_count { 0 };
-    u32 color_attachments[BEE_GPU_MAX_ATTACHMENTS];
-    u32 resolve_attachment_count { 0 };
-    u32 resolve_attachments[BEE_GPU_MAX_ATTACHMENTS];
-    u32 preserve_attachment_count { 0 };
-    u32 preserve_attachments[BEE_GPU_MAX_ATTACHMENTS];
-    u32 depth_stencil { BEE_GPU_MAX_ATTACHMENTS };
+    AttachmentIndexArray    input_attachments;
+    AttachmentIndexArray    color_attachments;
+    AttachmentIndexArray    resolve_attachments;
+    AttachmentIndexArray    preserve_attachments;
+    u32                     depth_stencil { BEE_GPU_MAX_ATTACHMENTS };
 };
 
 
-struct RenderPassCreateInfo
+struct BEE_REFLECT(serializable) RenderPassCreateInfo
 {
-    u32                         attachment_count { 0 };
-    AttachmentDescriptor        attachments[BEE_GPU_MAX_ATTACHMENTS];
-
-    u32                         subpass_count { 0 };
+    AttachmentDescriptorArray   attachments;
     const SubPassDescriptor*    subpasses { nullptr };
+    u32                         subpass_count { 0 };
 };
 
 
@@ -1032,20 +1043,20 @@ struct Hash<RenderPassCreateInfo>
     {
         HashState hash;
 
-        hash.add(key.attachment_count);
-        hash.add(key.attachments, sizeof(AttachmentDescriptor) * key.attachment_count);
+        hash.add(key.attachments.size);
+        hash.add(key.attachments.data, sizeof(AttachmentDescriptor) * key.attachments.size);
         hash.add(key.subpass_count);
 
         for (u32 sp = 0; sp < key.subpass_count; ++sp)
         {
-            hash.add(key.subpasses[sp].input_attachment_count);
-            hash.add(key.subpasses[sp].input_attachments, sizeof(u32) * key.subpasses[sp].input_attachment_count);
-            hash.add(key.subpasses[sp].color_attachment_count);
-            hash.add(key.subpasses[sp].color_attachments, sizeof(u32) * key.subpasses[sp].color_attachment_count);
-            hash.add(key.subpasses[sp].resolve_attachment_count);
-            hash.add(key.subpasses[sp].resolve_attachments, sizeof(u32) * key.subpasses[sp].resolve_attachment_count);
-            hash.add(key.subpasses[sp].preserve_attachment_count);
-            hash.add(key.subpasses[sp].preserve_attachments, sizeof(u32) * key.subpasses[sp].preserve_attachment_count);
+            hash.add(key.subpasses[sp].input_attachments.size);
+            hash.add(key.subpasses[sp].input_attachments.data, sizeof(u32) * key.subpasses[sp].input_attachments.size);
+            hash.add(key.subpasses[sp].color_attachments.size);
+            hash.add(key.subpasses[sp].color_attachments.data, sizeof(u32) * key.subpasses[sp].color_attachments.size);
+            hash.add(key.subpasses[sp].resolve_attachments.size);
+            hash.add(key.subpasses[sp].resolve_attachments.data, sizeof(u32) * key.subpasses[sp].resolve_attachments.size);
+            hash.add(key.subpasses[sp].preserve_attachments.size);
+            hash.add(key.subpasses[sp].preserve_attachments.data, sizeof(u32) * key.subpasses[sp].preserve_attachments.size);
             hash.add(key.subpasses[sp].depth_stencil);
         }
 
@@ -1088,6 +1099,8 @@ struct BEE_REFLECT(serializable) BlendStateDescriptor
     BlendFactor     dst_blend_color { BlendFactor::zero };
 };
 
+using BlendStateDescriptorArray = StaticArray<BlendStateDescriptor, BEE_GPU_MAX_ATTACHMENTS, u32>;
+
 
 struct BEE_REFLECT(serializable) VertexAttributeDescriptor
 {
@@ -1110,6 +1123,8 @@ struct BEE_REFLECT(serializable) VertexLayoutDescriptor
     StepFunction    step_function { StepFunction::per_vertex };
 };
 
+using VertexLayoutDescriptorArray = StaticArray<VertexLayoutDescriptor, BEE_GPU_MAX_VERTEX_LAYOUTS, u32>;
+using VertexAttributeDescriptorArray = StaticArray<VertexAttributeDescriptor, BEE_GPU_MAX_VERTEX_ATTRIBUTES, u32>;
 
 /// Describes the layout of vertices for all vertex buffers bound for a given pipeline state.
 ///
@@ -1121,15 +1136,8 @@ struct BEE_REFLECT(serializable) VertexLayoutDescriptor
 /// would specify attributes for each layout
 struct BEE_REFLECT(serializable) VertexDescriptor
 {
-    static constexpr u8 max_attributes = 32; // 8 unique attributes per layout
-    static constexpr u8 max_layouts = 4;
-
-    // If the order of these gets changed, ShaderCompiler needs to be updated accordingly
-    // at the line with the comment 'Reflect vertex descriptor' otherwise all shaders will be busted
-    u32                         layout_count { 0 };
-    u32                         attribute_count { 0 };
-    VertexLayoutDescriptor      layouts[max_layouts];
-    VertexAttributeDescriptor   attributes[max_attributes];
+    VertexLayoutDescriptorArray     layouts;
+    VertexAttributeDescriptorArray  attributes;
 };
 
 
@@ -1192,20 +1200,21 @@ inline bool operator!=(const ResourceDescriptor& lhs, const ResourceDescriptor& 
     return !(lhs == rhs);
 }
 
+using ResourceDescriptorArray = StaticArray<ResourceDescriptor, BEE_GPU_MAX_RESOURCE_BINDINGS, u32>;
+
 struct BEE_REFLECT(serializable) ResourceLayoutDescriptor
 {
-    u32                 resource_count { 0 };
-    ResourceDescriptor  resources[BEE_GPU_MAX_RESOURCE_BINDINGS];
+    ResourceDescriptorArray resources;
 };
 
 inline bool operator==(const ResourceLayoutDescriptor& lhs, const ResourceLayoutDescriptor& rhs)
 {
-    if (lhs.resource_count != rhs.resource_count)
+    if (lhs.resources.size != rhs.resources.size)
     {
         return false;
     }
 
-    for (u32 i = 0; i < lhs.resource_count; ++i)
+    for (u32 i = 0; i < lhs.resources.size; ++i)
     {
         if (lhs.resources[i] != rhs.resources[i])
         {
@@ -1227,11 +1236,13 @@ struct Hash<ResourceLayoutDescriptor>
     inline u32 operator()(const ResourceLayoutDescriptor& key) const
     {
         HashState hash;
-        hash.add(key.resource_count);
-        hash.add(key.resources, sizeof(ResourceDescriptor) * key.resource_count);
+        hash.add(key.resources.size);
+        hash.add(key.resources.data, sizeof(ResourceDescriptor) * key.resources.size);
         return hash.end();
     }
 };
+
+using ResourceLayoutDescriptorArray = StaticArray<ResourceLayoutDescriptor, BEE_GPU_MAX_RESOURCE_LAYOUTS, u32>;
 
 struct ResourceBindingCreateInfo
 {
@@ -1285,6 +1296,8 @@ inline bool operator!=(const PushConstantRange& lhs, const PushConstantRange& rh
     return !(lhs == rhs);
 }
 
+using PushConstantRangeArray = StaticArray<PushConstantRange, ShaderStageIndex::count, u32>;
+
 struct BEE_REFLECT(serializable, version = 1) PipelineStateCreateInfo
 {
     // Primitive type to use when rendering while this pipeline state is used
@@ -1320,26 +1333,16 @@ struct BEE_REFLECT(serializable, version = 1) PipelineStateCreateInfo
     BEE_REFLECT(id = 5, added = 1)
     DepthStencilStateDescriptor     depth_stencil_state;
 
-    // Blend state
     BEE_REFLECT(id = 6, added = 1)
-    u32                             color_blend_state_count { 1 };
-
-    BEE_REFLECT(id = 7, added = 1)
-    BlendStateDescriptor            color_blend_states[BEE_GPU_MAX_ATTACHMENTS];
+    BlendStateDescriptorArray       color_blend_states;
 
     // Resource binding layout the pipeline is expecting
-    BEE_REFLECT(id = 8, added = 1)
-    u32                             resource_layout_count { 0 };
-
-    BEE_REFLECT(id = 9, added = 1)
-    ResourceLayoutDescriptor        resource_layouts[BEE_GPU_MAX_RESOURCE_LAYOUTS];
+    BEE_REFLECT(id = 7, added = 1)
+    ResourceLayoutDescriptorArray   resource_layouts;
 
     // Ranges of push constants the pipeline can use
-    BEE_REFLECT(id = 10, added = 1)
-    u32                             push_constant_range_count { 0 };
-
-    BEE_REFLECT(id = 11, added = 1)
-    PushConstantRange               push_constant_ranges[gpu_shader_stage_count]; // vulkan etc. can only have one push constant range per shader stage
+    BEE_REFLECT(id = 8, added = 1)
+    PushConstantRangeArray          push_constant_ranges; // vulkan etc. can only have one push constant range per shader stage
 };
 
 struct CommandPoolCreateInfo
@@ -1355,8 +1358,8 @@ struct CommandPoolCreateInfo
 
 struct SubmitInfo
 {
-    u32                         command_buffer_count { 0 };
-    CommandBuffer* const*    command_buffers {nullptr };
+    u32                     command_buffer_count { 0 };
+    CommandBuffer* const*   command_buffers {nullptr };
 };
 
 

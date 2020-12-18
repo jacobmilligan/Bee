@@ -14,7 +14,7 @@
 #include <clang/Lex/PreprocessorOptions.h>
 #include <clang/Lex/HeaderSearch.h>
 
-
+#pragma optimize("", off)
 
 namespace bee {
 namespace reflect {
@@ -58,21 +58,27 @@ BeeReflectFrontendAction::BeeReflectFrontendAction(TypeMap* storage, ReflectionA
     finder_.addMatcher(function_matcher, &matcher_);
 }
 
-
-std::unique_ptr<clang::ASTConsumer> BeeReflectFrontendAction::CreateASTConsumer(clang::CompilerInstance& CI, llvm::StringRef InFile)
+bool BeeReflectFrontendAction::PrepareToExecuteAction(clang::CompilerInstance& CI)
 {
-    CI.getHeaderSearchOpts().UseBuiltinIncludes = false;
-    CI.getHeaderSearchOpts().UseStandardSystemIncludes = false;
-    CI.getHeaderSearchOpts().UseStandardCXXIncludes = false;
+    auto& header_opts = CI.getHeaderSearchOpts();
+    header_opts.UseBuiltinIncludes = false;
+    header_opts.UseStandardSystemIncludes = false;
+    header_opts.UseStandardCXXIncludes = false;
 //    CI.getPreprocessor().SetSuppressIncludeNotFoundError(true);
 
-    for (const auto& path : CI.getHeaderSearchOpts().UserEntries)
+    for (const auto& path : header_opts.UserEntries)
     {
         if (path.Group == clang::frontend::IncludeDirGroup::Quoted || path.Group == clang::frontend::IncludeDirGroup::Angled)
         {
             matcher_.type_map->include_dirs.push_back(Path(path.Path.c_str()).normalize());
         }
     }
+
+    return true;
+}
+
+std::unique_ptr<clang::ASTConsumer> BeeReflectFrontendAction::CreateASTConsumer(clang::CompilerInstance& CI, llvm::StringRef InFile)
+{
     return finder_.newASTConsumer();
 }
 

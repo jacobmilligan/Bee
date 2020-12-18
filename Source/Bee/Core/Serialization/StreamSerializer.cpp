@@ -21,6 +21,16 @@ void StreamSerializer::end()
     // no-op
 }
 
+size_t StreamSerializer::offset()
+{
+    return sign_cast<size_t>(stream->offset());
+}
+
+size_t StreamSerializer::capacity()
+{
+    return stream->capacity();
+}
+
 void StreamSerializer::begin_object(i32* member_count)
 {
     serialize_fundamental(member_count);
@@ -69,22 +79,23 @@ void StreamSerializer::end_text(char* buffer, const i32 size, const i32 capacity
     }
 }
 
-//void StreamSerializer::serialize_enum(const bee::EnumType* type, u8* data)
-//{
-//    serialize_type(this, type->constants[0].underlying_type, data);
-//}
-
-void StreamSerializer::serialize_bytes(void* data, const i32 size)
+void StreamSerializer::begin_bytes(i32* size)
 {
-    if (mode == SerializerMode::reading)
+    serialize_fundamental(size);
+}
+
+void StreamSerializer::end_bytes(u8* buffer, const i32 size)
+{
+    if (mode == SerializerMode::writing)
     {
-        stream->read(data, size);
+        stream->write(buffer, size);
     }
     else
     {
-        stream->write(data, size);
+        stream->read(buffer, size);
     }
 }
+
 
 template <typename T>
 void stream_serialize_fundamental(const SerializerMode mode, io::Stream* stream, T* data)
@@ -100,7 +111,7 @@ void stream_serialize_fundamental(const SerializerMode mode, io::Stream* stream,
 }
 
 
-#define IMPLEMENT_BUILTIN(type) void StreamSerializer::serialize_fundamental(type* data)  \
+#define IMPLEMENT_BUILTIN(type) void StreamSerializer::serialize_fundamental(type* data)    \
     {                                                                                       \
         stream_serialize_fundamental(mode, stream, data);                                   \
     }

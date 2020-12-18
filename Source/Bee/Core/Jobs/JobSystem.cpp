@@ -61,9 +61,9 @@ struct alignas(128) Worker final : public Noncopyable
     {}
 
     Worker(Worker&& other) noexcept
-        : thread(std::move(other.thread)),
+        : thread(BEE_MOVE(other.thread)),
           thread_local_idx(other.thread_local_idx),
-          job_queue(std::move(other.job_queue)),
+          job_queue(BEE_MOVE(other.job_queue)),
           current_executing_job(other.current_executing_job),
           random(other.random)
     {

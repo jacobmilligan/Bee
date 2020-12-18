@@ -706,7 +706,7 @@ static void resolve_pass(RenderGraph* graph, RenderGraphPass* pass)
     SubPassDescriptor subpass{};
 
     auto& pass_info = graph->tmp_pass_info;
-    pass_info.attachment_count = sign_cast<u32>(pass->attachment_count);
+    pass_info.attachments.size = sign_cast<u32>(pass->attachment_count);
     pass_info.subpass_count = 1;
     pass_info.subpasses = &subpass;
 
@@ -730,8 +730,8 @@ static void resolve_pass(RenderGraph* graph, RenderGraphPass* pass)
             case AttachmentType::present:
             case AttachmentType::color:
             {
-                subpass.color_attachments[subpass.color_attachment_count] = sign_cast<u32>(i);
-                ++subpass.color_attachment_count;
+                ++subpass.color_attachments.size;
+                subpass.color_attachments[subpass.color_attachments.size - 1] = sign_cast<u32>(i);
 
                 // Resolve the pixel format for the color attachment from the texture
                 auto& resource = graph->virtual_resources[sign_cast<i32>(pass->attachment_rg_resources[i].index())];

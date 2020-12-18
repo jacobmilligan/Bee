@@ -8,6 +8,7 @@
 
 #include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/IO.hpp"
+#include "Bee/Core/Base64.hpp"
 
 #define BEE_RAPIDJSON_ERROR_H
 #include "Bee/Core/Serialization/JSONSerializer.hpp"
@@ -40,13 +41,15 @@ BEE_FORCE_INLINE bool json_validate_type(const rapidjson::Type type, const rapid
 JSONSerializer::JSONSerializer(Allocator* allocator)
     : Serializer(SerializerFormat::text),
       parse_flags_(static_cast<rapidjson::ParseFlag>(-1)),
-      stack_(allocator)
+      stack_(allocator),
+      base64_encode_buffer_(allocator)
 {}
 
 JSONSerializer::JSONSerializer(const char* src, const rapidjson::ParseFlag parse_flags, Allocator* allocator)
     : Serializer(SerializerFormat::text),
       parse_flags_(parse_flags),
-      stack_(allocator)
+      stack_(allocator),
+      base64_encode_buffer_(allocator)
 {
     // Remove insitu flag if the src string is read-only
     reset(src, parse_flags);
@@ -55,7 +58,8 @@ JSONSerializer::JSONSerializer(const char* src, const rapidjson::ParseFlag parse
 JSONSerializer::JSONSerializer(char* mutable_src, const rapidjson::ParseFlag parse_flags, Allocator* allocator)
     : Serializer(SerializerFormat::text),
       parse_flags_(parse_flags),
-      stack_(allocator)
+      stack_(allocator),
+      base64_encode_buffer_(allocator)
 {
     reset(mutable_src, parse_flags);
 }
@@ -70,6 +74,16 @@ void JSONSerializer::reset(char* mutable_src, const rapidjson::ParseFlag parse_f
 {
     src_ = mutable_src;
     parse_flags_ = parse_flags;
+}
+
+size_t JSONSerializer::offset()
+{
+    return 0; // The read and write buffers are both dynamic
+}
+
+size_t JSONSerializer::capacity()
+{
+    return limits::max<size_t>(); // The read and write buffers are both dynamic
 }
 
 bool JSONSerializer::begin()
@@ -93,9 +107,9 @@ bool JSONSerializer::begin()
             return false;
         }
 
-        if (!reader_doc_.IsObject())
+        if (!reader_doc_.IsObject() && !reader_doc_.IsArray())
         {
-            log_error("JSONSerializer: expected object as root element");
+            log_error("JSONSerializer: expected object or array as root element");
             return false;
         }
     }
@@ -191,6 +205,11 @@ void JSONSerializer::begin_array(i32* count)
         return;
     }
 
+    if (stack_.empty())
+    {
+        stack_.push_back(&reader_doc_);
+    }
+
     json_validate_type(rapidjson::kArrayType, stack_.back());
     *count = static_cast<i32>(stack_.back()->GetArray().Size());
     element_iter_stack_.push_back(0);
@@ -225,7 +244,7 @@ void JSONSerializer::serialize_field(const char* name)
 
     const auto member = stack_.back()->FindMember(name);
 
-    if (BEE_FAIL_F(member != reader_doc_.MemberEnd(), "JSONSerializer: missing field \"%s\"", name))
+    if (BEE_FAIL_F(member != stack_.back()->GetObject().MemberEnd(), "JSONSerializer: missing field \"%s\"", name))
     {
         return;
     }
@@ -288,9 +307,33 @@ void JSONSerializer::end_text(char* buffer, const i32 size, const i32 capacity)
 //}
 
 
-void JSONSerializer::serialize_bytes(void* data, const i32 size)
+void JSONSerializer::begin_bytes(i32* size)
 {
-    BEE_UNREACHABLE("Not implemented");
+    if (mode == SerializerMode::reading)
+    {
+        if (stack_.back()->IsArray())
+        {
+            stack_.push_back(&stack_.back()->GetArray()[current_element()]);
+        }
+
+        json_validate_type(rapidjson::kStringType, stack_.back());
+        *size = base64_decode_size(StringView(stack_.back()->GetString(), stack_.back()->GetStringLength()));
+    }
+}
+
+void JSONSerializer::end_bytes(u8* buffer, const i32 size)
+{
+    if (mode == SerializerMode::writing)
+    {
+        base64_encode(&base64_encode_buffer_, buffer, size);
+        writer_.String(base64_encode_buffer_.c_str());
+    }
+    else
+    {
+        json_validate_type(rapidjson::kStringType, stack_.back());
+        base64_decode(buffer, size, StringView(stack_.back()->GetString(), stack_.back()->GetStringLength()));
+        end_read_scope();
+    }
 }
 
 void JSONSerializer::serialize_fundamental(bool* data)

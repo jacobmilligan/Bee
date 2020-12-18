@@ -122,7 +122,6 @@ bool TypeMap::try_add_type(const TypeInfo* type, const clang::Decl& decl, Reflec
         );
     }
 
-    file_keyval->value.all_types.push_back(type);
     *reflected_file = &file_keyval->value;
     return true;
 }
@@ -135,6 +134,7 @@ void TypeMap::add_array(ArrayTypeStorage* array, const clang::Decl& decl)
         return;
     }
     location->arrays.push_back(array);
+    location->all_types.emplace_back(array);
 }
 
 void TypeMap::add_record(RecordTypeStorage* record, const clang::Decl& decl)
@@ -144,6 +144,7 @@ void TypeMap::add_record(RecordTypeStorage* record, const clang::Decl& decl)
         return;
     }
     record->location->records.push_back(record);
+    record->location->all_types.emplace_back(record);
 }
 
 void TypeMap::add_function(FunctionTypeStorage* function, const clang::Decl& decl)
@@ -153,6 +154,7 @@ void TypeMap::add_function(FunctionTypeStorage* function, const clang::Decl& dec
         return;
     }
     function->location->functions.push_back(function);
+    function->location->all_types.emplace_back(function);
 }
 
 void TypeMap::add_enum(EnumTypeStorage* enum_storage, const clang::Decl& decl)
@@ -162,6 +164,7 @@ void TypeMap::add_enum(EnumTypeStorage* enum_storage, const clang::Decl& decl)
         return;
     }
     enum_storage->location->enums.push_back(enum_storage);
+    enum_storage->location->all_types.emplace_back(enum_storage);
 }
 
 const TypeInfo* TypeMap::find_type(const u32 hash)

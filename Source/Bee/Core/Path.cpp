@@ -74,12 +74,12 @@ Path::Path(const Path& other) noexcept
 }
 
 Path::Path(Path&& other) noexcept
-    : data_(std::move(other.data_))
+    : data_(BEE_MOVE(other.data_))
 {}
 
 Path& Path::operator=(Path&& other) noexcept
 {
-    data_ = std::move(other.data_);
+    data_ = BEE_MOVE(other.data_);
     return *this;
 }
 
@@ -410,7 +410,7 @@ Path Path::get_generic(Allocator* allocator) const
 {
     Path generic_path(view(), allocator);
     generic_path.make_generic();
-    return std::move(generic_path);
+    return BEE_MOVE(generic_path);
 }
 
 String Path::to_generic_string(Allocator* allocator) const

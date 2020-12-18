@@ -9,9 +9,10 @@
 
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/declval.hpp"
+#include "Bee/Core/Move.hpp"
 
-#include <type_traits>
 #include <string.h> // for memcpy
+#include <type_traits> // is_trivially_copyable
 
 
 namespace bee {
@@ -81,7 +82,7 @@ inline void memmove_or_move(T* dst, T* src, const i32 count, const std::false_ty
 {
     for (int index = 0; index < count; ++index)
     {
-        new (dst + index) T(std::move(src[index]));
+        new (dst + index) T(BEE_MOVE(src[index]));
     }
 }
 

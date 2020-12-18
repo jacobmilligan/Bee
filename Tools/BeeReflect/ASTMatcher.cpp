@@ -35,7 +35,8 @@ enum class BuiltinAttributeKind
     format,
     serializer_function,
     use_builder,
-    ignored
+    ignored,
+    bytes
 };
 
 struct BuiltinAttribute
@@ -60,7 +61,8 @@ BuiltinAttribute g_builtin_attributes[] =
     { "format", BuiltinAttributeKind::format },
     { "serializer", BuiltinAttributeKind::serializer_function },
     { "use_builder", BuiltinAttributeKind::use_builder },
-    { "ignored", BuiltinAttributeKind::ignored }
+    { "ignored", BuiltinAttributeKind::ignored },
+    { "bytes", BuiltinAttributeKind::bytes }
 };
 
 
@@ -415,6 +417,8 @@ void ASTMatcher::reflect_record_children(const clang::CXXRecordDecl &decl, Recor
             continue;
         }
 
+        const auto* record_layout = decl.isDependentType() ? nullptr : &decl.getASTContext().getASTRecordLayout(&decl);
+
         switch (kind)
         {
             case clang::Decl::Kind::CXXRecord:
@@ -442,7 +446,7 @@ void ASTMatcher::reflect_record_children(const clang::CXXRecordDecl &decl, Recor
 
                 if (child_field != nullptr)
                 {
-                    reflect_field(*child_field, decl.getASTContext().getASTRecordLayout(&decl), storage);
+                    reflect_field(*child_field, record_layout, storage);
                 }
 
                 if (storage->fields.size() > old_field_count && !requires_field_order_validation)
@@ -652,7 +656,7 @@ void ASTMatcher::reflect_array(const clang::FieldDecl& decl, RecordTypeStorage* 
     }
 }
 
-void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRecordLayout& enclosing_layout, RecordTypeStorage* parent)
+void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRecordLayout* enclosing_layout, RecordTypeStorage* parent)
 {
     if (decl.isAnonymousStructOrUnion())
     {
@@ -682,7 +686,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
         return;
     }
 
-    auto storage = create_field(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), &enclosing_layout, parent, decl.getType(), decl.getTypeSpecStartLoc());
+    auto storage = create_field(decl.getName(), decl.getFieldIndex(), decl.getASTContext(), enclosing_layout, parent, decl.getType(), decl.getTypeSpecStartLoc());
     storage.attributes = std::move(tmp_attributes);
 
     auto& field = storage.field;
@@ -721,6 +725,7 @@ void ASTMatcher::reflect_field(const clang::FieldDecl& decl, const clang::ASTRec
         return;
     }
 
+    field.serialization_flags = serialization_info.flags;
     field.version_added = serialization_info.version_added;
     field.version_removed = serialization_info.version_removed;
     storage.order = serialization_info.id;
@@ -845,6 +850,7 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
     field.name = allocator->allocate_name(name);
     field.offset = 0;
     field.qualifier = get_qualifier(desugared_type);
+    field.serialization_flags = SerializationFlags::none;
 
     if (enclosing_layout != nullptr)
     {
@@ -938,7 +944,7 @@ FieldStorage ASTMatcher::create_field(const llvm::StringRef& name, const bee::i3
          * get_type. This is safe to do here as bee-reflect doesn't link to any generated cpp files
          */
         type = get_type(type_hash);
-        if (type->kind == TypeKind::unknown && !original_type->isTemplateTypeParmType())
+        if (type->kind == TypeKind::unknown && !original_type->isTemplateTypeParmType() && !original_type->isDependentType())
         {
             diagnostics.Report(location, diagnostics.warn_unknown_field_type).AddString(storage.specialized_type);
         }
@@ -1277,6 +1283,10 @@ bool AttributeParser::parse_attribute(DynamicArray<Attribute>* dst_attributes, S
             // returning false will cause parsing to fail which will cause the type to not be reflected
             return false;
         }
+        case BuiltinAttributeKind::bytes:
+        {
+            serialization_info->flags |= SerializationFlags::bytes;
+        }
         default: break;
     }
 
@@ -1339,7 +1349,7 @@ bool AttributeParser::parse(DynamicArray<Attribute>* dst_attributes, Serializati
         serialization_info->serialized_version = 1;
     }
 
-    if (serialization_info->flags == SerializationFlags::none)
+    if (serialization_info->flags == SerializationFlags::none && !is_field)
     {
         serialization_info->flags |= SerializationFlags::packed_format;
     }

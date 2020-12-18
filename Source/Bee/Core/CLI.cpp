@@ -77,16 +77,16 @@ void Results::move_construct(Results& other) noexcept
     argv = other.argv;
     success = other.success;
     help_requested = other.help_requested;
-    positionals = std::move(other.positionals);
-    options = std::move(other.options);
-    subparsers = std::move(other.subparsers);
-    program_name = std::move(other.program_name);
-    help_string = std::move(other.help_string);
+    positionals = BEE_MOVE(other.positionals);
+    options = BEE_MOVE(other.options);
+    subparsers = BEE_MOVE(other.subparsers);
+    program_name = BEE_MOVE(other.program_name);
+    help_string = BEE_MOVE(other.help_string);
     requested_help_string = other.requested_help_string;
-    error_message = std::move(other.error_message);
+    error_message = BEE_MOVE(other.error_message);
     argv_parsed_count = other.argv_parsed_count;
-    dynamic_argv_ = std::move(other.dynamic_argv_);
-    dynamic_argv_ptrs_ = std::move(other.dynamic_argv_ptrs_);
+    dynamic_argv_ = BEE_MOVE(other.dynamic_argv_);
+    dynamic_argv_ptrs_ = BEE_MOVE(other.dynamic_argv_ptrs_);
 
     other.argc = 0;
     other.argv = nullptr;
@@ -663,4 +663,4 @@ const char* const* get_remainder(const Results& results)
 
 
 } // namespace cli
-} // namespace bee
+} // namespa

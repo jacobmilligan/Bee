@@ -89,7 +89,7 @@ void Thread::move_construct(Thread& other) noexcept
         return;
     }
 
-    name_ = std::move(other.name_);
+    name_ = BEE_MOVE(other.name_);
     native_thread_ = other.native_thread_;
 
     other.native_thread_ = nullptr;

@@ -66,7 +66,7 @@ inline void radix_sort8(T* inputs, T* outputs, const u64 count, KeyFunc&& key_fu
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<u8>(key_func(inputs[i]));
-        outputs[bucket_0[key]++] = std::move(inputs[i]);
+        outputs[bucket_0[key]++] = BEE_MOVE(inputs[i]);
     }
 }
 
@@ -109,12 +109,12 @@ inline void radix_sort16(T* inputs, T* outputs, const u64 count, KeyFunc&& key_f
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(inputs[i]));
-        outputs[bucket_0[key]++] = std::move(inputs[i]);
+        outputs[bucket_0[key]++] = BEE_MOVE(inputs[i]);
     }
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(outputs[i]) >> 8u);
-        outputs[bucket_1[key]++] = std::move(outputs[i]);
+        outputs[bucket_1[key]++] = BEE_MOVE(outputs[i]);
     }
 }
 
@@ -169,22 +169,22 @@ inline void radix_sort32(T* inputs, T* outputs, const u64 count, KeyFunc&& key_f
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(inputs[i]));
-        outputs[bucket_0[key]++] = std::move(inputs[i]);
+        outputs[bucket_0[key]++] = BEE_MOVE(inputs[i]);
     }
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(outputs[i]) >> 8u);
-        outputs[bucket_1[key]++] = std::move(outputs[i]);
+        outputs[bucket_1[key]++] = BEE_MOVE(outputs[i]);
     }
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(inputs[i]) >> 16u);
-        outputs[bucket_2[key]++] = std::move(inputs[i]);
+        outputs[bucket_2[key]++] = BEE_MOVE(inputs[i]);
     }
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(outputs[i]) >> 24u);
-        outputs[bucket_3[key]++] = std::move(outputs[i]);
+        outputs[bucket_3[key]++] = BEE_MOVE(outputs[i]);
     }
 }
 
@@ -263,42 +263,42 @@ inline void radix_sort64(T* inputs, T* outputs, const u64 count, KeyFunc&& key_f
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(inputs[i]));
-        outputs[bucket_0[key]++] = std::move(inputs[i]);
+        outputs[bucket_0[key]++] = BEE_MOVE(inputs[i]);
     }
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(outputs[i]) >> 8u);
-        outputs[bucket_1[key]++] = std::move(outputs[i]);
+        outputs[bucket_1[key]++] = BEE_MOVE(outputs[i]);
     }
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(inputs[i]) >> 16u);
-        outputs[bucket_2[key]++] = std::move(inputs[i]);
+        outputs[bucket_2[key]++] = BEE_MOVE(inputs[i]);
     }
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(outputs[i]) >> 24u);
-        outputs[bucket_3[key]++] = std::move(outputs[i]);
+        outputs[bucket_3[key]++] = BEE_MOVE(outputs[i]);
     }
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(inputs[i]) >> 32u);
-        outputs[bucket_4[key]++] = std::move(inputs[i]);
+        outputs[bucket_4[key]++] = BEE_MOVE(inputs[i]);
     }
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(outputs[i]) >> 40u);
-        outputs[bucket_5[key]++] = std::move(outputs[i]);
+        outputs[bucket_5[key]++] = BEE_MOVE(outputs[i]);
     }
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(inputs[i]) >> 48u);
-        outputs[bucket_6[key]++] = std::move(inputs[i]);
+        outputs[bucket_6[key]++] = BEE_MOVE(inputs[i]);
     }
     for (int i = 0; i < count; ++i)
     {
         const auto key = static_cast<uint8_t>(key_func(outputs[i]) >> 56u);
-        outputs[bucket_7[key]++] = std::move(outputs[i]);
+        outputs[bucket_7[key]++] = BEE_MOVE(outputs[i]);
     }
 }
 
@@ -308,20 +308,20 @@ void radix_sort(T* inputs, T* outputs, const u64 count, KeyFunc&& key_func)
 {
     if (count <= (1u << 8u))
     {
-        return radix_sort8(inputs, outputs, count, std::forward<KeyFunc>(key_func));
+        return radix_sort8(inputs, outputs, count, BEE_FORWARD(key_func));
     }
 
     if (count <= (1u << 16u))
     {
-        return radix_sort16(inputs, outputs, count, std::forward<KeyFunc>(key_func));
+        return radix_sort16(inputs, outputs, count, BEE_FORWARD(key_func));
     }
 
     if (count <= (1llu << 32llu))
     {
-        return radix_sort32(inputs, outputs, count, std::forward<KeyFunc>(key_func));
+        return radix_sort32(inputs, outputs, count, BEE_FORWARD(key_func));
     }
 
-    return radix_sort64(inputs, outputs, count, std::forward<KeyFunc>(key_func));
+    return radix_sort64(inputs, outputs, count, BEE_FORWARD(key_func));
 }
 
 template <typename T>

@@ -549,6 +549,16 @@ StringView StringStream::view() const
     return StringView(c_str_buffer(), size());
 }
 
+String* StringStream::container() const
+{
+    if (BEE_FAIL(mode() == Mode::container))
+    {
+        return nullptr;
+    }
+
+    return string.container;
+}
+
 char* StringStream::data()
 {
     if (mode() == Mode::read_only)

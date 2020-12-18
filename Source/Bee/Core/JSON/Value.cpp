@@ -23,7 +23,7 @@ ValueAllocator::ValueAllocator(ValueAllocator&& other) noexcept
 {
     size_ = other.size_;
     allocation_mode_ = other.allocation_mode_;
-    buffer_.move_replace_no_destruct(std::move(other.buffer_));
+    buffer_.move_replace_no_destruct(BEE_MOVE(other.buffer_));
 
     other.allocation_mode_ = AllocationMode::fixed;
     other.size_ = 0;
@@ -33,7 +33,7 @@ ValueAllocator& ValueAllocator::operator=(ValueAllocator&& other) noexcept
 {
     size_ = other.size_;
     allocation_mode_ = other.allocation_mode_;
-    buffer_.move_replace_no_destruct(std::move(other.buffer_));
+    buffer_.move_replace_no_destruct(BEE_MOVE(other.buffer_));
 
     other.allocation_mode_ = AllocationMode::fixed;
     other.size_ = 0;

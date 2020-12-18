@@ -22,17 +22,17 @@ Serializer::Serializer(const bee::SerializerFormat serialized_format)
 {}
 
 
-SerializationBuilder::SerializationBuilder(Serializer* new_serializer, const RecordType& type, Allocator* allocator)
+SerializationBuilder::SerializationBuilder(Serializer* new_serializer, const SerializeTypeParams* params)
     : serializer_(new_serializer),
-      type_(type),
-      allocator_(allocator)
+      type_(params->type->as<RecordTypeInfo>()),
+      params_(params)
 {}
 
 SerializationBuilder::~SerializationBuilder()
 {
     switch (container_kind_)
     {
-        case SerializedContainerKind::none:
+        case SerializedContainerKind::structure:
         {
             serializer_->end_record();
             break;
@@ -47,6 +47,12 @@ SerializationBuilder::~SerializationBuilder()
             serializer_->end_object();
             break;
         }
+        case SerializedContainerKind::text:
+        case SerializedContainerKind::bytes:
+        {
+            BEE_UNREACHABLE("SerializationBuilder setup for text/bytes was not ended using builder->text() or builder->bytes()");
+            break;
+        }
         default: break;
     }
 }
@@ -58,8 +64,10 @@ SerializationBuilder& SerializationBuilder::structure(const i32 serialized_versi
         return *this;
     }
 
-    serializer_->begin_record(type_);
+    container_kind_ = SerializedContainerKind::structure;
     version_ = serialized_version;
+
+    serializer_->begin_record(type_);
     serialize_version(serializer_, &version_);
     return *this;
 }
@@ -91,6 +99,11 @@ SerializationBuilder& SerializationBuilder::container(const SerializedContainerK
             serializer_->begin_text(size);
             break;
         }
+        case SerializedContainerKind::bytes:
+        {
+            serializer_->begin_bytes(size);
+            break;
+        }
         default:
         {
             BEE_UNREACHABLE("Invalid container type");
@@ -108,6 +121,19 @@ SerializationBuilder& SerializationBuilder::text(char* buffer, const i32 size, c
     }
 
     serializer_->end_text(buffer, size, capacity);
+    container_kind_ = SerializedContainerKind::none;
+    return *this;
+}
+
+SerializationBuilder& SerializationBuilder::bytes(u8* buffer, const i32 size)
+{
+    if (BEE_FAIL_F(container_kind_ == SerializedContainerKind::bytes, "serialization builder is not configured to serialize a bytes container"))
+    {
+        return *this;
+    }
+
+    serializer_->end_bytes(buffer, size);
+    container_kind_ = SerializedContainerKind::none;
     return *this;
 }
 
@@ -138,35 +164,67 @@ void serialize_serialization_flags(Serializer* serializer, SerializationFlags* f
     }
 }
 
-
-void serialize_packed_record(const i32 version, Serializer* serializer, const RecordType& type, u8* data, const Span<const Type> template_args)
+static void serialize_field(const i32 version, Serializer* serializer, const Field& field, const SerializeTypeParams& params)
 {
-    for (const Field& field : type->fields)
+    // handle versioning - skip fields from versions newer than the current one or old fields that have been removed
+    if (field.version_added <= 0 || version < field.version_added || version >= field.version_removed)
     {
-        auto serialized_type = field.type;
+        return;
+    }
 
-        if (field.version_added > 0 && version >= field.version_added && version < field.version_removed)
-        {
-            serializer->serialize_field(field.name);
+    // skip automatic serialization of pointer or reference types
+    if ((field.qualifier & (Qualifier::lvalue_ref | Qualifier::rvalue_ref | Qualifier::pointer)) != Qualifier::none)
+    {
+        return;
+    }
 
-            if (field.template_argument_in_parent >= 0)
-            {
-                serialized_type = template_args[field.template_argument_in_parent];
-            }
+    SerializeTypeParams field_params(
+        field.type,
+        params.data + field.offset,
+        params.builder_allocator,
+        field.serializer_function,
+        field.serialization_flags
+    );
 
-            serialize_type(serializer, serialized_type, field.serializer_function, data + field.offset);
-        }
+    serializer->serialize_field(field.name);
+
+    if (field.template_argument_in_parent >= 0)
+    {
+        field_params.type = params.template_type_arguments[field.template_argument_in_parent];
+    }
+
+    serialize_type(serializer, field_params);
+}
+
+
+static void serialize_packed_record(const i32 version, Serializer* serializer, const SerializeTypeParams& params)
+{
+    const auto record_type = params.type->as<RecordTypeInfo>();
+    const auto hash = record_type->hash;
+
+    for (const Field& field : record_type->fields)
+    {
+        serialize_field(version, serializer, field, params);
     }
 }
 
-void serialize_table_record(const i32 version, Serializer* serializer, const RecordType& type, u8* data, const Span<const Type> template_args)
+static void serialize_field_header(FieldHeader* dst, Serializer* serializer)
 {
-    int field_count = type->fields.size();
+    int size = sizeof(FieldHeader);
+    FieldHeader header{};
+    serializer->begin_bytes(&size);
+    serializer->end_bytes(reinterpret_cast<u8*>(&header), size);
+}
+
+void serialize_table_record(const i32 version, Serializer* serializer, const SerializeTypeParams& params)
+{
+    const auto record_type = params.type->as<RecordTypeInfo>();
+    int field_count = record_type->fields.size();
 
     // Exclude any nonserialized or older/newer fields when writing
     if (serializer->mode == SerializerMode::writing)
     {
-        for (const Field& field : type->fields)
+        for (const Field& field : record_type->fields)
         {
             if (field.version_added <= 0 || field.version_removed <= version)
             {
@@ -182,54 +240,31 @@ void serialize_table_record(const i32 version, Serializer* serializer, const Rec
         for (int f = 0; f < field_count; ++f)
         {
             FieldHeader header{};
-            serializer->serialize_bytes(&header, sizeof(FieldHeader));
+            serialize_field_header(&header, serializer);
 
             // Lookup the type using the header hashes
-            const auto field_index = find_index_if(type->fields, [&](const Field& f)
+            const auto field_index = find_index_if(record_type->fields, [&](const Field& f)
             {
                 return f.type->hash == header.type_hash && f.hash == header.field_hash;
             });
 
-            if (BEE_FAIL_F(field_index >= 0, "serialization of record type `%s` failed: detected missing field. The fields may have been renamed or it's type changed", type->name))
+            if (BEE_FAIL_F(field_index >= 0, "serialization of record type `%s` failed: detected missing field. The fields may have been renamed or it's type changed", record_type->name))
             {
                 return;
             }
 
-            auto& field = type->fields[field_index];
-            if (field.version_added > 0 && version >= field.version_added && version < field.version_removed)
-            {
-                serializer->serialize_field(field.name);
-                if (field.template_argument_in_parent < 0)
-                {
-                    serialize_type(serializer, field.type, field.serializer_function, data + field.offset);
-                }
-                else
-                {
-                    serialize_type(serializer, template_args[field.template_argument_in_parent], field.serializer_function, data + field.offset);
-                }
-            }
+            auto& field = record_type->fields[field_index];
+            serialize_field(version, serializer, field, params);
         }
     }
     else
     {
         // We have to iterate all the fields to skip the ones we don't want to write
-        for (const Field& field : type->fields)
+        for (const Field& field : record_type->fields)
         {
-            if (field.version_added > 0 && version >= field.version_added && version < field.version_removed)
-            {
-                FieldHeader header(field);
-                serializer->serialize_bytes(&header, sizeof(FieldHeader));
-                serializer->serialize_field(field.name);
-
-                if (field.template_argument_in_parent < 0)
-                {
-                    serialize_type(serializer, field.type, field.serializer_function, data + field.offset);
-                }
-                else
-                {
-                    serialize_type(serializer, template_args[field.template_argument_in_parent], field.serializer_function, data + field.offset);
-                }
-            }
+            FieldHeader header{};
+            serialize_field_header(&header, serializer);
+            serialize_field(version, serializer, field, params);
         }
     }
 }
@@ -240,35 +275,59 @@ enum class SerializeTypeMode
     append_scope
 };
 
-void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* serializer, const Type& type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type>& template_type_arguments, Allocator* builder_allocator)
+// Serializer* serializer, const Type& type, u8* data, Field::serialization_function_t serialization_function, u8* data, const Span<const Type>& template_type_arguments, Allocator* builder_allocator = system_allocator()
+
+void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* serializer, const SerializeTypeParams& params)
 {
     static thread_local char enum_constant_buffer[1024];
 
-    if (type->serialized_version <= 0)
+    if (params.type->serialized_version <= 0)
     {
-        log_error("Skipping serialization for `%s`: type is not marked for serialization using the `serializable` attribute", type->name);
+        log_error("Skipping serialization for `%s`: type is not marked for serialization using the `serializable` attribute", params.type->name);
+        return;
+    }
+
+    if (serializer->offset() >= serializer->capacity())
+    {
+        log_error("Skipping serialization for `%s`: serializer reached capacity", params.type->name);
         return;
     }
 
     // Handle custom serialization
-    if (serialization_function != nullptr)
+    if (params.serialization_function != nullptr)
     {
-        BEE_ASSERT_F((type->kind & TypeKind::record) != TypeKind::unknown, "Custom serializer functions must only be used with record types");
+        BEE_ASSERT_F((params.type->kind & TypeKind::record) != TypeKind::unknown, "Custom serializer functions must only be used with record types");
 
-        SerializationBuilder builder(serializer, type->as<RecordTypeInfo>(), builder_allocator);
-        serialization_function(&builder, data);
+        SerializationBuilder builder(serializer, &params);
+        params.serialization_function(&builder, params.data);
+        return;
+    }
+
+    // Handle serializing as bytes field or type
+    if (((params.field_flags | params.type->serialization_flags) & SerializationFlags::bytes) != SerializationFlags::none)
+    {
+        int size = params.type->size;
+        serializer->begin_bytes(&size);
+        serializer->end_bytes(params.data, size);
         return;
     }
 
     // Handle as automatically serialized
-    if (type->is(TypeKind::record))
+    if (params.type->is(TypeKind::record))
     {
-        auto record_type = type->as<RecordTypeInfo>();
+        auto record_type = params.type->as<RecordTypeInfo>();
         for (const auto& base_type : record_type->base_records)
         {
             // FIXME(Jacob): is this the best way to handle inheritence?
             // FIXME(Jacob): base types need their serialization builder functions because they're not fields
-            serialize_type(serialize_type_mode, serializer, base_type, nullptr, data, template_type_arguments, builder_allocator);
+            SerializeTypeParams base_params(
+                base_type,
+                params.data,
+                params.builder_allocator,
+                nullptr,
+                SerializationFlags::none
+            );
+            serialize_type(serialize_type_mode, serializer, base_params);
         }
 
         if (serialize_type_mode != SerializeTypeMode::append_scope)
@@ -277,8 +336,8 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
         }
 
         // Serialize the flags and version numbers of the type if we're not dealing with relaxed sources
-        auto serialization_flags = type->serialization_flags;
-        i32 version = type->serialized_version;
+        auto serialization_flags = params.type->serialization_flags;
+        i32 version = params.type->serialized_version;
 
         if ((serializer->source_flags & SerializerSourceFlags::unversioned) == SerializerSourceFlags::none)
         {
@@ -292,13 +351,13 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
 
         if (serializer->format == SerializerFormat::text || (serialization_flags & SerializationFlags::packed_format) == SerializationFlags::packed_format)
         {
-            BEE_ASSERT_F(version <= type->serialized_version, "serialization error for type `%s`: structures serialized using `packed_format` are not forward-compatible with versions from the future", type->name);
-            serialize_packed_record(version, serializer, record_type, data, template_type_arguments);
+            BEE_ASSERT_F(version <= params.type->serialized_version, "serialization error for type `%s`: structures serialized using `packed_format` are not forward-compatible with versions from the future", params.type->name);
+            serialize_packed_record(version, serializer, params);
         }
 
         if ((serialization_flags & SerializationFlags::table_format) == SerializationFlags::table_format)
         {
-            serialize_table_record(version, serializer, record_type, data, template_type_arguments);
+            serialize_table_record(version, serializer, params);
         }
 
         if (serialize_type_mode != SerializeTypeMode::append_scope)
@@ -306,28 +365,52 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
             serializer->end_record();
         }
     }
-    else if (type->is(TypeKind::array))
+    else if (params.type->is(TypeKind::array))
     {
-        auto array_type = type->as<ArrayTypeInfo>();
+        auto array_type = params.type->as<ArrayTypeInfo>();
         auto element_type = array_type->element_type;
 
         i32 element_count = array_type->element_count;
         serializer->begin_array(&element_count);
 
-        for (int element = 0; element < element_count; ++element)
+        if ((element_type->serialization_flags & SerializationFlags::bytes) != SerializationFlags::none)
         {
-            serialize_type(serializer, element_type, array_type->serializer_function, data + element_type->size * element);
+            int bytes_size = element_type->size * element_count;
+            serializer->begin_bytes(&bytes_size);
+            serializer->end_bytes(params.data, bytes_size);
+        }
+        else
+        {
+            SerializeTypeParams element_params(
+                element_type,
+                params.data,
+                params.builder_allocator,
+                array_type->serializer_function,
+                SerializationFlags::none
+            );
+            for (int element = 0; element < element_count; ++element)
+            {
+                element_params.data += element_type->size * element;
+                serialize_type(serializer, element_params);
+            }
         }
 
         serializer->end_array();
     }
-    else if (type->is(TypeKind::enum_decl))
+    else if (params.type->is(TypeKind::enum_decl))
     {
-        auto as_enum = type->as<EnumTypeInfo>();
+        auto as_enum = params.type->as<EnumTypeInfo>();
         // Binary doesn't need special treatment - just serialize as underlying fundamental
         if (serializer->format == SerializerFormat::binary)
         {
-            serialize_type(serializer, as_enum->underlying_type, nullptr, data);
+            SerializeTypeParams enum_params(
+                as_enum->underlying_type,
+                params.data,
+                params.builder_allocator,
+                nullptr,
+                SerializationFlags::none
+            );
+            serialize_type(serializer, enum_params);
         }
         else
         {
@@ -338,7 +421,7 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
                 if (serializer->mode == SerializerMode::writing)
                 {
                     i64 value = 0;
-                    memcpy(&value, data, as_enum->underlying_type->size);
+                    memcpy(&value, params.data, as_enum->underlying_type->size);
 
                     const auto constant_index = find_index_if(as_enum->constants, [&](const EnumConstant& c)
                     {
@@ -379,19 +462,19 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
                     {
                         i64 value = 0;
                         sscanf(enum_constant_buffer, "%" SCNd64, &value);
-                        memcpy(data, &value, as_enum->underlying_type->size);
+                        memcpy(params.data, &value, as_enum->underlying_type->size);
                     }
                     else
                     {
                         // valid so we can copy the constant value into data
-                        memcpy(data, &as_enum->constants[constant_index].value, as_enum->underlying_type->size);
+                        memcpy(params.data, &as_enum->constants[constant_index].value, as_enum->underlying_type->size);
                     }
                 }
             }
             else
             {
                 i64 value = 0;
-                memcpy(&value, data, as_enum->underlying_type->size);
+                memcpy(&value, params.data, as_enum->underlying_type->size);
 
                 if (serializer->mode == SerializerMode::writing)
                 {
@@ -456,25 +539,25 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
                         final_flag |= flag_as_int;
                     }
 
-                    memcpy(data, &final_flag, as_enum->underlying_type->size);
+                    memcpy(params.data, &final_flag, as_enum->underlying_type->size);
                 }
             }
         }
     }
-    else if (type->is(TypeKind::fundamental))
+    else if (params.type->is(TypeKind::fundamental))
     {
-        const auto fundamental_type = type->as<FundamentalTypeInfo>();
+        const auto fundamental_type = params.type->as<FundamentalTypeInfo>();
 
-#define BEE_SERIALIZE_FUNDAMENTAL(kind_name, serialized_type) case FundamentalKind::kind_name: { serializer->serialize_fundamental(reinterpret_cast<serialized_type*>(data)); break; }
+#define BEE_SERIALIZE_FUNDAMENTAL(kind_name, serialized_type) case FundamentalKind::kind_name: { serializer->serialize_fundamental(reinterpret_cast<serialized_type*>(params.data)); break; }
         switch (fundamental_type->fundamental_kind)
         {
             case FundamentalKind::bool_kind:
             {
-                bool value = *reinterpret_cast<bool*>(data) ? true : false; // NOLINT
+                bool value = *reinterpret_cast<bool*>(params.data) ? true : false; // NOLINT
                 serializer->serialize_fundamental(&value);
                 if (serializer->mode == SerializerMode::reading)
                 {
-                    memcpy(data, &value, sizeof(bool));
+                    memcpy(params.data, &value, sizeof(bool));
                 }
                 break;
             }
@@ -498,24 +581,14 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
     }
 }
 
-void serialize_type(Serializer* serializer, const Type& type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator)
+void serialize_type(Serializer* serializer, const SerializeTypeParams& params)
 {
-    return serialize_type(SerializeTypeMode::new_scope, serializer, type, serialization_function, data, {}, builder_allocator);
+    return serialize_type(SerializeTypeMode::new_scope, serializer, params);
 }
 
-void serialize_type(Serializer* serializer, const Type& type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type>& template_type_arguments, Allocator* builder_allocator)
+void serialize_type_append(Serializer* serializer, const SerializeTypeParams& params)
 {
-    return serialize_type(SerializeTypeMode::new_scope, serializer, type, serialization_function, data, template_type_arguments, builder_allocator);
-}
-
-void serialize_type_append(Serializer* serializer, const Type& type, Field::serialization_function_t serialization_function, u8* data, Allocator* builder_allocator)
-{
-    serialize_type(SerializeTypeMode::append_scope, serializer, type, serialization_function, data, {}, builder_allocator);
-}
-
-void serialize_type_append(Serializer* serializer, const Type& type, Field::serialization_function_t serialization_function, u8* data, const Span<const Type>& template_type_arguments, Allocator* builder_allocator)
-{
-    serialize_type(SerializeTypeMode::append_scope, serializer, type, serialization_function, data, template_type_arguments, builder_allocator);
+    serialize_type(SerializeTypeMode::append_scope, serializer, params);
 }
 
 

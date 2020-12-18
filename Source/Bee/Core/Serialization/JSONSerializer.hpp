@@ -48,6 +48,9 @@ public:
         return reader_doc_;
     }
 
+    size_t offset() override;
+    size_t capacity() override;
+
     bool begin() override;
     void end() override;
     void begin_record(const RecordType& type) override;
@@ -58,9 +61,11 @@ public:
     void end_array() override;
     void begin_text(i32* length) override;
     void end_text(char* buffer, const i32 size, const i32 capacity) override;
+    void begin_bytes(i32* size) override;
+    void end_bytes(u8* buffer, const i32 size) override;
+
     void serialize_field(const char* name) override;
     void serialize_key(String* key) override;
-    void serialize_bytes(void* data, const i32 size) override;
     void serialize_fundamental(bool* data) override;
     void serialize_fundamental(char* data) override;
     void serialize_fundamental(float* data) override;
@@ -83,6 +88,7 @@ private:
     DynamicArray<rapidjson::Value*>                     stack_;
     DynamicArray<rapidjson::Value::MemberIterator>      member_iter_stack_;
     DynamicArray<i32>                                   element_iter_stack_;
+    String                                              base64_encode_buffer_;
     const char*                                         src_ { nullptr };
 
     inline void next_element_if_array()

@@ -226,6 +226,15 @@ TypeInstance& TypeInstance::operator=(TypeInstance&& other) noexcept
     return *this;
 }
 
+void TypeInstance::from(TypeInstance* other)
+{
+    destroy();
+    data_ = other->copier_(allocator_, data_);
+    type_ = other->type_;
+    copier_ = other->copier_;
+    deleter_ = other->deleter_;
+}
+
 void TypeInstance::destroy()
 {
     if (data_ != nullptr)
@@ -239,7 +248,7 @@ void TypeInstance::copy_construct(const TypeInstance& other)
 {
     destroy();
     allocator_ = other.allocator_;
-    data_ = other.copier_(allocator_, &other);
+    data_ = other.copier_(allocator_, other.data_);
     type_ = other.type_;
     copier_ = other.copier_;
     deleter_ = other.deleter_;
@@ -301,6 +310,7 @@ struct ReflectionModule
     i32                         type_count { 0 };
     const char*                 name { nullptr };
     const get_type_callback_t*  types { nullptr };
+    u32*                        type_hashes { nullptr };
 };
 
 static DynamicHashMap<u32, get_type_callback_t> g_type_map;
@@ -331,23 +341,29 @@ const ReflectionModule* create_reflection_module(const StringView& name, const i
         return nullptr;
     }
 
-    const size_t name_bytecount = name.size() * sizeof(char);
+    const size_t name_bytecount = name.size() * sizeof(char) + 1;
     const size_t types_bytecount = sizeof(get_type_callback_t) * (type_count + 1); // for null terminator
+    const size_t type_hash_bytecount = sizeof(u32) * type_count;
 
-    auto* mem = BEE_MALLOC(system_allocator(), sizeof(ReflectionModule) + name_bytecount + types_bytecount);
+    auto* mem = BEE_MALLOC(system_allocator(), sizeof(ReflectionModule) + name_bytecount + types_bytecount + type_hash_bytecount);
     auto* module = static_cast<ReflectionModule*>(mem);
     new (module) ReflectionModule{};
 
     auto* name_ptr = reinterpret_cast<char*>(static_cast<u8*>(mem) + sizeof(ReflectionModule));
     str::copy(name_ptr, name_bytecount, name);
+    name_ptr[name_bytecount] = '\0';
 
     auto* types_ptr = reinterpret_cast<get_type_callback_t*>(static_cast<u8*>(mem) + sizeof(ReflectionModule) + name_bytecount);
     memcpy(types_ptr, callbacks, type_count * sizeof(get_type_callback_t));
+
+    auto* type_hashes_ptr = reinterpret_cast<u32*>(static_cast<u8*>(mem) + sizeof(ReflectionModule) + name_bytecount + types_bytecount);
+    memcpy(type_hashes_ptr, hashes, type_count * sizeof(u32));
 
     module->hash = hash;
     module->type_count = type_count;
     module->name = name_ptr;
     module->types = types_ptr;
+    module->type_hashes = type_hashes_ptr;
 
     g_modules.insert(module->hash, module);
 
@@ -361,15 +377,21 @@ const ReflectionModule* create_reflection_module(const StringView& name, const i
 
 void destroy_reflection_module(const ReflectionModule* module)
 {
-    auto* stored_module = g_modules.find(module->hash);
+    const u32 hash = module->hash;
+    auto* stored_module = g_modules.find(hash);
 
-    if (BEE_FAIL_F(stored_module == nullptr, "Reflection module %s was destroyed twice", module->name))
+    if (BEE_FAIL_F(stored_module != nullptr, "Reflection module %s was destroyed twice", module->name))
     {
         return;
     }
 
+    for (int i = 0; i < module->type_count; ++i)
+    {
+        g_type_map.erase(module->type_hashes[i]);
+    }
+
     BEE_FREE(system_allocator(), stored_module->value);
-    g_modules.erase(module->hash);
+    g_modules.erase(hash);
 }
 
 const ReflectionModule* get_reflection_module(const StringView& name)
@@ -397,7 +419,7 @@ Type get_type(const u32 hash)
 
 Type get_type(const ReflectionModule* module, const i32 index)
 {
-    if (BEE_FAIL_F(index >= module->type_count, "Invalid type index %d for reflection module %s", index, module->name))
+    if (BEE_FAIL_F(index < module->type_count, "Invalid type index %d for reflection module %s", index, module->name))
     {
         return Type(&g_unknown_type);
     }
@@ -676,6 +698,7 @@ const char* reflection_flag_to_string(const SerializationFlags serialization_fla
         REFL_FLAG(packed_format);
         REFL_FLAG(table_format);
         REFL_FLAG(uses_builder);
+        REFL_FLAG(bytes);
         default:
         {
             BEE_UNREACHABLE("Missing SerializationFlags string representation");

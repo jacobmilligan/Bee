@@ -289,7 +289,7 @@ bool DirectoryWatcher::add_directory(const Path& path)
     }
 
     entry->index = entries_.size();
-    entries_.emplace_back(std::move(entry));
+    entries_.emplace_back(BEE_MOVE(entry));
     watched_paths_.push_back(path);
     start_thread_cv_.notify_all();
 

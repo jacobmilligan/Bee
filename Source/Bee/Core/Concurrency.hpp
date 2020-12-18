@@ -358,7 +358,7 @@ AtomicNodePtr<T> make_atomic_node(Allocator* allocator, Args&&... args)
     auto node = make_atomic_node(allocator, sizeof(T));
     auto data = static_cast<T*>(node->data[0]);
 
-    new (data) T(std::forward<Args>(args)...);
+    new (data) T(BEE_FORWARD(args)...);
 
     AtomicNodePtr<T> ptr{};
     ptr.node = node;

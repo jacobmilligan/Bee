@@ -26,7 +26,7 @@ WorkStealingQueue::WorkStealingQueue(const i32 capacity, Allocator* allocator) n
 
 WorkStealingQueue::WorkStealingQueue(WorkStealingQueue&& other) noexcept
 {
-    move_construct(std::forward<WorkStealingQueue>(other));
+    move_construct(BEE_FORWARD(other));
 }
 
 WorkStealingQueue::~WorkStealingQueue()
@@ -36,7 +36,7 @@ WorkStealingQueue::~WorkStealingQueue()
 
 WorkStealingQueue& WorkStealingQueue::operator=(WorkStealingQueue&& other) noexcept
 {
-    move_construct(std::forward<WorkStealingQueue>(other));
+    move_construct(BEE_FORWARD(other));
     return *this;
 }
 

@@ -1,0 +1,65 @@
+RenderPass DefaultPass
+{                 
+    Attachment MainColor
+    {
+        type: present
+        format: bgra8
+        load_op: clear
+        store_op: store
+        samples: 1
+    }
+
+    SubPass DefaultSubPass
+    {
+        color_attachments: [ MainColor ]
+    }
+}
+
+RasterState DefaultRasterState
+{
+    front_face_ccw: true
+    cull_mode: back
+}
+
+Shader TriangleShader
+{
+    vertex: vert
+    fragment: frag
+    code:
+    {
+        struct AppData 
+        {
+            float4 position: POSITION;
+            float4 color: COLOR;
+        };
+
+        struct FragIn
+        {
+            float4 position: POSITION;
+            float4 color: COLOR;
+        };
+
+        FragIn vert(AppData IN)
+        {
+            FragIn OUT;
+            OUT.position = IN.position;
+            OUT.color = IN.color;
+            return OUT;
+        }
+
+        float4 frag(FragIn IN): SV_TARGET
+        {
+            return IN.color;
+        }
+    }
+}
+
+PipelineState DefaultPipelineState
+{
+    primitive_type: triangle
+    render_pass: DefaultPass
+    subpass: DefaultSubPass
+    raster_state: DefaultRasterState
+    vertex_stage: TriangleShader
+    fragment_stage: TriangleShader
+}

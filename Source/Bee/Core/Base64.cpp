@@ -1,0 +1,177 @@
+/*
+ *  Base64.cpp
+ *  Bee
+ *
+ *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
+ */
+
+#include "Bee/Core/Base64.hpp"
+
+namespace bee {
+
+static constexpr char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static constexpr char base64_pad = '=';
+static constexpr u8 decode_alphabet[256] =
+    {
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0x00-0x0f
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0x10-0x1f
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x3E, 0xFF, 0xFF, 0xFF, 0x3F, // 0x20-0x2f
+        0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0x30-0x3f
+        0xFF, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, // 0x40-0x4f
+        0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0x50-0x5f
+        0xFF, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, // 0x60-0x6f
+        0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0x70-0x7f
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0x80-0x8f
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0x90-0x9f
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0xa0-0xaf
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0xb0-0xbf
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0xc0-0xcf
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0xd0-0xdf
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0xe0-0xef
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF  // 0xf0-0xff
+    };
+
+i32 base64_encode_size(const size_t byte_count)
+{
+    return ((byte_count + 2) / 3) * 4;
+}
+
+i32 base64_encode(char* dst, const i32 dst_size, const u8* src, const size_t src_size)
+{
+    if (dst == nullptr || dst_size <= 0)
+    {
+        return base64_encode_size(src_size);
+    }
+
+    BEE_ASSERT(dst_size >= base64_encode_size(src_size));
+
+    size_t offset = 0;
+    size_t dst_offset = 0;
+
+    // encode in 3 char blocks
+    while (offset + 3 <= src_size)
+    {
+        // encode the binary block as 4 groups of 6 bits (24 bits in total) - each represented by an ASCII char
+        const u32 token = (src[offset] << 16) | (src[offset + 1] << 8) | (src[offset + 2]);
+        dst[dst_offset++] = base64_chars[(token >> 18) & 0x3f];
+        dst[dst_offset++] = base64_chars[(token >> 12) & 0x3f];
+        dst[dst_offset++] = base64_chars[(token >> 6) & 0x3f];
+        dst[dst_offset++] = base64_chars[token & 0x3f];
+
+        offset += 3;
+    }
+
+    // if the last block wasn't == 3 in size we need to pad the end
+    if (offset < src_size)
+    {
+        // 2 byte padding required or just one?
+        const bool two_bytes = offset < src_size - 1;
+        const u32 token = (src[offset] << 16) | (two_bytes ? src[offset + 1] << 8 : 0);
+
+        dst[dst_offset++] = base64_chars[(token >> 18) & 0x3f];
+        dst[dst_offset++] = base64_chars[(token >> 12) & 0x3f];
+        dst[dst_offset++] = !two_bytes ? base64_pad : base64_chars[(token >> 6) & 0x3f];
+        dst[dst_offset++] = base64_pad;
+    }
+
+    return dst_offset;
+}
+
+i32 base64_encode(String* dst, const u8* src, const size_t src_size)
+{
+    dst->resize(base64_encode_size(src_size));
+    return base64_encode(dst->data(), dst->size(), src, src_size);
+}
+
+i32 base64_decode_size(const StringView& src)
+{
+    int size = src.size();
+
+    while (size > 0 && src[size - 1] == base64_pad)
+    {
+        --size;
+    }
+
+    return (size / 4) * 3;
+}
+
+i32 base64_decode(u8* dst, const i32 dst_size, const StringView& src)
+{
+    if (src.empty())
+    {
+        return 0;
+    }
+
+    if (dst == nullptr || dst_size == 0)
+    {
+        return base64_decode_size(src);
+    }
+
+    int size = src.size();
+    while (size > 0 && src[size - 1] == base64_pad)
+    {
+        --size;
+    }
+
+    if ((size & 3) == 1)
+    {
+        return -1;
+    }
+
+    BEE_ASSERT(dst_size >= base64_decode_size(src));
+
+    int src_offset = 0;
+    int dst_offset = 0;
+
+    while (src_offset + 4 <= size)
+    {
+        u32 token = 0;
+
+        for (int i = 0; i < 4; ++i)
+        {
+            token = (token << 6) | decode_alphabet[src[src_offset++]];
+        }
+
+        dst[dst_offset++] = static_cast<u8>((token >> 16u) & 0xff);
+        dst[dst_offset++] = static_cast<u8>((token >> 8u) & 0xff);
+        dst[dst_offset++] = static_cast<u8>(token & 0xff);
+    }
+
+    // check if all the blocks were decoded fully
+    if (src_offset >= size)
+    {
+        return dst_offset;
+    }
+
+    // the last block wasn't fully decoded and has `remaining` chars left to decode
+    const int remaining = size - src_offset;
+
+    // get the original base64 token from the input
+    u32 token = 0;
+    for (int i = 0; i < remaining; ++i)
+    {
+        token = (token << 6) | decode_alphabet[src[src_offset++]];
+    }
+    for (int i = remaining; i < 4; ++i)
+    {
+        token = token << 6;
+    }
+
+    dst[dst_offset++] = static_cast<u8>((token >> 16u) & 0xff);
+    if (remaining >= 3)
+    {
+        dst[dst_offset++] = static_cast<u8>((token >> 8u) & 0xff);
+    }
+
+    return dst_offset;
+}
+
+i32 base64_decode(DynamicArray<u8>* dst, const StringView& src)
+{
+    dst->resize(base64_decode_size(src));
+    return base64_decode(dst->data(), dst->size(), src);
+}
+
+
+} // namespace bee
+

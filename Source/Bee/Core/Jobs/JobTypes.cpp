@@ -48,7 +48,7 @@ void JobGroup::move_construct(JobGroup& other) noexcept
 
     pending_count_ = other.pending_count_.load(std::memory_order_relaxed);
     dependency_count_ = other.dependency_count_.load(std::memory_order_relaxed);
-    parents_ = std::move(other.parents_);
+    parents_ = BEE_MOVE(other.parents_);
 }
 
 void JobGroup::add_job(Job* job)

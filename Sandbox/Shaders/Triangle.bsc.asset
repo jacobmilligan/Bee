@@ -1,0 +1,16 @@
+{
+    "bee::version": 1,
+    "bee::flags": 1,
+    "guid": "e9fd794de0e240eda0443efcd6c042e9",
+    "timestamp": 0,
+    "kind": "file",
+    "source": "",
+    "properties": {
+        "bee::type": 2546253450,
+        "bee::version": 1,
+        "bee::flags": 1,
+        "pipelines": [
+            2151391117
+        ]
+    }
+}

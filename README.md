@@ -62,7 +62,7 @@ considerations. We know `Bee` is used for `Bee`-based applications primarily in 
 `Bee` plugins and programs should avoid using the standard library if possible however the engine does make efforts to provide adapters 
 for operations such as memory allocation and hashing.
 
-### `bee-reflect` and automatic serialization
+### `bee-reflect` and automatic serialization 
 
 `Bee` has a full-blown, clang-based, template-supporting reflection system. It's pretty fast and non-intrusive compared to 
 reflection libraries in many other C++ engines (such as the Unreal Header Tool) and runs as a CMake custom command whenever 
@@ -151,3 +151,27 @@ BEE_SERIALIZE_TYPE(SerializationBuilder* builder, Array<T, Mode>* array)
 
 **Note: templated types do not support automatic serialization.** You *must* implement a `BEE_SERIALIZE_TYPE` function 
 for these types.
+
+#### Building `bee-reflect`
+
+A version of the `bee-reflect` binary is distributed with Bee. However, if you have to modify the source and build a new 
+version of the tool you will need to do the following:
+
+* First you will either need a version of cmake installed or have your environment variables point cmake invocations to the binary provided under
+ `<bee root>/ThirdPart/Binaries/cmake/bin`
+* Download the custom fork of LLVM located [here](https://github.com/jacobmilligan/llvm). **Note:** you *must* use this specific 
+ fork as it contains some important modifications to i.e. support .inl files as header file extensions
+* Build LLVM by invoking the `build.cmd` script located at the root of the newly downloaded LLVM fork. Now's the time to take a long bath or leisurely lunch break.
+* Once LLVM has finished building create a new settings json file for `bb` (you can copy an existing one located in `CMake/Settings`) and add the following configuration options:
+```json
+{
+    "cmake_options": {
+        "BUILD_CLANG_TOOLS": "ON",
+        "LLVM_INSTALL_DIR": "<Path to llvm fork root>/install/Release",
+        "FORCE_ASSERTIONS_ENABLED": "ON",
+        "DISABLE_REFLECTION": "ON"
+    }
+}
+``` 
+(adding `FORCE_ASSERTIONS_ENABLED` is optional but highly recommended)
+* Re-configure the engine projects using `bb -c <generator> -s <path to settings json>`

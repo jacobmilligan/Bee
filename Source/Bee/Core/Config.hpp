@@ -110,9 +110,7 @@ namespace bee {
     #define BEE_COMPILER_MSVC 1
 #endif // defined(_MSC_VER)
 
-/*
-* DxcContext implementations
-*/
+#define BEE_EXPAND(x) x
 
 #define BEE_STRINGIFY(x) #x
 
@@ -360,12 +358,13 @@ namespace bee {
     #undef BEE_ENABLE_REFLECTION
 #endif // defined(BEE_COMPILE_REFLECTION) && defined(BEE_ENABLE_REFLECTION)
 
+
 /*
  * # BEE_MOVE
  *
- * this is a replacement for std::move used to avoid having to include <utility> (which also includes <type_traits>)
+ * this is a replacement for std::forward used to avoid having to include <utility> (which also includes <type_traits>)
  */
-#define BEE_MOVE(...) static_cast<decltype(__VA_ARGS__)&&>(__VA_ARGS__)
+#define BEE_FORWARD(...) static_cast<decltype(__VA_ARGS__)&&>(__VA_ARGS__)
 
 
 #ifndef BEE_STATIC_ARRAY_LENGTH_INLINE

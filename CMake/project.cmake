@@ -442,7 +442,7 @@ function(bee_reflect target)
         return()
     endif ()
 
-    cmake_parse_arguments(ARGS "INCLUDE_NON_HEADERS;INLINE" "" "EXCLUDE" ${ARGN})
+    cmake_parse_arguments(ARGS "INCLUDE_NON_HEADERS;INLINE;DUMP_COMMAND" "" "EXCLUDE" ${ARGN})
 
     set(output_dir ${PROJECT_SOURCE_DIR}/Build/Generated)
 
@@ -450,7 +450,7 @@ function(bee_reflect target)
     get_target_property(plugin_prop ${target} PLUGIN)
 
     if (NOT ARGS_INCLUDE_NON_HEADERS)
-        list(FILTER source_list EXCLUDE REGEX ".*\\.(cpp|cxx|c|inl)$")
+        list(FILTER source_list EXCLUDE REGEX ".*\\.(cpp|cxx|c)$")
     endif ()
 
     set(generated_extension cpp)
@@ -565,12 +565,15 @@ function(bee_reflect target)
     )
     list(APPEND defines ${build_type_define})
 
-    set(inline_opt)
+    set(extra_options)
     if (ARGS_INLINE OR plugin_prop)
-        set(inline_opt --inline)
+        list(APPEND extra_options --inline)
+    endif ()
+    if (ARGS_DUMP_COMMAND)
+        list(APPEND extra_options --dump-command)
     endif ()
 
-    set(bee_reflect_command ${bee_reflect_program} ${inline_opt} ${reflected_sources} --output ${output_dir}/${target} -- ${defines} ${include_dirs} ${system_include_dirs})
+    set(bee_reflect_command ${bee_reflect_program} ${extra_options} ${reflected_sources} --output ${output_dir}/${target} -- ${defines} ${include_dirs} ${system_include_dirs})
 
     add_custom_command(
             DEPENDS ${reflected_sources} ${bee_reflect_program} # add dependency on bee-reflect itself so a new version of the tool triggers a re-generation of reflection

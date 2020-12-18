@@ -174,6 +174,8 @@ public:
 
     virtual i32 size() const = 0;
 
+    virtual i32 capacity() const = 0;
+
     inline Mode mode() const
     {
         return stream_mode;
@@ -265,7 +267,7 @@ public:
         return current_stream_size_;
     }
 
-    inline i32 capacity() const
+    inline i32 capacity() const override
     {
         return capacity_;
     }
@@ -325,6 +327,11 @@ public:
         return size_;
     }
 
+    inline i32 capacity() const override
+    {
+        return mode() == Mode::read_only ? size_ : limits::max<i32>();
+    }
+
     Mode file_mode_to_stream_mode(const char* file_mode);
 private:
     FILE*           file_ { nullptr };
@@ -372,7 +379,7 @@ public:
 
     i32 size() const override;
 
-    inline i32 capacity() const
+    inline i32 capacity() const override
     {
         return mode() == Mode::container ? string.container->capacity() : string.c_string.capacity_;
     };
@@ -384,6 +391,8 @@ public:
     const char* c_str() const;
 
     StringView view() const;
+
+    String* container() const;
 
 private:
     union StringUnion

@@ -121,7 +121,7 @@ SoA<Types...>::SoA(const i32 capacity, Allocator* allocator)
 template <typename... Types>
 SoA<Types...>::SoA(SoA<Types...>&& other) noexcept
 {
-    move_construct(std::forward<SoA<Types...>>(other));
+    move_construct(BEE_FORWARD(other));
 }
 
 template <typename... Types>
@@ -144,7 +144,7 @@ SoA<Types...>::~SoA()
 template <typename... Types>
 SoA<Types...>& SoA<Types...>::operator=(SoA<Types...>&& other) noexcept
 {
-    move_construct(std::forward<SoA<Types...>>(other));
+    move_construct(BEE_FORWARD(other));
     return *this;
 }
 

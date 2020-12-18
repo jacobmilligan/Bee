@@ -5,25 +5,14 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
+#include "ResourcePoolTests.hpp"
+
 #include <Bee/Core/Containers/ResourcePool.hpp>
+#include <Bee/Core/Serialization/BinarySerializer.hpp>
 
 #include <gtest/gtest.h>
 
-struct MockResource {
-    static constexpr int new_intval = -1;
-    static constexpr char new_charval = '\0';
-    static constexpr int deallocated_intval = -99;
-    static constexpr char deallocated_charval = 'x';
 
-    int intval { new_intval };
-    char charval { new_charval };
-
-    ~MockResource()
-    {
-        intval = deallocated_intval;
-        charval = deallocated_charval;
-    }
-};
 
 BEE_VERSIONED_HANDLE_32(MockResourceHandle);
 
@@ -121,7 +110,7 @@ TEST_F(ResourcePoolTests, reused_handles_detect_version_correctly)
         resources_.deallocate(handle);
 
         ASSERT_EQ(handle.index(), handle1.index());
-        ASSERT_NE(handle.version(), handle1.version());
+        ASSERT_NE(handle.version(), handle1.version()) << i;
     }
 
     auto handle2 = resources_.allocate();
@@ -165,13 +154,40 @@ TEST_F(ResourcePoolTests, test_iterator)
     }
 
     int count = 0;
-    for (auto& resource : resources_)
+    for (auto pair : resources_)
     {
-        ASSERT_EQ(resource.intval, MockResource::new_intval);
-        ASSERT_EQ(resource.charval, MockResource::new_charval);
+        ASSERT_EQ(pair.resource.intval, MockResource::new_intval);
+        ASSERT_EQ(pair.resource.charval, MockResource::new_charval);
         ++count;
     }
 
     ASSERT_EQ(count, 32);
+}
+
+TEST_F(ResourcePoolTests, serialization)
+{
+    for (id_t i = 0; i < 128; ++i)
+    {
+        const auto handle = resources_.allocate();
+        ASSERT_TRUE(handle.is_valid());
+        new (&resources_[handle]) MockResource { static_cast<int>(i), static_cast<char>('a' + i)};
+    }
+
+    bee::DynamicArray<bee::u8> buffer;
+    bee::BinarySerializer serializer(&buffer);
+    bee::serialize(bee::SerializerMode::writing, &serializer, &resources_);
+
+    resource_pool_t deserialized(64);
+    bee::serialize(bee::SerializerMode::reading, &serializer, &deserialized);
+
+    int iter = 0;
+    for (auto pair : deserialized)
+    {
+        const int i = pair.handle.index();
+        ASSERT_EQ(iter, i);
+        MockResource cmp { static_cast<int>(i), static_cast<char>('a' + i) };
+        ASSERT_EQ(pair.resource, cmp);
+        ++iter;
+    }
 }
 

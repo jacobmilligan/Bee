@@ -31,7 +31,6 @@ if (WIN32)
         USES_TERMINAL
         VERBATIM
     )
-
 else()
     bee_fail("Tool binary package target not implemented on ${BEE_PLATFORM}")
 endif ()

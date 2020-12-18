@@ -1,0 +1,96 @@
+/*
+ *  AssetPipeline.hpp
+ *  Bee
+ *
+ *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
+ */
+
+#pragma once
+
+#include "Bee/Core/String.hpp"
+#include "Bee/Core/GUID.hpp"
+
+#include "Bee/AssetDatabase/AssetDatabase.hpp"
+
+
+namespace bee {
+
+
+enum class ImportErrorStatus
+{
+    success,
+    unsupported_file_type,
+    failed_to_write_metadata,
+    fatal
+};
+
+BEE_REFLECTED_FLAGS(AssetPlatform, u32, serializable)
+{
+    unknown = 0u,
+    windows = 1u << 0u,
+    macos   = 1u << 1u,
+    linux   = 1u << 2u,
+    metal   = 1u << 3u,
+    vulkan  = 1u << 4u,
+}
+
+
+struct AssetImportContext
+{
+    Allocator*              temp_allocator { nullptr };
+    AssetPlatform           platform { AssetPlatform::unknown };
+    const AssetMetadata*    metadata { nullptr };
+    AssetDatabaseModule*    db { nullptr };
+    AssetTxn*               txn { nullptr };
+
+    template <typename T>
+    const T* get_properties() const
+    {
+        BEE_ASSERT(metadata != nullptr);
+        return metadata->properties.get<T>();
+    }
+};
+
+struct AssetImporter
+{
+    const char* (*name)() { nullptr };
+
+    i32 (*supported_file_types)(const char* const* dst) { nullptr };
+
+    Type (*properties_type)() { nullptr };
+
+    ImportErrorStatus (*import)(AssetImportContext* ctx) { nullptr };
+};
+
+
+#define BEE_ASSET_PIPELINE_MODULE_NAME "BEE_ASSET_PIPELINE"
+
+struct AssetPipelineInfo
+{
+    StringView  name;
+    StringView  config_path;
+    StringView  cache_root;
+    StringView* source_roots { nullptr };
+    i32         source_root_count { 0 };
+};
+
+struct AssetPipeline;
+struct AssetPipelineModule
+{
+    AssetPipeline* (*create_pipeline)(const AssetPipelineInfo& info) { nullptr };
+
+    AssetPipeline* (*load_pipeline)(const StringView path) { nullptr };
+
+    void (*destroy_pipeline)(AssetPipeline* pipeline) { nullptr };
+
+    void (*register_importer)(AssetPipeline* pipeline, AssetImporter* importer) { nullptr };
+
+    void (*unregister_importer)(AssetPipeline* pipeline, AssetImporter* importer) { nullptr };
+
+    ImportErrorStatus (*import_asset)(AssetPipeline* pipeline, const StringView path, const AssetPlatform platform) { nullptr };
+
+    void (*refresh)(AssetPipeline* pipeline) { nullptr };
+};
+
+
+} // namespace bee

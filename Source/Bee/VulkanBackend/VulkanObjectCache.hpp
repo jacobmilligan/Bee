@@ -70,8 +70,8 @@ struct Hash<VulkanPipelineLayoutKey>
         hash.add(key.resource_layout_count);
         for (u32 i = 0; i < key.resource_layout_count; ++i)
         {
-            hash.add(key.resource_layouts[i].resource_count);
-            hash.add(key.resource_layouts[i].resources, sizeof(ResourceDescriptor) * key.resource_layouts[i].resource_count);
+            hash.add(key.resource_layouts[i].resources.size);
+            hash.add(key.resource_layouts[i].resources.data, sizeof(ResourceDescriptor) * key.resource_layouts[i].resources.size);
         }
         hash.add(key.push_constant_range_count);
         hash.add(key.push_constant_ranges, sizeof(PushConstantRange) * key.push_constant_range_count);

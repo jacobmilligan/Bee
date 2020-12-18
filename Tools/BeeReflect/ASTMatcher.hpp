@@ -132,7 +132,7 @@ struct ASTMatcher final : public clang::ast_matchers::MatchFinder::MatchCallback
 
     void reflect_enum(const clang::EnumDecl& decl, RecordTypeStorage* parent = nullptr);
 
-    void reflect_field(const clang::FieldDecl& decl, const clang::ASTRecordLayout& enclosing_layout, RecordTypeStorage* parent);
+    void reflect_field(const clang::FieldDecl& decl, const clang::ASTRecordLayout* enclosing_layout, RecordTypeStorage* parent);
 
     void reflect_function(const clang::FunctionDecl& decl, RecordTypeStorage* parent = nullptr);
 

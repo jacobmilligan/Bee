@@ -21,6 +21,8 @@ class BeeReflectFrontendAction final : public clang::ASTFrontendAction
 {
 public:
     explicit BeeReflectFrontendAction(TypeMap* storage, ReflectionAllocator* allocator);
+
+    bool PrepareToExecuteAction(clang::CompilerInstance& CI) override;
 protected:
     std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance& CI, llvm::StringRef InFile) override;
 

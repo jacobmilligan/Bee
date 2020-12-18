@@ -94,6 +94,8 @@ public:
         ++generated_count_;
     }
 
+    void serializer_function(const char* field_name, const char* specialized_type_name);
+
     template <typename LambdaType>
     void scope(LambdaType&& lambda)
     {
@@ -113,13 +115,18 @@ public:
     template <typename LambdaType>
     void scope(LambdaType&& lambda, const char* after)
     {
-        scope(std::forward<LambdaType>(lambda));
+        scope(BEE_FORWARD(lambda));
         stream_->write(after);
     }
 
     inline CodegenMode mode() const
     {
         return mode_;
+    }
+
+    inline bool include_serialization_header() const
+    {
+        return include_serialization_header_;
     }
 private:
     StaticString<4096>  ident_buffer_;
@@ -128,15 +135,18 @@ private:
     i32                 indent_size_ { 0 };
     i32                 indent_ { 0 };
     i32                 generated_count_ { 0 };
+    bool                include_serialization_header_ { false };
 };
 
-void generate_empty_reflection(const Path& dst_path, const char* location, io::StringStream* stream);
+struct TypeListEntry;
 
-i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::StringStream* stream, CodegenMode mode);
+void generate_empty_reflection(const Path& dst_path, const char* location, String* output);
 
-i32 generate_reflection_header(const Path& dst_path, const ReflectedFile& file, const i32 first_type_index, io::StringStream* stream, CodegenMode mode);
+i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, String* output, CodegenMode mode);
 
-void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_types, CodegenMode mode, const Span<const Path>& written_files);
+i32 generate_reflection_header(const Path& dst_path, const ReflectedFile& file, const i32 first_type_index, String* output, CodegenMode mode);
+
+void generate_typelist(const Path& target_dir, const Span<const TypeListEntry>& all_types, CodegenMode mode, const Span<const Path>& written_files);
 
 
 } // namespace reflect

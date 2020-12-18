@@ -91,17 +91,24 @@ native_type func_name(const enum_type value)                                    
     enum class BEE_REFLECT(flags, __VA_ARGS__) E : T
 
 #define BEE_ENUM_STRUCT(Name)                                                                           \
-    i32 value { 0 };                                                                                    \
+    Enum value;                                                                                         \
     Name() = default;                                                                                   \
-    BEE_NOLINT(Name(Enum e)) : value(e) {}                                                              \
+    Name(const int i) : value(static_cast<Enum>(i)) {}                                                  \
+    Name(const Enum e) : value(e) {}                                                                    \
     Name(const Name& other) : value(other.value) {}                                                     \
-    inline constexpr operator Name::Enum() const { return static_cast<Name::Enum>(value); }             \
+    inline constexpr operator Enum() const { return value; }                                            \
     inline constexpr bool operator==(const Name& rhs) const { return value == rhs.value; }              \
     inline constexpr bool operator!=(const Name& rhs) const { return value != rhs.value; }              \
     inline constexpr bool operator<(const Name& rhs) const { return value < rhs.value; }                \
     inline constexpr bool operator>(const Name& rhs) const { return value > rhs.value; }                \
     inline constexpr bool operator<=(const Name& rhs) const { return value <= rhs.value; }              \
-    inline constexpr bool operator>=(const Name& rhs) const { return value >= rhs.value; }
+    inline constexpr bool operator>=(const Name& rhs) const { return value >= rhs.value; }              \
+    inline constexpr bool operator==(const Enum& rhs) const { return value == rhs; }                    \
+    inline constexpr bool operator!=(const Enum& rhs) const { return value != rhs; }                    \
+    inline constexpr bool operator<(const Enum& rhs) const { return value < rhs; }                      \
+    inline constexpr bool operator>(const Enum& rhs) const { return value > rhs; }                      \
+    inline constexpr bool operator<=(const Enum& rhs) const { return value <= rhs; }                    \
+    inline constexpr bool operator>=(const Enum& rhs) const { return value >= rhs; }
 
 
 

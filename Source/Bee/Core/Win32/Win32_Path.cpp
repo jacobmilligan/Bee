@@ -47,7 +47,7 @@ Path Path::get_normalized(Allocator* allocator) const
 {
     Path normalized_path(view(), allocator);
     normalized_path.normalize();
-    return std::move(normalized_path);
+    return BEE_MOVE(normalized_path);
 }
 
 bool Path::exists() const

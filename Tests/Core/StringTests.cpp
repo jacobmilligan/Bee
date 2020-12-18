@@ -169,6 +169,12 @@ TEST(StringTests, append)
     ASSERT_STREQ(char_string.c_str(), ".,");
 }
 
+TEST(StringTests, assign)
+{
+    bee::String str;
+    str.assign("")
+}
+
 TEST(StringTests, insert)
 {
     bee::String string("Test");

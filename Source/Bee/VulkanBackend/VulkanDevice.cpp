@@ -1449,12 +1449,12 @@ RenderPassHandle create_render_pass(const DeviceHandle& device_handle, const Ren
     auto& thread = device.get_thread();
 
     auto subpasses = FixedArray<VkSubpassDescription>::with_size(create_info.subpass_count, temp_allocator());
-    auto attachments = FixedArray<VkAttachmentDescription>::with_size(create_info.attachment_count, temp_allocator());
+    auto attachments = FixedArray<VkAttachmentDescription>::with_size(create_info.attachments.size, temp_allocator());
     auto subpass_deps = FixedArray<VkSubpassDependency>::with_size(create_info.subpass_count, temp_allocator());
 
     auto vk_info = VkRenderPassCreateInfo { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, nullptr };
     vk_info.flags = 0;
-    vk_info.attachmentCount = create_info.attachment_count;
+    vk_info.attachmentCount = create_info.attachments.size;
     vk_info.pAttachments = attachments.data();
     vk_info.subpassCount = create_info.subpass_count;
     vk_info.pSubpasses = subpasses.data();
@@ -1511,9 +1511,9 @@ RenderPassHandle create_render_pass(const DeviceHandle& device_handle, const Ren
 
         subpass.flags = 0;
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.inputAttachmentCount = bee_subpass.input_attachment_count;
-        subpass.colorAttachmentCount = bee_subpass.color_attachment_count;
-        subpass.preserveAttachmentCount = bee_subpass.preserve_attachment_count;
+        subpass.inputAttachmentCount = bee_subpass.input_attachments.size;
+        subpass.colorAttachmentCount = bee_subpass.color_attachments.size;
+        subpass.preserveAttachmentCount = bee_subpass.preserve_attachments.size;
         subpass.pInputAttachments = nullptr;
         subpass.pColorAttachments = nullptr;
         subpass.pResolveAttachments = nullptr;
@@ -1523,48 +1523,48 @@ RenderPassHandle create_render_pass(const DeviceHandle& device_handle, const Ren
         const auto this_subpass_begin = attachment_refs.size();
 
         // reserve a range of attachment refs for this subpass
-        const auto this_subpass_count = bee_subpass.color_attachment_count
-            + bee_subpass.input_attachment_count
-            + bee_subpass.resolve_attachment_count
+        const auto this_subpass_count = bee_subpass.color_attachments.size
+            + bee_subpass.input_attachments.size
+            + bee_subpass.resolve_attachments.size
             + 1; // reserve one for the depth stencil if set
 
         attachment_refs.append(this_subpass_count, VkAttachmentReference{});
 
         auto* input_attachments = attachment_refs.data() + this_subpass_begin;
-        auto* color_attachments = input_attachments + bee_subpass.input_attachment_count;
-        auto* resolve_attachments = color_attachments + bee_subpass.color_attachment_count;
-        auto* depth_stencil_attachment = resolve_attachments + bee_subpass.resolve_attachment_count;
+        auto* color_attachments = input_attachments + bee_subpass.input_attachments.size;
+        auto* resolve_attachments = color_attachments + bee_subpass.color_attachments.size;
+        auto* depth_stencil_attachment = resolve_attachments + bee_subpass.resolve_attachments.size;
 
-        for (u32 att = 0; att < bee_subpass.input_attachment_count; ++att)
+        for (u32 att = 0; att < bee_subpass.input_attachments.size; ++att)
         {
             const auto index = bee_subpass.input_attachments[att];
             input_attachments[att].attachment = index;
             input_attachments[att].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         }
 
-        for (u32 att = 0; att < bee_subpass.color_attachment_count; ++att)
+        for (u32 att = 0; att < bee_subpass.color_attachments.size; ++att)
         {
             const auto index = bee_subpass.color_attachments[att];
             color_attachments[att].attachment = index;
             color_attachments[att].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         }
 
-        for (u32 att = 0; att < bee_subpass.resolve_attachment_count; ++att)
+        for (u32 att = 0; att < bee_subpass.resolve_attachments.size; ++att)
         {
             const auto index = bee_subpass.resolve_attachments[att];
             resolve_attachments[att].attachment = index;
             resolve_attachments[att].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         }
 
-        if (bee_subpass.input_attachment_count > 0)
+        if (bee_subpass.input_attachments.size > 0)
         {
             subpass.pInputAttachments = input_attachments;
         }
-        if (bee_subpass.color_attachment_count > 0)
+        if (bee_subpass.color_attachments.size > 0)
         {
             subpass.pColorAttachments = color_attachments;
         }
-        if (bee_subpass.resolve_attachment_count > 0)
+        if (bee_subpass.resolve_attachments.size > 0)
         {
             subpass.pResolveAttachments = resolve_attachments;
         }
@@ -1577,9 +1577,9 @@ RenderPassHandle create_render_pass(const DeviceHandle& device_handle, const Ren
             attachments[bee_subpass.depth_stencil].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             attachments[bee_subpass.depth_stencil].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         }
-        if (bee_subpass.preserve_attachment_count > 0)
+        if (bee_subpass.preserve_attachments.size > 0)
         {
-            subpass.pPreserveAttachments = bee_subpass.preserve_attachments;
+            subpass.pPreserveAttachments = bee_subpass.preserve_attachments.data;
         }
 
         auto& dep = subpass_deps[sp];
@@ -1591,7 +1591,7 @@ RenderPassHandle create_render_pass(const DeviceHandle& device_handle, const Ren
             dep.srcSubpass = VK_SUBPASS_EXTERNAL;
             dep.srcAccessMask = 0;
 
-            if (bee_subpass.color_attachment_count > 0)
+            if (bee_subpass.color_attachments.size > 0)
             {
                 dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             }
@@ -1609,7 +1609,7 @@ RenderPassHandle create_render_pass(const DeviceHandle& device_handle, const Ren
 
             const auto& prev_subpass = create_info.subpasses[sp - 1];
 
-            if (prev_subpass.color_attachment_count > 0)
+            if (prev_subpass.color_attachments.size > 0)
             {
                 dep.srcStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
                 dep.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -1636,13 +1636,13 @@ RenderPassHandle create_render_pass(const DeviceHandle& device_handle, const Ren
             dep.dstStageMask = 0;
             dep.dstAccessMask = 0;
 
-            if (bee_subpass.input_attachment_count > 0)
+            if (bee_subpass.input_attachments.size > 0)
             {
                 dep.dstStageMask |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
                 dep.dstAccessMask |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
             }
 
-            if (bee_subpass.color_attachment_count > 0 || bee_subpass.resolve_attachment_count > 0)
+            if (bee_subpass.color_attachments.size > 0 || bee_subpass.resolve_attachments.size > 0)
             {
                 dep.dstStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
                 dep.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
@@ -1752,11 +1752,11 @@ PipelineStateHandle create_pipeline_state(const DeviceHandle& device_handle, con
      * Vertex input state
      */
     auto vertex_binding_descs = FixedArray<VkVertexInputBindingDescription>::with_size(
-        create_info.vertex_description.layout_count,
+        create_info.vertex_description.layouts.size,
         temp_allocator()
     );
     auto vertex_attribute_descs = FixedArray<VkVertexInputAttributeDescription>::with_size(
-        create_info.vertex_description.attribute_count,
+        create_info.vertex_description.attributes.size,
         temp_allocator()
     );
 
@@ -1867,7 +1867,7 @@ PipelineStateHandle create_pipeline_state(const DeviceHandle& device_handle, con
      * Color blend state
      */
     auto color_blend_attachments = FixedArray<VkPipelineColorBlendAttachmentState>::with_size(
-        create_info.color_blend_state_count,
+        create_info.color_blend_states.size,
         temp_allocator()
     );
 
@@ -1890,7 +1890,7 @@ PipelineStateHandle create_pipeline_state(const DeviceHandle& device_handle, con
     color_blend_info.flags = 0;
     color_blend_info.logicOpEnable = VK_FALSE;
     color_blend_info.logicOp = VK_LOGIC_OP_CLEAR;
-    color_blend_info.attachmentCount = create_info.color_blend_state_count;
+    color_blend_info.attachmentCount = create_info.color_blend_states.size;
     color_blend_info.pAttachments = color_blend_attachments.data();
     color_blend_info.blendConstants[0] = 0.0f; // r
     color_blend_info.blendConstants[1] = 0.0f; // g
@@ -1913,10 +1913,10 @@ PipelineStateHandle create_pipeline_state(const DeviceHandle& device_handle, con
      * Pipeline layout
      */
     VulkanPipelineLayoutKey pipeline_layout_key{};
-    pipeline_layout_key.resource_layout_count = create_info.resource_layout_count;
-    pipeline_layout_key.resource_layouts = create_info.resource_layouts;
-    pipeline_layout_key.push_constant_range_count = create_info.push_constant_range_count;
-    pipeline_layout_key.push_constant_ranges = create_info.push_constant_ranges;
+    pipeline_layout_key.resource_layout_count = create_info.resource_layouts.size;
+    pipeline_layout_key.resource_layouts = create_info.resource_layouts.data;
+    pipeline_layout_key.push_constant_range_count = create_info.push_constant_ranges.size;
+    pipeline_layout_key.push_constant_ranges = create_info.push_constant_ranges.data;
     auto& pipeline_layout = device.pipeline_layout_cache.get_or_create(pipeline_layout_key);
 
     /*
@@ -2337,11 +2337,11 @@ VulkanDescriptorPool* get_or_create_descriptor_pool(VulkanDevice* device, const 
         // couldn't find a matching pool so we need to create a new cached one
         pool_keyval = descriptor_pools->pools.insert(layout, BEE_NEW(thread.allocator, VulkanDescriptorPool));
 
-        pool_keyval->value->size_count = layout.resource_count;
+        pool_keyval->value->size_count = layout.resources.size;
         pool_keyval->value->layout = device->descriptor_set_layout_cache.get_or_create(layout);
 
         // initialize the pool sizes
-        for (u32 i = 0; i < layout.resource_count; ++i)
+        for (u32 i = 0; i < layout.resources.size; ++i)
         {
             pool_keyval->value->sizes[i].type = convert_resource_binding_type(layout.resources[i].type);
             pool_keyval->value->sizes[i].descriptorCount = 0u;

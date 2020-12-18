@@ -23,10 +23,10 @@ template <typename CallableType, typename ClassType, typename... Args>
 constexpr auto invoke(CallableType&& callable, ClassType&& class_instance, Args&&... args) noexcept ->
 typename std::enable_if_t<
     std::is_member_function_pointer_v<typename std::decay_t<CallableType>>, // is a member function pointer
-    decltype(((std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...))
+    decltype(((BEE_FORWARD(class_instance)).*callable)(BEE_FORWARD(args)...))
 >
 {
-    return ((std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...);
+    return ((BEE_FORWARD(class_instance)).*callable)(BEE_FORWARD(args)...);
 }
 
 // member function specialization with a reference/pointer parameter
@@ -34,10 +34,10 @@ template <typename CallableType, typename ClassType, typename... Args>
 constexpr auto invoke(CallableType&& callable, ClassType&& class_instance, Args&&... args) noexcept ->
 typename std::enable_if_t<
     std::is_member_function_pointer_v<typename std::decay_t<CallableType>>, // is a member function pointer
-    decltype(((*std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...))
+    decltype(((*BEE_FORWARD(class_instance)).*callable)(BEE_FORWARD(args)...))
 >
 {
-    return ((*std::forward<ClassType>(class_instance)).*callable)(std::forward<Args>(args)...);
+    return ((*BEE_FORWARD(class_instance)).*callable)(BEE_FORWARD(args)...);
 }
 
 // Free-function specialization - Not a member pointer implies also not a member function pointer
@@ -45,10 +45,10 @@ template <typename CallableType, typename... Args>
 constexpr auto invoke(CallableType&& callable, Args&&... args) noexcept ->
 typename std::enable_if_t<
     !std::is_member_pointer_v<typename std::decay_t<CallableType>>,
-    decltype(std::forward<CallableType>(callable)(std::forward<Args>(args)...))
+    decltype(BEE_FORWARD(callable)(BEE_FORWARD(args)...))
 >
 {
-    return std::forward<CallableType>(callable)(std::forward<Args>(args)...);
+    return BEE_FORWARD(callable)(BEE_FORWARD(args)...);
 }
 
 
@@ -168,10 +168,10 @@ public:
         invoker_ = [](storage_t& storage, Args&& ... args) -> ReturnType
         {
             auto stored_callable = *reinterpret_cast<decayed_callable_t*>(storage);
-            return stored_callable(std::forward<Args>(args)...);
+            return stored_callable(BEE_FORWARD(args)...);
         };
 
-        new (storage_) decayed_callable_t { std::forward<CallableType>(callable) };
+        new (storage_) decayed_callable_t { BEE_FORWARD(callable) };
     }
 
     Function(const Function& other) noexcept
@@ -204,7 +204,7 @@ public:
     ReturnType operator()(Args... args) noexcept
     {
         BEE_ASSERT_F(invoker_ != nullptr, "Attempted to call an undefined or invalid bee::Function object");
-        return invoker_(storage_, std::forward<Args>(args)...);
+        return invoker_(storage_, BEE_FORWARD(args)...);
     }
 private:
     alignas(Alignment) storage_t    storage_{}; // must come first to ensure byte-alignment of function
@@ -232,8 +232,8 @@ private:
         destruct_storage();
         memcpy(storage_, other.storage_, sign_cast<size_t>(BufferSize));
         memset(other.storage_, 0, sign_cast<size_t>(BufferSize));
-        invoker_ = std::move(other.invoker_);
-        destructor_ = std::move(other.destructor_);
+        invoker_ = BEE_MOVE(other.invoker_);
+        destructor_ = BEE_MOVE(other.destructor_);
     }
 };
 

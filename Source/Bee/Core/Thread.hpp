@@ -138,7 +138,7 @@ public:
         params->function = params_bytes + sizeof(ExecuteParams);
         params->arg = params_bytes + sizeof(ExecuteParams) + sizeof(decayed_callable_t);
 
-        new (params->function) decayed_callable_t { std::forward<CallableType>(callable) };
+        new (params->function) decayed_callable_t { BEE_FORWARD(callable) };
         new (params->arg) ArgType(data);
 
         init(create_info, params);
@@ -164,7 +164,7 @@ public:
         auto params_bytes = reinterpret_cast<u8*>(params);
         params->function = params_bytes + sizeof(ExecuteParams);
 
-        new (params->function) decayed_callable_t { std::forward<CallableType>(callable) };
+        new (params->function) decayed_callable_t { BEE_FORWARD(callable) };
 
         init(create_info, params);
     }

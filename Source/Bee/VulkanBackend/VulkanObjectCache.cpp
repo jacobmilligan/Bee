@@ -15,7 +15,7 @@ namespace bee {
 
 void create_descriptor_set_layout(VulkanDevice* device, const ResourceLayoutDescriptor& key, VkDescriptorSetLayout* layout)
 {
-    auto bindings = FixedArray<VkDescriptorSetLayoutBinding>::with_size(key.resource_count, temp_allocator());
+    auto bindings = FixedArray<VkDescriptorSetLayoutBinding>::with_size(key.resources.size, temp_allocator());
     for (int i = 0; i < bindings.size(); ++i)
     {
         bindings[i].binding = key.resources[i].binding;
@@ -27,7 +27,7 @@ void create_descriptor_set_layout(VulkanDevice* device, const ResourceLayoutDesc
 
     VkDescriptorSetLayoutCreateInfo info { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr };
     info.flags = 0;
-    info.bindingCount = key.resource_count;
+    info.bindingCount = key.resources.size;
     info.pBindings = bindings.data();
 
     BEE_VK_CHECK(vkCreateDescriptorSetLayout(device->handle, &info, nullptr, layout));

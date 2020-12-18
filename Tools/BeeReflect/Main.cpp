@@ -37,6 +37,13 @@ int bee_main(int argc, char** argv)
         llvm::cl::desc("Generate reflection as a .inl file to be #included rather than a .cpp file with exported symbols")
     );
     llvm::cl::alias inline_alias("i", llvm::cl::desc("Alias for -inline"), llvm::cl::aliasopt(inline_opt));
+    llvm::cl::opt<bool> dump_opt(
+        "dump-command",
+        llvm::cl::cat(bee_reflect_cat),
+        llvm::cl::desc("Dump the command line used to invoke bee-reflect to a file in the <output> directory")
+    );
+
+    const int unudjusted_argc = argc;
 
     // CommonOptionsParser declares HelpMessage with a description of the common
     // command-line options related to the compilation database and input files.
@@ -59,6 +66,17 @@ int bee_main(int argc, char** argv)
         bee::fs::mkdir(generated_inl_dir, true);
     }
 
+    // dump command line if requested before doing anything else in case of assert
+    if (dump_opt)
+    {
+        bee::io::FileStream filestream(output_dir.join("command.txt"), "wb");
+        for (int i = 1; i < unudjusted_argc; ++i)
+        {
+            filestream.write(argv[i]);
+            filestream.write("\n");
+        }
+    }
+
     bee::reflect::BeeReflectFrontendActionFactory factory;
 
     const auto result = tool.run(&factory);
@@ -71,7 +89,7 @@ int bee_main(int argc, char** argv)
 
     // Keep track of all the reflected files absolute paths for later so we can delete old, nonreflected files
     bee::DynamicArray<bee::Path> reflected_abs_paths;
-    bee::DynamicArray<const bee::TypeInfo*> reflected_types;
+    bee::DynamicArray<bee::reflect::TypeListEntry> reflected_types;
 
     const auto src_path_list = options_parser.getSourcePathList();
     int type_count_for_inl = 0;
@@ -101,13 +119,11 @@ int bee_main(int argc, char** argv)
 
         // Generate all non-templated types into a generated.cpp file
         bee::String output;
-        bee::io::StringStream stream(&output);
-        if (bee::reflect::generate_reflection(output_path, file.value, &stream, src_codegen_mode) <= 0)
+        if (bee::reflect::generate_reflection(output_path, file.value, &output, src_codegen_mode) <= 0)
         {
             // If there's only template types in a generated file, this should be re-written as a empty file
             output.clear();
-            stream.seek(0, bee::io::SeekOrigin::begin);
-            bee::reflect::generate_empty_reflection(output_path, file.value.location.c_str(), &stream);
+            bee::reflect::generate_empty_reflection(output_path, file.value.location.c_str(), &output);
         }
         bee::fs::write(output_path, output.view());
 
@@ -117,13 +133,12 @@ int bee_main(int argc, char** argv)
         {
             output_path.set_extension(".inl");
             output.clear();
-            stream.seek(0, bee::io::SeekOrigin::begin);
 
             type_count_for_inl += bee::reflect::generate_reflection_header(
                 output_path,
                 file.value,
                 type_count_for_inl,
-                &stream,
+                &output,
                 src_codegen_mode
             );
 
@@ -135,8 +150,7 @@ int bee_main(int argc, char** argv)
                                                .set_extension("generated")
                                                .append_extension("inl");
         output.clear();
-        stream.seek(0, bee::io::SeekOrigin::begin);
-        if (bee::reflect::generate_reflection(inl_path, file.value, &stream, bee::reflect::CodegenMode::templates_only) > 0)
+        if (bee::reflect::generate_reflection(inl_path, file.value, &output, bee::reflect::CodegenMode::templates_only) > 0)
         {
             bee::fs::write(inl_path, output.view());
         }
@@ -146,7 +160,6 @@ int bee_main(int argc, char** argv)
     }
 
     bee::String header_comment(bee::temp_allocator());
-    bee::io::StringStream stream(&header_comment);
 
     for (const std::string& compilation : options_parser.getSourcePathList())
     {
@@ -159,15 +172,14 @@ int bee_main(int argc, char** argv)
         {
             const auto filename = bee::Path(compilation.c_str(), bee::temp_allocator()).filename();
             auto output_path = output_dir.join(filename).set_extension("generated").append_extension("cpp");
-            bee::reflect::generate_empty_reflection(output_path, compilation.c_str(), &stream);
+            bee::reflect::generate_empty_reflection(output_path, compilation.c_str(), &header_comment);
             bee::fs::write(output_path, header_comment.view());
-            stream.seek(0, bee::io::SeekOrigin::begin);
             header_comment.clear();
         }
     }
 
     const auto typelist_mode = inline_opt ? bee::reflect::CodegenMode::inl : bee::reflect::CodegenMode::cpp;
-    bee::reflect::generate_typelist(output_dir, reflected_types.span(), typelist_mode, reflected_abs_paths.const_span());
+    bee::reflect::generate_typelist(output_dir, reflected_types.const_span(), typelist_mode, reflected_abs_paths.const_span());
 
     return EXIT_SUCCESS;
 }

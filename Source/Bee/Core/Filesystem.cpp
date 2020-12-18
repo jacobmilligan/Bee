@@ -109,7 +109,7 @@ void DirectoryWatcher::add_event(const FileAction action, const StringView& rela
         events_.emplace_back();
         events_.back().hash = hash;
         events_.back().action = action;
-        events_.back().file = std::move(full_path);
+        events_.back().file = BEE_MOVE(full_path);
     }
 }
 
@@ -202,7 +202,7 @@ bool write(const Path& filepath, const StringView& string_to_write)
     return true;
 }
 
-bool write(const Path& filepath, const Span<const u8>& bytes_to_write)
+bool write(const Path& filepath, const void* buffer, const size_t buffer_size)
 {
     auto* file = fopen(filepath.c_str(), "wb");
     if (BEE_FAIL_F(file != nullptr, "Unable to open or write to file: %s", filepath.c_str()))
@@ -210,7 +210,7 @@ bool write(const Path& filepath, const Span<const u8>& bytes_to_write)
         return false;
     }
 
-    fwrite(bytes_to_write.data(), sizeof(const u8), bytes_to_write.size(), file);
+    fwrite(buffer, 1, buffer_size, file);
     fclose(file);
     return true;
 }

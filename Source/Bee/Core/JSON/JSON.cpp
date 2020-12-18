@@ -130,7 +130,7 @@ Document::Document(const ParseOptions& parse_options)
 Document::Document(Document&& other) noexcept
     : options_(other.options_),
       parse_error_(other.parse_error_),
-      allocator_(std::move(other.allocator_))
+      allocator_(BEE_MOVE(other.allocator_))
 {
     other.options_ = ParseOptions{};
     other.parse_error_ = Error{};
@@ -140,7 +140,7 @@ Document& Document::operator=(Document&& other) noexcept
 {
     options_ = other.options_;
     parse_error_ = other.parse_error_;
-    allocator_ = std::move(other.allocator_);
+    allocator_ = BEE_MOVE(other.allocator_);
 
     other.options_ = ParseOptions{};
     other.parse_error_ = Error{};

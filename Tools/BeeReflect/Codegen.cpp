@@ -65,6 +65,8 @@ void CodeGenerator::reset(io::StringStream *new_stream)
 {
     stream_ = new_stream;
     indent_ = 0;
+    generated_count_ = 0;
+    include_serialization_header_ = false;
 }
 
 i32 CodeGenerator::generated_count() const
@@ -303,7 +305,14 @@ void CodeGenerator::type_guard_end(const TypeInfo* type)
     set_indent(old_indent);
 }
 
-
+// TODO(Jacob): add specialized type to array
+void CodeGenerator::serializer_function(const char* field_name, const char* specialized_type_name)
+{
+    // [](SerializationBuilder* builder, void* data) { custom_serialize_type(builder, static_cast<bee::GUID*>(data)); };
+    write("static auto %s__serializer_function = [](SerializationBuilder* builder, void* data) { custom_serialize_type(builder, static_cast<%s*>(data)); };", field_name, specialized_type_name);
+    newline(2);
+    include_serialization_header_ = true;
+}
 
 
 void codegen_template_parameters(const Span<const TemplateParameter>& parameters, CodeGenerator* codegen)
@@ -433,14 +442,6 @@ bool has_serializer_function(const FieldStorage& storage)
     return uses_builder || is_templated_and_serialized;
 }
 
-// TODO(Jacob): add specialized type to array
-void codegen_serializer_function(CodeGenerator* codegen, const char* field_name, const char* specialized_type_name)
-{
-    // [](SerializationBuilder* builder, void* data) { serialize_type(builder, static_cast<bee::GUID*>(data)); };
-    codegen->write("static auto %s__serializer_function = [](SerializationBuilder* builder, void* data) { serialize_type(builder, static_cast<%s*>(data)); };", field_name, specialized_type_name);
-    codegen->newline(2);
-}
-
 void codegen_field_extra_info(const FieldStorage& storage, CodeGenerator* codegen)
 {
     const auto& field = storage.field;
@@ -462,7 +463,7 @@ void codegen_field_extra_info(const FieldStorage& storage, CodeGenerator* codege
 
     if (has_serializer_function(storage))
     {
-        codegen_serializer_function(codegen, storage.field.name, storage.specialized_type);
+        codegen->serializer_function(storage.field.name, storage.specialized_type);
     }
 }
 
@@ -492,7 +493,7 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
         if (field.type->is(TypeKind::template_decl))
         {
             codegen->write(
-                "0x%" PRIx32 ", %zu, %s, %s, \"%s\", get_type<%s>(), Span<Type>(%s), %s, %s, %d, %d, %d",
+                "0x%" PRIx32 ", %zu, %s, %s, \"%s\", get_type<%s>(), Span<Type>(%s), %s, %s, %d, %d, %d, %s",
                 field.hash,
                 field.offset,
                 reflection_dump_flags(field.qualifier),
@@ -504,13 +505,14 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
                 serializer_function_name.c_str(),
                 field.version_added,
                 field.version_removed,
-                field.template_argument_in_parent
+                field.template_argument_in_parent,
+                reflection_dump_flags(field.serialization_flags)
             );
         }
         else
         {
             codegen->write(
-                "0x%" PRIx32 ", %zu, %s, %s, \"%s\", get_type<%s>(), Span<Type>(%s), %s, %s, %d, %d, %d",
+                "0x%" PRIx32 ", %zu, %s, %s, \"%s\", get_type<%s>(), Span<Type>(%s), %s, %s, %d, %d, %d, %s",
                 field.hash,
                 field.offset,
                 reflection_dump_flags(field.qualifier),
@@ -522,7 +524,8 @@ void codegen_field(const FieldStorage& storage, const char* attributes_array_nam
                 serializer_function_name.c_str(),
                 field.version_added,
                 field.version_removed,
-                field.template_argument_in_parent
+                field.template_argument_in_parent,
+                reflection_dump_flags(field.serialization_flags)
             );
         }
     });
@@ -545,7 +548,7 @@ void codegen_array_type(CodeGenerator* codegen, ArrayTypeStorage* storage)
 
         if (storage->uses_builder)
         {
-            codegen_serializer_function(codegen, "elements", storage->element_type_name);
+            codegen->serializer_function("elements", storage->element_type_name);
         }
         codegen->write("static ArrayTypeInfo instance");
         codegen->scope([&]()
@@ -932,29 +935,23 @@ void codegen_record(CodeGenerator* codegen, const RecordTypeStorage* storage)
     codegen->write_line("// get_type<%s>()\n", storage->type.name);
 }
 
-void generate_empty_reflection(const Path& dst_path, const char* location, io::StringStream* stream)
+void generate_empty_reflection(const Path& dst_path, const char* location, String* output)
 {
-    CodeGenerator codegen(CodegenMode::cpp, stream);
+    io::StringStream stream(output);
+    CodeGenerator codegen(CodegenMode::cpp, &stream);
     const auto relative_location = Path(location).relative_to(dst_path).make_generic();
     codegen.write_header_comment(relative_location);
     codegen.write_line("// THIS FILE IS INTENTIONALLY EMPTY - NO REFLECTION DATA WAS GENERATED");
 }
 
-i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::StringStream* stream, CodegenMode mode)
+i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, String* output, CodegenMode mode)
 {
-    CodeGenerator codegen(mode, stream);
+    String body;
+    io::StringStream stream (&body);
+    CodeGenerator codegen(mode, &stream);
+
     const auto relative_location = file.location.relative_to(dst_path.parent_view(), temp_allocator()).make_generic();
-
     int functions_generated = 0;
-    codegen.write_header_comment(relative_location);
-    codegen.newline();
-
-    if (mode != CodegenMode::templates_only)
-    {
-        codegen.write_line("#include \"%s\"", relative_location.c_str());
-        codegen.write_line("#include <Bee/Core/Reflection.hpp>");
-        codegen.newline();
-    }
 
     codegen.write("namespace bee ");
     codegen.scope([&]()
@@ -1020,12 +1017,96 @@ i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, io::Str
     }, " // namespace bee\n");
     codegen.newline();
 
-    return codegen.generated_count();
+    const bool include_serialization_header = codegen.include_serialization_header();
+    const int generated_count = codegen.generated_count();
+
+    // reset the codegen and do the header + body
+    new (&stream) io::StringStream(output);
+    codegen.reset(&stream);
+
+    codegen.write_header_comment(relative_location);
+    codegen.newline();
+
+    if (mode != CodegenMode::templates_only)
+    {
+        codegen.write_line("#include \"%s\"", relative_location.c_str());
+        codegen.write_line("#include <Bee/Core/Reflection.hpp>");
+        if (include_serialization_header)
+        {
+            codegen.write_line("#include <Bee/Core/Serialization/Serialization.hpp>");
+        }
+        codegen.newline();
+    }
+
+    // output the body
+    codegen.write("%s", body.c_str());
+
+    return generated_count;
 }
 
-i32 generate_reflection_header(const Path& dst_path, const ReflectedFile& file, const i32 first_type_index, io::StringStream* stream, CodegenMode mode)
+static bool generate_reflection_header_entry(CodeGenerator* codegen, const TypeListEntry& entry, const char* target_as_ident, const i32 index, const TypeListEntry* parent = nullptr)
 {
-    CodeGenerator codegen(mode, stream);
+    if (entry.type->is(TypeKind::template_decl))
+    {
+        return false;
+    }
+
+    codegen->write_type_signature(*entry.type, CodegenMode::cpp);
+    codegen->scope([&]()
+    {
+        if (parent == nullptr)
+        {
+            codegen->write("return get_type(get_reflection_module__%s(), %d);", target_as_ident, index);
+        }
+        else
+        {
+            const char* member_variable_name = "records";
+
+            if (entry.type->is(TypeKind::method | TypeKind::function))
+            {
+                member_variable_name = "functions";
+            }
+            if (entry.type->is(TypeKind::enum_decl))
+            {
+                member_variable_name = "enums";
+            }
+
+            codegen->write(
+                "return get_type_as<%s, ::bee::RecordTypeInfo>()->%s[%d];",
+                parent->type->name,
+                member_variable_name,
+                index
+            );
+        }
+    });
+
+    codegen->newline(2);
+
+    if (entry.storage_kind == StorageKind::record)
+    {
+#define BEE_NESTED(member)                                                                                                      \
+        BEE_BEGIN_MACRO_BLOCK                                                                                                   \
+            for (auto nested : enumerate(entry.storage.record->member))                                                         \
+            {                                                                                                                   \
+                generate_reflection_header_entry(codegen, TypeListEntry(nested.value), target_as_ident, nested.index, &entry);  \
+            }                                                                                                                   \
+        BEE_END_MACRO_BLOCK
+
+        BEE_NESTED(enums);
+        BEE_NESTED(functions);
+        BEE_NESTED(nested_records);
+
+#undef BEE_NESTED
+    }
+
+    return true;
+}
+
+
+i32 generate_reflection_header(const Path& dst_path, const ReflectedFile& file, const i32 first_type_index, String* output, CodegenMode mode)
+{
+    io::StringStream stream(output);
+    CodeGenerator codegen(mode, &stream);
     const auto target_path = dst_path.parent_path();
     const auto relative_location = file.location.relative_to(target_path, temp_allocator()).make_generic();
     const auto target_name = target_path.filename();
@@ -1056,24 +1137,12 @@ i32 generate_reflection_header(const Path& dst_path, const ReflectedFile& file, 
         codegen.write_line("#endif // BEE_INLINE_GET_REFLECTION_MODULE__%s", target_as_macro.c_str());
         codegen.newline();
 
-        for (const auto* type : file.all_types)
+        for (auto& entry : file.all_types)
         {
-            if (type->is(TypeKind::template_decl))
+            if (generate_reflection_header_entry(&codegen, entry, target_as_ident, first_type_index + generated_count))
             {
-                continue;
+                ++generated_count;
             }
-
-            codegen.write_type_signature(*type, CodegenMode::cpp);
-            codegen.scope([&]()
-            {
-                codegen.write(
-                    "return get_type(get_reflection_module__%s(), %d);",
-                    target_as_ident,
-                    first_type_index + generated_count
-                );
-            });
-            codegen.newline(2);
-            ++generated_count;
         }
 
         codegen.newline(2);
@@ -1083,7 +1152,7 @@ i32 generate_reflection_header(const Path& dst_path, const ReflectedFile& file, 
     return generated_count;
 }
 
-void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_types, CodegenMode mode, const Span<const Path>& written_files)
+void generate_typelist(const Path& target_dir, const Span<const TypeListEntry>& all_types, CodegenMode mode, const Span<const Path>& written_files)
 {
     String output;
     io::StringStream stream(&output);
@@ -1096,95 +1165,109 @@ void generate_typelist(const Path& target_dir, const Span<const TypeInfo*>& all_
     codegen.newline();
 
     int callback_count = 0;
-
-    codegen.write("namespace bee {");
+    for (const auto& entry : all_types)
     {
-        codegen.newline(2);
-        for (const auto* type : all_types)
+        if (!entry.type->is(TypeKind::template_decl))
         {
-            if (type->is(TypeKind::template_decl))
-            {
-                continue;
-            }
-            codegen.write_line("extern Type get_type__%s();", codegen.as_ident(*type));
             ++callback_count;
         }
-        codegen.newline(2);
     }
-    codegen.write_line("} // namespace bee");
 
-    codegen.newline();
-    codegen.write("%s const void* bee_load_reflection()", mode == CodegenMode::cpp ? "static" : "BEE_EXPORT_SYMBOL");
-    codegen.scope([&]()
+    if (callback_count <= 0)
     {
-        codegen.write("bee::u32 hashes[] =");
-        codegen.scope([&]()
+        codegen.write("// THIS FILE IS INTENTIONALLY EMPTY - NO REFLECTION DATA WAS GENERATED");
+        codegen.newline();
+    }
+    else
+    {
+        codegen.write("namespace bee {");
         {
-            int generated_count = 0;
-
-            for (const auto* type : all_types)
+            codegen.newline(2);
+            for (const auto& entry : all_types)
             {
-                if (type->is(TypeKind::template_decl))
+                if (entry.type->is(TypeKind::template_decl))
                 {
                     continue;
                 }
-
-                codegen.write("0x%" PRIx32 ",", type->hash);
-                if (generated_count < callback_count - 1)
-                {
-                    codegen.newline();
-                }
-                ++generated_count;
+                codegen.write_line("extern Type get_type__%s();", codegen.as_ident(*entry.type));
             }
-        }, ";");
+            codegen.newline(2);
+        }
+        codegen.write_line("} // namespace bee");
+        codegen.newline();
 
-        codegen.newline(2);
-
-        codegen.write("bee::get_type_callback_t callbacks[] =");
+        codegen.write("%s const void* bee_load_reflection()", mode == CodegenMode::cpp ? "static" : "extern \"C\" BEE_EXPORT_SYMBOL");
         codegen.scope([&]()
         {
-            int generated_count = 0;
-
-            for (const auto* type : all_types)
+            codegen.write("bee::u32 hashes[] =");
+            codegen.scope([&]()
             {
-                if (type->is(TypeKind::template_decl))
-                {
-                    continue;
-                }
+                int generated_count = 0;
 
-                codegen.write("bee::get_type__%s,", codegen.as_ident(*type));
-                if (generated_count < callback_count - 1)
+                for (const auto& entry : all_types)
                 {
-                    codegen.newline();
+                    if (entry.type->is(TypeKind::template_decl))
+                    {
+                        continue;
+                    }
+
+                    codegen.write("0x%" PRIx32 ",", entry.type->hash);
+                    if (generated_count < callback_count - 1)
+                    {
+                        codegen.newline();
+                    }
+                    ++generated_count;
                 }
-                ++generated_count;
-            }
-        }, ";");
+            }, ";");
+
+            codegen.newline(2);
+
+            codegen.write("bee::get_type_callback_t callbacks[] =");
+            codegen.scope([&]()
+            {
+                int generated_count = 0;
+
+                for (const auto& entry : all_types)
+                {
+                    if (entry.type->is(TypeKind::template_decl))
+                    {
+                        continue;
+                    }
+
+                    codegen.write("bee::get_type__%s,", codegen.as_ident(*entry.type));
+                    if (generated_count < callback_count - 1)
+                    {
+                        codegen.newline();
+                    }
+                    ++generated_count;
+                }
+            }, ";");
+
+            codegen.newline(2);
+
+            codegen.write(
+                "return bee::create_reflection_module(\"%" BEE_PRIsv "\", %d, hashes, callbacks);",
+                BEE_FMT_SV(target_dir.filename()),
+                callback_count
+            );
+        });
 
         codegen.newline(2);
 
-        codegen.write(
-            "return bee::create_reflection_module(\"%" BEE_PRIsv "\", %d, hashes, callbacks);",
-            BEE_FMT_SV(target_dir.filename()),
-            callback_count
-        );
-    });
-
-    codegen.newline(2);
-
-    if (mode == CodegenMode::cpp)
-    {
-        const char* target_ident = codegen.as_ident(target_dir.filename());
-
-        codegen.write("struct BEE_EXPORT_SYMBOL %s_AutoTypeRegistration", target_ident);
-        codegen.scope([&]()
+        if (mode == CodegenMode::cpp)
         {
-            codegen.write("%s_AutoTypeRegistration() noexcept { bee_load_reflection(); }", target_ident);
-        }, ";");
+            const char* target_ident = codegen.as_ident(target_dir.filename());
 
-        codegen.newline(2);
+            codegen.write("struct BEE_EXPORT_SYMBOL %s_AutoTypeRegistration", target_ident);
+            codegen.scope([&]()
+            {
+                codegen.write("%s_AutoTypeRegistration() noexcept { bee_load_reflection(); }", target_ident);
+            }, ";");
 
-        codegen.write_line("static %s_AutoTypeRegistration %s_auto_type_registration{};", target_ident, target_ident);
+            codegen.newline(2);
+
+            codegen.write_line("static %s_AutoTypeRegistration %s_auto_type_registration{};", target_ident, target_ident);
+        }
     }
 
     fs::write(output_path, output.view());

@@ -127,7 +127,18 @@ BEE_FLAGS(SerializationFlags, u32)
      * This indicates that the type uses a SerializationBuilder in a custom serialization function to handle
      * adding/removing fields and implementing more complex behavior than the default serialization method allows
      */
-    uses_builder    = 1u << 2u
+    uses_builder    = 1u << 2u,
+
+    /**
+     * When used on a type declaration:
+     * serves as a hint to the serializer to attempt to serialize instances of this type
+     * as a buffer of bytes whenever it's encountered.
+     *
+     * When used on a field:
+     * serves as a hint to the serializer to attempt to serialize this field as a buffer of
+     * bytes whenever it's encountered.
+     */
+     bytes          = 1u << 3u
 };
 
 
@@ -144,7 +155,7 @@ struct TypeInfo;
 struct ReflectionModule;
 
 
-class BEE_CORE_API Type
+class BEE_REFLECT(serializable, use_builder) BEE_CORE_API Type
 {
 public:
     Type();
@@ -182,6 +193,8 @@ class SpecializedType
 public:
     static_assert(std::is_base_of_v<TypeInfo, T>, "`T` must derive from bee::Type");
 
+    using kind = T;
+
     ~SpecializedType()
     {
         type_ = nullptr;
@@ -209,6 +222,11 @@ public:
     }
 
     bool is_unknown() const;
+
+    inline operator Type() const
+    {
+        return Type(type_);
+    }
 
 private:
     const T* type_ { nullptr };
@@ -371,6 +389,7 @@ struct Field
     i32                         version_added { 0 };
     i32                         version_removed { limits::max<i32>() };
     i32                         template_argument_in_parent { -1 };
+    SerializationFlags          serialization_flags { SerializationFlags::none };
 
     Field() = default;
 
@@ -386,7 +405,8 @@ struct Field
         serialization_function_t new_serializer_function,
         const i32 new_version_added = 0,
         const i32 new_version_removed = limits::max<i32>(),
-        const i32 template_arg_index = -1
+        const i32 template_arg_index = -1,
+        const SerializationFlags new_flags = SerializationFlags::none
     ) : hash(new_hash),
         offset(new_offset),
         qualifier(new_qualifier),
@@ -398,7 +418,8 @@ struct Field
         serializer_function(new_serializer_function),
         version_added(new_version_added),
         version_removed(new_version_removed),
-        template_argument_in_parent(template_arg_index)
+        template_argument_in_parent(template_arg_index),
+        serialization_flags(new_flags)
     {}
 };
 
@@ -443,6 +464,11 @@ public:
         return data_;
     }
 
+    inline void* data()
+    {
+        return data_;
+    }
+
     template <typename T>
     inline T* get()
     {
@@ -454,6 +480,8 @@ public:
     {
         return validate_type(get_type<T>()) ? static_cast<const T*>(data_) : nullptr;
     }
+
+    void from(TypeInstance* other);
 
 private:
     Allocator*  allocator_ { nullptr };
@@ -474,15 +502,15 @@ private:
 template <typename T>
 inline TypeInstance make_type_instance(Allocator* allocator)
 {
-    static auto static_deleter = [](Allocator* allocator, void* data)
+    static auto static_deleter = [](Allocator* a, void* data)
     {
         auto as_type_ptr = static_cast<T*>(data);
-        BEE_DELETE(allocator, as_type_ptr);
+        BEE_DELETE(a, as_type_ptr);
     };
 
-    static auto static_copier = [](Allocator* allocator, const void* other) -> void*
+    static auto static_copier = [](Allocator* a, const void* other) -> void*
     {
-        return BEE_NEW(allocator, T)(*static_cast<const T*>(other));
+        return BEE_NEW(a, T)(*static_cast<const T*>(other));
     };
 
     return TypeInstance(get_type<T>(), BEE_NEW(allocator, T)(), allocator, static_copier, static_deleter);
@@ -827,7 +855,7 @@ inline String enum_to_string(const T& value, Allocator* allocator = system_alloc
     String result(allocator);
     io::StringStream stream(&result);
     enum_to_string<T>(&stream, value);
-    return std::move(result);
+    return BEE_MOVE(result);
 }
 
 BEE_CORE_API isize enum_from_string(const EnumType& type, const StringView& string);
@@ -855,14 +883,14 @@ struct FunctionTypeInvoker
     ReturnType invoke(Args&&... args)
     {
         BEE_ASSERT_F((get_signature<ReturnType, Args...>()) == signature, "invalid `invoke` signature: ReturnType and Args must match the signature of the FunctionType exactly - including cv and reference qualifications");
-        return reinterpret_cast<ReturnType(*)(Args...)>(address)(std::forward<Args>(args)...);
+        return reinterpret_cast<ReturnType(*)(Args...)>(address)(BEE_FORWARD(args)...);
     }
 
     template <typename ReturnType, typename... Args>
     ReturnType invoke(Args&&... args) const
     {
         BEE_ASSERT_F((get_signature<ReturnType, Args...>()) == signature, "invalid `invoke` signature: ReturnType and Args must match the signature of the FunctionType exactly - including cv and reference qualifications");
-        return reinterpret_cast<ReturnType(*)(Args...)>(address)(std::forward<Args>(args)...);
+        return reinterpret_cast<ReturnType(*)(Args...)>(address)(BEE_FORWARD(args)...);
     }
 
     template <typename ReturnType, typename... Args>
@@ -950,13 +978,13 @@ struct FunctionTypeInfo final : public TypeSpec<TypeKind::function>
     template <typename ReturnType, typename... Args>
     ReturnType invoke(Args&&... args)
     {
-        return invoker.invoke<ReturnType>(std::forward<Args>(args)...);
+        return invoker.invoke<ReturnType>(BEE_FORWARD(args)...);
     }
 
     template <typename ReturnType, typename... Args>
     ReturnType invoke(Args&&... args) const
     {
-        return invoker.invoke<ReturnType>(std::forward<Args>(args)...);
+        return invoker.invoke<ReturnType>(BEE_FORWARD(args)...);
     }
 };
 

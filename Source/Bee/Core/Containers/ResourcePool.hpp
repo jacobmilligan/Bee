@@ -7,17 +7,17 @@
 
 #pragma once
 
-#include "Bee/Core/Memory/Allocator.hpp"
 #include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/Handle.hpp"
-#include "Bee/Core/Containers/Array.hpp"
 #include "Bee/Core/Concurrency.hpp"
+#include "Bee/Core/Serialization/Serialization.hpp"
+
 
 namespace bee {
 
 
 template <typename HandleType, typename ResourceType>
-class ResourcePool
+class BEE_REFLECT(serializable) ResourcePool
 {
 public:
     using id_t = typename HandleType::generator_t::id_t;
@@ -43,18 +43,28 @@ public:
         "macro and be smaller than 64 bits in size"
     );
 
+    struct ResourcePair
+    {
+        HandleType      handle;
+        ResourceType&   resource;
+    };
+
     class iterator
     {
     public:
-        using value_type        = ResourceType;
+        using value_type        = ResourcePair;
         using difference_type   = ptrdiff_t;
-        using reference         = ResourceType&;
-        using pointer           = ResourceType*;
 
         explicit iterator(ResourcePool* pool, const id_t index)
             : pool_(pool),
               current_index_(index % pool->chunk_capacity_),
               current_chunk_(index / pool->chunk_capacity_)
+        {}
+
+        explicit iterator(ResourcePool* pool, const id_t index_in_chunk, const id_t chunk)
+            : pool_(pool),
+              current_index_(index_in_chunk),
+              current_chunk_(chunk)
         {}
 
         iterator(const iterator& other)
@@ -83,14 +93,11 @@ public:
             return !(*this == other);
         }
 
-        reference operator*() const
+        ResourcePair operator*() const
         {
-            return pool_->chunks_[current_chunk_].data[current_index_];
-        }
-
-        pointer operator->() const
-        {
-            return &pool_->chunks_[current_chunk_].data[current_index_];
+            const id_t index = current_chunk_ * pool_->chunk_capacity_ + current_index_;
+            const id_t version = pool_->chunks_[current_chunk_].versions[current_index_];
+            return ResourcePair { HandleType(index, version), pool_->chunks_[current_chunk_].data[current_index_] };
         }
 
         const iterator operator++(int)
@@ -105,31 +112,25 @@ public:
             const auto chunk_count = pool_->chunk_count_;
             const auto chunk_capacity = pool_->chunk_capacity_;
 
-            for (; current_chunk_ < chunk_count; ++current_chunk_)
+            ++current_index_;
+
+            while (current_chunk_ < chunk_count)
             {
-                if (pool_->chunks_[current_chunk_].size > 0)
+                while (current_index_ < chunk_capacity)
                 {
-                    // skip over inactive items
-                    for (; current_index_ < pool_->chunk_capacity_; ++current_index_)
+                    if (pool_->chunks_[current_chunk_].active_states[current_index_])
                     {
-                        if (pool_->chunks_[current_chunk_].active_states[current_index_])
-                        {
-                            ++current_index_;
-
-                            if (current_index_ >= chunk_capacity)
-                            {
-                                current_index_ = 0;
-                                ++current_chunk_;
-                            }
-
-                            return *this;
-                        }
+                        return *this;
                     }
+                    ++current_index_;
                 }
 
+                ++current_chunk_;
                 current_index_ = 0;
             }
 
+            // we're at the end
+            current_index_ = chunk_capacity * chunk_count;
             return *this;
         }
     private:
@@ -190,7 +191,7 @@ public:
         next_free_resource_ = chunk.free_list[chunk_index];
 
         chunk.active_states[chunk_index] = true;
-        new (&chunk.data[chunk_index]) ResourceType(std::forward<ConstructorArgs>(args)...);
+        new (&chunk.data[chunk_index]) ResourceType(BEE_FORWARD(args)...);
 
         return HandleType(index, chunk.versions[chunk_index]);
     }
@@ -208,13 +209,21 @@ public:
         destruct(&chunk.data[index_in_chunk]);
         chunk.active_states[index_in_chunk] = false;
         chunk.versions[index_in_chunk] = (chunk.versions[index_in_chunk] + 1) & HandleType::generator_t::high_mask;
-        chunk.versions[index_in_chunk] = math::min(chunk.versions[index_in_chunk], HandleType::generator_t::min_high);
 
         chunk.free_list[index_in_chunk] = next_free_resource_;
         next_free_resource_ = index;
 
         --resource_count_;
         --chunk.size;
+    }
+
+    void reserve(const i32 count)
+    {
+        const int chunk_count = sign_cast<i32>(math::ceilf(static_cast<float>(count) / static_cast<float>(chunk_capacity_)));
+        for (int i = 0; i < chunk_count; ++i)
+        {
+            allocate_chunk();
+        }
     }
 
     void clear()
@@ -263,7 +272,7 @@ public:
 
     inline iterator end()
     {
-        return iterator(this, chunk_count_ * chunk_capacity_);
+        return iterator(this, chunk_capacity_, chunk_count_);
     }
 
     inline iterator get_iterator(const HandleType& handle)
@@ -315,7 +324,7 @@ private:
         for (id_t i = 0; i < chunk->capacity; ++i)
         {
             chunk->free_list[i] = (chunk->index * chunk->capacity) + i + 1;
-            chunk->versions[i] = 1;
+            chunk->versions[i] = HandleType::generator_t::min_high;
             if (chunk->active_states[i])
             {
                 chunk->active_states[i] = false;
@@ -342,4 +351,35 @@ private:
 };
 
 
+template <typename HandleType, typename ResourceType>
+BEE_SERIALIZE_TYPE(SerializationBuilder* builder, ResourcePool<HandleType, ResourceType>* pool)
+{
+    int size = static_cast<int>(pool->size());
+    builder->container(SerializedContainerKind::sequential, &size);
+
+    if (builder->mode() == SerializerMode::reading)
+    {
+        pool->reserve(size);
+
+        for (int i = 0; i < size; ++i)
+        {
+            const auto handle = pool->allocate();
+            auto& resource = (*pool)[handle];
+            builder->element(&resource);
+        }
+    }
+    else
+    {
+        for (auto pair : *pool)
+        {
+            builder->element(&pair.resource);
+        }
+    }
+}
+
+
 } // namespace bee
+
+#ifdef BEE_ENABLE_REFLECTION
+    #include "Bee.Core/ReflectedTemplates/ResourcePool.generated.inl"
+#endif // BEE_ENABLE_REFLECTION

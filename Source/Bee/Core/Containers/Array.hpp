@@ -10,7 +10,7 @@
 #include "Bee/Core/Containers/Container.hpp"
 #include "Bee/Core/Memory/Allocator.hpp"
 #include "Bee/Core/Span.hpp"
-#include "Bee/Core/Forward.hpp"
+#include "Bee/Core/Move.hpp"
 #include "Bee/Core/New.hpp"
 
 namespace bee {
@@ -170,7 +170,7 @@ private:
 
     inline constexpr i32 growth_rate(const dynamic_container_mode_t& dynamic_container)
     {
-        return capacity_ * 2;
+        return (capacity_ * 15) / 10; // 1.5x growth rate
     }
 
     inline constexpr i32 growth_rate(const fixed_container_mode_t& fixed_container)

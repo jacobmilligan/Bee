@@ -34,13 +34,13 @@ HandleTable<Capacity, HandleType, DataType>::HandleTable() noexcept
 template <u64 Capacity, typename HandleType, typename DataType>
 HandleTable<Capacity, HandleType, DataType>::HandleTable(HandleTable<Capacity, HandleType, DataType>&& other) noexcept
 {
-    move_construct(std::forward<HandleTable<Capacity, HandleType, DataType>>(other));
+    move_construct(BEE_FORWARD(other));
 }
 
 template <u64 Capacity, typename HandleType, typename DataType>
 HandleTable<Capacity, HandleType, DataType>& HandleTable<Capacity, HandleType, DataType>::operator=(HandleTable<Capacity, HandleType, DataType>&& other) noexcept
 {
-    move_construct(std::forward<HandleTable<Capacity, HandleType, DataType>>(other));
+    move_construct(BEE_FORWARD(other));
     return *this;
 }
 
@@ -53,7 +53,7 @@ void HandleTable<Capacity, HandleType, DataType>::move_construct(HandleTable<Cap
     memcpy(dense_to_sparse_, other.dense_to_sparse_, capacity);
     for (int data_idx = 0; data_idx < capacity; ++data_idx)
     {
-        data_[data_idx] = std::move(other.data_[data_idx]);
+        data_[data_idx] = BEE_MOVE(other.data_[data_idx]);
     }
 
     other.reset();
@@ -114,7 +114,7 @@ HandleType HandleTable<Capacity, HandleType, DataType>::emplace(DataType** new_d
 {
     BEE_ASSERT(new_data != nullptr);
     const auto handle = create_uninitialized(new_data);
-    new (*new_data) DataType(std::forward<Args>(args)...);
+    new (*new_data) DataType(BEE_FORWARD(args)...);
     return handle;
 }
 

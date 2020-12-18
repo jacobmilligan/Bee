@@ -169,7 +169,7 @@ BEE_CORE_API FixedArray<u8> read_bytes(const Path& filepath, Allocator* allocato
 
 BEE_CORE_API bool write(const Path& filepath, const StringView& string_to_write);
 
-BEE_CORE_API bool write(const Path& filepath, const Span<const u8>& bytes_to_write);
+BEE_CORE_API bool write(const Path& filepath, const void* buffer, const size_t buffer_size);
 
 BEE_CORE_API bool write_v(const Path& filepath, const char* fmt_string, va_list fmt_args);
 

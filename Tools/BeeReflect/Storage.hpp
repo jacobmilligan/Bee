@@ -72,7 +72,7 @@ struct RecordTypeStorage
     ReflectedFile*                          location { nullptr };
     const clang::CXXRecordDecl*             decl { nullptr };
     bool                                    has_explicit_version { false };
-    RecordTypeInfo                              type;
+    RecordTypeInfo                          type;
     DynamicArray<FieldStorage>              fields;
     DynamicArray<Attribute>                 attributes;
     DynamicArray<FunctionTypeStorage*>      functions;
@@ -136,7 +136,7 @@ struct FunctionTypeStorage
 struct EnumTypeStorage
 {
     ReflectedFile*              location { nullptr };
-    EnumTypeInfo                    type;
+    EnumTypeInfo                type;
     DynamicArray<EnumConstant>  constants;
     DynamicArray<Attribute>     attributes;
 
@@ -154,9 +154,9 @@ struct EnumTypeStorage
 
 struct ArrayTypeStorage
 {
-    const char* element_type_name { nullptr };
-    bool        is_generated { false };
-    bool        uses_builder {false };
+    const char*     element_type_name { nullptr };
+    bool            is_generated { false };
+    bool            uses_builder {false };
     ArrayTypeInfo   type;
 };
 
@@ -169,7 +169,7 @@ public:
     template <typename T, typename... Args>
     T* allocate_storage(Args&&... args)
     {
-        auto ptr = BEE_NEW(type_allocator_, T)(std::forward<Args>(args)...);
+        auto ptr = BEE_NEW(type_allocator_, T)(BEE_FORWARD(args)...);
 
         allocations_.emplace_back();
 
@@ -206,6 +206,75 @@ private:
 
 struct TypeMap;
 
+enum class StorageKind
+{
+    array,
+    enumeration,
+    function,
+    record,
+    count
+};
+
+struct TypeListEntry
+{
+    StorageKind storage_kind { StorageKind::count };
+
+    union StorageUnion
+    {
+        const ArrayTypeStorage*     array;
+        const EnumTypeStorage*      enumeration;
+        const FunctionTypeStorage*  function;
+        const RecordTypeStorage*    record { nullptr };
+    };
+
+    StorageUnion    storage;
+    const TypeInfo* type { nullptr };
+
+    TypeListEntry() = delete;
+
+    TypeListEntry(const TypeListEntry& other)
+    {
+        storage_kind = other.storage_kind;
+        type = other.type;
+        memcpy(&storage, &other.storage, sizeof(StorageUnion));
+    }
+
+    TypeListEntry& operator=(const TypeListEntry& other)
+    {
+        storage_kind = other.storage_kind;
+        type = other.type;
+        memcpy(&storage, &other.storage, sizeof(StorageUnion));
+        return *this;
+    }
+
+    TypeListEntry(const ArrayTypeStorage* array)
+        : storage_kind(StorageKind::array),
+          type(&array->type)
+    {
+        storage.array = array;
+    }
+
+    TypeListEntry(const EnumTypeStorage* enumeration)
+        : storage_kind(StorageKind::enumeration),
+          type(&enumeration->type)
+    {
+        storage.enumeration = enumeration;
+    }
+
+    TypeListEntry(const FunctionTypeStorage* function)
+        : storage_kind(StorageKind::function),
+          type(&function->type)
+    {
+        storage.function = function;
+    }
+
+    TypeListEntry(const RecordTypeStorage* record)
+        : storage_kind(StorageKind::record),
+          type(&record->type)
+    {
+        storage.record = record;
+    }
+};
 
 struct ReflectedFile
 {
@@ -229,10 +298,12 @@ struct ReflectedFile
     DynamicArray<const FunctionTypeStorage*>    functions;
     DynamicArray<const EnumTypeStorage*>        enums;
     DynamicArray<ArrayTypeStorage*>             arrays;
-    DynamicArray<const TypeInfo*>               all_types;
+    DynamicArray<TypeListEntry>                 all_types;
 
     bool try_insert_type(const TypeInfo* type) const;
 };
+
+void sort_type(ReflectedFile* file);
 
 
 struct TypeMap

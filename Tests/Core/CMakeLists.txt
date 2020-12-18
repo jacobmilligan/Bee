@@ -6,13 +6,13 @@ bee_test(Bee.Tests.Core
         SOURCES
 
         ArrayTests.cpp
+        Base64Tests.cpp
         ConcurrencyTests.cpp
         MemoryTests.cpp
-        RingBufferTests.cpp
         AllocatorTests.cpp
         FilesystemTests.cpp
         HashMapTests.cpp
-        ResourcePoolTests.cpp
+        ResourcePoolTests.hpp ResourcePoolTests.cpp
         JSONTests.cpp
         StringTests.cpp
         FunctionalTests.cpp
@@ -48,7 +48,7 @@ bee_relacy_test(Bee.Tests.WorkStealingQueue
 
 target_include_directories(Bee.Tests.Core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-#bee_reflect(Bee.Tests.Core)
+bee_reflect(Bee.Tests.Core)
 
 bee_new_source_root()
 bee_add_sources(ChunkAllocatorTest.cpp)

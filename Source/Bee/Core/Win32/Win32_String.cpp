@@ -43,7 +43,7 @@ String from_wchar(const wchar_t* wchar_str, const i32 byte_size, Allocator* allo
 {
     String result(allocator);
     from_wchar(&result, wchar_str, byte_size);
-    return std::move(result);
+    return BEE_MOVE(result);
 }
 
 void from_wchar(String* dst, const wchar_t* wchar_str, const i32 byte_size)
