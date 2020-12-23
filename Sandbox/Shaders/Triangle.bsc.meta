@@ -1,10 +1,10 @@
 {
     "bee::version": 1,
     "bee::flags": 1,
-    "guid": "2692689ec362457b9d3252d5d1e49151",
+    "guid": "59b4812f9d004d57b549380a2bf3b7ea",
     "timestamp": 0,
     "kind": "file",
-    "source": ".\\Shaders\\Triangle.bsc",
+    "source": "./Shaders/Triangle.bsc",
     "properties": {
         "bee::type": 2546253450,
         "bee::version": 1,
