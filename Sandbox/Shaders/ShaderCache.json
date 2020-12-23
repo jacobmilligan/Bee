@@ -1,5 +1,4 @@
-[
-    {
+[{
         "bee::version": 1,
         "bee::flags": 4,
         "name": "DefaultPipelineState",
@@ -77,8 +76,7 @@
         "render_pass_info": {
             "bee::version": 1,
             "bee::flags": 1,
-            "attachments": [
-                {
+            "attachments": [{
                     "bee::version": 1,
                     "bee::flags": 1,
                     "type": "present",
@@ -86,40 +84,31 @@
                     "load_op": "clear",
                     "store_op": "store",
                     "samples": 1
-                }
-            ],
+                }],
             "subpass_count": 1
         },
-        "subpasses": [
-            {
+        "subpasses": [{
                 "bee::version": 1,
                 "bee::flags": 1,
                 "input_attachments": [],
-                "color_attachments": [
-                    0
-                ],
+                "color_attachments": [0],
                 "resolve_attachments": [],
                 "preserve_attachments": [],
                 "depth_stencil": 8
-            }
-        ],
-        "stages": [
-            {
+            }],
+        "stages": [{
                 "bee::version": 1,
                 "bee::flags": 1,
                 "entry": "vert",
                 "flags": "vertex | graphics | all",
                 "code": "AwIjBwAAAQAAAA4ADwAAAAAAAAARAAIAAQAAAAoACQBTUFZfR09PR0xFX2hsc2xfZnVuY3Rpb25hbGl0eTEAAA4AAwAAAAAAAQAAAA8ACQAAAAAAAQAAAHZlcnQAAAAAAgAAAAMAAAAEAAAABQAAAAMAAwAFAAAAWAIAAAUABgACAAAAaW4udmFyLlBPU0lUSU9OAAUABgADAAAAaW4udmFyLkNPTE9SAAAAAAUABwAEAAAAb3V0LnZhci5QT1NJVElPTgAAAAAFAAYABQAAAG91dC52YXIuQ09MT1IAAAAFAAQAAQAAAHZlcnQAAAAAABYGAAIAAAADFgAAUE9TSVRJT04AAAAAABYFAAMAAAADFgAAQ09MT1IAAAAAFgYABAAAAAMWAABQT1NJVElPTgAAAAAAFgUABQAAAAMWAABDT0xPUgAAAEcABAACAAAAHgAAAAAAAABHAAQAAwAAAB4AAAABAAAARwAEAAQAAAAeAAAAAAAAAEcABAAFAAAAHgAAAAEAAAAWAAMABgAAACAAAAAXAAQABwAAAAYAAAAEAAAAIAAEAAgAAAABAAAABwAAACAABAAJAAAAAwAAAAcAAAATAAIACgAAACEAAwALAAAACgAAADsABAAIAAAAAgAAAAEAAAA7AAQACAAAAAMAAAABAAAAOwAEAAkAAAAEAAAAAwAAADsABAAJAAAABQAAAAMAAAA2AAUACgAAAAEAAAAAAAAACwAAAPgAAgAMAAAAPQAEAAcAAAANAAAAAgAAAD0ABAAHAAAADgAAAAMAAAA+AAMABAAAAA0AAAA+AAMABQAAAA4AAAD9AAEAOAABAA==",
                 "update_frequencies": []
-            },
-            {
+            }, {
                 "bee::version": 1,
                 "bee::flags": 1,
                 "entry": "frag",
                 "flags": "fragment | graphics | all",
                 "code": "AwIjBwAAAQAAAA4ADQAAAAAAAAARAAIAAQAAAAoACQBTUFZfR09PR0xFX2hsc2xfZnVuY3Rpb25hbGl0eTEAAA4AAwAAAAAAAQAAAA8ACAAEAAAAAQAAAGZyYWcAAAAAAgAAAAMAAAAEAAAAEAADAAEAAAAHAAAAAwADAAUAAABYAgAABQAGAAIAAABpbi52YXIuUE9TSVRJT04ABQAGAAMAAABpbi52YXIuQ09MT1IAAAAABQAHAAQAAABvdXQudmFyLlNWX1RBUkdFVAAAAAUABAABAAAAZnJhZwAAAAAAFgYAAgAAAAMWAABQT1NJVElPTgAAAAAAFgUAAwAAAAMWAABDT0xPUgAAAAAWBgAEAAAAAxYAAFNWX1RBUkdFVAAAAEcABAACAAAAHgAAAAAAAABHAAQAAwAAAB4AAAABAAAARwAEAAQAAAAeAAAAAAAAABYAAwAFAAAAIAAAABcABAAGAAAABQAAAAQAAAAgAAQABwAAAAEAAAAGAAAAIAAEAAgAAAADAAAABgAAABMAAgAJAAAAIQADAAoAAAAJAAAAOwAEAAcAAAACAAAAAQAAADsABAAHAAAAAwAAAAEAAAA7AAQACAAAAAQAAAADAAAANgAFAAkAAAABAAAAAAAAAAoAAAD4AAIACwAAAD0ABAAGAAAADAAAAAMAAAA+AAMABAAAAAwAAAD9AAEAOAABAA==",
                 "update_frequencies": []
-            }
-        ]
-    }
-]
+            }]
+    }]

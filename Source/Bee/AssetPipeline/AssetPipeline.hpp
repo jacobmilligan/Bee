@@ -44,6 +44,7 @@ struct AssetImportContext
     AssetDatabaseModule*    db { nullptr };
     AssetTxn*               txn { nullptr };
     DynamicArray<u8>*       artifact_buffer { nullptr };
+    StringView              path;
 
     template <typename T>
     const T* get_properties() const

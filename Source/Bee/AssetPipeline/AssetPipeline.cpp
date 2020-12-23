@@ -288,7 +288,7 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
         auto& importer_info = pipeline->importers[importer_index];
         meta = g_assetdb->create_asset(&txn, importer_info.importer->properties_type()).unwrap();
         meta->importer = get_hash(importer_info.importer->name());
-        meta->source.append(path);
+        meta->source.append(Path(path, tmp).relative_to(pipeline->config_path.parent_view(), tmp));
 
         // write the .meta out to file
         JSONSerializer serializer(tmp);
@@ -318,6 +318,7 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
     ctx.txn = &txn;
     ctx.artifact_buffer = &pipeline->thread_data[job_worker_id()].artifact_buffer;
     ctx.artifact_buffer->clear();
+    ctx.path = path;
 
     const auto status = pipeline->importers[importer_index].importer->import(&ctx);
     if (status != ImportErrorStatus::success)

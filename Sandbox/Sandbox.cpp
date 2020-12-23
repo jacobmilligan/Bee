@@ -155,10 +155,10 @@ static Type get_shader_importer_properties_type()
 static ImportErrorStatus import_shader(AssetImportContext* ctx)
 {
     DynamicArray<ShaderPipelineHandle> output(ctx->temp_allocator);
-    const auto content = fs::read(ctx->metadata->source, ctx->temp_allocator);
+    const auto content = fs::read(ctx->path, ctx->temp_allocator);
     const auto result = g_shader_compiler->compile_shader(
         g_app->cache,
-        ctx->metadata->source.filename(),
+        path_get_filename(ctx->path),
         content.view(),
         ShaderTarget::spirv,
         &output

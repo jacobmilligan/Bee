@@ -46,6 +46,30 @@ i32 next_slash_pos(const StringView& string, const i32 start_index)
     return slash_idx;
 }
 
+static i32 get_filename_index(const StringView& path)
+{
+    int filename_idx = path.size();
+
+    // Skip slashes at the end of a path
+    while (filename_idx > 0 && is_slash(path.data() + filename_idx))
+    {
+        --filename_idx;
+    }
+
+    // Now get the actual filename begin index
+    while (filename_idx > 0)
+    {
+        // Check one previous for slash so we get, i.e. '/Data/File.txt' -> 'File.txt' instead of '/File.txt'
+        if (is_slash(path.data() + filename_idx - 1))
+        {
+            break;
+        }
+        --filename_idx;
+    }
+
+    return filename_idx >= 0 ? filename_idx : 0;
+}
+
 
 /*
  ***************************************
@@ -256,40 +280,16 @@ Path& Path::set_extension(const StringView& ext)
     return *this;
 }
 
-i32 Path::get_filename_idx() const
-{
-    int filename_idx = data_.size();
-
-    // Skip slashes at the end of a path
-    while (filename_idx > 0 && is_slash(data_.c_str() + filename_idx))
-    {
-        --filename_idx;
-    }
-
-    // Now get the actual filename begin index
-    while (filename_idx > 0)
-    {
-        // Check one previous for slash so we get, i.e. '/Data/File.txt' -> 'File.txt' instead of '/File.txt'
-        if (is_slash(data_.c_str() + filename_idx - 1))
-        {
-            break;
-        }
-        --filename_idx;
-    }
-
-    return filename_idx >= 0 ? filename_idx : 0;
-}
-
 StringView Path::filename() const
 {
-    return str::substring(data_, get_filename_idx());
+    return path_get_filename(data_.view());
 }
 
 Path& Path::remove_filename()
 {
     if (!data_.empty())
     {
-        data_.remove(get_filename_idx());
+        data_.remove(get_filename_index(data_.view()));
     }
     return *this;
 }
@@ -627,6 +627,16 @@ StringView path_get_extension(const StringView& path)
     }
 
     return str::substring(path, last_dot);
+}
+
+StringView path_get_filename(const char* c_string)
+{
+    return str::substring(c_string, get_filename_index(c_string));
+}
+
+StringView path_get_filename(const StringView& path)
+{
+    return str::substring(path, get_filename_index(path));
 }
 
 
