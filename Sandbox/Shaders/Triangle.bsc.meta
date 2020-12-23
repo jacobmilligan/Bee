@@ -1,16 +1,15 @@
 {
     "bee::version": 1,
     "bee::flags": 1,
-    "guid": "e9fd794de0e240eda0443efcd6c042e9",
+    "guid": "51246fb64d1142f4995683138e619577",
     "timestamp": 0,
     "kind": "file",
-    "source": "",
+    "source": "D:\\Code\\Bee\\Sandbox\\Shaders\\Triangle.bsc",
     "properties": {
         "bee::type": 2546253450,
         "bee::version": 1,
         "bee::flags": 1,
-        "pipelines": [
-            2151391117
-        ]
-    }
+        "compile_debug_shaders": false
+    },
+    "importer": 593409531
 }
