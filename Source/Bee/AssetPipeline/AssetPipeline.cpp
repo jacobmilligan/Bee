@@ -289,6 +289,7 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
         meta = g_assetdb->create_asset(&txn, importer_info.importer->properties_type()).unwrap();
         meta->importer = get_hash(importer_info.importer->name());
         meta->source.append(Path(path, tmp).relative_to(pipeline->config_path.parent_view(), tmp));
+        meta->source.make_generic();
 
         // write the .meta out to file
         JSONSerializer serializer(tmp);
