@@ -26,7 +26,7 @@ struct BEE_REFLECT(serializable) AssetFile
 
 struct BEE_REFLECT(serializable) ShaderAsset
 {
-    DynamicArray<u32>   pipelines;
+    bool compile_debug_shaders { false };
 };
 
 struct SandboxModule

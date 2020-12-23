@@ -9,6 +9,7 @@
 
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/GUID.hpp"
+#include "Bee/Core/Serialization/BinarySerializer.hpp"
 
 #include "Bee/AssetDatabase/AssetDatabase.hpp"
 
@@ -32,7 +33,7 @@ BEE_REFLECTED_FLAGS(AssetPlatform, u32, serializable)
     linux   = 1u << 2u,
     metal   = 1u << 3u,
     vulkan  = 1u << 4u,
-}
+};
 
 
 struct AssetImportContext
@@ -42,6 +43,7 @@ struct AssetImportContext
     const AssetMetadata*    metadata { nullptr };
     AssetDatabaseModule*    db { nullptr };
     AssetTxn*               txn { nullptr };
+    DynamicArray<u8>*       artifact_buffer { nullptr };
 
     template <typename T>
     const T* get_properties() const
@@ -49,13 +51,21 @@ struct AssetImportContext
         BEE_ASSERT(metadata != nullptr);
         return metadata->properties.get<T>();
     }
+
+    template <typename T>
+    inline Result<u128, AssetDatabaseError> add_artifact(const T* artifact)
+    {
+        BinarySerializer serializer(artifact_buffer);
+        serialize(SerializerMode::writing, &serializer, const_cast<T*>(artifact), temp_allocator);
+        return db->add_artifact(txn, metadata->guid, get_type<T>(), artifact_buffer->data(), artifact_buffer->size());
+    }
 };
 
 struct AssetImporter
 {
     const char* (*name)() { nullptr };
 
-    i32 (*supported_file_types)(const char* const* dst) { nullptr };
+    i32 (*supported_file_types)(const char** dst) { nullptr };
 
     Type (*properties_type)() { nullptr };
 
@@ -64,6 +74,13 @@ struct AssetImporter
 
 
 #define BEE_ASSET_PIPELINE_MODULE_NAME "BEE_ASSET_PIPELINE"
+
+struct BEE_REFLECT(serializable) AssetPipelineConfig
+{
+    String              name;
+    Path                cache_root;
+    DynamicArray<Path>  source_roots;
+};
 
 struct AssetPipelineInfo
 {
@@ -83,6 +100,8 @@ struct AssetPipelineModule
 
     void (*destroy_pipeline)(AssetPipeline* pipeline) { nullptr };
 
+    AssetDatabase* (*get_asset_db)(AssetPipeline* pipeline) { nullptr };
+
     void (*register_importer)(AssetPipeline* pipeline, AssetImporter* importer) { nullptr };
 
     void (*unregister_importer)(AssetPipeline* pipeline, AssetImporter* importer) { nullptr };
@@ -94,3 +113,7 @@ struct AssetPipelineModule
 
 
 } // namespace bee
+
+#ifdef BEE_ENABLE_REFLECTION
+    #include "Bee.AssetPipeline/AssetPipeline.generated.inl"
+#endif // BEE_ENABLE_REFLECTION

@@ -5,13 +5,13 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/AssetPipeline/AssetPipeline.inl"
-
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Serialization/JSONSerializer.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
 
 #include "Bee/AssetDatabase/AssetDatabase.hpp"
+#include "Bee/AssetPipeline/AssetPipeline.hpp"
+#include "Bee/AssetPipeline/AssetPipeline.inl"
 
 
 namespace bee {
@@ -63,16 +63,42 @@ static void load_config(AssetPipeline* pipeline)
     serialize(SerializerMode::reading, &serializer, &pipeline->config);
 }
 
+static bool init_pipeline(AssetPipeline* pipeline)
+{
+    pipeline->thread_data.resize(job_system_worker_count());
+    pipeline->full_cache_path = pipeline->config_path.parent_path();
+    pipeline->full_cache_path.append(pipeline->config.cache_root.view());
+
+    if (!pipeline->full_cache_path.exists())
+    {
+        fs::mkdir(pipeline->full_cache_path, true);
+    }
+
+    pipeline->db_path = pipeline->full_cache_path.join("AssetDB");
+
+    // Open the asset database instance
+    pipeline->db = g_assetdb->open(pipeline->db_path);
+    if (pipeline->db == nullptr)
+    {
+        return false;
+    }
+
+    // start the source asset watcher after adding all the new source roots
+    for (auto& source_root : pipeline->config.source_roots)
+    {
+        pipeline->source_watcher.add_directory(pipeline->config_path.parent_path().append(source_root.view()));
+    }
+    pipeline->source_watcher.start(pipeline->config.name.c_str());
+
+    return pipeline;
+}
+
 AssetPipeline* create_pipeline(const AssetPipelineInfo& info)
 {
     auto* pipeline = BEE_NEW(system_allocator(), AssetPipeline);
     pipeline->config_path = info.config_path;
     pipeline->config.cache_root = info.cache_root;
     pipeline->config.name = info.name;
-    pipeline->db_path = pipeline->config.cache_root.join(info.name);
-    pipeline->thread_data.resize(job_system_worker_count());
-
-    TempAlloc temp_alloc(pipeline);
 
     // Create directories if missing
     if (BEE_FAIL(!pipeline->config_path.exists()))
@@ -81,24 +107,18 @@ AssetPipeline* create_pipeline(const AssetPipelineInfo& info)
         return nullptr;
     }
 
-    if (!pipeline->config.cache_root.exists())
+    for (int i = 0; i < info.source_root_count; ++i)
     {
-        fs::mkdir(pipeline->config.cache_root, true);
+        pipeline->config.source_roots.back().append(info.source_roots[i]);
     }
 
-    if (!g_assetdb->open(pipeline->db_path))
+    if (BEE_FAIL(init_pipeline(pipeline)))
     {
         BEE_DELETE(system_allocator(), pipeline);
         return nullptr;
     }
 
-    for (int i = 0; i < info.source_root_count; ++i)
-    {
-        pipeline->config.source_roots.push_back(info.source_roots[i]);
-    }
-
     save_config(pipeline);
-    pipeline->source_watcher.start(pipeline->config.name.c_str());
 
     return pipeline;
 }
@@ -107,6 +127,7 @@ AssetPipeline* load_pipeline(const StringView path)
 {
     auto* pipeline = BEE_NEW(system_allocator(), AssetPipeline);
     pipeline->config_path = path;
+    pipeline->thread_data.resize(job_system_worker_count());
 
     if (BEE_FAIL(fs::is_file(pipeline->config_path)))
     {
@@ -116,17 +137,11 @@ AssetPipeline* load_pipeline(const StringView path)
 
     load_config(pipeline);
 
-    pipeline->db_path = pipeline->config.cache_root.join(pipeline->config.name.view());
-    pipeline->artifact_root = pipeline->config.cache_root.join(g_artifacts_dirname);
-    pipeline->thread_data.resize(job_system_worker_count());
-
-    // start the source asset watcher after adding all the existing source roots
-    for (auto& source_root : pipeline->config.source_roots)
+    if (!init_pipeline(pipeline))
     {
-        pipeline->source_watcher.add_directory(source_root);
+        BEE_DELETE(system_allocator(), pipeline);
+        return nullptr;
     }
-
-    pipeline->source_watcher.start(pipeline->config.name.c_str());
 
     return pipeline;
 }
@@ -136,6 +151,11 @@ void destroy_pipeline(AssetPipeline* pipeline)
     pipeline->source_watcher.stop();
     g_assetdb->close(pipeline->db);
     BEE_DELETE(system_allocator(), pipeline);
+}
+
+AssetDatabase* get_asset_db(AssetPipeline* pipeline)
+{
+    return pipeline->db;
 }
 
 static FileTypeInfo& add_file_type(AssetPipeline* pipeline, const char* file_type, const u32 hash)
@@ -181,6 +201,7 @@ void register_importer(AssetPipeline* pipeline, AssetImporter* importer)
         }
 
         pipeline->file_type_hashes.push_back(ft_hash);
+        pipeline->importers.back().file_type_hashes.push_back(ft_hash);
     }
 }
 
@@ -224,7 +245,7 @@ i32 get_default_importer_for_file_type(AssetPipeline* pipeline, const StringView
     const u32 hash = get_hash(ext);
     for (int i = 0; i < pipeline->importers.size(); ++i)
     {
-        if (find_index(pipeline->importers[i].file_type_hashes, ext_hash) >= 0)
+        if (find_index(pipeline->importers[i].file_type_hashes, hash) >= 0)
         {
             return i;
         }
@@ -238,10 +259,10 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
     AssetMetadata* meta = nullptr;
 
     TempAlloc tmp(pipeline);
-    auto full_path = Path(pipeline->config_path.parent_view(), tmp).append(path);
-    Path metadata_path(full_path, tmp);
+    Path metadata_path(path, tmp);
     metadata_path.append_extension(".meta");
 
+    // Read the GUID from disk and modify using the read-in metadata
     if (metadata_path.exists())
     {
         auto meta_file = fs::read(metadata_path, tmp);
@@ -253,32 +274,23 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
         }
     }
 
-    const auto ext = path_get_extension(full_path);
-    int importer_index = get_default_importer_for_file_type(ext);
+    const auto ext = path_get_extension(path);
+    int importer_index = get_default_importer_for_file_type(pipeline, ext);
 
     if (importer_index < 0)
     {
         return ImportErrorStatus::unsupported_file_type;
     }
 
-    if (ctx.metadata != nullptr)
+    if (meta == nullptr)
     {
-        int serialized_importer = find_index_if(pipeline->importers, [&](const AssetImporterInfo& info)
-        {
-            return get_hash(info.importer->name());
-        });
-        if (serialized_importer >= 0)
-        {
-            importer_index = serialized_importer;
-        }
-    }
-    else
-    {
+        // If the metadata doesn't exist then this is a new asset so create one in the database and grab the default importer
         auto& importer_info = pipeline->importers[importer_index];
         meta = g_assetdb->create_asset(&txn, importer_info.importer->properties_type()).unwrap();
-        meta->importer = get_hash(importer_info.importer.name());
+        meta->importer = get_hash(importer_info.importer->name());
         meta->source.append(path);
 
+        // write the .meta out to file
         JSONSerializer serializer(tmp);
         serialize(SerializerMode::writing, &serializer, meta, tmp);
         if (!fs::write(metadata_path, serializer.c_str()))
@@ -287,12 +299,25 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
         }
     }
 
+    int registered_importer = find_index_if(pipeline->importers, [&](const AssetImporterInfo& info)
+    {
+        return meta->importer == get_hash(info.importer->name());
+    });
+
+    // Use the importer specified in the existing metadata if one is valid otherwise use the default
+    if (registered_importer >= 0)
+    {
+        importer_index = registered_importer;
+    }
+
     AssetImportContext ctx{};
     ctx.temp_allocator = tmp;
     ctx.platform = platform;
     ctx.metadata = meta;
-    ctx.db = pipeline->db;
+    ctx.db = g_assetdb;
     ctx.txn = &txn;
+    ctx.artifact_buffer = &pipeline->thread_data[job_worker_id()].artifact_buffer;
+    ctx.artifact_buffer->clear();
 
     const auto status = pipeline->importers[importer_index].importer->import(&ctx);
     if (status != ImportErrorStatus::success)
@@ -315,7 +340,7 @@ void refresh(AssetPipeline* pipeline)
             case fs::FileAction::added:
             case fs::FileAction::modified:
             {
-                import_asset(pipeline, event.file.view());
+                import_asset(pipeline, event.file.view(), AssetPlatform::unknown);
                 break;
             }
             case fs::FileAction::removed:
@@ -331,6 +356,8 @@ void refresh(AssetPipeline* pipeline)
 
 } // namespace bee
 
+static bee::AssetPipelineModule g_module{};
+
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::PluginState state)
 {
     if (!loader->require_plugin("Bee.AssetDatabase", { 0, 0, 0 }))
@@ -339,6 +366,16 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     }
 
     bee::g_assetdb = static_cast<bee::AssetDatabaseModule*>(loader->get_module(BEE_ASSET_DATABASE_MODULE_NAME));
+
+    g_module.create_pipeline = bee::create_pipeline;
+    g_module.load_pipeline = bee::load_pipeline;
+    g_module.destroy_pipeline = bee::destroy_pipeline;
+    g_module.register_importer = bee::register_importer;
+    g_module.unregister_importer = bee::unregister_importer;
+    g_module.import_asset = bee::import_asset;
+    g_module.refresh = bee::refresh;
+
+    loader->set_module(BEE_ASSET_PIPELINE_MODULE_NAME, &g_module, state);
 }
 
 BEE_PLUGIN_VERSION(0, 0, 0);

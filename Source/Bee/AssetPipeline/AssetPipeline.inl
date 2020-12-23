@@ -7,7 +7,6 @@
 
 #pragma once
 
-#include "Bee/AssetPipeline/AssetPipeline.hpp"
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/Memory/LinearAllocator.hpp"
 
@@ -29,16 +28,10 @@ struct Dbi
     BEE_ENUM_STRUCT(Dbi)
 };
 
-struct BEE_REFLECT(serializable) AssetPipelineConfig
-{
-    String              name;
-    Path                cache_root;
-    DynamicArray<Path>  source_roots;
-};
-
 struct ThreadData
 {
-    LinearAllocator temp_allocator { megabytes(4), system_allocator() };
+    LinearAllocator     temp_allocator { megabytes(4), system_allocator() };
+    DynamicArray<u8>    artifact_buffer;
 };
 
 struct FileTypeInfo
@@ -56,6 +49,7 @@ struct AssetImporterInfo
 struct AssetPipeline
 {
     Path                                config_path;
+    Path                                full_cache_path;
     Path                                db_path;
     AssetDatabase*                      db { nullptr };
     FixedArray<ThreadData>              thread_data;

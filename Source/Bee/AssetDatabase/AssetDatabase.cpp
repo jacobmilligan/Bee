@@ -377,7 +377,6 @@ static bool asset_txn_del(AssetTxnData* txn, const GUID& key, const u128& hash, 
 {
     auto mdb_guid = make_key(key);
     auto mdb_hash = make_key(hash);
-    bool delete_disk_artifact = false;
 
     {
         // Find the hash->GUID mapping and delete it
@@ -657,7 +656,17 @@ bool commit(AssetTxn* txn)
 
 bool asset_exists(AssetTxn* txn, const GUID guid)
 {
-    return asset_txn_get(txn->data(), DbMapId::guid_to_asset, guid, nullptr);
+    if (asset_txn_get(txn->data(), DbMapId::guid_to_asset, guid, nullptr))
+    {
+        return true;
+    }
+
+    const int pending = find_index_if(txn->data()->asset_metadata, txn->data()->asset_metadata + txn->data()->asset_count, [&](const AssetMetadata& meta)
+    {
+        return meta.guid == guid;
+    });
+
+    return pending >= 0;
 }
 
 static Result<i32, AssetDatabaseError> allocate_asset(AssetTxnData* txn, const GUID guid)
@@ -847,6 +856,12 @@ Result<u128, AssetDatabaseError> add_artifact(AssetTxn* txn, const GUID guid, co
 
     if (!artifact_path.exists())
     {
+        auto artifact_dir = artifact_path.parent_path(tmp_alloc);
+        if (!artifact_dir.exists())
+        {
+            fs::mkdir(artifact_dir, true);
+        }
+
         if (!fs::write(artifact_path, buffer, buffer_size))
         {
             return make_error(AssetDatabaseStatus::failed_to_write_artifact_to_disk);

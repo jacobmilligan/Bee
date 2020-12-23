@@ -70,7 +70,22 @@ void save_cache(ShaderCache* cache, Serializer* serializer)
 ShaderPipelineHandle add_shader(ShaderCache* cache, const ShaderPipelineDescriptor& desc)
 {
     scoped_recursive_lock_t lock(cache->mutex);
-    const auto handle = cache->pool.allocate();
+
+    const u32 hash = get_shader_name_hash(desc.name);
+    auto* existing = cache->lookup.find(hash);
+    ShaderPipelineHandle handle{};
+
+    // We can either re-add an existing shader or create a new one here
+    if (existing == nullptr)
+    {
+        handle = cache->pool.allocate();
+        cache->lookup.insert(hash, handle);
+    }
+    else
+    {
+        handle = existing->value;
+    }
+
     auto& pipeline = cache->pool[handle];
 
     // Pipeline source path, name, and info
@@ -96,7 +111,6 @@ ShaderPipelineHandle add_shader(ShaderCache* cache, const ShaderPipelineDescript
         memcpy(stage.update_frequencies.data, desc.shader_resources[i].frequencies, sizeof(ResourceBindingUpdateFrequency) * stage.update_frequencies.size);
     }
 
-    cache->lookup.insert(get_shader_name_hash(pipeline.name.view()), handle);
     return handle;
 }
 

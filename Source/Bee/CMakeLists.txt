@@ -2,7 +2,7 @@ add_subdirectory(Core)
 
 # Plugins
 add_subdirectory(AssetDatabase)
-#add_subdirectory(AssetPipeline)
+add_subdirectory(AssetPipeline)
 add_subdirectory(Gpu)
 add_subdirectory(Input)
 add_subdirectory(Platform)

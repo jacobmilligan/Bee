@@ -26,7 +26,8 @@
 
 #include "Bee/ShaderPipeline/Compiler.hpp"
 
-#include "Bee/AssetDatabase/AssetDatabase.hpp"
+#include "Bee/AssetPipeline/AssetPipeline.hpp"
+
 
 namespace bee {
 
@@ -49,11 +50,9 @@ struct SandboxApp
     SwapchainHandle                     swapchain;
 
     // Asset loading
-    fs::DirectoryWatcher                asset_watcher;
-    DynamicArray<fs::FileNotifyInfo>    asset_events;
-    AssetDatabase*                      asset_db { nullptr };
+    AssetPipeline*                      pipeline { nullptr };
     Path                                shader_root;
-    ShaderAssetMap                      shaders;
+    AssetImporter                       shader_importer;
 };
 
 struct SandboxPassData
@@ -70,7 +69,7 @@ static GpuModule*               g_gpu { nullptr };
 static RenderGraphModule*       g_render_graph { nullptr };
 static ShaderCompilerModule*    g_shader_compiler { nullptr };
 static ShaderCacheModule*       g_shader_cache { nullptr };
-static AssetDatabaseModule*     g_assetdb { nullptr };
+static AssetPipelineModule*     g_asset_pipeline { nullptr };
 
 static SandboxApp*              g_app = nullptr;
 
@@ -132,6 +131,63 @@ static void execute_pass(
     cmd->set_scissor(cmdbuf, backbuffer_rect);
     cmd->set_viewport(cmdbuf, Viewport(0, 0, static_cast<float>(backbuffer_rect.width), static_cast<float>(backbuffer_rect.height)));
     cmd->end_render_pass(cmdbuf);
+}
+
+static const char* get_shader_importer_name()
+{
+    return "Bee.ShaderImporter";
+}
+
+static i32 get_shader_importer_file_types(const char** dst)
+{
+    if (dst != nullptr)
+    {
+        dst[0] = ".bsc";
+    }
+    return 1;
+}
+
+static Type get_shader_importer_properties_type()
+{
+    return get_type<ShaderAsset>();
+}
+
+static ImportErrorStatus import_shader(AssetImportContext* ctx)
+{
+    DynamicArray<ShaderPipelineHandle> output(ctx->temp_allocator);
+    const auto content = fs::read(ctx->metadata->source, ctx->temp_allocator);
+    const auto result = g_shader_compiler->compile_shader(
+        g_app->cache,
+        ctx->metadata->source.filename(),
+        content.view(),
+        ShaderTarget::spirv,
+        &output
+    );
+
+    if (result != ShaderCompilerResult::success)
+    {
+        return ImportErrorStatus::fatal;
+    }
+
+
+    auto hashes = FixedArray<u32>::with_size(output.size(), ctx->temp_allocator);
+    for (int i = 0; i < hashes.size(); ++i)
+    {
+        hashes[i] = g_shader_cache->get_shader_hash(g_app->cache, output[i]);
+    }
+    ctx->add_artifact(&hashes);
+
+#ifdef SERIALIZE_TO_JSON
+    JSONSerializer serializer(ctx->temp_allocator);
+    g_shader_cache->save(g_app->cache, &serializer);
+    bee::fs::write(g_app->shader_root.join("ShaderCache.json"), serializer.c_str());
+#else
+    io::FileStream stream(g_app->shader_root.join("ShaderCache"), "wb");
+    StreamSerializer serializer(&stream);
+    g_shader_cache->save(g_app->cache, &serializer);
+#endif // SERIALIZE_TO_JSON
+
+    return ImportErrorStatus::success;
 }
 
 static bool startup()
@@ -222,13 +278,17 @@ static bool startup()
         fs::mkdir(assetdb_dir, true);
     }
 
-    g_app->asset_db = g_assetdb->open(assetdb_location);
-    if (g_app->asset_db == nullptr)
+    const auto pipeline_path = bee::fs::get_root_dirs().install_root.join("Sandbox/AssetPipeline.json", temp_allocator());
+    g_app->pipeline = g_asset_pipeline->load_pipeline(pipeline_path.view());
+    if (g_app->pipeline == nullptr)
     {
         return false;
     }
-
-    g_app->asset_watcher.add_directory(g_app->shader_root);
+    g_app->shader_importer.name = get_shader_importer_name;
+    g_app->shader_importer.supported_file_types = get_shader_importer_file_types;
+    g_app->shader_importer.properties_type = get_shader_importer_properties_type;
+    g_app->shader_importer.import = import_shader;
+    g_asset_pipeline->register_importer(g_app->pipeline, &g_app->shader_importer);
 
     // load a shader cache if one already exists
 #ifdef SERIALIZE_TO_JSON
@@ -249,19 +309,12 @@ static bool startup()
     }
 #endif // SERIALIZE_TO_JSON
 
-    g_app->asset_watcher.start("Bee.Sandbox.AssetWatcher");
-
     // read the shader off disk
     return true;
 }
 
 static void shutdown()
 {
-    if (g_app->asset_watcher.is_running())
-    {
-        g_app->asset_watcher.stop();
-    }
-
     if (g_app->cache != nullptr)
     {
         g_shader_cache->destroy(g_app->cache);
@@ -274,9 +327,10 @@ static void shutdown()
         g_app->shader_compiler_initialized = false;
     }
 
-    if (g_app->asset_db != nullptr)
+    if (g_app->pipeline != nullptr)
     {
-        g_assetdb->close(g_app->asset_db);
+        g_asset_pipeline->destroy_pipeline(g_app->pipeline);
+        g_app->pipeline = nullptr;
     }
 
     if (g_app->backend != nullptr && g_app->backend->is_initialized())
@@ -314,96 +368,25 @@ static void shutdown()
     }
 }
 
-static void process_shader(const fs::FileNotifyInfo& info)
+static void reload_plugin()
 {
-    auto txn = g_assetdb->write(g_app->asset_db);
-    auto asset_path = info.file;
-    asset_path.append_extension(".asset");
-
-    AssetMetadata* meta = nullptr;
-
-    if (asset_path.exists())
+    if (g_app->pass != nullptr)
     {
-        auto src = fs::read(asset_path, temp_allocator());
-        JSONSerializer serializer(src.data(), rapidjson::kParseInsituFlag, temp_allocator());
-        auto res = g_assetdb->modify_serialized_asset(&txn, &serializer);
-        if (res)
-        {
-            log_info("Reloading asset: %s", info.file.c_str());
-            meta = res.unwrap();
-        }
+        g_render_graph->remove_pass(g_app->pass);
     }
 
-    if (meta == nullptr)
-    {
-        auto res = g_assetdb->create_asset(&txn, get_type<ShaderAsset>(), nullptr);
-        if (!res)
-        {
-            log_error("Failed to process shader %s", info.file.c_str());
-            return;
-        }
-        log_info("Creating new asset: %s", info.file.c_str());
-        meta = res.unwrap();
-    }
-
-    auto* asset = meta->properties.get<ShaderAsset>();
-
-    if (!asset->pipelines.empty())
-    {
-        for (const u32 hash : asset->pipelines)
-        {
-            if (!g_shader_cache->get_shader(g_app->cache, hash).is_valid())
-            {
-                continue;
-            }
-            g_shader_cache->remove_shader(g_app->cache, g_shader_cache->get_shader(g_app->cache, hash));
-        }
-    }
-
-    if (info.action == fs::FileAction::removed)
-    {
-        txn.commit();
-        return;
-    }
-
-    DynamicArray<ShaderPipelineHandle> new_shaders(temp_allocator());
-
-    const auto content = fs::read(info.file);
-    const auto result = g_shader_compiler->compile_shader(
-        g_app->cache,
-        info.file.filename(),
-        content.view(),
-        ShaderTarget::spirv,
-        &new_shaders
+    g_app->pass = g_render_graph->add_pass<SandboxPassData>(
+        g_app->graph,
+        "SandboxPass",
+        setup_pass,
+        execute_pass,
+        init_pass
     );
 
-    if (BEE_FAIL(result == ShaderCompilerResult::success))
-    {
-        return;
-    }
-
-    asset->pipelines.clear();
-
-    for (auto& handle : new_shaders)
-    {
-        asset->pipelines.push_back(g_shader_cache->get_shader_hash(g_app->cache, handle));
-    }
-
-    const auto relpath = info.file.relative_to(asset_path.parent_view(), temp_allocator());
-    JSONSerializer serializer(temp_allocator());
-    serialize(SerializerMode::writing, &serializer, meta);
-    fs::write(asset_path, serializer.c_str());
-
-    txn.commit();
-
-#ifdef SERIALIZE_TO_JSON
-    g_shader_cache->save(g_app->cache, &serializer);
-    bee::fs::write(g_app->shader_root.join("ShaderCache.json"), serializer.c_str());
-#else
-    io::FileStream stream(g_app->shader_root.join("ShaderCache"), "wb");
-    StreamSerializer serializer(&stream);
-    g_shader_cache->save(g_app->cache, &serializer);
-#endif // SERIALIZE_TO_JSON
+    g_app->shader_importer.name = get_shader_importer_name;
+    g_app->shader_importer.supported_file_types = get_shader_importer_file_types;
+    g_app->shader_importer.properties_type = get_shader_importer_properties_type;
+    g_app->shader_importer.import = import_shader;
 }
 
 static bool tick()
@@ -414,37 +397,11 @@ static bool tick()
     }
 
     temp_allocator_reset();
-    g_assetdb->gc(g_app->asset_db);
-
-    g_app->asset_watcher.pop_events(&g_app->asset_events);
-
-    for (auto& event : g_app->asset_events)
-    {
-        if (!fs::is_file(event.file))
-        {
-            continue;
-        }
-
-        if (event.file.extension() == ".bsc")
-        {
-            process_shader(event);
-        }
-    }
+    g_asset_pipeline->refresh(g_app->pipeline);
 
     if (g_app->needs_reload)
     {
-        if (g_app->pass != nullptr)
-        {
-            g_render_graph->remove_pass(g_app->pass);
-        }
-
-        g_app->pass = g_render_graph->add_pass<SandboxPassData>(
-            g_app->graph,
-            "SandboxPass",
-            setup_pass,
-            execute_pass,
-            init_pass
-        );
+        reload_plugin();
         g_app->needs_reload = false;
     }
 
@@ -495,9 +452,9 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
         return;
     }
 
-    if (!loader->require_plugin("Bee.AssetDatabase", bee::PluginVersion{0, 0, 0}))
+    if (!loader->require_plugin("Bee.AssetPipeline", bee::PluginVersion{0, 0, 0}))
     {
-        bee::log_error("Missing dependency: Bee.AssetDatabase");
+        bee::log_error("Missing dependency: Bee.AssetPipeline");
         return;
     }
 
@@ -518,7 +475,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
         bee::g_gpu = static_cast<bee::GpuModule*>(loader->get_module(BEE_GPU_MODULE_NAME));
         bee::g_shader_compiler = static_cast<bee::ShaderCompilerModule*>(loader->get_module(BEE_SHADER_COMPILER_MODULE_NAME));
         bee::g_shader_cache = static_cast<bee::ShaderCacheModule*>(loader->get_module(BEE_SHADER_CACHE_MODULE_NAME));
-        bee::g_assetdb = static_cast<bee::AssetDatabaseModule*>(loader->get_module(BEE_ASSET_DATABASE_MODULE_NAME));
+        bee::g_asset_pipeline = static_cast<bee::AssetPipelineModule*>(loader->get_module(BEE_ASSET_PIPELINE_MODULE_NAME));
     }
 }
 

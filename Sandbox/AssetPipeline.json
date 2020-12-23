@@ -1,0 +1,9 @@
+{
+    "bee::version": 1,
+    "bee::flags": 1,
+    "name": "AssetPipeline",
+    "cache_root": "Cache",
+    "source_roots": [
+        "Shaders"
+    ]
+}
