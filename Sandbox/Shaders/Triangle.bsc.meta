@@ -1,0 +1,15 @@
+{
+    "bee::version": 1,
+    "bee::flags": 1,
+    "guid": "1cef5ca65be7477a9d957b18e11dc326",
+    "timestamp": 0,
+    "kind": "file",
+    "source": "./Shaders/Triangle.bsc",
+    "properties": {
+        "bee::type": 1391020480,
+        "bee::version": 1,
+        "bee::flags": 1,
+        "compile_debug_shaders": false
+    },
+    "importer": 593409531
+}
