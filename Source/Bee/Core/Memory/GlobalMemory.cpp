@@ -136,23 +136,23 @@ void global_allocators_init()
 {
     new (&g_system_allocator) MallocAllocator{};
     new (&g_temp_allocator) TempAllocator{};
+    g_default_allocator = &g_system_allocator;
 }
 
 void global_allocators_shutdown()
 {
     destruct(&temp_allocator);
     destruct(&g_system_allocator);
+    g_default_allocator = nullptr;
 }
 
 Allocator* system_allocator() noexcept
 {
-    bool init = false;
-    if (!init)
+    if (g_default_allocator == nullptr)
     {
-        new (&g_system_allocator) MallocAllocator{};
-        init = true;
+        global_allocators_init();
     }
-    return g_default_allocator == nullptr ? &g_system_allocator : g_default_allocator;
+    return &g_system_allocator;
 }
 
 Allocator* temp_allocator() noexcept

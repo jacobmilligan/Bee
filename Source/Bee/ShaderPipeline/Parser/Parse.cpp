@@ -236,6 +236,23 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
             out_pipeline.info.depth_stencil_state = *depth_stencil_state;
         }
 
+        // Color blend state - required. Must be == attachment count
+        if (!in.color_blend_states.empty())
+        {
+            for (const auto& ident : in.color_blend_states)
+            {
+                auto blend_state = bsc_find_node(module.color_blend_states, ident);
+                if (!blend_state)
+                {
+                    return blend_state.error;
+                }
+
+                const int index = out_pipeline.info.color_blend_states.size;
+                ++out_pipeline.info.color_blend_states.size;
+                out_pipeline.info.color_blend_states[index] = *blend_state;
+            }
+        }
+
         // Resolve all the shader stages
         memset(stage_names, 0, sizeof(StringView) * static_array_length(stage_names));
 
@@ -301,6 +318,13 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
             out_pipeline.shaders[stage.index] = subshader_index->value;
         }
 
+        // validate the color blend states are compatible with the attachment count
+        auto& subpass = pass.subpasses[subpass_index];
+        if (sign_cast<i32>(out_pipeline.info.color_blend_states.size) < subpass.data.color_attachments.size())
+        {
+            return BscResolveError(BscResolveErrorCode::incompatible_color_blend_states, out_pipeline.name.view(), subpass.identifier);
+        }
+
         // Generate the ShaderPass
         auto error = bsc_add_pass(pass, output);
         if (!error)
@@ -312,7 +336,8 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
         out_pipeline.pass = pass_index;
         out_pipeline.info.subpass_index = sign_cast<u32>(subpass_index);
         out_pipeline.info.primitive_type = in.primitive_type;
-        // TODO(Jacob): color blend states, resource layouts, and push constants
+
+        // TODO(Jacob): push constants
     }
 
     return BscResolveError{};
@@ -333,6 +358,10 @@ String BscResolveError::to_string(Allocator* allocator) const
         case BscResolveErrorCode::incompatible_resource_layouts:
         {
             return str::format(allocator, "BSC: incompatible shaders assigned to pipeline: %" BEE_PRIsv, BEE_FMT_SV(param));
+        }
+        case BscResolveErrorCode::incompatible_color_blend_states:
+        {
+            return str::format(allocator, "BSC: color_blend_states.size in pipeline '%" BEE_PRIsv "' must be the same as color_attachments.size in subpass '%" BEE_PRIsv "'", BEE_FMT_SV(param), BEE_FMT_SV(param2));
         }
         case BscResolveErrorCode::none:
         {
@@ -452,6 +481,12 @@ bool BscParser::parse_top_level_structure(BscLexer* lexer, BscModule* ast)
         {
             ast->sampler_states.emplace_back(ident);
             success = parse_sampler_state(lexer, &ast->sampler_states.back());
+            break;
+        }
+        case BscTokenKind::BlendState:
+        {
+            ast->color_blend_states.emplace_back(ident);
+            success = parse_blend_state(lexer, &ast->color_blend_states.back());
             break;
         }
         default:
@@ -575,6 +610,23 @@ bool BscParser::parse_pipeline_state(BscLexer* lexer, BscNode<BscPipelineStateNo
             return false;
         }
 
+        if (key == "color_blend_states")
+        {
+            const bool success = parse_array(
+                lexer,
+                node->data.color_blend_states.data,
+                node->data.color_blend_states.capacity,
+                &node->data.color_blend_states.size
+            );
+
+            if (!success)
+            {
+                return false;
+            }
+
+            continue;
+        }
+
         if (!lexer->consume_as(BscTokenKind::identifier, &tok))
         {
             return false;
@@ -620,6 +672,10 @@ bool BscParser::parse_pipeline_state(BscLexer* lexer, BscNode<BscPipelineStateNo
         else if (key == "fragment_stage")
         {
             node->data.fragment_stage = value;
+        }
+        else if (key == "color_blend_states")
+        {
+            node->data.color_blend_states.size = 0;
         }
         else
         {
@@ -756,6 +812,11 @@ bool BscParser::parse_subpass(BscLexer* lexer, BscNode<BscSubPassNode>* node)
     }
 
     return true;
+}
+
+bool BscParser::parse_blend_state(BscLexer* lexer, BscNode<BlendStateDescriptor>* node)
+{
+    return parse_fields(lexer, get_type_as<BlendStateDescriptor, RecordTypeInfo>(), &node->data);
 }
 
 bool BscParser::parse_key(BscLexer* lexer, StringView* identifier)
@@ -1119,6 +1180,8 @@ bool BscParser::parse_array(BscLexer* lexer, const EnumType& enum_type, i32* arr
 // ShaderFile
 void ShaderFile::get_shader_pipeline_descriptor(const Pipeline& pipeline, ShaderPipelineDescriptor* dst)
 {
+    memcpy(&dst->create_info, &pipeline.info, sizeof(PipelineStateCreateInfo));
+
     auto& pass = passes[pipeline.pass];
 
     auto& render_pass_info = dst->render_pass_info;

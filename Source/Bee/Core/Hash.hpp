@@ -172,7 +172,7 @@ template <>
 struct Hash<i32> {
     inline u32 operator()(const i32 key) const
     {
-        return static_cast<u32>(key);
+        return get_hash(&key, sizeof(i32), 0xF00D);
     }
 };
 
@@ -180,7 +180,7 @@ template <>
 struct Hash<u64> {
     inline u32 operator()(const u64 key) const
     {
-        return static_cast<u32>(key);
+        return get_hash(&key, sizeof(u64), 0xF00D);
     }
 };
 
@@ -188,7 +188,7 @@ template <>
 struct Hash<i64> {
     inline u32 operator()(const i64 key) const
     {
-        return static_cast<u32>(key);
+        return get_hash(&key, sizeof(i64), 0xF00D);
     }
 };
 

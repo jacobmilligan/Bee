@@ -139,7 +139,7 @@ void destroy()
     }
 }
 
-BEE_TRANSLATION_TABLE(shader_type_short_str, ShaderStageIndex, const wchar_t*, ShaderStageIndex::count,
+BEE_TRANSLATION_TABLE_FUNC(shader_type_short_str, ShaderStageIndex, const wchar_t*, ShaderStageIndex::count,
     L"vs",  // vertex
     L"ps",  // fragment
     L"gs",  // geometry
@@ -295,7 +295,7 @@ bool reflect_vertex_description(CompilationContext* ctx, SpvReflectShaderModule*
     return true;
 }
 
-BEE_TRANSLATION_TABLE(convert_descriptor_type, SpvReflectDescriptorType, ResourceBindingType, SPV_REFLECT_DESCRIPTOR_TYPE_INPUT_ATTACHMENT + 1,
+BEE_TRANSLATION_TABLE_FUNC(convert_descriptor_type, SpvReflectDescriptorType, ResourceBindingType, SPV_REFLECT_DESCRIPTOR_TYPE_INPUT_ATTACHMENT + 1,
     ResourceBindingType::sampler,                   // SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLER
     ResourceBindingType::combined_texture_sampler,  // SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
     ResourceBindingType::sampled_texture,           // SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLED_IMAGE

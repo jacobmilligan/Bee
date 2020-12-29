@@ -26,6 +26,14 @@ struct ShaderCache
     {}
 };
 
+struct RuntimeShaderData
+{
+    const GpuBackend*   gpu { nullptr };
+    DeviceHandle        device;
+};
+
+static RuntimeShaderData* g_runtime = nullptr;
+
 /*
  **********************************
  *
@@ -33,6 +41,8 @@ struct ShaderCache
  *
  **********************************
  */
+void unload_shader(ShaderCache* cache, ShaderPipeline* shader);
+
 ShaderCache* create()
 {
     return BEE_NEW(system_allocator(), ShaderCache);
@@ -40,6 +50,11 @@ ShaderCache* create()
 
 void destroy(ShaderCache* cache)
 {
+    for (auto shader : cache->pool)
+    {
+        unload_shader(cache, &shader.resource);
+    }
+
     BEE_DELETE(system_allocator(), cache);
 }
 
@@ -128,14 +143,91 @@ void remove_shader(ShaderCache* cache, const ShaderPipelineHandle handle)
     cache->pool.deallocate(handle);
 }
 
-void load_shader(ShaderCache* cache, const ShaderPipelineHandle handle)
+void init(const GpuBackend* gpu, const DeviceHandle device)
 {
+    BEE_ASSERT(g_runtime->gpu == nullptr);
+    BEE_ASSERT(!g_runtime->device.is_valid());
 
+    g_runtime->gpu = gpu;
+    g_runtime->device = device;
 }
 
-void unload_shader(ShaderCache* cache, const ShaderPipelineHandle handle)
+ShaderPipeline* load_shader(ShaderCache* cache, const ShaderPipelineHandle handle)
 {
+    auto& shader = cache->pool[handle];
 
+    ShaderCreateInfo info{};
+    for (int i = 0; i < shader.stages.size(); ++i)
+    {
+        auto& stage = shader.stages[i];
+
+        if (stage.shader_resource.is_valid())
+        {
+            g_runtime->gpu->destroy_shader(g_runtime->device, stage.shader_resource);
+        }
+
+        info.code = stage.code.data();
+        info.code_size = stage.code.size();
+        info.entry = stage.entry.data();
+        stage.shader_resource = g_runtime->gpu->create_shader(g_runtime->device, info);
+        BEE_ASSERT(stage.shader_resource.is_valid());
+
+        switch (static_cast<ShaderStageIndex>(i))
+        {
+            case ShaderStageIndex::vertex:
+            {
+                shader.pipeline_info.vertex_stage = stage.shader_resource;
+                break;
+            }
+            case ShaderStageIndex::fragment:
+            {
+                shader.pipeline_info.fragment_stage = stage.shader_resource;
+                break;
+            }
+            default:
+            {
+                BEE_UNREACHABLE("Unsupported shader stage");
+            }
+        }
+    }
+
+    if (shader.pipeline_resource.is_valid())
+    {
+        g_runtime->gpu->destroy_pipeline_state(g_runtime->device, shader.pipeline_resource);
+    }
+    if (shader.render_pass_resource.is_valid())
+    {
+        g_runtime->gpu->destroy_render_pass(g_runtime->device, shader.render_pass_resource);
+    }
+
+    shader.render_pass_resource = g_runtime->gpu->create_render_pass(g_runtime->device, shader.render_pass_info);
+
+    shader.pipeline_info.compatible_render_pass = shader.render_pass_resource;
+    shader.pipeline_resource = g_runtime->gpu->create_pipeline_state(g_runtime->device, shader.pipeline_info);
+
+    return &shader;
+}
+
+void unload_shader(ShaderCache* cache, ShaderPipeline* shader)
+{
+    for (int i = 0; i < shader->stages.size(); ++i)
+    {
+        auto& stage = shader->stages[i];
+
+        if (stage.shader_resource.is_valid())
+        {
+            g_runtime->gpu->destroy_shader(g_runtime->device, stage.shader_resource);
+        }
+    }
+
+    if (shader->render_pass_resource.is_valid())
+    {
+        g_runtime->gpu->destroy_render_pass(g_runtime->device, shader->render_pass_resource);
+    }
+    if (shader->pipeline_resource.is_valid())
+    {
+        g_runtime->gpu->destroy_pipeline_state(g_runtime->device, shader->pipeline_resource);
+    }
 }
 
 
@@ -196,8 +288,13 @@ ShaderCacheModule       g_shader_cache{}; // extern elsewhere in module
 
 void load_shader_modules(bee::PluginLoader* loader, const bee::PluginState state)
 {
-    // Shader module
+    g_runtime = loader->get_static<RuntimeShaderData>("Bee.RuntimeShaderData");
 
+    // Shader module
+    g_shader_module.init = bee::init;
+    g_shader_module.load = bee::load_shader;
+    g_shader_module.unload = bee::unload_shader;
+    loader->set_module(BEE_SHADER_MODULE_NAME, &g_shader_module, state);
 
     // ShaderCache module
     g_shader_cache.create = create;

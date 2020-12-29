@@ -16,7 +16,7 @@
 namespace bee {
 
 
-BEE_TRANSLATION_TABLE(rapidjson_type_to_string, rapidjson::Type, const char*, rapidjson::Type::kNumberType + 1,
+BEE_TRANSLATION_TABLE_FUNC(rapidjson_type_to_string, rapidjson::Type, const char*, rapidjson::Type::kNumberType + 1,
     "null",
     "false",
     "true",

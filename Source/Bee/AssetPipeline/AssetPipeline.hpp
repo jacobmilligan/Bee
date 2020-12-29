@@ -92,6 +92,7 @@ struct AssetPipelineInfo
     i32         source_root_count { 0 };
 };
 
+struct AssetCache;
 struct AssetPipeline;
 struct AssetPipelineModule
 {
@@ -110,6 +111,8 @@ struct AssetPipelineModule
     ImportErrorStatus (*import_asset)(AssetPipeline* pipeline, const StringView path, const AssetPlatform platform) { nullptr };
 
     void (*refresh)(AssetPipeline* pipeline) { nullptr };
+
+    void (*set_runtime_cache)(AssetPipeline* pipeline, AssetCache* cache) { nullptr };
 };
 
 

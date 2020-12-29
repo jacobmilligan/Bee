@@ -583,6 +583,17 @@ bool PluginLoader::require_plugin(const StringView& name, const PluginVersion& m
     return false;
 }
 
+bool PluginLoader::is_plugin_loaded(const StringView& name, const PluginVersion& minimum_version) const
+{
+    const i32 index = find_plugin(name);
+    if (index < 0)
+    {
+        return false;
+    }
+
+    return g_registry->plugins[index].version >= minimum_version;
+}
+
 static void* get_module_storage(const i32 index)
 {
     return reinterpret_cast<u8*>(g_registry->modules[index].get()) + sizeof(ModuleHeader);

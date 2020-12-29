@@ -236,7 +236,7 @@ VkSampleCountFlagBits decode_sample_count(const u32 samples)
     BEE_UNREACHABLE("Invalid sample count (%u) must be power of two <= 64u", samples);
 }
 
-BEE_TRANSLATION_TABLE(convert_pixel_format, PixelFormat, VkFormat, PixelFormat::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_pixel_format, PixelFormat, VkFormat, PixelFormat::unknown,
     // Ordinary 8 bit formats
     VK_FORMAT_R8_UNORM,             // a8
     VK_FORMAT_R8_UNORM,             // r8
@@ -294,23 +294,23 @@ BEE_TRANSLATION_TABLE(convert_pixel_format, PixelFormat, VkFormat, PixelFormat::
     VK_FORMAT_UNDEFINED             // invalid
 )
 
-BEE_TRANSLATION_TABLE(convert_load_op, LoadOp, VkAttachmentLoadOp, LoadOp::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_load_op, LoadOp, VkAttachmentLoadOp, LoadOp::unknown,
     VK_ATTACHMENT_LOAD_OP_LOAD,         // load
     VK_ATTACHMENT_LOAD_OP_CLEAR,        // clear
     VK_ATTACHMENT_LOAD_OP_DONT_CARE,    // dont_care
 )
 
-BEE_TRANSLATION_TABLE(convert_store_op, StoreOp, VkAttachmentStoreOp, StoreOp::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_store_op, StoreOp, VkAttachmentStoreOp, StoreOp::unknown,
     VK_ATTACHMENT_STORE_OP_STORE,       // store
     VK_ATTACHMENT_STORE_OP_DONT_CARE    // dont_care
 )
 
-BEE_TRANSLATION_TABLE(convert_step_function, StepFunction, VkVertexInputRate, StepFunction::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_step_function, StepFunction, VkVertexInputRate, StepFunction::unknown,
     VK_VERTEX_INPUT_RATE_VERTEX,    // per_vertex
     VK_VERTEX_INPUT_RATE_INSTANCE   // per_instance
 )
 
-BEE_TRANSLATION_TABLE(convert_vertex_format, VertexFormat, VkFormat, VertexFormat::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_vertex_format, VertexFormat, VkFormat, VertexFormat::unknown,
     VK_FORMAT_R32_SFLOAT,             // float1
     VK_FORMAT_R32G32_SFLOAT,          // float2
     VK_FORMAT_R32G32B32_SFLOAT,       // float3
@@ -346,7 +346,7 @@ BEE_TRANSLATION_TABLE(convert_vertex_format, VertexFormat, VkFormat, VertexForma
     VK_FORMAT_UNDEFINED               // invalid
 )
 
-BEE_TRANSLATION_TABLE(convert_primitive_type, PrimitiveType, VkPrimitiveTopology, PrimitiveType::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_primitive_type, PrimitiveType, VkPrimitiveTopology, PrimitiveType::unknown,
     VK_PRIMITIVE_TOPOLOGY_POINT_LIST,       // point
     VK_PRIMITIVE_TOPOLOGY_LINE_LIST,        // line
     VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,       // line_strip
@@ -354,18 +354,18 @@ BEE_TRANSLATION_TABLE(convert_primitive_type, PrimitiveType, VkPrimitiveTopology
     VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP    // triangle_strip
 )
 
-BEE_TRANSLATION_TABLE(convert_fill_mode, FillMode, VkPolygonMode, FillMode::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_fill_mode, FillMode, VkPolygonMode, FillMode::unknown,
     VK_POLYGON_MODE_LINE,   // wireframe
     VK_POLYGON_MODE_FILL    // solid
 )
 
-BEE_TRANSLATION_TABLE(convert_cull_mode, CullMode, VkCullModeFlagBits, CullMode::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_cull_mode, CullMode, VkCullModeFlagBits, CullMode::unknown,
     VK_CULL_MODE_NONE,      // none
     VK_CULL_MODE_FRONT_BIT, // back
     VK_CULL_MODE_BACK_BIT   // back
 )
 
-BEE_TRANSLATION_TABLE(convert_blend_factor, BlendFactor, VkBlendFactor, BlendFactor::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_blend_factor, BlendFactor, VkBlendFactor, BlendFactor::unknown,
     VK_BLEND_FACTOR_ZERO,                     // zero
     VK_BLEND_FACTOR_ONE,                      // one
     VK_BLEND_FACTOR_SRC_COLOR,                // src_color
@@ -383,7 +383,7 @@ BEE_TRANSLATION_TABLE(convert_blend_factor, BlendFactor, VkBlendFactor, BlendFac
     VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA  // one_minus_blend_alpha
 )
 
-BEE_TRANSLATION_TABLE(convert_blend_op, BlendOperation, VkBlendOp, BlendOperation::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_blend_op, BlendOperation, VkBlendOp, BlendOperation::unknown,
     VK_BLEND_OP_ADD,                // add
     VK_BLEND_OP_SUBTRACT,           // subtract
     VK_BLEND_OP_REVERSE_SUBTRACT,   // reverse_subtract
@@ -391,7 +391,7 @@ BEE_TRANSLATION_TABLE(convert_blend_op, BlendOperation, VkBlendOp, BlendOperatio
     VK_BLEND_OP_MAX,                // max
 )
 
-BEE_TRANSLATION_TABLE(convert_resource_binding_type, ResourceBindingType, VkDescriptorType, ResourceBindingType::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_resource_binding_type, ResourceBindingType, VkDescriptorType, ResourceBindingType::unknown,
     VK_DESCRIPTOR_TYPE_SAMPLER,                   // sampler
     VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,    // combined_texture_sampler
     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,             // sampled_texture
@@ -405,14 +405,14 @@ BEE_TRANSLATION_TABLE(convert_resource_binding_type, ResourceBindingType, VkDesc
     VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT           // input_attachment
 )
 
-BEE_TRANSLATION_TABLE(convert_memory_usage, DeviceMemoryUsage, VmaMemoryUsage, DeviceMemoryUsage::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_memory_usage, DeviceMemoryUsage, VmaMemoryUsage, DeviceMemoryUsage::unknown,
     VMA_MEMORY_USAGE_GPU_ONLY,        // gpu_only
     VMA_MEMORY_USAGE_CPU_ONLY,        // cpu_only
     VMA_MEMORY_USAGE_CPU_TO_GPU,      // cpu_to_gpu
     VMA_MEMORY_USAGE_GPU_TO_CPU       // gpu_to_cpu
 )
 
-BEE_TRANSLATION_TABLE(convert_compare_func, CompareFunc, VkCompareOp, CompareFunc::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_compare_func, CompareFunc, VkCompareOp, CompareFunc::unknown,
     VK_COMPARE_OP_NEVER,              // never
     VK_COMPARE_OP_LESS,               // less
     VK_COMPARE_OP_EQUAL,              // equal
@@ -423,7 +423,7 @@ BEE_TRANSLATION_TABLE(convert_compare_func, CompareFunc, VkCompareOp, CompareFun
     VK_COMPARE_OP_ALWAYS,             // always
 )
 
-BEE_TRANSLATION_TABLE(convert_stencil_op, StencilOp, VkStencilOp, StencilOp::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_stencil_op, StencilOp, VkStencilOp, StencilOp::unknown,
     VK_STENCIL_OP_KEEP,                   // keep
     VK_STENCIL_OP_ZERO,                   // zero
     VK_STENCIL_OP_REPLACE,                // replace
@@ -434,7 +434,7 @@ BEE_TRANSLATION_TABLE(convert_stencil_op, StencilOp, VkStencilOp, StencilOp::unk
     VK_STENCIL_OP_DECREMENT_AND_CLAMP     // decrement_and_wrap
 )
 
-BEE_TRANSLATION_TABLE(convert_image_type, TextureType, VkImageType, TextureType::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_image_type, TextureType, VkImageType, TextureType::unknown,
     VK_IMAGE_TYPE_1D,     // tex1d
     VK_IMAGE_TYPE_1D,     // tex1d_array
     VK_IMAGE_TYPE_2D,     // tex2d
@@ -445,7 +445,7 @@ BEE_TRANSLATION_TABLE(convert_image_type, TextureType, VkImageType, TextureType:
     VK_IMAGE_TYPE_3D      // tex3d
 )
 
-BEE_TRANSLATION_TABLE(convert_image_view_type, TextureType, VkImageViewType, TextureType::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_image_view_type, TextureType, VkImageViewType, TextureType::unknown,
     VK_IMAGE_VIEW_TYPE_1D,            // tex1d
     VK_IMAGE_VIEW_TYPE_1D_ARRAY,      // tex1d_array
     VK_IMAGE_VIEW_TYPE_2D,            // tex2d
@@ -456,18 +456,18 @@ BEE_TRANSLATION_TABLE(convert_image_view_type, TextureType, VkImageViewType, Tex
     VK_IMAGE_VIEW_TYPE_3D             // tex3d
 )
 
-BEE_TRANSLATION_TABLE(convert_filter, MinMagFilter, VkFilter, MinMagFilter::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_filter, MinMagFilter, VkFilter, MinMagFilter::unknown,
     VK_FILTER_NEAREST,  // nearest
     VK_FILTER_LINEAR    // linear
 )
 
-BEE_TRANSLATION_TABLE(convert_mip_map_mode, MipMapMode, VkSamplerMipmapMode, MipMapMode::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_mip_map_mode, MipMapMode, VkSamplerMipmapMode, MipMapMode::unknown,
     VK_SAMPLER_MIPMAP_MODE_LINEAR,  // none
     VK_SAMPLER_MIPMAP_MODE_NEAREST, // nearest
     VK_SAMPLER_MIPMAP_MODE_LINEAR   // linear
 )
 
-BEE_TRANSLATION_TABLE(convert_address_mode, AddressMode, VkSamplerAddressMode, AddressMode::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_address_mode, AddressMode, VkSamplerAddressMode, AddressMode::unknown,
     VK_SAMPLER_ADDRESS_MODE_REPEAT,                 // repeat
     VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,        // mirrored_repeat
     VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,          // clamp_to_edge
@@ -475,29 +475,29 @@ BEE_TRANSLATION_TABLE(convert_address_mode, AddressMode, VkSamplerAddressMode, A
     VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE    // mirror_clamp_to_edge,
 )
 
-BEE_TRANSLATION_TABLE(convert_border_color, BorderColor, VkBorderColor, BorderColor::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_border_color, BorderColor, VkBorderColor, BorderColor::unknown,
     VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,    // transparent_black
     VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK,         // opaque_black
     VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE          // opaque_white
 )
 
-BEE_TRANSLATION_TABLE(convert_command_pool_hint, CommandPoolHint, VkCommandPoolCreateFlags, CommandPoolHint::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_command_pool_hint, CommandPoolHint, VkCommandPoolCreateFlags, CommandPoolHint::unknown,
     VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,               // transient,
     VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT     // allow_individual_reset
 )
 
-BEE_TRANSLATION_TABLE(convert_command_buffer_reset_hint, CommandStreamReset, VkCommandBufferResetFlags, CommandStreamReset::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_command_buffer_reset_hint, CommandStreamReset, VkCommandBufferResetFlags, CommandStreamReset::unknown,
     0u,                                             // none,
     VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT   // release_resources
 )
 
-BEE_TRANSLATION_TABLE(convert_command_buffer_usage, CommandBufferUsage, VkCommandBufferUsageFlags, CommandBufferUsage::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_command_buffer_usage, CommandBufferUsage, VkCommandBufferUsageFlags, CommandBufferUsage::unknown,
     0u,                                             // default_usage
     VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,    // submit_once
     VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT    // simultaneous_usage
 )
 
-BEE_TRANSLATION_TABLE(convert_access_mask, GpuResourceState, VkAccessFlags, GpuResourceState::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_access_mask, GpuResourceState, VkAccessFlags, GpuResourceState::unknown,
     0,                                                                          // undefined
     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,                     // general
     VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, // color_attachment
@@ -513,7 +513,7 @@ BEE_TRANSLATION_TABLE(convert_access_mask, GpuResourceState, VkAccessFlags, GpuR
     0                                                                           // present
 )
 
-BEE_TRANSLATION_TABLE(convert_image_layout, GpuResourceState, VkImageLayout, GpuResourceState::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_image_layout, GpuResourceState, VkImageLayout, GpuResourceState::unknown,
     VK_IMAGE_LAYOUT_UNDEFINED,                          // undefined
     VK_IMAGE_LAYOUT_GENERAL,                            // general
     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,           // color_attachment
@@ -529,7 +529,7 @@ BEE_TRANSLATION_TABLE(convert_image_layout, GpuResourceState, VkImageLayout, Gpu
     VK_IMAGE_LAYOUT_PRESENT_SRC_KHR                     // present
 )
 
-BEE_TRANSLATION_TABLE(convert_index_type, IndexFormat, VkIndexType, IndexFormat::unknown,
+BEE_TRANSLATION_TABLE_FUNC(convert_index_type, IndexFormat, VkIndexType, IndexFormat::unknown,
     VK_INDEX_TYPE_NONE_NV,  // none
     VK_INDEX_TYPE_UINT16,   // uint16
     VK_INDEX_TYPE_UINT32    // uint32

@@ -10,7 +10,7 @@
 namespace bee {
 
 
-BEE_TRANSLATION_TABLE(value_type_to_string, json::ValueType, const char*, json::ValueType::unknown,
+BEE_TRANSLATION_TABLE_FUNC(value_type_to_string, json::ValueType, const char*, json::ValueType::unknown,
     "object",
     "array",
     "string",

@@ -12,28 +12,28 @@
 
 namespace bee {
 
+
 /**
- * # BEE_TRANSLATION_TABLE
+ * # BEE_SCOPED_TRANSLATION_TABLE
  *
- * Defines a free function `func_name` that internally holds a static constexpr table for translating from `enum_type`
- * into `native_type`, i.e. bee::gpu::PixelFormat::bgra8 -> VK_FORMAT_B8G8R8A8_UNORM. Allows for branchless,
+ * Defines a static constexpr table for translating from `enum_type` into `native_type`, i.e.
+ * bee::gpu::PixelFormat::bgra8 -> VK_FORMAT_B8G8R8A8_UNORM. Allows for branchless,
  * constant-time enum->enum translations in performance-sensitive code. If the non-native enum type is ever
  * changed, the function will static assert that the values have changed and the translation table defined with this
  * macro needs updating
  */
-#define BEE_TRANSLATION_TABLE(func_name, enum_type, native_type, max_enum_value, ...)                                                   \
-native_type func_name(const enum_type value)                                                                                     \
-{                                                                                                                                       \
-    static constexpr native_type translation_table[] = { __VA_ARGS__ };                                                                 \
-    static constexpr size_t table_size = static_array_length(translation_table);                                                        \
-    static_assert(table_size == static_cast<size_t>(max_enum_value),                                                                    \
-                "Bee: error: the translation table for "#native_type                                                              \
-                " is missing entries. Please update to sync with the "#enum_type" enum.");                                              \
-    BEE_ASSERT_F_NO_DEBUG_BREAK(static_cast<size_t>(value) < static_cast<size_t>(max_enum_value),                                       \
-                              "Invalid value for `"#enum_type"` to `"#native_type"` translation table given: `"#max_enum_value"`");     \
-    return translation_table[static_cast<size_t>(value)];                                                                               \
-}
+#define BEE_TRANSLATION_TABLE(VALUE, ENUM_TYPE, NATIVE_TYPE, MAX_ENUM_VALUE, ...)                                                  \
+    static constexpr NATIVE_TYPE translation_table[] = { __VA_ARGS__ };                                                             \
+    static constexpr size_t table_size = static_array_length(translation_table);                                                    \
+    static_assert(table_size == static_cast<size_t>(MAX_ENUM_VALUE),                                                                \
+                "Bee: error: the translation table for "#NATIVE_TYPE                                                                \
+                " is missing entries. Please update to sync with the "#ENUM_TYPE" enum.");                                          \
+    BEE_ASSERT_F_NO_DEBUG_BREAK(static_cast<size_t>(VALUE) < static_cast<size_t>(MAX_ENUM_VALUE),                                   \
+                              "Invalid value for `"#ENUM_TYPE"` to `"#NATIVE_TYPE"` translation table given: `"#MAX_ENUM_VALUE"`"); \
+    return translation_table[static_cast<int>(VALUE)];
 
+#define BEE_TRANSLATION_TABLE_FUNC(NAME, ENUM_TYPE, NATIVE_TYPE, MAX_ENUM_VALUE, ...) \
+    NATIVE_TYPE NAME(const ENUM_TYPE value) { BEE_TRANSLATION_TABLE(value, ENUM_TYPE, NATIVE_TYPE, MAX_ENUM_VALUE, __VA_ARGS__); }
 /**
  * # BEE_FLAGS
  *

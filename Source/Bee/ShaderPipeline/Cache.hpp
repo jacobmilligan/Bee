@@ -33,22 +33,7 @@ struct ShaderPipelineDescriptor
     ShaderPipelineStageResourceDescriptor   shader_resources[ShaderStageIndex::count];
 };
 
-#define BEE_SHADER_MODULE "BEE_SHADER"
-
 BEE_VERSIONED_HANDLE_32(ShaderPipelineHandle);
-
-struct ShaderModule
-{
-    RenderPassHandle (*get_render_pass)(const ShaderPipelineHandle shader) { nullptr };
-
-    PipelineStateHandle (*get_pipeline_state)(const ShaderPipelineHandle shader) { nullptr };
-
-    ShaderHandle (*get_stage)(const ShaderPipelineHandle, const ShaderStageIndex stage) { nullptr };
-
-    void (*load)(const ShaderPipelineHandle handle) { nullptr };
-
-    void (*unload)(const ShaderPipelineHandle handle) { nullptr };
-};
 
 #define BEE_SHADER_CACHE_MODULE_NAME "BEE_SHADER_CACHE"
 
@@ -83,6 +68,24 @@ struct ShaderCacheModule
     {
         return get_shader(cache, get_shader_name_hash(name));
     }
+};
+
+#define BEE_SHADER_MODULE_NAME "BEE_SHADER"
+
+struct ShaderPipeline;
+struct ShaderModule
+{
+    void (*init)(const GpuBackend* gpu, const DeviceHandle device) { nullptr };
+
+    RenderPassHandle (*get_render_pass)(const ShaderPipelineHandle shader) { nullptr };
+
+    PipelineStateHandle (*get_pipeline_state)(const ShaderPipelineHandle shader) { nullptr };
+
+    ShaderHandle (*get_stage)(const ShaderPipelineHandle, const ShaderStageIndex stage) { nullptr };
+
+    ShaderPipeline* (*load)(ShaderCache* cache, const ShaderPipelineHandle handle) { nullptr };
+
+    void (*unload)(ShaderCache* cache, ShaderPipeline* shader) { nullptr };
 };
 
 

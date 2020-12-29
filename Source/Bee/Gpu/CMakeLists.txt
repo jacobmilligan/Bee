@@ -5,3 +5,5 @@ bee_add_sources(
 )
 bee_plugin(Bee.Gpu LINK_LIBRARIES Bee.Core)
 bee_reflect(Bee.Gpu)
+add_dependencies(Bee.Gpu Bee.Platform)
+

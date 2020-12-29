@@ -22,7 +22,8 @@ namespace bee {
     BSC_KEYWORD(SamplerState)       \
     BSC_KEYWORD(Attachment)         \
     BSC_KEYWORD(SubPass)            \
-    BSC_KEYWORD(Shader)
+    BSC_KEYWORD(Shader)             \
+    BSC_KEYWORD(BlendState)
 
 #define BSC_CHAR_TOKENS                         \
     BSC_CHAR_TOK(open_bracket, '{')             \

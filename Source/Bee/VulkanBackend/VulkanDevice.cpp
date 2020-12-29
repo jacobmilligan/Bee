@@ -11,6 +11,7 @@
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
 #include "Bee/Core/Bit.hpp"
+#include "Bee/Core/Sort.hpp"
 
 #include "Bee/Gpu/Gpu.hpp"
 
@@ -394,6 +395,9 @@ DeviceHandle create_device(const DeviceCreateInfo& create_info)
 
     auto* physical_device = g_backend->physical_devices[create_info.physical_device_id];
     auto& device = g_backend->devices[device_idx];
+
+    new (&device) VulkanDevice{};
+
     device.physical_device = physical_device;
     device.debug_markers_enabled = false;
 
@@ -603,6 +607,10 @@ DeviceHandle create_device(const DeviceCreateInfo& create_info)
 
     // initialize thread-local data
     device.thread_data.resize(job_system_worker_count());
+    for (u32 i = 0; i < static_cast<u32>(device.thread_data.size()); ++i)
+    {
+        new (&device.thread_data[i]) VulkanThreadData(i);
+    }
 
     auto cmd_pool_info = VkCommandPoolCreateInfo { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr };
     cmd_pool_info.flags = 0;
@@ -612,14 +620,6 @@ DeviceHandle create_device(const DeviceCreateInfo& create_info)
     {
         auto& thread = device.thread_data[i];
         thread.index = i;
-
-        // initialize the general purpose allocator and resource tables
-        new (&thread.allocator) ChunkAllocator(get_page_size(), 64, 0);
-
-        for (auto& table : thread.resource_tables)
-        {
-            table.init(i);
-        }
 
         // Initialize the staging buffers
         thread.staging.init(&device, &device.transfer_queue, device.vma_allocator);
@@ -1002,28 +1002,29 @@ bool recreate_swapchain(VulkanDevice* device, VulkanSwapchain* swapchain, const 
     {
         if (!swapchain->images[si].is_valid())
         {
-            auto* texture = BEE_NEW(thread.allocator, VulkanTexture);
-            texture->swapchain           = swapchain_index;
-            texture->width               = swapchain_info.imageExtent.width;
-            texture->height              = swapchain_info.imageExtent.height;
-            texture->layers              = swapchain_info.imageArrayLayers;
-            texture->levels              = 1;
-            texture->samples             = VK_SAMPLE_COUNT_1_BIT;
-            texture->format              = create_info.texture_format;
-            texture->handle              = swapchain_images[si];
-            set_vk_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, texture->handle, "Swapchain image");
+            swapchain->images[si] = thread.textures.allocate();
+            auto& texture = thread.textures[swapchain->images[si]];
 
-            swapchain->images[si] = thread.textures.add(texture);
+            texture.swapchain           = swapchain_index;
+            texture.width               = swapchain_info.imageExtent.width;
+            texture.height              = swapchain_info.imageExtent.height;
+            texture.layers              = swapchain_info.imageArrayLayers;
+            texture.levels              = 1;
+            texture.samples             = VK_SAMPLE_COUNT_1_BIT;
+            texture.format              = create_info.texture_format;
+            texture.handle              = swapchain_images[si];
+            set_vk_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, texture.handle, "Swapchain image");
+
         }
         else
         {
             // TODO(Jacob): do we only need to reassign the texture params when recreating a swapchain?
-            auto* texture = device->textures_get(swapchain->images[si]);
-            texture->width               = swapchain_info.imageExtent.width;
-            texture->height              = swapchain_info.imageExtent.height;
-            texture->layers              = swapchain_info.imageArrayLayers;
-            texture->format              = create_info.texture_format;
-            texture->handle              = swapchain_images[si];
+            auto& texture = device->textures_get(swapchain->images[si]);
+            texture.width               = swapchain_info.imageExtent.width;
+            texture.height              = swapchain_info.imageExtent.height;
+            texture.layers              = swapchain_info.imageArrayLayers;
+            texture.format              = create_info.texture_format;
+            texture.handle              = swapchain_images[si];
         }
 
         // Create a texture view as well
@@ -1032,22 +1033,17 @@ bool recreate_swapchain(VulkanDevice* device, VulkanSwapchain* swapchain, const 
 
         if (!swapchain->image_views[si].is_valid())
         {
-            auto* texture_view              = BEE_NEW(thread.allocator, VulkanTextureView);
-            texture_view->swapchain         = swapchain_index;
-
-            const auto success              = create_texture_view_internal(device, view_info, texture_view);
-            BEE_ASSERT_F(success, "Failed to initialize swapchain image views");
-
-            swapchain->image_views[si]      = thread.texture_views.add(texture_view);
+            swapchain->image_views[si]      = thread.texture_views.allocate();
+            auto& texture_view              = thread.texture_views[swapchain->image_views[si]];
+            texture_view.swapchain         = swapchain_index;
+            create_texture_view_internal(device, view_info, &texture_view);
         }
         else
         {
             // Recreate the image view if the swapchain is existing
-            auto* texture_view = device->texture_views_get(swapchain->image_views[si]);
-            vkDestroyImageView(device->handle, texture_view->handle, nullptr);
-
-            const auto success              = create_texture_view_internal(device, view_info, texture_view);
-            BEE_ASSERT_F(success, "Failed to initialize swapchain image views");
+            auto& texture_view = device->texture_views_get(swapchain->image_views[si]);
+            vkDestroyImageView(device->handle, texture_view.handle, nullptr);
+            create_texture_view_internal(device, view_info, &texture_view);
         }
     }
 
@@ -1097,17 +1093,14 @@ void destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHandle&
         {
             auto handle = swapchain.image_views[i];
             auto& thread = device.get_thread(handle);
-            auto* texture_view = static_cast<VulkanTextureView*>(thread.texture_views.remove(handle));
-            vkDestroyImageView(device.handle, texture_view->handle, nullptr);
-            BEE_DELETE(device.get_thread(handle).allocator, texture_view);
+            auto& texture_view = thread.texture_views.deallocate(handle);
+            vkDestroyImageView(device.handle, texture_view.handle, nullptr);
         }
 
         if (swapchain.images[i].is_valid())
         {
-            auto handle = swapchain.images[i];
-            auto& thread = device.get_thread(handle);
-            auto* texture = static_cast<VulkanTexture*>(thread.textures.remove(handle));
-            BEE_DELETE(device.get_thread(handle).allocator, texture);
+            auto& thread = device.get_thread(swapchain.images[i]);
+            thread.textures.deallocate(swapchain.images[i]);
         }
 
         if (swapchain.acquire_semaphore[i] != VK_NULL_HANDLE)
@@ -1193,8 +1186,8 @@ PixelFormat get_texture_format(const DeviceHandle& device_handle, const TextureH
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread(handle);
-    auto* texture = static_cast<VulkanTexture*>(thread.textures.get(handle));
-    return texture->format;
+    auto& texture = thread.textures[handle];
+    return texture.format;
 }
 
 void submit(const DeviceHandle& device_handle, const SubmitInfo& info)
@@ -1314,19 +1307,15 @@ void commit_frame(const DeviceHandle& device_handle)
 
     scoped_recursive_lock_t lock(device.device_mutex);
 
+    /*
+     * We can't call vkFreeDescriptor sets without exclusive access to the pool so rather than
+     * locking the pool each time we need to free a descriptor set we do it with the global device mutex
+     * locked here in commit_frame (see: 3.6. Threading Behavior).
+     */
+
     // process all the pending deletes now that we have exclusive access
     for (auto& thread : device.thread_data)
     {
-        // delete the pending CPU memory allocations made via the threads chunk allocator
-        u8* delete_node = thread.delete_list;
-        while (delete_node != nullptr)
-        {
-            // we can use free here because add_pending_delete already destructed the object
-            thread.delete_list = reinterpret_cast<u8**>(thread.delete_list)[0];
-            BEE_FREE(thread.allocator, delete_node);
-            delete_node = thread.delete_list;
-        }
-
         // free and then delete the pending static descriptor sets
         VulkanResourceBinding* binding_node = thread.static_resource_binding_pending_deletes;
         while (binding_node != nullptr)
@@ -1334,11 +1323,9 @@ void commit_frame(const DeviceHandle& device_handle)
             auto* next = binding_node->next;
             --binding_node->pool->allocated_sets;
             vkFreeDescriptorSets(device.handle, binding_node->pool->handle, 1, &binding_node->set);
-            BEE_DELETE(binding_node->pool->thread->allocator, binding_node);
             binding_node = next;
         }
 
-        thread.delete_list = nullptr;
         thread.static_resource_binding_pending_deletes = nullptr;
     }
 
@@ -1353,10 +1340,7 @@ void commit_frame(const DeviceHandle& device_handle)
     for (auto& thread : device.thread_data)
     {
         // Handle all the deferred removals
-        for (auto& table : thread.resource_tables)
-        {
-            table.flush_removed();
-        }
+        thread.flush_deallocations();
 
         auto& command_pool = thread.command_pool[device.current_frame];
 
@@ -1659,23 +1643,22 @@ RenderPassHandle create_render_pass(const DeviceHandle& device_handle, const Ren
     vk_info.dependencyCount = subpass_deps.size();
     vk_info.pDependencies = subpass_deps.data();
 
-    auto* render_pass = BEE_NEW(thread.allocator, VulkanRenderPass);
-    const RenderPassHandle handle { thread.render_passes.add(render_pass) };
+    const auto handle = thread.render_passes.allocate();
+    auto& render_pass = thread.render_passes[handle];
 
-    render_pass->create_info = create_info;
+    render_pass.create_info = create_info;
 
-    BEE_VK_CHECK(vkCreateRenderPass(device.handle, &vk_info, nullptr, &render_pass->handle));
+    BEE_VK_CHECK(vkCreateRenderPass(device.handle, &vk_info, nullptr, &render_pass.handle));
 
-    return handle;
+    return RenderPassHandle { handle.id, thread.index };
 }
 
 void destroy_render_pass(const DeviceHandle& device_handle, const RenderPassHandle& handle)
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread(handle);
-    auto* render_pass = static_cast<VulkanRenderPass*>(thread.render_passes.remove(handle));
-    vkDestroyRenderPass(device.handle, render_pass->handle, nullptr);
-    thread.add_pending_delete(render_pass);
+    auto& render_pass = thread.render_passes.deallocate(handle);
+    vkDestroyRenderPass(device.handle, render_pass.handle, nullptr);
 }
 
 ShaderHandle create_shader(const DeviceHandle& device_handle, const ShaderCreateInfo& info)
@@ -1688,22 +1671,21 @@ ShaderHandle create_shader(const DeviceHandle& device_handle, const ShaderCreate
     vk_info.codeSize = info.code_size;
     vk_info.pCode = reinterpret_cast<const u32*>(info.code);
 
-    auto* shader = BEE_NEW(thread.allocator, VulkanShader);
-    const auto handle = thread.shaders.add(shader);
-    shader->entry = info.entry;
+    const auto handle = thread.shaders.allocate();
+    auto& shader = thread.shaders[handle];
+    shader.entry = info.entry;
 
-    BEE_VK_CHECK(vkCreateShaderModule(device.handle, &vk_info, nullptr, &shader->handle));
+    BEE_VK_CHECK(vkCreateShaderModule(device.handle, &vk_info, nullptr, &shader.handle));
 
-    return ShaderHandle { handle };
+    return ShaderHandle { handle.id, thread.index };
 }
 
 void destroy_shader(const DeviceHandle& device_handle, const ShaderHandle& shader_handle)
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread(shader_handle);
-    auto* shader = static_cast<VulkanShader*>(thread.shaders.remove(shader_handle));
-    vkDestroyShaderModule(device.handle, shader->handle, nullptr);
-    thread.add_pending_delete(shader);
+    auto& shader = thread.shaders.deallocate(shader_handle);
+    vkDestroyShaderModule(device.handle, shader.handle, nullptr);
 }
 
 PipelineStateHandle create_pipeline_state(const DeviceHandle& device_handle, const PipelineStateCreateInfo& create_info)
@@ -1734,7 +1716,7 @@ PipelineStateHandle create_pipeline_state(const DeviceHandle& device_handle, con
         }
 
         auto& thread = device.get_thread(stage.handle);
-        auto* shader = static_cast<VulkanShader*>(thread.shaders.get(stage.handle));
+        auto& shader = thread.shaders[stage.handle];
 
         stages.emplace_back();
 
@@ -1743,8 +1725,8 @@ PipelineStateHandle create_pipeline_state(const DeviceHandle& device_handle, con
         stage_info.pNext = nullptr;
         stage_info.flags = 0;
         stage_info.stage = stage.flags;
-        stage_info.module = shader->handle;
-        stage_info.pName = shader->entry.c_str();
+        stage_info.module = shader.handle;
+        stage_info.pName = shader.entry.c_str();
         stage_info.pSpecializationInfo = nullptr;
     }
 
@@ -1946,26 +1928,25 @@ PipelineStateHandle create_pipeline_state(const DeviceHandle& device_handle, con
     info.basePipelineIndex = -1;
 
     auto& rp_thread = device.get_thread(create_info.compatible_render_pass);
-    info.renderPass = static_cast<VulkanRenderPass*>(rp_thread.render_passes.get(create_info.compatible_render_pass))->handle;
+    info.renderPass = rp_thread.render_passes[create_info.compatible_render_pass].handle;
 
     // phew, that was a lot of typing - I think we earned ourselves a nice graphics pipeline object
     auto& thread = device.get_thread();
-    auto* pipeline = BEE_NEW(thread.allocator, VulkanPipelineState);
-    pipeline->layout = pipeline_layout;
-    const auto handle = thread.pipeline_states.add(pipeline);
+    const auto handle = thread.pipeline_states.allocate();
+    auto& pipeline = thread.pipeline_states[handle];
+    pipeline.layout = pipeline_layout;
 
-    BEE_VK_CHECK(vkCreateGraphicsPipelines(device.handle, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->handle));
+    BEE_VK_CHECK(vkCreateGraphicsPipelines(device.handle, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline.handle));
 
-    return PipelineStateHandle { handle };
+    return PipelineStateHandle { handle.id, thread.index };
 }
 
 void destroy_pipeline_state(const DeviceHandle& device_handle, const PipelineStateHandle& pipeline_handle)
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread(pipeline_handle);
-    auto* pipeline = static_cast<VulkanPipelineState*>(thread.pipeline_states.remove(pipeline_handle));
-    vkDestroyPipeline(device.handle, pipeline->handle, nullptr);
-    thread.add_pending_delete(pipeline);
+    auto& pipeline = thread.pipeline_states.deallocate(pipeline_handle);
+    vkDestroyPipeline(device.handle, pipeline.handle, nullptr);
 }
 
 BufferHandle create_buffer(const DeviceHandle& device_handle, const BufferCreateInfo& create_info)
@@ -1989,46 +1970,45 @@ BufferHandle create_buffer(const DeviceHandle& device_handle, const BufferCreate
     vma_info.pUserData = nullptr; // TODO(Jacob): could be used to tag allocations?
 
     auto& thread = device.get_thread();
-    auto* buffer = BEE_NEW(thread.allocator, VulkanBuffer)(create_info.type, create_info.memory_usage, create_info.size);
-    const auto handle = thread.buffers.add(buffer);
+    const auto handle = thread.buffers.allocate(create_info.type, create_info.memory_usage, create_info.size);
+    auto& buffer = thread.buffers[handle];
 
     BEE_VK_CHECK(vmaCreateBuffer(
         device.vma_allocator,
         &vk_info,
         &vma_info,
-        &buffer->handle,
-        &buffer->allocation,
-        &buffer->allocation_info
+        &buffer.handle,
+        &buffer.allocation,
+        &buffer.allocation_info
     ));
 
     if (create_info.debug_name != nullptr)
     {
-        set_vk_object_name(&device, VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT, buffer->handle, create_info.debug_name);
+        set_vk_object_name(&device, VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT, buffer.handle, create_info.debug_name);
     }
 
-    return BufferHandle { handle };
+    return BufferHandle { handle.id, thread.index };
 }
 
 void destroy_buffer(const DeviceHandle& device_handle, const BufferHandle& buffer_handle)
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread(buffer_handle);
-    auto* buffer = static_cast<VulkanBuffer*>(thread.buffers.remove(buffer_handle));
-    BEE_ASSERT(buffer->handle != VK_NULL_HANDLE);
-    BEE_ASSERT(buffer->allocation != VK_NULL_HANDLE);
+    auto& buffer = thread.buffers.deallocate(buffer_handle);
 
-    vmaDestroyBuffer(device.vma_allocator, buffer->handle, buffer->allocation);
+    BEE_ASSERT(buffer.handle != VK_NULL_HANDLE);
+    BEE_ASSERT(buffer.allocation != VK_NULL_HANDLE);
 
-    thread.add_pending_delete(buffer);
+    vmaDestroyBuffer(device.vma_allocator, buffer.handle, buffer.allocation);
 }
 
 void update_buffer(const DeviceHandle& device_handle, const BufferHandle& buffer_handle, const void* data, const size_t offset, const size_t size)
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread();
-    auto* buffer = device.buffers_get(buffer_handle);
+    auto& buffer = device.buffers_get(buffer_handle);
 
-    if (buffer->usage == DeviceMemoryUsage::gpu_only)
+    if (buffer.usage == DeviceMemoryUsage::gpu_only)
     {
         VulkanStagingChunk chunk{};
         thread.staging.allocate(size, 1, &chunk);
@@ -2040,14 +2020,14 @@ void update_buffer(const DeviceHandle& device_handle, const BufferHandle& buffer
         copy.dstOffset = offset;
         copy.size = size;
 
-        vkCmdCopyBuffer(chunk.cmd, chunk.buffer, buffer->handle, 1, &copy);
+        vkCmdCopyBuffer(chunk.cmd, chunk.buffer, buffer.handle, 1, &copy);
     }
     else
     {
         void* mapped = nullptr;
-        BEE_VK_CHECK(vmaMapMemory(device.vma_allocator, buffer->allocation, &mapped));
+        BEE_VK_CHECK(vmaMapMemory(device.vma_allocator, buffer.allocation, &mapped));
         memcpy(static_cast<u8*>(mapped) + offset, data, size);
-        vmaUnmapMemory(device.vma_allocator, buffer->allocation);
+        vmaUnmapMemory(device.vma_allocator, buffer.allocation);
 
 //        // If the handle is host-coherent we need to flush the range manually
 //        VkMemoryPropertyFlags mem_type_flags = 0;
@@ -2091,15 +2071,15 @@ TextureHandle create_texture(const DeviceHandle& device_handle, const TextureCre
     image_info.pQueueFamilyIndices = nullptr;
     image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    auto* texture = BEE_NEW(thread.allocator, VulkanTexture);
-    auto handle = thread.textures.add(texture);
-    texture->width = create_info.width;
-    texture->height = create_info.height;
-    texture->layers = create_info.array_element_count;
-    texture->levels = create_info.mip_count;
-    texture->format = create_info.format;
-    texture->samples = create_info.sample_count;
-    texture->usage = create_info.usage;
+    auto handle = thread.textures.allocate();
+    auto& texture = thread.textures[handle];
+    texture.width = create_info.width;
+    texture.height = create_info.height;
+    texture.layers = create_info.array_element_count;
+    texture.levels = create_info.mip_count;
+    texture.format = create_info.format;
+    texture.samples = create_info.sample_count;
+    texture.usage = create_info.usage;
 
     VmaAllocationCreateInfo alloc_info{};
     alloc_info.flags = 0;
@@ -2114,31 +2094,30 @@ TextureHandle create_texture(const DeviceHandle& device_handle, const TextureCre
         device.vma_allocator,
         &image_info,
         &alloc_info,
-        &texture->handle,
-        &texture->allocation,
-        &texture->allocation_info
+        &texture.handle,
+        &texture.allocation,
+        &texture.allocation_info
     ));
 
     if (create_info.debug_name != nullptr)
     {
-        set_vk_object_name(&device, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, texture->handle, create_info.debug_name);
+        set_vk_object_name(&device, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, texture.handle, create_info.debug_name);
     }
 
-    return TextureHandle { handle };
+    return TextureHandle { handle.id, thread.index };
 }
 
 void destroy_texture(const DeviceHandle& device_handle, const TextureHandle& texture_handle)
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread(texture_handle);
-    auto* texture = static_cast<VulkanTexture*>(thread.textures.get(texture_handle));
+    auto& texture = thread.textures[texture_handle];
 
     // swapchain images are destroyed with their owning swapchain
-    if (texture->swapchain < 0)
+    if (texture.swapchain < 0)
     {
-        vmaDestroyImage(device.vma_allocator, texture->handle, texture->allocation);
-        thread.textures.remove(texture_handle);
-        thread.add_pending_delete(texture);
+        vmaDestroyImage(device.vma_allocator, texture.handle, texture.allocation);
+        thread.textures.deallocate(texture_handle);
     }
 }
 
@@ -2146,17 +2125,17 @@ void update_texture(const DeviceHandle& device_handle, const TextureHandle& text
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread();
-    auto* texture = device.textures_get(texture_handle);
+    auto& texture = device.textures_get(texture_handle);
 
     VulkanStagingChunk chunk{};
-    thread.staging.allocate(texture->width * texture->height * texture->depth, 1, &chunk);
+    thread.staging.allocate(texture.width * texture.height * texture.depth, 1, &chunk);
 
     const auto size = extent.width * extent.height * extent.depth;
     memcpy(chunk.data, data, size);
 
     VkBufferImageCopy copy{};
     copy.bufferOffset = chunk.offset;
-    copy.imageSubresource.aspectMask = is_depth_format(texture->format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    copy.imageSubresource.aspectMask = is_depth_format(texture.format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
     copy.imageSubresource.mipLevel = mip_level;
     copy.imageSubresource.baseArrayLayer = element;
     copy.imageSubresource.layerCount = 1;
@@ -2176,12 +2155,12 @@ void update_texture(const DeviceHandle& device_handle, const TextureHandle& text
     barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = texture->handle;
-    barrier.subresourceRange.aspectMask = select_access_mask_from_format(texture->format);
+    barrier.image = texture.handle;
+    barrier.subresourceRange.aspectMask = select_access_mask_from_format(texture.format);
     barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = texture->levels;
+    barrier.subresourceRange.levelCount = texture.levels;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = texture->layers;
+    barrier.subresourceRange.layerCount = texture.layers;
 
     vkCmdPipelineBarrier(
         chunk.cmd,
@@ -2191,16 +2170,16 @@ void update_texture(const DeviceHandle& device_handle, const TextureHandle& text
         1, &barrier
     );
 
-    vkCmdCopyBufferToImage(chunk.cmd, chunk.buffer, texture->handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+    vkCmdCopyBufferToImage(chunk.cmd, chunk.buffer, texture.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
 }
 
-bool create_texture_view_internal(VulkanDevice* device, const TextureViewCreateInfo& create_info, VulkanTextureView* dst)
+void create_texture_view_internal(VulkanDevice* device, const TextureViewCreateInfo& create_info, VulkanTextureView* dst)
 {
-    auto* texture = device->textures_get(create_info.texture);
+    auto& texture = device->textures_get(create_info.texture);
 
     VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, nullptr };
     view_info.flags = 0;
-    view_info.image = texture->handle;
+    view_info.image = texture.handle;
     view_info.viewType = convert_image_view_type(create_info.type);
     view_info.format = convert_pixel_format(create_info.format);
     view_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -2223,56 +2202,54 @@ bool create_texture_view_internal(VulkanDevice* device, const TextureViewCreateI
 
     dst->handle = img_view;
     dst->viewed_texture = create_info.texture;
-    dst->format = texture->format;
-    dst->samples = texture->samples;
-    return true;
+    dst->format = texture.format;
+    dst->samples = texture.samples;
 }
 
 TextureViewHandle create_texture_view(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info)
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread();
-    auto* texture_view = BEE_NEW(thread.allocator, VulkanTextureView);
+    const auto handle = thread.texture_views.allocate();
+    auto& texture_view = thread.texture_views[handle];
 
-    if (!create_texture_view_internal(&device, create_info, texture_view))
-    {
-        BEE_DELETE(thread.allocator, texture_view);
-        return TextureViewHandle{};
-    };
+    create_texture_view_internal(&device, create_info, &texture_view);
 
-    return TextureViewHandle { thread.texture_views.add(texture_view) };
+    return TextureViewHandle { handle.id, thread.index };
 }
 
 void destroy_texture_view(const DeviceHandle& device_handle, const TextureViewHandle& texture_view_handle)
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread(texture_view_handle);
-    auto* texture_view = static_cast<VulkanTextureView*>(thread.texture_views.remove(texture_view_handle));
+    auto& texture_view = thread.texture_views[texture_view_handle];
 
-    BEE_ASSERT(texture_view->handle != VK_NULL_HANDLE);
+    BEE_ASSERT(texture_view.handle != VK_NULL_HANDLE);
 
-    vkDestroyImageView(device.handle, texture_view->handle, nullptr);
+    vkDestroyImageView(device.handle, texture_view.handle, nullptr);
 
-    thread.add_pending_delete(texture_view);
+    thread.texture_views.deallocate(texture_view_handle);
 }
 
 FenceHandle create_fence(const DeviceHandle& device_handle, const FenceState initial_state)
 {
     auto& device = validate_device(device_handle);
+    auto& thread = device.get_thread();
 
     VkFenceCreateInfo info = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr };
     info.flags = initial_state == FenceState::signaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0u;
 
-    VkFence fence = VK_NULL_HANDLE;
+    const auto handle = thread.fences.allocate();
+    auto& fence = thread.fences[handle];
     BEE_VK_CHECK(vkCreateFence(device.handle, &info, nullptr, &fence));
-
-    return FenceHandle { device.fences_add(fence) };
+    return FenceHandle { handle.id, thread.index };
 }
 
 void destroy_fence(const DeviceHandle& device_handle, const FenceHandle& fence_handle)
 {
     auto& device = validate_device(device_handle);
-    auto* fence = static_cast<VkFence>(device.fences_remove(fence_handle));
+    auto& thread = device.get_thread(fence_handle);
+    auto& fence = thread.fences.deallocate(fence_handle);
     vkDestroyFence(device.handle, fence, nullptr);
 }
 
@@ -2292,7 +2269,7 @@ void VulkanDescriptorPoolCache::destroy(VkDevice device)
     for (auto& descriptor_pool : pools)
     {
         vkDestroyDescriptorPool(device, descriptor_pool.value->handle, nullptr);
-        BEE_DELETE(thread->allocator, descriptor_pool.value);
+        BEE_DELETE(system_allocator(), descriptor_pool.value);
     }
     pools.clear();
     thread = nullptr;
@@ -2335,7 +2312,7 @@ VulkanDescriptorPool* get_or_create_descriptor_pool(VulkanDevice* device, const 
     if (pool_keyval == nullptr)
     {
         // couldn't find a matching pool so we need to create a new cached one
-        pool_keyval = descriptor_pools->pools.insert(layout, BEE_NEW(thread.allocator, VulkanDescriptorPool));
+        pool_keyval = descriptor_pools->pools.insert(layout, BEE_NEW(system_allocator(), VulkanDescriptorPool));
 
         pool_keyval->value->size_count = layout.resources.size;
         pool_keyval->value->layout = device->descriptor_set_layout_cache.get_or_create(layout);
@@ -2389,13 +2366,14 @@ ResourceBindingHandle create_resource_binding(const DeviceHandle& device_handle,
     auto& thread = device.get_thread();
 
     auto* pool = get_or_create_descriptor_pool(&device, create_info.update_frequency, *create_info.layout);
-    auto* binding = BEE_NEW(thread.allocator, VulkanResourceBinding);
-    binding->allocated_frame = device.current_frame;
-    binding->next = nullptr;
-    binding->update_frequency = create_info.update_frequency;
-    binding->layout = *create_info.layout;
-    binding->set = VK_NULL_HANDLE;
-    binding->pool = pool;
+    const auto handle = thread.resource_bindings.allocate();
+    auto& binding = thread.resource_bindings[handle];
+    binding.allocated_frame = device.current_frame;
+    binding.next = nullptr;
+    binding.update_frequency = create_info.update_frequency;
+    binding.layout = *create_info.layout;
+    binding.set = VK_NULL_HANDLE;
+    binding.pool = pool;
 
     // bindings with frame/draw update frequencies are allocated when binding in the command buffer
     // so we only need to allocate a descriptor up front for persistent bindings
@@ -2406,41 +2384,42 @@ ResourceBindingHandle create_resource_binding(const DeviceHandle& device_handle,
         set_info.descriptorSetCount = 1;
         set_info.pSetLayouts = &pool->layout;
 
-        BEE_VK_CHECK(vkAllocateDescriptorSets(device.handle, &set_info, &binding->set));
+        BEE_VK_CHECK(vkAllocateDescriptorSets(device.handle, &set_info, &binding.set));
     }
 
-    return ResourceBindingHandle { thread.resource_bindings.add(binding) };
+    return ResourceBindingHandle { handle.id, thread.index };
 }
 
 void destroy_resource_binding(const DeviceHandle& device_handle, const ResourceBindingHandle& resource_binding_handle)
 {
     auto& device = validate_device(device_handle);
-    auto* binding = device.resource_bindings_remove(resource_binding_handle);
+    auto& binding = device.resource_bindings_get(resource_binding_handle);
 
-    if (binding->update_frequency == ResourceBindingUpdateFrequency::persistent)
+    if (binding.update_frequency == ResourceBindingUpdateFrequency::persistent)
     {
         auto& thread = device.get_thread();
         if (thread.static_resource_binding_pending_deletes == nullptr)
         {
-            thread.static_resource_binding_pending_deletes = binding;
+            thread.static_resource_binding_pending_deletes = &binding;
         }
         else
         {
-            thread.static_resource_binding_pending_deletes->next = binding;
+            thread.static_resource_binding_pending_deletes->next = &binding;
         }
 
-        binding->next = nullptr;
+        binding.next = nullptr;
     }
     else
     {
         auto& thread = device.get_thread(resource_binding_handle);
-        thread.add_pending_delete(binding);
+        thread.resource_bindings.deallocate(resource_binding_handle);
     }
 }
 
 SamplerHandle create_sampler(const DeviceHandle& device_handle, const SamplerCreateInfo& info)
 {
     auto& device = validate_device(device_handle);
+    auto& thread = device.get_thread();
 
     VkSamplerCreateInfo vkinfo      = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, nullptr };
     vkinfo.flags                    = 0;
@@ -2460,16 +2439,18 @@ SamplerHandle create_sampler(const DeviceHandle& device_handle, const SamplerCre
     vkinfo.borderColor              = convert_border_color(info.border_color);
     vkinfo.unnormalizedCoordinates  = static_cast<VkBool32>(!info.normalized_coordinates);
 
-    VkSampler sampler = VK_NULL_HANDLE;
+    const auto handle = thread.samplers.allocate();
+    auto& sampler = thread.samplers[handle];
     BEE_VK_CHECK(vkCreateSampler(device.handle, &vkinfo, nullptr, &sampler));
 
-    return SamplerHandle { device.samplers_add(sampler) };
+    return SamplerHandle { handle.id, thread.index };
 };
 
 void destroy_sampler(const DeviceHandle& device_handle, const SamplerHandle& sampler_handle)
 {
     auto& device = validate_device(device_handle);
-    auto* sampler = device.samplers_remove(sampler_handle);
+    auto& thread = device.get_thread(sampler_handle);
+    auto* sampler = thread.samplers.deallocate(sampler_handle);
     vkDestroySampler(device.handle, sampler, nullptr);
 }
 

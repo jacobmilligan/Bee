@@ -262,7 +262,7 @@ struct Hash<BufferHandle>
 {
     inline u32 operator()(const BufferHandle& key)
     {
-        return key.id;
+        return get_hash(key.id);
     }
 };
 
@@ -271,7 +271,7 @@ struct Hash<TextureHandle>
 {
     inline u32 operator()(const TextureHandle& key)
     {
-        return key.id;
+        return get_hash(key.id);
     }
 };
 

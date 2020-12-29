@@ -17,7 +17,8 @@
 namespace bee {
 
 
-AssetDatabaseModule* g_assetdb = nullptr;
+AssetDatabaseModule*    g_assetdb = nullptr;
+AssetCacheModule*       g_asset_cache = nullptr;
 
 /*
  **********************************
@@ -148,6 +149,12 @@ AssetPipeline* load_pipeline(const StringView path)
 
 void destroy_pipeline(AssetPipeline* pipeline)
 {
+    if (pipeline->runtime_cache != nullptr)
+    {
+        BEE_ASSERT(g_asset_cache != nullptr);
+        g_asset_cache->unregister_locator(pipeline->runtime_cache, &pipeline->runtime_locator);
+    }
+
     pipeline->source_watcher.stop();
     g_assetdb->close(pipeline->db);
     BEE_DELETE(system_allocator(), pipeline);
@@ -328,6 +335,16 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
     }
 
     txn.commit();
+
+    if (g_asset_cache != nullptr)
+    {
+        auto load_res = g_asset_cache->load_asset(pipeline->runtime_cache, meta->guid);
+        if (!load_res)
+        {
+            log_error("Failed to load asset at %s: %s", path.c_str(), load_res.unwrap_error().to_string());
+        }
+    }
+
     return ImportErrorStatus::success;
 }
 
@@ -355,6 +372,59 @@ void refresh(AssetPipeline* pipeline)
     }
 }
 
+static bool asset_db_locate(void* user_data, const GUID guid, AssetLocation* location)
+{
+    auto* pipeline = static_cast<AssetPipeline*>(user_data);
+    auto txn = g_assetdb->read(pipeline->db);
+    if (!g_assetdb->asset_exists(&txn, guid))
+    {
+        return false;
+    }
+
+    location->streams.size = g_assetdb->get_artifacts(&txn, guid, nullptr).unwrap();
+    auto* artifacts = BEE_ALLOCA_ARRAY(AssetArtifact, location->streams.size);
+    g_assetdb->get_artifacts(&txn, guid, artifacts);
+
+    location->type = get_type(artifacts[0].type_hash);
+
+    for (int i = 0; i < location->streams.size; ++i)
+    {
+        location->streams[i].kind = AssetStreamKind::file;
+        g_assetdb->get_artifact_path(&txn, artifacts[i].content_hash, &location->streams[i].path);
+    }
+
+    return true;
+}
+
+void set_runtime_cache(AssetPipeline* pipeline, AssetCache* cache)
+{
+    if (g_asset_cache == nullptr)
+    {
+        g_asset_cache = static_cast<bee::AssetCacheModule*>(get_module(BEE_ASSET_CACHE_MODULE_NAME));
+        if (BEE_FAIL_F(g_asset_cache != nullptr, "Bee.AssetCache plugin is not loaded"))
+        {
+            return;
+        }
+    }
+
+    if (pipeline->runtime_cache != nullptr)
+    {
+        BEE_ASSERT(g_asset_cache != nullptr);
+        g_asset_cache->unregister_locator(pipeline->runtime_cache, &pipeline->runtime_locator);
+    }
+
+    if (cache == nullptr)
+    {
+        pipeline->runtime_cache = nullptr;
+        return;
+    }
+
+    pipeline->runtime_cache = cache;
+    pipeline->runtime_locator.locate = asset_db_locate;
+    pipeline->runtime_locator.user_data = pipeline;
+    g_asset_cache->register_locator(cache, &pipeline->runtime_locator);
+}
+
 
 } // namespace bee
 
@@ -376,6 +446,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     g_module.unregister_importer = bee::unregister_importer;
     g_module.import_asset = bee::import_asset;
     g_module.refresh = bee::refresh;
+    g_module.set_runtime_cache = bee::set_runtime_cache;
 
     loader->set_module(BEE_ASSET_PIPELINE_MODULE_NAME, &g_module, state);
 }

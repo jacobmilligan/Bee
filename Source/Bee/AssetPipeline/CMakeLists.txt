@@ -4,3 +4,4 @@ bee_add_sources(
 )
 bee_plugin(Bee.AssetPipeline LINK_LIBRARIES Bee.Core lmdb)
 bee_reflect(Bee.AssetPipeline)
+add_dependencies(Bee.AssetPipeline Bee.AssetDatabase)

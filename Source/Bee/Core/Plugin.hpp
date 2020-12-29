@@ -96,6 +96,8 @@ public:
 
     bool require_plugin(const StringView& name, const PluginVersion& minimum_version) const;
 
+    bool is_plugin_loaded(const StringView& name, const PluginVersion& minimum_version) const;
+
     void* get_module(const StringView& name);
 
     void add_module_interface(const StringView& name, const void* module, const size_t module_size);

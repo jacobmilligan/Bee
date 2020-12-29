@@ -200,14 +200,16 @@ struct BscRenderPassNode
 
 struct BscPipelineStateNode
 {
-    PrimitiveType   primitive_type { PrimitiveType::unknown };
-    StringView      render_pass;
-    StringView      subpass;
-    StringView      raster_state;
-    StringView      multisample_state;
-    StringView      depth_stencil_state;
-    StringView      vertex_stage;
-    StringView      fragment_stage;
+    PrimitiveType               primitive_type { PrimitiveType::unknown };
+    StringView                  render_pass;
+    StringView                  subpass;
+    StringView                  raster_state;
+    StringView                  multisample_state;
+    StringView                  depth_stencil_state;
+    StringView                  vertex_stage;
+    StringView                  fragment_stage;
+
+    StaticArray<StringView, BEE_GPU_MAX_ATTACHMENTS> color_blend_states;
 };
 
 struct BscModule
@@ -220,6 +222,7 @@ struct BscModule
     bsc_node_array_t<DepthStencilStateDescriptor>   depth_stencil_states;
     bsc_node_array_t<SamplerCreateInfo>             sampler_states;
     bsc_node_array_t<BscShaderNode>                 shaders;
+    bsc_node_array_t<BlendStateDescriptor>          color_blend_states;
 
     explicit BscModule(Allocator* node_allocator)
         : allocator(node_allocator),
@@ -227,7 +230,10 @@ struct BscModule
           render_passes(node_allocator),
           raster_states(node_allocator),
           multisample_states(node_allocator),
-          depth_stencil_states(node_allocator)
+          depth_stencil_states(node_allocator),
+          sampler_states(node_allocator),
+          shaders(node_allocator),
+          color_blend_states(node_allocator)
     {}
 };
 
@@ -238,6 +244,7 @@ enum class BscResolveErrorCode
     undefined_symbol,
     too_many_shaders,
     incompatible_resource_layouts,
+    incompatible_color_blend_states,
     none
 };
 
@@ -246,6 +253,7 @@ struct BscResolveError
 {
     BscResolveErrorCode code { BscResolveErrorCode::none };
     StringView          param;
+    StringView          param2;
 
     BscResolveError() = default;
 
@@ -256,6 +264,12 @@ struct BscResolveError
     BscResolveError(const BscResolveErrorCode new_code, const StringView& new_param)
         : code(new_code),
           param(new_param)
+    {}
+
+    BscResolveError(const BscResolveErrorCode new_code, const StringView& new_param, const StringView& new_second_param)
+        : code(new_code),
+          param(new_param),
+          param2(new_second_param)
     {}
 
     explicit inline operator bool() const
@@ -353,6 +367,8 @@ private:
     bool parse_attachment(BscLexer* lexer, BscNode<AttachmentDescriptor>* node);
 
     bool parse_subpass(BscLexer* lexer, BscNode<BscSubPassNode>* node);
+
+    bool parse_blend_state(BscLexer* lexer, BscNode<BlendStateDescriptor>* node);
 
     static bool parse_key(BscLexer* lexer, StringView* identifier);
 

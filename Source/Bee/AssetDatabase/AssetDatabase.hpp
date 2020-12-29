@@ -72,6 +72,12 @@ struct BEE_REFLECT(serializable, version = 1) AssetMetadata
     {}
 };
 
+struct AssetArtifact
+{
+    u32     type_hash { 0 };
+    u128    content_hash;
+};
+
 struct AssetDatabaseError
 {
     AssetDatabaseStatus status { AssetDatabaseStatus::internal_error };
@@ -165,9 +171,13 @@ struct AssetDatabaseModule
 
     u128 (*get_artifact_hash)(const void* buffer, const size_t buffer_size) { nullptr };
 
+    void (*get_artifact_path)(AssetTxn* txn, const u128& hash, Path* dst) { nullptr };
+
     Result<u128, AssetDatabaseError> (*add_artifact)(AssetTxn* txn, const GUID guid, const Type artifact_type, const void* buffer, const size_t buffer_size) { nullptr };
 
     bool (*remove_artifact)(AssetTxn* txn, const GUID guid, const u128& hash) { nullptr };
+
+    Result<i32, AssetDatabaseError> (*get_artifacts)(AssetTxn* txn, const GUID guid, AssetArtifact* dst) { nullptr };
 
     bool (*add_dependency)(AssetTxn* txn, const GUID parent, const GUID child) { nullptr };
 

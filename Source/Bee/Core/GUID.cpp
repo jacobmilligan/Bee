@@ -30,7 +30,7 @@ void write_dash_if_needed(String* dst_str, const GUIDFormat format)
     }
 }
 
-BEE_TRANSLATION_TABLE(guid_format_length, GUIDFormat, i32, GUIDFormat::unknown,
+BEE_TRANSLATION_TABLE_FUNC(guid_format_length, GUIDFormat, i32, GUIDFormat::unknown,
     32, // digits
     36, // digits_with_hyphen,
     38, // braced_digits_with_hyphen,

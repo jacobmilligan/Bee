@@ -51,6 +51,11 @@ struct BEE_REFLECT(serializable) StaticArray
     {
         return data + size;
     }
+
+    inline bool empty() const
+    {
+        return size <= 0;
+    }
 };
 
 

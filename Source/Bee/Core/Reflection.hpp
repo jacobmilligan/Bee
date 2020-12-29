@@ -1139,6 +1139,14 @@ inline constexpr bool operator!=(const SpecializedType<T>& lhs, const Type& rhs)
     return !(lhs == rhs);
 }
 
+template <>
+struct Hash<Type>
+{
+    inline u32 operator()(const Type& key) const
+    {
+        return key->hash;
+    }
+};
 
 
 template <typename T>

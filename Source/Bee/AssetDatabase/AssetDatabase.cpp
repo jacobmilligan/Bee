@@ -59,15 +59,15 @@ int lmdb_compare_guid(const MDB_val* a, const MDB_val* b)
 
 int lmdb_compare_artifact(const MDB_val* a, const MDB_val* b)
 {
-    const auto& lhs = *static_cast<const u128*>(a->mv_data);
-    const auto& rhs = *static_cast<const u128*>(b->mv_data);
+    const auto* lhs = static_cast<const AssetArtifact*>(a->mv_data);
+    const auto* rhs = static_cast<const AssetArtifact*>(b->mv_data);
 
-    if (lhs < rhs)
+    if (lhs->content_hash < rhs->content_hash)
     {
         return -1;
     }
 
-    if (lhs > rhs)
+    if (lhs->content_hash > rhs->content_hash)
     {
         return 1;
     }
@@ -75,7 +75,7 @@ int lmdb_compare_artifact(const MDB_val* a, const MDB_val* b)
     return 0;
 }
 
-BEE_TRANSLATION_TABLE(db_mapping_info, DbMapId, DbMapInfo, DbMapId::count,
+BEE_TRANSLATION_TABLE_FUNC(db_mapping_info, DbMapId, DbMapInfo, DbMapId::count,
 //    { "URIToPath",              MDB_CREATE },                                               // uri_to_path
     { "GUIDToAsset",            MDB_CREATE },                                               // guid_to_asset
     { "GUIDToDependencies", MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, lmdb_compare_guid },  // guid_to_dependencies
@@ -280,7 +280,7 @@ static AssetTxnData* db_create_txn(AssetDatabase* db, const AssetTxnAccess acces
     return txn;
 }
 
-BEE_TRANSLATION_TABLE(db_code_to_string, AssetDatabaseStatus, const char*, AssetDatabaseStatus::internal_error,
+BEE_TRANSLATION_TABLE_FUNC(db_code_to_string, AssetDatabaseStatus, const char*, AssetDatabaseStatus::internal_error,
     "Transaction has reached the maximum number asset modifications and creations",
     "Asset properties handle was invalid",
     "Asset properties handle points to a deleted asset",
@@ -322,13 +322,13 @@ static bool asset_txn_is_valid(AssetTxnData* txn)
     return txn->handle != nullptr;
 }
 
-static void get_artifact_path(AssetTxnData* txn, const u128& hash, Path* dst)
+void get_artifact_path(AssetTxn* txn, const u128& hash, Path* dst)
 {
     StaticString<32> hash_string;
     str::to_static_string(hash, &hash_string);
 
     const auto dir = str::substring(hash_string.view(), 0, 2);
-    dst->append(txn->db->artifacts_root.view()).append(dir).append(hash_string.view());
+    dst->append(txn->data()->db->artifacts_root.view()).append(dir).append(hash_string.view());
 }
 
 static bool asset_txn_get(AssetTxnData* txn, const DbMapId id, const GUID& key, AssetMetadata* meta)
@@ -405,15 +405,15 @@ static bool asset_txn_del(AssetTxnData* txn, const GUID& key, const u128& hash, 
 static bool asset_txn_put(AssetTxnData* txn, const GUID& key, const u128& hash, const u32 type, const unsigned int flags)
 {
     BEE_ASSERT(asset_txn_is_valid(txn));
-    auto& thread = db_get_thread(txn->db);
-    thread.tmp_buffer.clear();
-    thread.tmp_buffer.append({ reinterpret_cast<const u8*>(&hash), sizeof(u128) });
-    thread.tmp_buffer.append({ reinterpret_cast<const u8*>(&type), sizeof(u32) });
+
+    AssetArtifact artifact{};
+    artifact.type_hash = type;
+    artifact.content_hash = hash;
 
     auto mdb_key = make_key(key);
     MDB_val mdb_val{};
-    mdb_val.mv_data = thread.tmp_buffer.data();
-    mdb_val.mv_size = thread.tmp_buffer.size();
+    mdb_val.mv_data = &artifact;
+    mdb_val.mv_size = sizeof(AssetArtifact);
 
     // Put the guid->artifact mapping in
     if (!basic_txn_put(txn->handle, db_get_dbi(txn->db, DbMapId::guid_to_artifacts), &mdb_key, &mdb_val, flags))
@@ -847,7 +847,7 @@ Result<u128, AssetDatabaseError> add_artifact(AssetTxn* txn, const GUID guid, co
     const u128 hash = get_artifact_hash(buffer, buffer_size);
     TempAllocScope tmp_alloc(txn_data->db);
     Path artifact_path(tmp_alloc);
-    get_artifact_path(txn_data, hash, &artifact_path);
+    get_artifact_path(txn, hash, &artifact_path);
 
     if (!asset_txn_put(txn_data, guid, hash, artifact_type->hash, 0))
     {
@@ -888,8 +888,51 @@ bool remove_artifact(AssetTxn* txn, const GUID guid, const u128& hash)
     // delete the artifact from disk if no more guids reference it
     TempAllocScope tmp_alloc(txn_data->db);
     Path artifact_path(tmp_alloc);
-    get_artifact_path(txn_data, hash, &artifact_path);
+    get_artifact_path(txn, hash, &artifact_path);
     return fs::remove(artifact_path);
+}
+
+Result<i32, AssetDatabaseError> get_artifacts(AssetTxn* txn, const GUID guid, AssetArtifact* dst)
+{
+    LMDBCursor cursor(txn->data(), db_get_dbi(txn->data()->db, DbMapId::guid_to_artifacts));
+    if (!cursor)
+    {
+        return 0;
+    }
+
+    auto guid_key = make_key(guid);
+    MDB_val val{};
+
+    // Start at the first value in the GUID key
+    if (!cursor.get(&guid_key, &val, MDB_SET_KEY))
+    {
+        return 0;
+    }
+
+    if (dst == nullptr)
+    {
+        return cursor.count();
+    }
+
+    if (cursor.count() == 1)
+    {
+        // MDB_NEXT_MULTIPLE won't work if we've only got one result
+        memcpy(&dst[0], val.mv_data, val.mv_size);
+        return 1;
+    }
+
+    int count = 0;
+    AssetArtifact* multiple = dst;
+
+    while (cursor.get(&guid_key, &val, MDB_NEXT_MULTIPLE))
+    {
+        BEE_ASSERT(val.mv_size % sizeof(AssetArtifact) == 0);
+
+        memcpy(multiple + count, val.mv_data, val.mv_size);
+        count += static_cast<i32>(val.mv_size / sizeof(AssetArtifact));
+    }
+
+    return count;
 }
 
 bool add_dependency(AssetTxn* txn, const GUID parent, const GUID child)
@@ -937,6 +980,8 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     g_module.remove_artifact = bee::remove_artifact;
     g_module.add_dependency = bee::add_dependency;
     g_module.remove_dependency = bee::remove_dependency;
+    g_module.get_artifacts = bee::get_artifacts;
+    g_module.get_artifact_path = bee::get_artifact_path;
 
     loader->set_module(BEE_ASSET_DATABASE_MODULE_NAME, &g_module, state);
 }

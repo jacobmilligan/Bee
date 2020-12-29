@@ -87,31 +87,40 @@ namespace bee {
  *
  ********************************************************
  */
-BEE_SPLIT_HANDLE(GpuObjectHandle, bee::u32, 24u, 8u, value, thread) BEE_REFLECT();
+enum class GpuObjectType
+{
+    texture,
+    texture_view,
+    buffer,
+    buffer_view,
+    render_pass,
+    shader,
+    pipeline_state,
+    fence,
+    resource_binding,
+    sampler,
+    count
+};
 
-#define BEE_GPU_HANDLE(Name)                                                                        \
-struct Name                                                                                         \
-{                                                                                                   \
-    explicit Name(const GpuObjectHandle object_handle) : id(object_handle.id) {}                    \
-    inline Name& operator=(const GpuObjectHandle& other) { id = other.id; return *this; }           \
-    inline operator GpuObjectHandle() const { return GpuObjectHandle { id }; }                      \
-    inline constexpr bool operator==(const GpuObjectHandle& other) const { return id == other.id; } \
-    inline constexpr bool operator!=(const GpuObjectHandle& other) const { return id != other.id; } \
-    BEE_SPLIT_HANDLE_BODY(Name, bee::u32, 24u, 8u, value, thread)                                   \
-}
+#define BEE_GPU_HANDLE(NAME, T)                                     \
+    struct NAME                                                     \
+    {                                                               \
+        static constexpr GpuObjectType type = GpuObjectType::T;     \
+        BEE_SPLIT_HANDLE_BODY(NAME, u64, 32u, 32u, value, thread)   \
+    }
 
 BEE_RAW_HANDLE_U32(DeviceHandle) BEE_REFLECT();
 BEE_RAW_HANDLE_U32(SwapchainHandle) BEE_REFLECT();
-BEE_GPU_HANDLE(TextureHandle) BEE_REFLECT();
-BEE_GPU_HANDLE(TextureViewHandle) BEE_REFLECT();
-BEE_GPU_HANDLE(BufferHandle) BEE_REFLECT();
-BEE_GPU_HANDLE(BufferViewHandle) BEE_REFLECT();
-BEE_GPU_HANDLE(RenderPassHandle) BEE_REFLECT();
-BEE_GPU_HANDLE(ShaderHandle) BEE_REFLECT();
-BEE_GPU_HANDLE(PipelineStateHandle) BEE_REFLECT();
-BEE_GPU_HANDLE(FenceHandle) BEE_REFLECT();
-BEE_GPU_HANDLE(SamplerHandle) BEE_REFLECT();
-BEE_GPU_HANDLE(ResourceBindingHandle) BEE_REFLECT();
+BEE_GPU_HANDLE(TextureHandle, texture) BEE_REFLECT();
+BEE_GPU_HANDLE(TextureViewHandle, texture_view) BEE_REFLECT();
+BEE_GPU_HANDLE(BufferHandle, buffer) BEE_REFLECT();
+BEE_GPU_HANDLE(BufferViewHandle, buffer_view) BEE_REFLECT();
+BEE_GPU_HANDLE(RenderPassHandle, render_pass) BEE_REFLECT();
+BEE_GPU_HANDLE(ShaderHandle, shader) BEE_REFLECT();
+BEE_GPU_HANDLE(PipelineStateHandle, pipeline_state) BEE_REFLECT();
+BEE_GPU_HANDLE(FenceHandle, fence) BEE_REFLECT();
+BEE_GPU_HANDLE(SamplerHandle, sampler) BEE_REFLECT();
+BEE_GPU_HANDLE(ResourceBindingHandle, resource_binding) BEE_REFLECT();
 struct CommandBuffer;
 
 /*
@@ -371,7 +380,7 @@ enum class BEE_REFLECT(serializable) VertexFormat : u32
     unknown
 };
 
-inline BEE_TRANSLATION_TABLE(vertex_format_component_count, VertexFormat, u32, VertexFormat::unknown,
+inline BEE_TRANSLATION_TABLE_FUNC(vertex_format_component_count, VertexFormat, u32, VertexFormat::unknown,
     1,  // float1
     2,  // float2
     3,  // float3
@@ -407,7 +416,7 @@ inline BEE_TRANSLATION_TABLE(vertex_format_component_count, VertexFormat, u32, V
     0   // invalid
 )
 
-inline BEE_TRANSLATION_TABLE(vertex_format_size, VertexFormat, u32, VertexFormat::unknown,
+inline BEE_TRANSLATION_TABLE_FUNC(vertex_format_size, VertexFormat, u32, VertexFormat::unknown,
     sizeof(float) * 1,  // float1
     sizeof(float) * 2,  // float2
     sizeof(float) * 3,  // float3
@@ -443,7 +452,7 @@ inline BEE_TRANSLATION_TABLE(vertex_format_size, VertexFormat, u32, VertexFormat
     0                   // invalid
 )
 
-inline BEE_TRANSLATION_TABLE(vertex_format_string, VertexFormat, const char*, VertexFormat::unknown,
+inline BEE_TRANSLATION_TABLE_FUNC(vertex_format_string, VertexFormat, const char*, VertexFormat::unknown,
     "float1",   // float1
     "float2",   // float2
     "float3",   // float3
@@ -588,7 +597,7 @@ enum class PhysicalDeviceVendor
     unknown
 };
 
-inline BEE_TRANSLATION_TABLE(gpu_vendor_string, PhysicalDeviceVendor, const char*, PhysicalDeviceVendor::unknown,
+inline BEE_TRANSLATION_TABLE_FUNC(gpu_vendor_string, PhysicalDeviceVendor, const char*, PhysicalDeviceVendor::unknown,
     "AMD", // AMD
     "ImgTec", // ImgTec
     "NVIDIA", // NVIDIA
@@ -607,7 +616,7 @@ enum class PhysicalDeviceType
 };
 
 
-inline BEE_TRANSLATION_TABLE(gpu_type_string, PhysicalDeviceType, const char*, PhysicalDeviceType::unknown,
+inline BEE_TRANSLATION_TABLE_FUNC(gpu_type_string, PhysicalDeviceType, const char*, PhysicalDeviceType::unknown,
     "Other", // other
     "Integrated", // integrated
     "Discrete", // discrete

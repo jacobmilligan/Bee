@@ -9,10 +9,10 @@
 
 #include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/Memory/ChunkAllocator.hpp"
-
-#include "Bee/Gpu/ResourceTable.hpp"
+#include "Bee/Core/Containers/ResourcePool.hpp"
 
 #include "Bee/VulkanBackend/VulkanObjectCache.hpp"
+#include "Bee/Gpu/ResourceTable.hpp"
 
 #include <volk.h>
 
@@ -295,54 +295,60 @@ private:
  *
  ******************************************
  */
+struct VulkanPendingDelete
+{
+    GpuObjectType   type;
+    GpuObjectHandle handle;
+};
+
 struct VulkanThreadData
 {
     // Owned and allocated Vulkan objects
-    i32                         index { -1 };
-    ChunkAllocator              allocator;
-    VulkanStaging               staging;
-    u8*                         delete_list { nullptr };
+    u32                                     index { limits::max<u32>() };
+    VulkanStaging                           staging;
+    VulkanCommandPool                       command_pool[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
+    VulkanQueueSubmit                       queue_submissions[vk_max_queues];
+    VulkanDescriptorPoolCache               dynamic_descriptor_pools[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
+    VulkanDescriptorPoolCache               static_descriptor_pools;
+    VulkanResourceBinding*                  static_resource_binding_pending_deletes { nullptr };
 
-    VulkanCommandPool           command_pool[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
-    VulkanQueueSubmit           queue_submissions[vk_max_queues];
-    VulkanDescriptorPoolCache   dynamic_descriptor_pools[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
-    VulkanDescriptorPoolCache   static_descriptor_pools;
-    VulkanResourceBinding*      static_resource_binding_pending_deletes { nullptr };
+    GpuResourceTable<TextureHandle, VulkanTexture>                  textures;
+    GpuResourceTable<TextureViewHandle, VulkanTextureView>          texture_views;
+    GpuResourceTable<BufferHandle, VulkanBuffer>                    buffers;
+    GpuResourceTable<RenderPassHandle, VulkanRenderPass>            render_passes;
+    GpuResourceTable<ShaderHandle, VulkanShader>                    shaders;
+    GpuResourceTable<PipelineStateHandle, VulkanPipelineState>      pipeline_states;
+    GpuResourceTable<FenceHandle, VkFence>                          fences;
+    GpuResourceTable<ResourceBindingHandle, VulkanResourceBinding>  resource_bindings;
+    GpuResourceTable<SamplerHandle, VkSampler>                      samplers;
+//            GpuResourceTable<VulkanTexture> buffer_views { sizeof(VulkanTexturee) * 64 ;
 
-    union
+    VulkanThreadData() = default;
+
+    VulkanThreadData(const u32 thread_index)
+        : index(thread_index),
+          textures(thread_index, sizeof(VulkanTexture) * 64),
+          texture_views(thread_index, sizeof(VulkanTextureView) * 64),
+          buffers(thread_index, sizeof(VulkanBuffer) * 64),
+          render_passes(thread_index, sizeof(VulkanRenderPass) * 64),
+          shaders(thread_index, sizeof(VulkanShader) * 64),
+          pipeline_states(thread_index, sizeof(VulkanPipelineState) * 64),
+          fences(thread_index, sizeof(VkFence) * 64),
+          resource_bindings(thread_index, sizeof(VulkanResourceBinding) * 64),
+          samplers(thread_index, sizeof(VkSampler) * 64)
+    {}
+
+    void flush_deallocations()
     {
-        GpuResourceTable        resource_tables[9];
-
-        struct
-        {
-            GpuResourceTable            textures;
-            GpuResourceTable            texture_views;
-            GpuResourceTable            buffers;
-//            GpuResourceTable buffer_views;
-            GpuResourceTable            render_passes;
-            GpuResourceTable            shaders;
-            GpuResourceTable            pipeline_states;
-            GpuResourceTable            fences;
-            GpuResourceTable            resource_bindings;
-            GpuResourceTable            samplers;
-        };
-    };
-
-    template <typename T>
-    void add_pending_delete(T* ptr)
-    {
-        destruct(ptr);
-
-        reinterpret_cast<u8**>(ptr)[0] = nullptr;
-
-        if (delete_list == nullptr)
-        {
-            delete_list = reinterpret_cast<u8*>(ptr);
-        }
-        else
-        {
-            reinterpret_cast<u8**>(delete_list)[0] = reinterpret_cast<u8*>(ptr);
-        }
+        textures.flush_deallocations();
+        texture_views.flush_deallocations();
+        buffers.flush_deallocations();
+        render_passes.flush_deallocations();
+        shaders.flush_deallocations();
+        pipeline_states.flush_deallocations();
+        fences.flush_deallocations();
+        resource_bindings.flush_deallocations();
+        samplers.flush_deallocations();
     }
 };
 
@@ -357,6 +363,7 @@ struct VulkanThreadData
  *
  ******************************************
  */
+
 struct VulkanDevice
 {
     bool                            debug_markers_enabled { false };
@@ -383,6 +390,7 @@ struct VulkanDevice
     i32                             current_frame { 0 };
     u32                             present_queue { VulkanQueue::invalid_queue_index };
     FixedArray<VulkanThreadData>    thread_data;
+
     VulkanSwapchain                 swapchains[BEE_VK_MAX_SWAPCHAINS];
 
     // Cached objects
@@ -408,33 +416,25 @@ struct VulkanDevice
     template <typename HandleType>
     inline VulkanThreadData& get_thread(const HandleType object_handle)
     {
-        return thread_data[object_handle.thread()];
+        return thread_data[static_cast<i32>(object_handle.thread())];
     }
 
-#define BEE_GPU_OBJECT_ACCESSOR(T, table_name)                                          \
-    GpuObjectHandle table_name##_add(T ptr)                                             \
-    {                                                                                   \
-        return get_thread().table_name.add(ptr);                                        \
-    }                                                                                   \
-    T table_name##_get(const GpuObjectHandle obj_handle)                                \
-    {                                                                                   \
-        return static_cast<T>(get_thread(obj_handle).table_name.get(obj_handle));       \
-    }                                                                                   \
-    T table_name##_remove(const GpuObjectHandle obj_handle)                             \
-    {                                                                                   \
-        return static_cast<T>(get_thread(obj_handle).table_name.remove(obj_handle));    \
+#define BEE_GPU_OBJECT_ACCESSOR(HANDLE_TYPE, T, TABLE_NAME)    \
+    T& TABLE_NAME##_get(const HANDLE_TYPE obj_handle)          \
+    {                                                          \
+        return get_thread(obj_handle).TABLE_NAME[obj_handle];  \
     }
 
-    BEE_GPU_OBJECT_ACCESSOR(VulkanTexture*, textures)
-    BEE_GPU_OBJECT_ACCESSOR(VulkanTextureView*, texture_views)
-    BEE_GPU_OBJECT_ACCESSOR(VulkanBuffer*, buffers)
+    BEE_GPU_OBJECT_ACCESSOR(TextureHandle, VulkanTexture, textures)
+    BEE_GPU_OBJECT_ACCESSOR(TextureViewHandle, VulkanTextureView, texture_views)
+    BEE_GPU_OBJECT_ACCESSOR(BufferHandle, VulkanBuffer, buffers)
+    BEE_GPU_OBJECT_ACCESSOR(RenderPassHandle, VulkanRenderPass, render_passes)
+    BEE_GPU_OBJECT_ACCESSOR(ShaderHandle, VulkanShader, shaders)
+    BEE_GPU_OBJECT_ACCESSOR(PipelineStateHandle, VulkanPipelineState, pipeline_states)
+    BEE_GPU_OBJECT_ACCESSOR(FenceHandle, VkFence, fences)
+    BEE_GPU_OBJECT_ACCESSOR(ResourceBindingHandle, VulkanResourceBinding, resource_bindings)
+    BEE_GPU_OBJECT_ACCESSOR(SamplerHandle, VkSampler, samplers)
 //    BEE_GPU_OBJECT_ACCESSOR(VulkanBuffer*, buffer_views)
-    BEE_GPU_OBJECT_ACCESSOR(VulkanRenderPass*, render_passes)
-    BEE_GPU_OBJECT_ACCESSOR(VulkanShader*, shaders)
-    BEE_GPU_OBJECT_ACCESSOR(VulkanPipelineState*, pipeline_states)
-    BEE_GPU_OBJECT_ACCESSOR(VkFence, fences)
-    BEE_GPU_OBJECT_ACCESSOR(VulkanResourceBinding*, resource_bindings)
-    BEE_GPU_OBJECT_ACCESSOR(VkSampler, samplers)
 };
 
 /*
@@ -514,7 +514,7 @@ BEE_FORCE_INLINE i32 queue_type_index(const QueueType type)
     return math::log2i(static_cast<u32>(type));
 }
 
-bool create_texture_view_internal(VulkanDevice* device, const TextureViewCreateInfo& desc, VulkanTextureView* dst);
+void create_texture_view_internal(VulkanDevice* device, const TextureViewCreateInfo& desc, VulkanTextureView* dst);
 
 /*
  ******************************************

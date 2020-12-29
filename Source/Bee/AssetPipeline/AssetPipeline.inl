@@ -9,6 +9,7 @@
 
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/Memory/LinearAllocator.hpp"
+#include "Bee/AssetCache/AssetCache.hpp"
 
 #include <lmdb.h>
 
@@ -63,6 +64,8 @@ struct AssetPipeline
     DynamicArray<FileTypeInfo>          file_types;
     DynamicArray<u32>                   importer_hashes;
     DynamicArray<AssetImporterInfo>     importers;
+    AssetLocator                        runtime_locator;
+    AssetCache*                         runtime_cache { nullptr };
 };
 
 class TempAlloc

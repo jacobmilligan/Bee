@@ -26,7 +26,7 @@ void set_native_thread_name(HANDLE native_thread, const StringView& name)
     }
 }
 
-BEE_TRANSLATION_TABLE(translate_thread_priority, ThreadPriority, int, ThreadPriority::unknown,
+BEE_TRANSLATION_TABLE_FUNC(translate_thread_priority, ThreadPriority, int, ThreadPriority::unknown,
     THREAD_PRIORITY_IDLE, // idle,
     THREAD_PRIORITY_LOWEST, // lowest,
     THREAD_PRIORITY_BELOW_NORMAL, // below_normal,

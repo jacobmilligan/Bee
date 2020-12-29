@@ -23,8 +23,12 @@ struct BEE_REFLECT(serializable, version = 1) ShaderPipelineStage
 {
     String                          entry;
     ShaderStageFlags                flags;
+
     BEE_REFLECT(bytes)
     FixedArray<u8>                  code;
+
+    BEE_REFLECT(nonserialized)
+    ShaderHandle                    shader_resource;
 
     StaticArray<ResourceBindingUpdateFrequency, BEE_GPU_MAX_RESOURCE_LAYOUTS> update_frequencies;
 };
@@ -36,6 +40,12 @@ struct BEE_REFLECT(serializable, version = 1, use_builder) ShaderPipeline
     RenderPassCreateInfo            render_pass_info;
     FixedArray<SubPassDescriptor>   subpasses;
     FixedArray<ShaderPipelineStage> stages;
+
+    BEE_REFLECT(nonserialized)
+    RenderPassHandle                render_pass_resource;
+
+    BEE_REFLECT(nonserialized)
+    PipelineStateHandle             pipeline_resource;
 };
 
 

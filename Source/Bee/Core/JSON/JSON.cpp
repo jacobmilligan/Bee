@@ -17,7 +17,7 @@ namespace bee {
 namespace json {
 
 
-BEE_TRANSLATION_TABLE(get_type_name, ValueType, const char*, ValueType::unknown,
+BEE_TRANSLATION_TABLE_FUNC(get_type_name, ValueType, const char*, ValueType::unknown,
     "object",
     "array",
     "string",

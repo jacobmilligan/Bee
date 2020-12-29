@@ -21,6 +21,12 @@ RasterState DefaultRasterState
     cull_mode: back
 }
 
+BlendState DefaultBlendState
+{
+    blend_enabled: false
+    color_write_mask: all
+}
+
 Shader TriangleShader
 {
     vertex: vert
@@ -62,4 +68,5 @@ PipelineState DefaultPipelineState
     raster_state: DefaultRasterState
     vertex_stage: TriangleShader
     fragment_stage: TriangleShader
+    color_blend_states: [ DefaultBlendState ]
 }

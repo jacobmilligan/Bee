@@ -100,9 +100,9 @@ void begin_render_pass(
     const ClearValue*           clear_values
 )
 {
-    auto* pass = cmd_buf->device->render_passes_get(pass_handle);
+    auto& pass = cmd_buf->device->render_passes_get(pass_handle);
     auto begin_info = VkRenderPassBeginInfo { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr };
-    begin_info.renderPass = pass->handle;
+    begin_info.renderPass = pass.handle;
     begin_info.renderArea = vkrect2d_cast(render_area);
     begin_info.clearValueCount = clear_value_count;
 
@@ -111,16 +111,14 @@ void begin_render_pass(
     fb_key.height = render_area.height;
     fb_key.layers = 1;
     fb_key.attachment_count = attachment_count;
-    fb_key.compatible_render_pass = pass->handle;
+    fb_key.compatible_render_pass = pass.handle;
 
     for (u32 i = 0; i < attachment_count; ++i)
     {
-        auto& view_thread = cmd_buf->device->get_thread(attachments[i]);
-        auto* view = static_cast<VulkanTextureView*>(view_thread.texture_views.get(attachments[i]));
-
-        fb_key.attachments[i] = view->handle;
-        fb_key.format_keys[i].format = view->format;
-        fb_key.format_keys[i].sample_count = view->samples;
+        auto& view = cmd_buf->device->texture_views_get(attachments[i]);
+        fb_key.attachments[i] = view.handle;
+        fb_key.format_keys[i].format = view.format;
+        fb_key.format_keys[i].sample_count = view.samples;
     }
 
     begin_info.framebuffer = cmd_buf->device->framebuffer_cache.get_or_create(fb_key);
@@ -133,12 +131,11 @@ void begin_render_pass(
 
     for (u32 att = 0; att < attachment_count; ++att)
     {
-        auto& view_thread = cmd_buf->device->get_thread(attachments[att]);
-        auto* view = static_cast<VulkanTextureView*>(view_thread.texture_views.get(attachments[att]));
-        if (view->swapchain >= 0)
+        auto& view = cmd_buf->device->texture_views_get(attachments[att]);
+        if (view.swapchain >= 0)
         {
             BEE_ASSERT_F(cmd_buf->target_swapchain < 0, "A render pass must contain only one swapchain texture attachment");
-            cmd_buf->target_swapchain = view->swapchain;
+            cmd_buf->target_swapchain = view.swapchain;
         }
     }
 
@@ -155,9 +152,8 @@ void end_render_pass(CommandBuffer* cmd_buf)
 
 void bind_pipeline_state(CommandBuffer* cmd_buf, const PipelineStateHandle& pipeline_handle)
 {
-    auto& pipeline_thread = cmd_buf->device->get_thread(pipeline_handle);
-    auto* pipeline = static_cast<VulkanPipelineState*>(pipeline_thread.pipeline_states.get(pipeline_handle));
-    vkCmdBindPipeline(cmd_buf->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->handle);
+    auto& pipeline = cmd_buf->device->pipeline_states_get(pipeline_handle);
+    vkCmdBindPipeline(cmd_buf->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
 }
 
 void bind_vertex_buffers(
@@ -173,7 +169,7 @@ void bind_vertex_buffers(
 
     for (u32 b = 0; b < count; ++b)
     {
-        vk_buffers[b] = device->buffers_get(buffers[b])->handle;
+        vk_buffers[b] = device->buffers_get(buffers[b]).handle;
     }
 
     vkCmdBindVertexBuffers(cmd_buf->handle, first_binding, count, vk_buffers, offsets);
@@ -186,8 +182,8 @@ void bind_vertex_buffer(CommandBuffer* cmd_buf, const BufferHandle& buffer_handl
 
 void bind_index_buffer(CommandBuffer* cmd_buf, const BufferHandle& buffer_handle, const u64 offset, const IndexFormat index_format)
 {
-    auto* buffer = cmd_buf->device->buffers_get(buffer_handle);
-    vkCmdBindIndexBuffer(cmd_buf->handle, buffer->handle, offset, convert_index_type(index_format));
+    auto& buffer = cmd_buf->device->buffers_get(buffer_handle);
+    vkCmdBindIndexBuffer(cmd_buf->handle, buffer.handle, offset, convert_index_type(index_format));
 }
 
 void copy_buffer(
@@ -199,15 +195,15 @@ void copy_buffer(
     const i32           size
 )
 {
-    auto* src = cmd_buf->device->buffers_get(src_handle);
-    auto* dst = cmd_buf->device->buffers_get(dst_handle);
+    auto& src = cmd_buf->device->buffers_get(src_handle);
+    auto& dst = cmd_buf->device->buffers_get(dst_handle);
 
     VkBufferCopy copy{};
     copy.srcOffset = src_offset;
     copy.dstOffset = dst_offset;
     copy.size = size;
 
-    vkCmdCopyBuffer(cmd_buf->handle, src->handle, dst->handle, 1, &copy);
+    vkCmdCopyBuffer(cmd_buf->handle, src.handle, dst.handle, 1, &copy);
 }
 
 void draw(
@@ -284,7 +280,7 @@ void transition_resources(CommandBuffer* cmd_buf, const u32 count, const GpuTran
                 image_barriers.emplace_back();
 
                 auto& barrier = image_barriers.back();
-                auto* texture = cmd_buf->device->textures_get(transition.barrier.texture);
+                auto& texture = cmd_buf->device->textures_get(transition.barrier.texture);
 
                 barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
                 barrier.pNext = nullptr;
@@ -294,12 +290,12 @@ void transition_resources(CommandBuffer* cmd_buf, const u32 count, const GpuTran
                 barrier.newLayout = convert_image_layout(transition.new_state);
                 barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                barrier.image = texture->handle;
-                barrier.subresourceRange.aspectMask = select_access_mask_from_format(texture->format);
+                barrier.image = texture.handle;
+                barrier.subresourceRange.aspectMask = select_access_mask_from_format(texture.format);
                 barrier.subresourceRange.baseMipLevel = 0;
-                barrier.subresourceRange.levelCount = texture->levels;
+                barrier.subresourceRange.levelCount = texture.levels;
                 barrier.subresourceRange.baseArrayLayer = 0;
-                barrier.subresourceRange.layerCount = texture->layers;
+                barrier.subresourceRange.layerCount = texture.layers;
 
                 src_access |= barrier.srcAccessMask;
                 dst_access |= barrier.dstAccessMask;
@@ -310,7 +306,7 @@ void transition_resources(CommandBuffer* cmd_buf, const u32 count, const GpuTran
                 buffer_barriers.emplace_back();
 
                 auto& barrier = buffer_barriers.back();
-                auto* buffer = cmd_buf->device->buffers_get(transition.barrier.buffer.handle);
+                auto& buffer = cmd_buf->device->buffers_get(transition.barrier.buffer.handle);
 
                 barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
                 barrier.pNext = nullptr;
@@ -318,13 +314,13 @@ void transition_resources(CommandBuffer* cmd_buf, const u32 count, const GpuTran
                 barrier.dstAccessMask = convert_access_mask(transition.new_state);
                 barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                barrier.buffer = buffer->handle;
+                barrier.buffer = buffer.handle;
                 barrier.offset = transition.barrier.buffer.offset;
                 barrier.size = transition.barrier.buffer.size;
 
                 if (barrier.size == 0)
                 {
-                    barrier.size = buffer->size - barrier.offset;
+                    barrier.size = buffer.size - barrier.offset;
                 }
 
                 src_access |= barrier.srcAccessMask;
@@ -383,14 +379,14 @@ void bind_resources(CommandBuffer* cmd_buf, const u32 layout_index, const Resour
         return;
     }
 
-    auto* binding = cmd_buf->device->resource_bindings_get(resource_binding);
+    auto& binding = cmd_buf->device->resource_bindings_get(resource_binding);
 
-    if (binding->set == VK_NULL_HANDLE && binding->update_frequency != ResourceBindingUpdateFrequency::persistent)
+    if (binding.set == VK_NULL_HANDLE && binding.update_frequency != ResourceBindingUpdateFrequency::persistent)
     {
-        allocate_dynamic_binding(cmd_buf->device, binding);
+        allocate_dynamic_binding(cmd_buf->device, &binding);
     }
 
-    cmd_buf->descriptors[layout_index] = binding->set;
+    cmd_buf->descriptors[layout_index] = binding.set;
 }
 
 
