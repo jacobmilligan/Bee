@@ -215,14 +215,7 @@ static bool startup()
 
     g_app->shader_root = bee::fs::get_root_dirs().install_root.join("Sandbox/Shaders");
 
-    // Setup the asset database
-    const auto assetdb_location = bee::fs::get_root_dirs().data_root.join("Sandbox/AssetDB", temp_allocator());
-    const auto assetdb_dir = assetdb_location.parent_path(temp_allocator());
-    if (!assetdb_dir.exists())
-    {
-        fs::mkdir(assetdb_dir, true);
-    }
-
+    // Setup the asset pipeline
     const auto pipeline_path = bee::fs::get_root_dirs().install_root.join("Sandbox/AssetPipeline.json", temp_allocator());
     g_app->pipeline = g_asset_pipeline->load_pipeline(pipeline_path.view());
     if (g_app->pipeline == nullptr)

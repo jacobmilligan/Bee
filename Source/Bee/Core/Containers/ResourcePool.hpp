@@ -130,7 +130,6 @@ public:
             }
 
             // we're at the end
-            current_index_ = chunk_capacity * chunk_count;
             return *this;
         }
     private:
@@ -272,7 +271,7 @@ public:
 
     inline iterator end()
     {
-        return iterator(this, chunk_capacity_, chunk_count_);
+        return iterator(this, 0, chunk_count_);
     }
 
     inline iterator get_iterator(const HandleType& handle)
