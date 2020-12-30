@@ -9,30 +9,19 @@
 
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
-#include "Bee/Core/Containers/ResourcePool.hpp"
+#include "Bee/Core/Serialization/StreamSerializer.hpp"
 
 
 namespace bee {
 
 
-struct ShaderCache
+struct GlobalData
 {
-    RecursiveMutex                                              mutex;
-    DynamicHashMap<u32, ShaderPipelineHandle>                   lookup;
-    ResourcePool<ShaderPipelineHandle, ShaderPipeline>          pool;
-
-    ShaderCache()
-        : pool(sizeof(ShaderPipeline) * 64)
-    {}
+    AssetLoader loader;
 };
 
-struct RuntimeShaderData
-{
-    const GpuBackend*   gpu { nullptr };
-    DeviceHandle        device;
-};
-
-static RuntimeShaderData* g_runtime = nullptr;
+static GlobalData*          g_global = nullptr;
+static AssetCacheModule*    g_asset_cache = nullptr;
 
 /*
  **********************************
@@ -41,7 +30,16 @@ static RuntimeShaderData* g_runtime = nullptr;
  *
  **********************************
  */
-void unload_shader(ShaderCache* cache, ShaderPipeline* shader);
+void unload_shader(ShaderCache* cache, ShaderPipeline* shader)
+{
+    for (const auto& stage : shader->stages)
+    {
+        if (stage.shader_resource.is_valid())
+        {
+            cache->gpu->destroy_shader(cache->device, stage.shader_resource);
+        }
+    }
+}
 
 ShaderCache* create()
 {
@@ -71,8 +69,7 @@ void load_cache(ShaderCache* cache, Serializer* serializer)
 
     for (auto shader : cache->pool)
     {
-        const u32 hash = get_shader_name_hash(shader.resource.name.view());
-        cache->lookup.insert(hash, shader.handle);
+        cache->lookup.insert(shader.resource.name_hash, shader.handle);
     }
 }
 
@@ -104,17 +101,11 @@ ShaderPipelineHandle add_shader(ShaderCache* cache, const ShaderPipelineDescript
     auto& pipeline = cache->pool[handle];
 
     // Pipeline source path, name, and info
-    pipeline.name.assign(desc.name);
-    pipeline.pipeline_info = desc.create_info;
-
-    // Render pass and subpasses
-    pipeline.subpasses.resize(desc.render_pass_info.subpass_count);
-    pipeline.subpasses.copy(0, desc.render_pass_info.subpasses, desc.render_pass_info.subpasses + desc.render_pass_info.subpass_count);
-    pipeline.render_pass_info = desc.render_pass_info;
-    pipeline.render_pass_info.subpasses = pipeline.subpasses.data();
+    pipeline.name_hash = get_shader_name_hash(desc.name);
+    pipeline.pipeline_desc = desc.pipeline;
 
     // Shader stages
-    pipeline.stages.resize(desc.shader_stage_count);
+    pipeline.stages.size = desc.shader_stage_count;
     for (int i = 0; i < desc.shader_stage_count; ++i)
     {
         auto& stage = pipeline.stages[i];
@@ -139,99 +130,32 @@ void remove_shader(ShaderCache* cache, const ShaderPipelineHandle handle)
     }
 
     auto& shader = cache->pool[handle];
-    cache->lookup.erase(get_shader_name_hash(shader.name.view()));
+    cache->lookup.erase(shader.name_hash);
     cache->pool.deallocate(handle);
 }
 
-void init(const GpuBackend* gpu, const DeviceHandle device)
+void register_asset_loader(ShaderCache* shader_cache, AssetCache* asset_cache, const GpuBackend* gpu, const DeviceHandle device)
 {
-    BEE_ASSERT(g_runtime->gpu == nullptr);
-    BEE_ASSERT(!g_runtime->device.is_valid());
+    BEE_ASSERT(shader_cache->gpu == nullptr);
+    BEE_ASSERT(!shader_cache->device.is_valid());
 
-    g_runtime->gpu = gpu;
-    g_runtime->device = device;
+    if (g_asset_cache == nullptr)
+    {
+        g_asset_cache = static_cast<AssetCacheModule*>(get_module(BEE_ASSET_CACHE_MODULE_NAME));
+    }
+
+    shader_cache->gpu = gpu;
+    shader_cache->device = device;
+    g_asset_cache->register_loader(asset_cache, &g_global->loader, shader_cache);
 }
 
-ShaderPipeline* load_shader(ShaderCache* cache, const ShaderPipelineHandle handle)
+void unregister_asset_loader(ShaderCache* shader_cache, AssetCache* asset_cache)
 {
-    auto& shader = cache->pool[handle];
-
-    ShaderCreateInfo info{};
-    for (int i = 0; i < shader.stages.size(); ++i)
-    {
-        auto& stage = shader.stages[i];
-
-        if (stage.shader_resource.is_valid())
-        {
-            g_runtime->gpu->destroy_shader(g_runtime->device, stage.shader_resource);
-        }
-
-        info.code = stage.code.data();
-        info.code_size = stage.code.size();
-        info.entry = stage.entry.data();
-        stage.shader_resource = g_runtime->gpu->create_shader(g_runtime->device, info);
-        BEE_ASSERT(stage.shader_resource.is_valid());
-
-        switch (static_cast<ShaderStageIndex>(i))
-        {
-            case ShaderStageIndex::vertex:
-            {
-                shader.pipeline_info.vertex_stage = stage.shader_resource;
-                break;
-            }
-            case ShaderStageIndex::fragment:
-            {
-                shader.pipeline_info.fragment_stage = stage.shader_resource;
-                break;
-            }
-            default:
-            {
-                BEE_UNREACHABLE("Unsupported shader stage");
-            }
-        }
-    }
-
-    if (shader.pipeline_resource.is_valid())
-    {
-        g_runtime->gpu->destroy_pipeline_state(g_runtime->device, shader.pipeline_resource);
-    }
-    if (shader.render_pass_resource.is_valid())
-    {
-        g_runtime->gpu->destroy_render_pass(g_runtime->device, shader.render_pass_resource);
-    }
-
-    shader.render_pass_resource = g_runtime->gpu->create_render_pass(g_runtime->device, shader.render_pass_info);
-
-    shader.pipeline_info.compatible_render_pass = shader.render_pass_resource;
-    shader.pipeline_resource = g_runtime->gpu->create_pipeline_state(g_runtime->device, shader.pipeline_info);
-
-    return &shader;
+    BEE_ASSERT(g_asset_cache != nullptr);
+    g_asset_cache->unregister_loader(asset_cache, &g_global->loader);
 }
 
-void unload_shader(ShaderCache* cache, ShaderPipeline* shader)
-{
-    for (int i = 0; i < shader->stages.size(); ++i)
-    {
-        auto& stage = shader->stages[i];
-
-        if (stage.shader_resource.is_valid())
-        {
-            g_runtime->gpu->destroy_shader(g_runtime->device, stage.shader_resource);
-        }
-    }
-
-    if (shader->render_pass_resource.is_valid())
-    {
-        g_runtime->gpu->destroy_render_pass(g_runtime->device, shader->render_pass_resource);
-    }
-    if (shader->pipeline_resource.is_valid())
-    {
-        g_runtime->gpu->destroy_pipeline_state(g_runtime->device, shader->pipeline_resource);
-    }
-}
-
-
-ShaderPipelineHandle get_shader(ShaderCache* cache, const u32 name_hash)
+ShaderPipelineHandle lookup_shader(ShaderCache* cache, const u32 name_hash)
 {
     scoped_recursive_lock_t lock(cache->mutex);
     auto* handle = cache->lookup.find(name_hash);
@@ -241,7 +165,110 @@ ShaderPipelineHandle get_shader(ShaderCache* cache, const u32 name_hash)
 u32 get_shader_hash(ShaderCache* cache, const ShaderPipelineHandle handle)
 {
     scoped_recursive_lock_t lock(cache->mutex);
-    return get_shader_name_hash(cache->pool[handle].name.view());
+    return cache->pool[handle].name_hash;
+}
+
+/*
+ ********************************************
+ *
+ * Runtime Asset loader
+ *
+ ********************************************
+ */
+
+static i32 get_shader_loader_types(Type* dst)
+{
+    if (dst != nullptr)
+    {
+        dst[0] = get_type<ShaderPipeline>();
+    }
+    return 1;
+}
+
+static bool load_shader_pipeline(ShaderCache* cache, const AssetStreamInfo& stream_info)
+{
+    const auto hash = get_hash(stream_info.hash);
+    auto handle = lookup_shader(cache, hash);
+    if (!handle.is_valid())
+    {
+        handle = cache->pool.allocate();
+        cache->lookup.insert(hash, handle);
+    }
+    auto& shader = cache->pool[handle];
+
+    for (const auto& stage : shader.stages)
+    {
+        if (stage.shader_resource.is_valid())
+        {
+            cache->gpu->destroy_shader(cache->device, stage.shader_resource);
+        }
+    }
+
+    io::FileStream stream(stream_info.path, "rb");
+    StreamSerializer serializer(&stream);
+    serialize(SerializerMode::reading, &serializer, &shader, temp_allocator());
+
+    ShaderCreateInfo info{};
+    for (int stage_index = 0; stage_index < shader.stages.size; ++stage_index)
+    {
+        auto& stage = shader.stages[stage_index];
+
+        info.code = stage.code.data();
+        info.code_size = stage.code.size();
+        info.entry = stage.entry.data();
+        stage.shader_resource = cache->gpu->create_shader(cache->device, info);
+        BEE_ASSERT(stage.shader_resource.is_valid());
+
+        switch (static_cast<ShaderStageIndex>(stage_index))
+        {
+            case ShaderStageIndex::vertex:
+            {
+                shader.pipeline_desc.vertex_stage = stage.shader_resource;
+                break;
+            }
+            case ShaderStageIndex::fragment:
+            {
+                shader.pipeline_desc.fragment_stage = stage.shader_resource;
+                break;
+            }
+            default:
+            {
+                BEE_UNREACHABLE("Unsupported shader stage");
+            }
+        }
+    }
+
+    return true;
+}
+
+Result<void*, AssetCacheError> load_shader(const AssetLocation* location, void* user_data)
+{
+    auto* cache = static_cast<ShaderCache*>(user_data);
+    auto* asset = BEE_NEW(system_allocator(), ShaderAsset);
+
+    asset->pipelines.resize(location->streams.size);
+
+    for (int i = 0; i < location->streams.size; ++i)
+    {
+        load_shader_pipeline(cache, location->streams[i]);
+    }
+
+    return asset;
+}
+
+bool unload_shader(const Type type, void* data, void* user_data)
+{
+    auto* asset = static_cast<ShaderAsset*>(data);
+    auto* cache = static_cast<ShaderCache*>(user_data);
+
+    for (int i = 0; i < asset->pipelines.size(); ++i)
+    {
+        auto& pipeline = cache->pool[asset->pipelines[i]];
+        unload_shader(cache, &pipeline);
+    }
+
+    BEE_DELETE(system_allocator(), asset);
+    return true;
 }
 
 /*
@@ -256,9 +283,9 @@ RenderPassHandle get_render_pass(const ShaderPipelineHandle shader)
     return RenderPassHandle{};
 }
 
-PipelineStateHandle get_pipeline_state(const ShaderPipelineHandle shader)
+PipelineStateDescriptor get_pipeline_state(const ShaderPipelineHandle shader)
 {
-    return PipelineStateHandle{};
+    return PipelineStateDescriptor{};
 }
 
 ShaderHandle get_stage(const ShaderPipelineHandle, const ShaderStageIndex stage)
@@ -283,18 +310,15 @@ void unload(const ShaderPipelineHandle handle)
  *
  ********************
  */
-static ShaderModule     g_shader_module{};
-ShaderCacheModule       g_shader_cache{}; // extern elsewhere in module
+ShaderCacheModule       g_shader_cache{}; // extern
 
 void load_shader_modules(bee::PluginLoader* loader, const bee::PluginState state)
 {
-    g_runtime = loader->get_static<RuntimeShaderData>("Bee.RuntimeShaderData");
+    g_global = loader->get_static<GlobalData>("Bee.RuntimeShaderData");
 
-    // Shader module
-    g_shader_module.init = bee::init;
-    g_shader_module.load = bee::load_shader;
-    g_shader_module.unload = bee::unload_shader;
-    loader->set_module(BEE_SHADER_MODULE_NAME, &g_shader_module, state);
+    g_global->loader.get_types = get_shader_loader_types;
+    g_global->loader.load = load_shader;
+    g_global->loader.unload = unload_shader;
 
     // ShaderCache module
     g_shader_cache.create = create;
@@ -303,9 +327,11 @@ void load_shader_modules(bee::PluginLoader* loader, const bee::PluginState state
     g_shader_cache.save = save_cache;
     g_shader_cache.add_shader = add_shader;
     g_shader_cache.remove_shader = remove_shader;
-    g_shader_cache.get_shader = get_shader;
+    g_shader_cache.lookup_shader = lookup_shader;
     g_shader_cache.get_shader_name_hash = get_shader_name_hash;
     g_shader_cache.get_shader_hash = get_shader_hash;
+    g_shader_cache.register_asset_loader = register_asset_loader;
+    g_shader_cache.unregister_asset_loader = unregister_asset_loader;
 
     loader->set_module(BEE_SHADER_CACHE_MODULE_NAME, &g_shader_cache, state);
 }

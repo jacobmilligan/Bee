@@ -28,16 +28,12 @@
 [submodule "ThirdParty/relacy"]
 	path = ThirdParty/relacy
 	url = https://github.com/dvyukov/relacy.git
-[submodule "ThirdParty/imgui"]
-	path = ThirdParty/imgui
-	url = https://github.com/ocornut/imgui.git
-	branch = docking
 [submodule "ThirdParty/SPIRV-Tools"]
 	path = ThirdParty/SPIRV-Tools
 	url = https://github.com/KhronosGroup/SPIRV-Tools.git
 [submodule "ThirdParty/SPIRV-Headers"]
 	path = ThirdParty/SPIRV-Headers
 	url = https://github.com/KhronosGroup/SPIRV-Headers.git
-[submodule "ThirdParty/cimgui"]
-	path = ThirdParty/cimgui
-	url = https://github.com/cimgui/cimgui
+[submodule "ThirdParty/imgui"]
+	path = ThirdParty/imgui
+	url = https://github.com/ocornut/imgui.git

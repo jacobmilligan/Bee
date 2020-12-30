@@ -58,6 +58,12 @@ struct BEE_REFLECT(serializable) StaticArray
     }
 };
 
+template <typename T, i32 Capacity, typename SizeType>
+bool bitwise_equal(const StaticArray<T, Capacity, SizeType>& lhs, const StaticArray<T, Capacity, SizeType>& rhs)
+{
+    return lhs.size == rhs.size && memcmp(lhs.data, rhs.data, sizeof(T) * lhs.size) == 0;
+}
+
 
 } // namespace bee
 

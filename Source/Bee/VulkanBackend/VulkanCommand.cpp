@@ -100,7 +100,14 @@ void begin_render_pass(
     const ClearValue*           clear_values
 )
 {
+    if (BEE_FAIL_F(cmd_buf->current_render_pass == nullptr, "Cannot begin a new render pass while inside another render pass"))
+    {
+        return;
+    }
+
     auto& pass = cmd_buf->device->render_passes_get(pass_handle);
+    cmd_buf->current_render_pass = &pass;
+
     auto begin_info = VkRenderPassBeginInfo { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr };
     begin_info.renderPass = pass.handle;
     begin_info.renderArea = vkrect2d_cast(render_area);
@@ -147,13 +154,8 @@ void begin_render_pass(
 
 void end_render_pass(CommandBuffer* cmd_buf)
 {
+    cmd_buf->current_render_pass = nullptr;
     vkCmdEndRenderPass(cmd_buf->handle);
-}
-
-void bind_pipeline_state(CommandBuffer* cmd_buf, const PipelineStateHandle& pipeline_handle)
-{
-    auto& pipeline = cmd_buf->device->pipeline_states_get(pipeline_handle);
-    vkCmdBindPipeline(cmd_buf->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
 }
 
 void bind_vertex_buffers(
@@ -207,25 +209,41 @@ void copy_buffer(
 }
 
 void draw(
-    CommandBuffer* cmd_buf,
-    const u32 vertex_count,
-    const u32 instance_count,
-    const u32 first_vertex,
-    const u32 first_instance
+    CommandBuffer*                  cmd_buf,
+    const PipelineStateDescriptor&  state,
+    const u32                       vertex_count,
+    const u32                       instance_count,
+    const u32                       first_vertex,
+    const u32                       first_instance
 )
 {
+    VulkanPipelineKey key{};
+    key.desc = &state;
+    key.render_pass_hash = cmd_buf->current_render_pass->hash;
+    key.render_pass = cmd_buf->current_render_pass->handle;
+    auto& pipeline = cmd_buf->device->pipeline_cache.get_or_create(key);
+
+    vkCmdBindPipeline(cmd_buf->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     vkCmdDraw(cmd_buf->handle, vertex_count, instance_count, first_vertex, first_instance);
 }
 
 void draw_indexed(
-    CommandBuffer*  cmd_buf,
-    const u32       index_count,
-    const u32       instance_count,
-    const u32       vertex_offset,
-    const u32       first_index,
-    const u32       first_instance
+    CommandBuffer*                  cmd_buf,
+    const PipelineStateDescriptor&  state,
+    const u32                       index_count,
+    const u32                       instance_count,
+    const u32                       vertex_offset,
+    const u32                       first_index,
+    const u32                       first_instance
 )
 {
+    VulkanPipelineKey key{};
+    key.desc = &state;
+    key.render_pass_hash = cmd_buf->current_render_pass->hash;
+    key.render_pass = cmd_buf->current_render_pass->handle;
+    auto& pipeline = cmd_buf->device->pipeline_cache.get_or_create(key);
+
+    vkCmdBindPipeline(cmd_buf->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     vkCmdDrawIndexed(
         cmd_buf->handle,
         index_count,
@@ -403,7 +421,6 @@ void bee_load_command_backend(bee::GpuCommandBackend* api)
     // Render commands
     api->begin_render_pass = bee::begin_render_pass;
     api->end_render_pass = bee::end_render_pass;
-    api->bind_pipeline_state = bee::bind_pipeline_state;
     api->bind_vertex_buffer = bee::bind_vertex_buffer;
     api->bind_vertex_buffers = bee::bind_vertex_buffers;
     api->bind_index_buffer = bee::bind_index_buffer;

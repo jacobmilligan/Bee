@@ -35,32 +35,6 @@ struct VulkanPipelineLayoutKey
     const PushConstantRange*        push_constant_ranges { nullptr };
 };
 
-inline bool operator==(const VulkanPipelineLayoutKey& lhs, const VulkanPipelineLayoutKey& rhs)
-{
-    if (lhs.resource_layout_count != rhs.resource_layout_count || lhs.push_constant_range_count != rhs.push_constant_range_count)
-    {
-        return false;
-    }
-
-    for (u32 i = 0; i < lhs.resource_layout_count; ++i)
-    {
-        if (lhs.resource_layouts[i] != rhs.resource_layouts[i])
-        {
-            return false;
-        }
-    }
-
-    for (u32 i = 0; i < lhs.push_constant_range_count; ++i)
-    {
-        if (lhs.push_constant_ranges[i] != rhs.push_constant_ranges[i])
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 template <>
 struct Hash<VulkanPipelineLayoutKey>
 {
@@ -105,37 +79,6 @@ struct VulkanFramebufferKey
     VkRenderPass    compatible_render_pass { VK_NULL_HANDLE };
 };
 
-inline bool operator==(const VulkanFramebufferKey& lhs, const VulkanFramebufferKey& rhs)
-{
-    if (lhs.width != rhs.width
-        || lhs.height != rhs.height
-        || lhs.layers  != rhs.layers
-        || lhs.attachment_count != rhs.attachment_count)
-    {
-        return false;
-    }
-
-    for (u32 i = 0; i < lhs.attachment_count; ++i)
-    {
-        if (lhs.attachments[i] != rhs.attachments[i])
-        {
-            return false;
-        }
-
-        if (lhs.format_keys[i].format != rhs.format_keys[i].format)
-        {
-            return false;
-        }
-
-        if (lhs.format_keys[i].sample_count != rhs.format_keys[i].sample_count)
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 template <>
 struct Hash<VulkanFramebufferKey>
 {
@@ -151,7 +94,32 @@ struct Hash<VulkanFramebufferKey>
         return hash.end();
     }
 };
+/*
+ **********************
+ *
+ * Pipeline cache
+ *
+ **********************
+ */
+struct VulkanPipelineKey
+{
+    const PipelineStateDescriptor*  desc;
+    u32                             render_pass_hash { 0 };
+    u32                             subpass_index { 0 };
+    VkRenderPass                    render_pass { VK_NULL_HANDLE };
+};
 
+template <>
+struct Hash<VulkanPipelineKey>
+{
+    u32 inline operator()(const VulkanPipelineKey& key) const
+    {
+        HashState hash;
+        hash.add(*key.desc);
+        hash.add(key.render_pass_hash);
+        return hash.end();
+    }
+};
 
 /*
  **********************
@@ -172,7 +140,7 @@ public:
         device_ = device;
         on_create_ = on_create;
         on_destroy_ = on_destroy;
-        pending_creates_.resize(job_system_worker_count());
+        thread_local_pending_creates_.resize(job_system_worker_count());
     }
 
     void destroy()
@@ -182,20 +150,24 @@ public:
 
     ValueType& get_or_create(const KeyType& key)
     {
-        auto* value = shared_cache_.find(key);
+        // Use a generic u32 hash as the key instead of the actual key - the actual keys often have pointers
+        // to descriptor structs etc. that might change per frame
+        const u32 hash = get_hash(key);
+        auto* value = shared_cache_.find(hash);
         if (value != nullptr)
         {
             return value->value;
         }
 
-        auto& thread = pending_creates_[job_worker_id()];
-        const i32 pending_index = find_index(thread.keys, key);
+        auto& thread = thread_local_pending_creates_[job_worker_id()];
+        const i32 pending_index = find_index(thread.hashes, hash);
 
         if (pending_index >= 0)
         {
             return thread.values[pending_index];
         }
 
+        thread.hashes.push_back(hash);
         thread.keys.push_back(key);
         thread.values.emplace_back();
         on_create_(device_, key, &thread.values.back());
@@ -204,13 +176,13 @@ public:
 
     void sync()
     {
-        for (auto& queue : pending_creates_)
+        for (auto& queue : thread_local_pending_creates_)
         {
             for (int i = 0; i < queue.keys.size(); ++i)
             {
-                if (shared_cache_.find(queue.keys[i]) == nullptr)
+                if (shared_cache_.find(queue.hashes[i]) == nullptr)
                 {
-                    shared_cache_.insert(queue.keys[i], queue.values[i]);
+                    shared_cache_.insert(queue.hashes[i], queue.values[i]);
                 }
                 else
                 {
@@ -218,8 +190,7 @@ public:
                 }
             }
 
-            queue.keys.clear();
-            queue.values.clear();
+            queue.clear();
         }
 
         current_frame_ = (current_frame_ + 1) % BEE_GPU_MAX_FRAMES_IN_FLIGHT;
@@ -233,15 +204,14 @@ public:
 
     void clear()
     {
-        for (auto& queue : pending_creates_)
+        for (auto& queue : thread_local_pending_creates_)
         {
             for (auto& value : queue.values)
             {
                 on_destroy_(device_, &value);
             }
 
-            queue.keys.clear();
-            queue.values.clear();
+            queue.clear();
         }
 
         for (auto& duplicates : pending_deletes_)
@@ -265,12 +235,20 @@ public:
 private:
     struct PendingQueue
     {
+        DynamicArray<u32>       hashes;
         DynamicArray<KeyType>   keys;
         DynamicArray<ValueType> values;
+
+        void clear()
+        {
+            hashes.clear();
+            keys.clear();
+            values.clear();
+        }
     };
 
-    FixedArray<PendingQueue>            pending_creates_;
-    DynamicHashMap<KeyType, ValueType>  shared_cache_;
+    FixedArray<PendingQueue>            thread_local_pending_creates_;
+    DynamicHashMap<u32, ValueType>      shared_cache_;
     DynamicArray<ValueType>             pending_deletes_[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
     i32                                 current_frame_ { 0 };
 
@@ -299,6 +277,10 @@ void destroy_pipeline_layout(VulkanDevice* device, VkPipelineLayout* layout);
 void create_framebuffer(VulkanDevice* device, const VulkanFramebufferKey& key, VkFramebuffer* framebuffer);
 
 void destroy_framebuffer(VulkanDevice* device, VkFramebuffer* framebuffer);
+
+void create_pipeline(VulkanDevice* device, const VulkanPipelineKey& key, VkPipeline* pipeline);
+
+void destroy_pipeline(VulkanDevice* device, VkPipeline* pipeline);
 
 
 

@@ -1,8 +1,8 @@
 bee_new_source_root()
 bee_add_sources(
         Compiler.hpp    Compiler.cpp
-        Resource.inl
         Cache.hpp       Cache.cpp
+        Resource.inl
         ShaderPipeline.cpp
 )
 add_subdirectory(Parser)

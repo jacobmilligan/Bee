@@ -44,6 +44,7 @@ struct FileTypeInfo
 struct AssetImporterInfo
 {
     AssetImporter*      importer { nullptr };
+    void*               user_data { nullptr };
     DynamicArray<u32>   file_type_hashes;
 };
 

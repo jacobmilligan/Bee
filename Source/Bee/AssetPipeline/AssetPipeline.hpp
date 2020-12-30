@@ -60,6 +60,11 @@ struct AssetImportContext
         serialize(SerializerMode::writing, &serializer, const_cast<T*>(artifact), temp_allocator);
         return db->add_artifact(txn, metadata->guid, get_type<T>(), artifact_buffer->data(), artifact_buffer->size());
     }
+
+    inline Result<u128, AssetDatabaseError> add_artifact(const Type type, const size_t buffer_size, const void* buffer)
+    {
+        return db->add_artifact(txn, metadata->guid, type, artifact_buffer->data(), artifact_buffer->size());
+    }
 };
 
 struct AssetImporter
@@ -70,7 +75,7 @@ struct AssetImporter
 
     Type (*properties_type)() { nullptr };
 
-    ImportErrorStatus (*import)(AssetImportContext* ctx) { nullptr };
+    ImportErrorStatus (*import)(AssetImportContext* ctx, void* user_data) { nullptr };
 };
 
 
@@ -104,7 +109,7 @@ struct AssetPipelineModule
 
     AssetDatabase* (*get_asset_db)(AssetPipeline* pipeline) { nullptr };
 
-    void (*register_importer)(AssetPipeline* pipeline, AssetImporter* importer) { nullptr };
+    void (*register_importer)(AssetPipeline* pipeline, AssetImporter* importer, void* user_data) { nullptr };
 
     void (*unregister_importer)(AssetPipeline* pipeline, AssetImporter* importer) { nullptr };
 

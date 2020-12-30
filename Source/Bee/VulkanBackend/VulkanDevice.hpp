@@ -110,6 +110,15 @@ struct VulkanCommandPool;
 struct VulkanPipelineState;
 struct VulkanResourceBinding;
 
+struct VulkanRenderPass
+{
+    RenderPassHandle        lookup_handle;
+    u32                     hash { 0 };
+    RenderPassCreateInfo    create_info;
+    VkRenderPass            handle { VK_NULL_HANDLE };
+};
+
+
 struct CommandBuffer
 {
     CommandBufferState      state { CommandBufferState::invalid };
@@ -121,6 +130,7 @@ struct CommandBuffer
 
     // Draw state
     VulkanPipelineState*    bound_pipeline { nullptr };
+    VulkanRenderPass*       current_render_pass { nullptr };
     VkDescriptorSet         descriptors[BEE_GPU_MAX_RESOURCE_LAYOUTS];
 
     void reset(VulkanDevice* new_device);
@@ -156,13 +166,6 @@ struct VulkanTextureView
     PixelFormat     format { PixelFormat::unknown };
     u32             samples { 0 };
     i32             swapchain { -1 };
-};
-
-struct VulkanRenderPass
-{
-    RenderPassHandle        lookup_handle;
-    RenderPassCreateInfo    create_info;
-    VkRenderPass            handle { VK_NULL_HANDLE };
 };
 
 struct VulkanShader
@@ -317,7 +320,6 @@ struct VulkanThreadData
     GpuResourceTable<BufferHandle, VulkanBuffer>                    buffers;
     GpuResourceTable<RenderPassHandle, VulkanRenderPass>            render_passes;
     GpuResourceTable<ShaderHandle, VulkanShader>                    shaders;
-    GpuResourceTable<PipelineStateHandle, VulkanPipelineState>      pipeline_states;
     GpuResourceTable<FenceHandle, VkFence>                          fences;
     GpuResourceTable<ResourceBindingHandle, VulkanResourceBinding>  resource_bindings;
     GpuResourceTable<SamplerHandle, VkSampler>                      samplers;
@@ -332,7 +334,6 @@ struct VulkanThreadData
           buffers(thread_index, sizeof(VulkanBuffer) * 64),
           render_passes(thread_index, sizeof(VulkanRenderPass) * 64),
           shaders(thread_index, sizeof(VulkanShader) * 64),
-          pipeline_states(thread_index, sizeof(VulkanPipelineState) * 64),
           fences(thread_index, sizeof(VkFence) * 64),
           resource_bindings(thread_index, sizeof(VulkanResourceBinding) * 64),
           samplers(thread_index, sizeof(VkSampler) * 64)
@@ -345,7 +346,6 @@ struct VulkanThreadData
         buffers.flush_deallocations();
         render_passes.flush_deallocations();
         shaders.flush_deallocations();
-        pipeline_states.flush_deallocations();
         fences.flush_deallocations();
         resource_bindings.flush_deallocations();
         samplers.flush_deallocations();
@@ -397,6 +397,8 @@ struct VulkanDevice
     VulkanPendingCache<VulkanPipelineLayoutKey, VkPipelineLayout>       pipeline_layout_cache;
     VulkanPendingCache<ResourceLayoutDescriptor, VkDescriptorSetLayout> descriptor_set_layout_cache;
     VulkanPendingCache<VulkanFramebufferKey, VkFramebuffer>             framebuffer_cache;
+    VulkanPendingCache<VulkanPipelineKey, VkPipeline>             pipeline_cache;
+    // TODO(Jacob): VkPipelineCache
 
     // Fence pool
     RecursiveMutex          fence_mutex;
@@ -430,7 +432,6 @@ struct VulkanDevice
     BEE_GPU_OBJECT_ACCESSOR(BufferHandle, VulkanBuffer, buffers)
     BEE_GPU_OBJECT_ACCESSOR(RenderPassHandle, VulkanRenderPass, render_passes)
     BEE_GPU_OBJECT_ACCESSOR(ShaderHandle, VulkanShader, shaders)
-    BEE_GPU_OBJECT_ACCESSOR(PipelineStateHandle, VulkanPipelineState, pipeline_states)
     BEE_GPU_OBJECT_ACCESSOR(FenceHandle, VkFence, fences)
     BEE_GPU_OBJECT_ACCESSOR(ResourceBindingHandle, VulkanResourceBinding, resource_bindings)
     BEE_GPU_OBJECT_ACCESSOR(SamplerHandle, VkSampler, samplers)

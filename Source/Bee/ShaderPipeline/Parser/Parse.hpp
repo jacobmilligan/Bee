@@ -37,17 +37,10 @@ struct ShaderFile
         }
     };
 
-    struct Pass
-    {
-        Range               attachments;
-        Range               subpasses;
-    };
-
     struct Pipeline // NOLINT
     {
         String                          name;
-        PipelineStateCreateInfo         info; // contains everything except the renderpass and shader handles
-        i32                             pass { -1 };
+        PipelineStateDescriptor         desc; // contains everything except the shader handles
         i32                             shaders[ShaderStageIndex::count];
 
         Pipeline(const StringView& pipeline_name, Allocator* allocator)
@@ -80,20 +73,16 @@ struct ShaderFile
     };
 
     Allocator*                              allocator { nullptr };
-    DynamicArray<Pass>                      passes;
     DynamicArray<Pipeline>                  pipelines;
     DynamicArray<SubShader>                 subshaders;
     DynamicArray<AttachmentDescriptor>      attachments;
-    DynamicArray<SubPassDescriptor>         subpasses;
     DynamicArray<u8>                        code;
 
     explicit ShaderFile(Allocator* new_allocator)
         : allocator(new_allocator),
-          passes(new_allocator),
           pipelines(new_allocator),
           subshaders(new_allocator),
           attachments(new_allocator),
-          subpasses(new_allocator),
           code(new_allocator)
     {}
 
@@ -108,20 +97,6 @@ struct ShaderFile
         subshaders.emplace_back(allocator);
         subshaders.back().name.assign(subshader_name);
         return subshaders.back();
-    }
-
-    const Pass& add_pass(const i32 attachment_count, const i32 subpass_count)
-    {
-        passes.emplace_back();
-        passes.back().attachments.offset = attachments.size();
-        passes.back().attachments.size = attachment_count;
-        passes.back().subpasses.offset = subpasses.size();
-        passes.back().subpasses.size = subpass_count;
-
-        attachments.append(attachment_count, AttachmentDescriptor{});
-        subpasses.append(subpass_count, SubPassDescriptor{});
-
-        return passes.back();
     }
 
     Range add_code(const u8* data, const i32 size)
@@ -171,38 +146,9 @@ struct BscShaderNode
     ResourceBindingUpdateFrequency  resource_layouts[BEE_GPU_MAX_RESOURCE_LAYOUTS];
 };
 
-struct BscSubPassNode
-{
-    DynamicArray<StringView>    input_attachments;
-    DynamicArray<StringView>    color_attachments;
-    DynamicArray<StringView>    resolve_attachments;
-    DynamicArray<StringView>    preserve_attachments;
-    StringView                  depth_stencil;
-
-    explicit BscSubPassNode(Allocator* allocator = system_allocator())
-        : input_attachments(allocator),
-          color_attachments(allocator),
-          resolve_attachments(allocator),
-          preserve_attachments(allocator)
-    {}
-};
-
-struct BscRenderPassNode
-{
-    bsc_node_array_t<AttachmentDescriptor>  attachments;
-    bsc_node_array_t<BscSubPassNode>        subpasses;
-
-    explicit BscRenderPassNode(Allocator* allocator = system_allocator())
-        : attachments(allocator),
-          subpasses(allocator)
-    {}
-};
-
 struct BscPipelineStateNode
 {
     PrimitiveType               primitive_type { PrimitiveType::unknown };
-    StringView                  render_pass;
-    StringView                  subpass;
     StringView                  raster_state;
     StringView                  multisample_state;
     StringView                  depth_stencil_state;
@@ -216,7 +162,6 @@ struct BscModule
 {
     Allocator*                                      allocator { nullptr };
     bsc_node_array_t<BscPipelineStateNode>          pipeline_states;
-    bsc_node_array_t<BscRenderPassNode>             render_passes;
     bsc_node_array_t<RasterStateDescriptor>         raster_states;
     bsc_node_array_t<MultisampleStateDescriptor>    multisample_states;
     bsc_node_array_t<DepthStencilStateDescriptor>   depth_stencil_states;
@@ -227,7 +172,6 @@ struct BscModule
     explicit BscModule(Allocator* node_allocator)
         : allocator(node_allocator),
           pipeline_states(node_allocator),
-          render_passes(node_allocator),
           raster_states(node_allocator),
           multisample_states(node_allocator),
           depth_stencil_states(node_allocator),
@@ -350,8 +294,6 @@ private:
 
     bool parse_top_level_structure(BscLexer* lexer, BscModule* ast);
 
-    bool parse_render_pass(BscLexer* lexer, BscNode<BscRenderPassNode>* node);
-
     bool parse_raster_state(BscLexer* lexer, BscNode<RasterStateDescriptor>* node);
 
     bool parse_multisample_state(BscLexer* lexer, BscNode<MultisampleStateDescriptor>* node);
@@ -365,8 +307,6 @@ private:
     bool parse_sampler_state(BscLexer* lexer, BscNode<SamplerCreateInfo>* node);
 
     bool parse_attachment(BscLexer* lexer, BscNode<AttachmentDescriptor>* node);
-
-    bool parse_subpass(BscLexer* lexer, BscNode<BscSubPassNode>* node);
 
     bool parse_blend_state(BscLexer* lexer, BscNode<BlendStateDescriptor>* node);
 

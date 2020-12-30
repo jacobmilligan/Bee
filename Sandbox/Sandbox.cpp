@@ -53,8 +53,6 @@ struct SandboxApp
     AssetPipeline*                      pipeline { nullptr };
     AssetCache*                         asset_cache { nullptr };
     Path                                shader_root;
-    AssetImporter                       shader_importer;
-    AssetLoader                         shader_loader;
 };
 
 struct SandboxPassData
@@ -74,7 +72,6 @@ static ShaderCacheModule*       g_shader_cache { nullptr };
 static AssetDatabaseModule*     g_asset_db { nullptr };
 static AssetPipelineModule*     g_asset_pipeline { nullptr };
 static AssetCacheModule*        g_asset_cache { nullptr };
-static ShaderModule*            g_shader { nullptr };
 
 static SandboxApp*              g_app = nullptr;
 
@@ -136,88 +133,6 @@ static void execute_pass(
     cmd->set_scissor(cmdbuf, backbuffer_rect);
     cmd->set_viewport(cmdbuf, Viewport(0, 0, static_cast<float>(backbuffer_rect.width), static_cast<float>(backbuffer_rect.height)));
     cmd->end_render_pass(cmdbuf);
-}
-
-static const char* get_shader_importer_name()
-{
-    return "Bee.ShaderImporter";
-}
-
-static i32 get_shader_importer_file_types(const char** dst)
-{
-    if (dst != nullptr)
-    {
-        dst[0] = ".bsc";
-    }
-    return 1;
-}
-
-static Type get_shader_importer_properties_type()
-{
-    return get_type<ShaderImportSettings>();
-}
-
-static ImportErrorStatus import_shader(AssetImportContext* ctx)
-{
-    DynamicArray<ShaderPipelineHandle> output(ctx->temp_allocator);
-    const auto content = fs::read(ctx->path, ctx->temp_allocator);
-    const auto result = g_shader_compiler->compile_shader(
-        g_app->cache,
-        path_get_filename(ctx->path),
-        content.view(),
-        ShaderTarget::spirv,
-        &output
-    );
-
-    if (result != ShaderCompilerResult::success)
-    {
-        return ImportErrorStatus::fatal;
-    }
-
-    ShaderAsset asset(ctx->temp_allocator);
-    for (int i = 0; i < output.size(); ++i)
-    {
-        asset.shader_hashes.push_back(g_shader_cache->get_shader_hash(g_app->cache, output[i]));
-    }
-    ctx->add_artifact(&asset);
-
-#ifdef SERIALIZE_TO_JSON
-    JSONSerializer serializer(ctx->temp_allocator);
-    g_shader_cache->save(g_app->cache, &serializer);
-    bee::fs::write(g_app->shader_root.join("ShaderCache.json"), serializer.c_str());
-#else
-    io::FileStream stream(g_app->shader_root.join("ShaderCache"), "wb");
-    StreamSerializer serializer(&stream);
-    g_shader_cache->save(g_app->cache, &serializer);
-#endif // SERIALIZE_TO_JSON
-
-    return ImportErrorStatus::success;
-}
-
-static i32 get_shader_loader_types(Type* dst)
-{
-    if (dst != nullptr)
-    {
-        dst[0] = get_type<ShaderAsset>();
-    }
-    return 1;
-}
-
-static Result<void*, AssetCacheError> load_shader(const AssetLocation* location)
-{
-    io::FileStream stream(location->streams[0].path, "rb");
-    StreamSerializer serializer(&stream);
-    ShaderAsset asset(temp_allocator());
-    serialize(SerializerMode::reading, &serializer, &asset, temp_allocator());
-
-    const auto shader = g_shader_cache->get_shader(g_app->cache, asset.shader_hashes[0]);
-    return g_shader->load(g_app->cache, shader);
-}
-
-static bool unload_shader(const Type type, void* data)
-{
-    g_shader->unload(g_app->cache, static_cast<ShaderPipeline*>(data));
-    return true;
 }
 
 static bool startup()
@@ -314,12 +229,7 @@ static bool startup()
     {
         return false;
     }
-    g_app->shader_importer.name = get_shader_importer_name;
-    g_app->shader_importer.supported_file_types = get_shader_importer_file_types;
-    g_app->shader_importer.properties_type = get_shader_importer_properties_type;
-    g_app->shader_importer.import = import_shader;
-
-    g_asset_pipeline->register_importer(g_app->pipeline, &g_app->shader_importer);
+    g_shader_compiler->register_importer(g_app->pipeline, g_app->cache);
 
     // load a shader cache if one already exists
 #ifdef SERIALIZE_TO_JSON
@@ -347,13 +257,7 @@ static bool startup()
     }
     g_asset_pipeline->set_runtime_cache(g_app->pipeline, g_app->asset_cache);
 
-    g_shader->init(g_app->backend, g_app->device);
-
-    g_app->shader_loader.get_types = get_shader_loader_types;
-    g_app->shader_loader.load = load_shader;
-    g_app->shader_loader.unload = unload_shader;
-
-    g_asset_cache->register_loader(g_app->asset_cache, &g_app->shader_loader);
+    g_shader_cache->register_asset_loader(g_app->cache, g_app->asset_cache, g_app->backend, g_app->device);
 
     // read the shader off disk
     return true;
@@ -363,6 +267,10 @@ static void shutdown()
 {
     if (g_app->asset_cache != nullptr)
     {
+        if (g_app->cache != nullptr)
+        {
+            g_shader_cache->unregister_asset_loader(g_app->cache, g_app->asset_cache);
+        }
         g_asset_pipeline->set_runtime_cache(g_app->pipeline, nullptr);
         g_asset_cache->destroy_cache(g_app->asset_cache);
         g_app->asset_cache = nullptr;
@@ -435,15 +343,6 @@ static void reload_plugin()
         execute_pass,
         init_pass
     );
-
-    g_app->shader_importer.name = get_shader_importer_name;
-    g_app->shader_importer.supported_file_types = get_shader_importer_file_types;
-    g_app->shader_importer.properties_type = get_shader_importer_properties_type;
-    g_app->shader_importer.import = import_shader;
-
-    g_app->shader_loader.get_types = get_shader_loader_types;
-    g_app->shader_loader.load = load_shader;
-    g_app->shader_loader.unload = unload_shader;
 }
 
 static bool tick()
@@ -541,7 +440,6 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
         bee::g_asset_db = static_cast<bee::AssetDatabaseModule*>(loader->get_module(BEE_ASSET_DATABASE_MODULE_NAME));
         bee::g_asset_pipeline = static_cast<bee::AssetPipelineModule*>(loader->get_module(BEE_ASSET_PIPELINE_MODULE_NAME));
         bee::g_asset_cache = static_cast<bee::AssetCacheModule*>(loader->get_module(BEE_ASSET_CACHE_MODULE_NAME));
-        bee::g_shader = static_cast<bee::ShaderModule*>(loader->get_module(BEE_SHADER_MODULE_NAME));
     }
 }
 

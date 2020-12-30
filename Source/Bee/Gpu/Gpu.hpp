@@ -117,7 +117,6 @@ BEE_GPU_HANDLE(BufferHandle, buffer) BEE_REFLECT();
 BEE_GPU_HANDLE(BufferViewHandle, buffer_view) BEE_REFLECT();
 BEE_GPU_HANDLE(RenderPassHandle, render_pass) BEE_REFLECT();
 BEE_GPU_HANDLE(ShaderHandle, shader) BEE_REFLECT();
-BEE_GPU_HANDLE(PipelineStateHandle, pipeline_state) BEE_REFLECT();
 BEE_GPU_HANDLE(FenceHandle, fence) BEE_REFLECT();
 BEE_GPU_HANDLE(SamplerHandle, sampler) BEE_REFLECT();
 BEE_GPU_HANDLE(ResourceBindingHandle, resource_binding) BEE_REFLECT();
@@ -1149,6 +1148,11 @@ struct BEE_REFLECT(serializable) VertexDescriptor
     VertexAttributeDescriptorArray  attributes;
 };
 
+inline bool operator==(const VertexDescriptor& lhs, const VertexDescriptor& rhs)
+{
+    return bitwise_equal(lhs.layouts, rhs.layouts) && bitwise_equal(lhs.attributes, rhs.attributes);
+}
+
 
 struct BEE_REFLECT(serializable) RasterStateDescriptor
 {
@@ -1196,19 +1200,6 @@ struct BEE_REFLECT(serializable) ResourceDescriptor
     ShaderStageFlags    shader_stages { ShaderStageFlags::unknown };
 };
 
-inline bool operator==(const ResourceDescriptor& lhs, const ResourceDescriptor& rhs)
-{
-    return lhs.binding == rhs.binding
-        && lhs.type == rhs.type
-        && lhs.element_count == rhs.element_count
-        && lhs.shader_stages == rhs.shader_stages;
-}
-
-inline bool operator!=(const ResourceDescriptor& lhs, const ResourceDescriptor& rhs)
-{
-    return !(lhs == rhs);
-}
-
 using ResourceDescriptorArray = StaticArray<ResourceDescriptor, BEE_GPU_MAX_RESOURCE_BINDINGS, u32>;
 
 struct BEE_REFLECT(serializable) ResourceLayoutDescriptor
@@ -1218,25 +1209,7 @@ struct BEE_REFLECT(serializable) ResourceLayoutDescriptor
 
 inline bool operator==(const ResourceLayoutDescriptor& lhs, const ResourceLayoutDescriptor& rhs)
 {
-    if (lhs.resources.size != rhs.resources.size)
-    {
-        return false;
-    }
-
-    for (u32 i = 0; i < lhs.resources.size; ++i)
-    {
-        if (lhs.resources[i] != rhs.resources[i])
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-inline bool operator!=(const ResourceLayoutDescriptor& lhs, const ResourceLayoutDescriptor& rhs)
-{
-    return !(lhs == rhs);
+    return bitwise_equal(lhs.resources, rhs.resources);
 }
 
 template<>
@@ -1293,36 +1266,16 @@ struct BEE_REFLECT(serializable) PushConstantRange
     u32                 size { 0 };
 };
 
-inline bool operator==(const PushConstantRange& lhs, const PushConstantRange& rhs)
-{
-    return lhs.shader_stages == rhs.shader_stages
-        && lhs.offset == rhs.offset
-        && lhs.size == rhs.size;
-}
-
-inline bool operator!=(const PushConstantRange& lhs, const PushConstantRange& rhs)
-{
-    return !(lhs == rhs);
-}
-
 using PushConstantRangeArray = StaticArray<PushConstantRange, ShaderStageIndex::count, u32>;
 
-struct BEE_REFLECT(serializable, version = 1) PipelineStateCreateInfo
+struct BEE_REFLECT(serializable, version = 1) PipelineStateDescriptor
 {
     // Primitive type to use when rendering while this pipeline state is used
     BEE_REFLECT(id = 0, added = 1)
     PrimitiveType                   primitive_type { PrimitiveType::triangle };
 
-    // A render pass that describes a compatible set of color & depth attachments
-    BEE_REFLECT(ignored)
-    RenderPassHandle                compatible_render_pass;
-
-    // Index into the render passes subpass array that this pipeline uses (see: RenderPassCreateInfo::subpasses)
-    BEE_REFLECT(id = 1, added = 1)
-    u32                             subpass_index { 0 };
-
     // Describes the vertex layouts and input attributes used by vertex buffers
-    BEE_REFLECT(id = 2, added = 1)
+    BEE_REFLECT(id = 1, added = 1)
     VertexDescriptor                vertex_description;
 
     // Shaders used at the various pipeline stages
@@ -1333,25 +1286,43 @@ struct BEE_REFLECT(serializable, version = 1) PipelineStateCreateInfo
     ShaderHandle                    fragment_stage;
 
     // Render state
-    BEE_REFLECT(id = 3, added = 1)
+    BEE_REFLECT(id = 2, added = 1)
     RasterStateDescriptor           raster_state;
 
-    BEE_REFLECT(id = 4, added = 1)
+    BEE_REFLECT(id = 3, added = 1)
     MultisampleStateDescriptor      multisample_state;
 
-    BEE_REFLECT(id = 5, added = 1)
+    BEE_REFLECT(id = 4, added = 1)
     DepthStencilStateDescriptor     depth_stencil_state;
 
-    BEE_REFLECT(id = 6, added = 1)
+    BEE_REFLECT(id = 5, added = 1)
     BlendStateDescriptorArray       color_blend_states;
 
     // Resource binding layout the pipeline is expecting
-    BEE_REFLECT(id = 7, added = 1)
+    BEE_REFLECT(id = 6, added = 1)
     ResourceLayoutDescriptorArray   resource_layouts;
 
     // Ranges of push constants the pipeline can use
-    BEE_REFLECT(id = 8, added = 1)
+    BEE_REFLECT(id = 7, added = 1)
     PushConstantRangeArray          push_constant_ranges; // vulkan etc. can only have one push constant range per shader stage
+};
+
+template <>
+struct Hash<PipelineStateDescriptor>
+{
+    inline u32 operator()(const PipelineStateDescriptor& key) const
+    {
+        HashState hash;
+        hash.add(key.primitive_type);
+        hash.add(key.vertex_description.layouts.data, sizeof(VertexLayoutDescriptor) * key.vertex_description.layouts.size);
+        hash.add(key.vertex_description.attributes.data, sizeof(VertexAttributeDescriptor) * key.vertex_description.attributes.size);
+        hash.add(key.raster_state);
+        hash.add(key.multisample_state);
+        hash.add(key.depth_stencil_state);
+        hash.add(key.color_blend_states.data, sizeof(BlendStateDescriptor) * key.color_blend_states.size);
+        hash.add(key.push_constant_ranges.data, sizeof(PushConstantRange) * key.push_constant_ranges.size);
+        return hash.end();
+    }
 };
 
 struct CommandPoolCreateInfo
@@ -1454,8 +1425,6 @@ struct GpuCommandBackend
 
     void (*end_render_pass)(CommandBuffer* cmd) {nullptr };
 
-    void (*bind_pipeline_state)(CommandBuffer* cmd, const PipelineStateHandle& pipeline_handle) {nullptr };
-
     void (*bind_vertex_buffer)(CommandBuffer* cmd, const BufferHandle& buffer_handle, const u32 binding, const u64 offset) {nullptr };
 
     void (*bind_vertex_buffers)(
@@ -1478,20 +1447,22 @@ struct GpuCommandBackend
     ) { nullptr };
 
     void (*draw)(
-        CommandBuffer* cmd,
-        const u32 vertex_count,
-        const u32 instance_count,
-        const u32 first_vertex,
-        const u32 first_instance
+        CommandBuffer*                  cmd,
+        const PipelineStateDescriptor&  state,
+        const u32                       vertex_count,
+        const u32                       instance_count,
+        const u32                       first_vertex,
+        const u32                       first_instance
     ) { nullptr };
 
     void (*draw_indexed)(
-        CommandBuffer*  cmd,
-        const u32       index_count,
-        const u32       instance_count,
-        const u32       vertex_offset,
-        const u32       first_index,
-        const u32       first_instance
+        CommandBuffer*                  cmd,
+        const PipelineStateDescriptor&  state,
+        const u32                       index_count,
+        const u32                       instance_count,
+        const u32                       vertex_offset,
+        const u32                       first_index,
+        const u32                       first_instance
     ) { nullptr };
 
     void (*set_viewport)(CommandBuffer* cmd, const Viewport& viewport) {nullptr };
@@ -1566,10 +1537,6 @@ struct GpuBackend
     ShaderHandle (*create_shader)(const DeviceHandle& device_handle, const ShaderCreateInfo& info) { nullptr };
 
     void (*destroy_shader)(const DeviceHandle& device_handle, const ShaderHandle& shader_handle) { nullptr };
-
-    PipelineStateHandle (*create_pipeline_state)(const DeviceHandle& device_handle, const PipelineStateCreateInfo& create_info) { nullptr };
-
-    void (*destroy_pipeline_state)(const DeviceHandle& device, const PipelineStateHandle& pipeline_handle) { nullptr };
 
     BufferHandle (*create_buffer)(const DeviceHandle& device, const BufferCreateInfo& create_info) { nullptr };
 

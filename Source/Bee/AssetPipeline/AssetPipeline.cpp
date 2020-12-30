@@ -174,7 +174,7 @@ static FileTypeInfo& add_file_type(AssetPipeline* pipeline, const char* file_typ
     return info;
 }
 
-void register_importer(AssetPipeline* pipeline, AssetImporter* importer)
+void register_importer(AssetPipeline* pipeline, AssetImporter* importer, void* user_data)
 {
     const u32 hash = get_hash(importer->name());
     const int existing_index = find_index(pipeline->importer_hashes, hash);
@@ -187,6 +187,7 @@ void register_importer(AssetPipeline* pipeline, AssetImporter* importer)
     pipeline->importer_hashes.push_back(hash);
     pipeline->importers.emplace_back();
     pipeline->importers.back().importer = importer;
+    pipeline->importers.back().user_data = user_data;
 
     int file_type_count = importer->supported_file_types(nullptr);
     auto* file_types = BEE_ALLOCA_ARRAY(const char*, file_type_count);
@@ -295,7 +296,7 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
         auto& importer_info = pipeline->importers[importer_index];
         meta = g_assetdb->create_asset(&txn, importer_info.importer->properties_type()).unwrap();
         meta->importer = get_hash(importer_info.importer->name());
-        meta->source.append(Path(path, tmp).relative_to(pipeline->config_path.parent_view(), tmp));
+        meta->source.append(path).relative_to(metadata_path.view());
         meta->source.make_generic();
 
         // write the .meta out to file
@@ -328,7 +329,7 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
     ctx.artifact_buffer->clear();
     ctx.path = path;
 
-    const auto status = pipeline->importers[importer_index].importer->import(&ctx);
+    const auto status = pipeline->importers[importer_index].importer->import(&ctx, pipeline->importers[importer_index].user_data);
     if (status != ImportErrorStatus::success)
     {
         return status;
@@ -390,6 +391,7 @@ static bool asset_db_locate(void* user_data, const GUID guid, AssetLocation* loc
     for (int i = 0; i < location->streams.size; ++i)
     {
         location->streams[i].kind = AssetStreamKind::file;
+        location->streams[i].hash = artifacts[i].content_hash;
         g_assetdb->get_artifact_path(&txn, artifacts[i].content_hash, &location->streams[i].path);
     }
 

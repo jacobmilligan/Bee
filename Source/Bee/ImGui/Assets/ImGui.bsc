@@ -1,0 +1,53 @@
+RasterState ImGuiRasterState
+{
+    front_face_ccw: true
+    cull_mode: back
+}
+
+BlendState ImGuiBlendState
+{
+    blend_enabled: false
+    color_write_mask: all
+}
+
+Shader ImGui
+{
+    vertex: vert
+    fragment: frag
+    code:
+    {
+        struct AppData 
+        {
+            float4 position: POSITION;
+            float4 color: COLOR;
+        };
+
+        struct FragIn
+        {
+            float4 position: POSITION;
+            float4 color: COLOR;
+        };
+
+        FragIn vert(AppData IN)
+        {
+            FragIn OUT;
+            OUT.position = IN.position;
+            OUT.color = IN.color;
+            return OUT;
+        }
+
+        float4 frag(FragIn IN): SV_TARGET
+        {
+            return IN.color;
+        }
+    }
+}
+
+PipelineState ImGuiPipelineState
+{
+    primitive_type: triangle
+    raster_state: ImGuiRasterState
+    vertex_stage: TriangleShader
+    fragment_stage: TriangleShader
+    color_blend_states: [ ImGuiBlendState ]
+}

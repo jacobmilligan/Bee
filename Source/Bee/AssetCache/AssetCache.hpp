@@ -61,6 +61,7 @@ struct AssetStreamInfo
 {
     AssetStreamKind kind { AssetStreamKind::none };
     Path            path;
+    u128            hash;
     void*           buffer;
     size_t          offset { 0 };
 };
@@ -82,9 +83,9 @@ struct AssetLoader
 {
     i32 (*get_types)(Type* dst) { nullptr };
 
-    Result<void*, AssetCacheError> (*load)(const AssetLocation* location) { nullptr };
+    Result<void*, AssetCacheError> (*load)(const AssetLocation* location, void* user_data) { nullptr };
 
-    bool (*unload)(const Type type, void* data) { nullptr };
+    bool (*unload)(const Type type, void* data, void* user_data) { nullptr };
 };
 
 #define BEE_ASSET_CACHE_MODULE_NAME "BEE_ASSET_CACHE"
@@ -96,7 +97,7 @@ struct AssetCacheModule
 
     void (*destroy_cache)(AssetCache* cache) { nullptr };
 
-    bool (*register_loader)(AssetCache* cache, AssetLoader* loader) { nullptr };
+    bool (*register_loader)(AssetCache* cache, AssetLoader* loader, void* user_data) { nullptr };
 
     void (*unregister_loader)(AssetCache* cache, AssetLoader* loader) { nullptr };
 

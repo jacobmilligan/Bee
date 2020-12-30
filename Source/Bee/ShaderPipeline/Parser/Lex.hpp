@@ -14,14 +14,11 @@ namespace bee {
 
 
 #define BSC_KEYWORDS                \
-    BSC_KEYWORD(RenderPass)         \
     BSC_KEYWORD(RasterState)        \
     BSC_KEYWORD(MultisampleState)   \
     BSC_KEYWORD(DepthStencilState)  \
     BSC_KEYWORD(PipelineState)      \
     BSC_KEYWORD(SamplerState)       \
-    BSC_KEYWORD(Attachment)         \
-    BSC_KEYWORD(SubPass)            \
     BSC_KEYWORD(Shader)             \
     BSC_KEYWORD(BlendState)
 

@@ -13,6 +13,8 @@
 namespace bee {
 
 
+BEE_VERSIONED_HANDLE_32(ShaderPipelineHandle);
+
 struct Serializer;
 
 struct ShaderPipelineStageResourceDescriptor
@@ -24,8 +26,7 @@ struct ShaderPipelineStageResourceDescriptor
 struct ShaderPipelineDescriptor
 {
     const char*                             name { nullptr };
-    PipelineStateCreateInfo                 create_info;
-    RenderPassCreateInfo                    render_pass_info;
+    PipelineStateDescriptor                 pipeline;
 
     i32                                     shader_stage_count { 0 };
     ShaderCreateInfo                        shader_info[ShaderStageIndex::count];
@@ -33,10 +34,15 @@ struct ShaderPipelineDescriptor
     ShaderPipelineStageResourceDescriptor   shader_resources[ShaderStageIndex::count];
 };
 
-BEE_VERSIONED_HANDLE_32(ShaderPipelineHandle);
+struct ShaderAsset
+{
+    FixedArray<ShaderPipelineHandle> pipelines;
+};
 
 #define BEE_SHADER_CACHE_MODULE_NAME "BEE_SHADER_CACHE"
 
+struct AssetCache;
+struct ShaderPipeline;
 struct ShaderCache;
 struct ShaderCacheModule
 {
@@ -52,40 +58,26 @@ struct ShaderCacheModule
 
     void (*remove_shader)(ShaderCache* cache, const ShaderPipelineHandle handle) { nullptr };
 
-    ShaderPipelineHandle (*get_shader)(ShaderCache* cache, const u32 name_hash) { nullptr };
+    ShaderPipelineHandle (*lookup_shader)(ShaderCache* cache, const u32 name_hash) { nullptr };
 
     u32 (*get_shader_hash)(ShaderCache* cache, const ShaderPipelineHandle handle) { nullptr };
 
     u32 (*get_shader_name_hash)(const StringView& name) { nullptr };
 
+    void (*register_asset_loader)(ShaderCache* shader_cache, AssetCache* asset_cache, const GpuBackend* gpu, const DeviceHandle device) { nullptr };
+
+    void (*unregister_asset_loader)(ShaderCache* shader_cache, AssetCache* asset_cache) { nullptr };
+
     template <i32 Size>
     ShaderPipelineHandle get_shader_by_name(ShaderCache* cache, char(&name)[Size])
     {
-        return get_shader(get_static_string_hash(name));
+        return lookup_shader(get_static_string_hash(name));
     }
 
     inline ShaderPipelineHandle get_shader_by_name(ShaderCache* cache, const StringView& name)
     {
-        return get_shader(cache, get_shader_name_hash(name));
+        return lookup_shader(cache, get_shader_name_hash(name));
     }
-};
-
-#define BEE_SHADER_MODULE_NAME "BEE_SHADER"
-
-struct ShaderPipeline;
-struct ShaderModule
-{
-    void (*init)(const GpuBackend* gpu, const DeviceHandle device) { nullptr };
-
-    RenderPassHandle (*get_render_pass)(const ShaderPipelineHandle shader) { nullptr };
-
-    PipelineStateHandle (*get_pipeline_state)(const ShaderPipelineHandle shader) { nullptr };
-
-    ShaderHandle (*get_stage)(const ShaderPipelineHandle, const ShaderStageIndex stage) { nullptr };
-
-    ShaderPipeline* (*load)(ShaderCache* cache, const ShaderPipelineHandle handle) { nullptr };
-
-    void (*unload)(ShaderCache* cache, ShaderPipeline* shader) { nullptr };
 };
 
 

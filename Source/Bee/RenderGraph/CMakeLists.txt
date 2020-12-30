@@ -3,3 +3,4 @@ bee_add_sources(
     RenderGraph.hpp RenderGraph.cpp
 )
 bee_plugin(Bee.RenderGraph LINK_LIBRARIES Bee.Core)
+add_dependencies(Bee.RenderGraph Bee.Gpu)

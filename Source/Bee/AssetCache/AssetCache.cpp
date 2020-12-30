@@ -17,10 +17,16 @@
 namespace bee {
 
 
+struct CallableLoader
+{
+    AssetLoader*    loader { nullptr };
+    void*           user_data { nullptr };
+};
+
 struct AssetLoaderInfo
 {
     FixedArray<Type>    types;
-    AssetLoader*        loader { nullptr };
+    CallableLoader      loader;
 };
 
 struct AssetInfo
@@ -28,7 +34,7 @@ struct AssetInfo
     i32             refcount { 0 };
     GUID            guid;
     AssetLocation   location;
-    AssetLoader*    loader { nullptr };
+    CallableLoader  loader;
     void*           data { nullptr };
 };
 
@@ -36,7 +42,7 @@ struct AssetCache
 {
     DynamicArray<AssetLocator*>             locators;
     DynamicArray<AssetLoaderInfo>           loaders;
-    DynamicHashMap<Type, AssetLoader*>      type_to_loader;
+    DynamicHashMap<Type, CallableLoader>    type_to_loader;
 
     DynamicHashMap<GUID, AssetHandle>       lookup;
     ResourcePool<AssetHandle, AssetInfo>    assets { sizeof(AssetInfo) * 64 };
@@ -52,11 +58,12 @@ void destroy_cache(AssetCache* cache)
     BEE_DELETE(system_allocator(), cache);
 }
 
-bool register_loader(AssetCache* cache, AssetLoader* loader)
+bool register_loader(AssetCache* cache, AssetLoader* loader, void* user_data)
 {
     cache->loaders.emplace_back();
     auto& info = cache->loaders.back();
-    info.loader = loader;
+    info.loader.loader = loader;
+    info.loader.user_data = user_data;
 
     const int type_count = loader->get_types(nullptr);
     BEE_ASSERT(type_count > 0);
@@ -83,7 +90,7 @@ bool register_loader(AssetCache* cache, AssetLoader* loader)
 
     for (const auto& type : info.types)
     {
-        cache->type_to_loader.insert(type, loader);
+        cache->type_to_loader.insert(type, { loader, user_data });
     }
 
     return true;
@@ -93,7 +100,7 @@ void unregister_loader(AssetCache* cache, AssetLoader* loader)
 {
     const int index = find_index_if(cache->loaders, [&](const AssetLoaderInfo& info)
     {
-        return info.loader == loader;
+        return info.loader.loader == loader;
     });
 
     if (BEE_FAIL_F(index >= 0, "AssetLoader is not registered"))
@@ -168,7 +175,7 @@ Result<AssetHandle, AssetCacheError> load_asset(AssetCache* cache, const GUID gu
         return AssetCacheError { AssetCacheError::no_loader_for_type };
     }
 
-    auto res = loader_info->value->load(&asset.location);
+    auto res = loader_info->value.loader->load(&asset.location, loader_info->value.user_data);
     if (!res)
     {
         cache->assets.deallocate(handle);
@@ -190,7 +197,7 @@ Result<i32, AssetCacheError> unload_asset(AssetCache* cache, const AssetHandle h
         return asset.refcount;
     }
 
-    if (!asset.loader->unload(asset.location.type, asset.data))
+    if (!asset.loader.loader->unload(asset.location.type, asset.data, asset.loader.user_data))
     {
         return AssetCacheError::failed_to_unload;
     }

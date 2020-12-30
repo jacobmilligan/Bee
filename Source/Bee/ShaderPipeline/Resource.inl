@@ -9,7 +9,10 @@
 
 #include "Bee/ShaderPipeline/Cache.hpp"
 
+#include "Bee/AssetCache/AssetCache.hpp"
+
 #include "Bee/Core/Containers/Array.hpp"
+#include "Bee/Core/Containers/ResourcePool.hpp"
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/Serialization/Serialization.hpp"
 
@@ -21,7 +24,7 @@ namespace bee {
 
 struct BEE_REFLECT(serializable, version = 1) ShaderPipelineStage
 {
-    String                          entry;
+    StaticString<256>               entry;
     ShaderStageFlags                flags;
 
     BEE_REFLECT(bytes)
@@ -35,31 +38,24 @@ struct BEE_REFLECT(serializable, version = 1) ShaderPipelineStage
 
 struct BEE_REFLECT(serializable, version = 1, use_builder) ShaderPipeline
 {
-    String                          name;
-    PipelineStateCreateInfo         pipeline_info;
-    RenderPassCreateInfo            render_pass_info;
-    FixedArray<SubPassDescriptor>   subpasses;
-    FixedArray<ShaderPipelineStage> stages;
-
-    BEE_REFLECT(nonserialized)
-    RenderPassHandle                render_pass_resource;
-
-    BEE_REFLECT(nonserialized)
-    PipelineStateHandle             pipeline_resource;
+    u32                                                         name_hash { 0 };
+    PipelineStateDescriptor                                     pipeline_desc;
+    StaticArray<ShaderPipelineStage, ShaderStageIndex::count>   stages;
 };
 
-
-BEE_SERIALIZE_TYPE(SerializationBuilder* builder, ShaderPipeline* pipeline)
+struct ShaderCache
 {
-    // we can automatically serialize the pipeline as normal using the defined version info etc.
-    serialize_type(builder->serializer(), builder->params());
+    RecursiveMutex                                              mutex;
+    DynamicHashMap<u32, ShaderPipelineHandle>                   lookup;
+    ResourcePool<ShaderPipelineHandle, ShaderPipeline>          pool;
 
-    if (builder->mode() == SerializerMode::reading)
-    {
-        // ... but if we're in read mode we have to fixup the subpasses pointer
-        pipeline->render_pass_info.subpasses = pipeline->subpasses.data();
-    }
-}
+    const GpuBackend*                                           gpu { nullptr };
+    DeviceHandle                                                device;
+
+    ShaderCache()
+        : pool(sizeof(ShaderPipeline) * 64)
+    {}
+};
 
 
 } // namespace bee

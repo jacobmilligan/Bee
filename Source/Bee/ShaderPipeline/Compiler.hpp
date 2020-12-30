@@ -34,9 +34,15 @@ BEE_REFLECTED_FLAGS(ShaderTarget, u32, serializable)
     spirv_debug = 1u << 1u
 };
 
+struct BEE_REFLECT(serializable, version = 1) ShaderImportSettings
+{
+    bool output_debug_shaders { false };
+};
+
 
 #define BEE_SHADER_COMPILER_MODULE_NAME "BEE_SHADER_COMPILER"
 
+struct AssetPipeline;
 struct ShaderCache;
 struct ShaderPipelineHandle;
 struct ShaderCompilerModule
@@ -45,11 +51,12 @@ struct ShaderCompilerModule
 
     void (*destroy)() { nullptr };
 
-    ShaderCompilerResult (*compile_shaders)(ShaderCache* cache, const i32 count, const StringView* source_paths, const StringView* sources, const ShaderTarget* targets, DynamicArray<ShaderPipelineHandle>* dst) { nullptr };
-
     ShaderCompilerResult (*compile_shader)(ShaderCache* cache, const StringView& source_path, const StringView& source, const ShaderTarget target, DynamicArray<ShaderPipelineHandle>* dst) { nullptr };
-};
 
+    void (*register_importer)(AssetPipeline* pipeline, ShaderCache* cache) { nullptr };
+
+    void (*unregister_importer)(AssetPipeline* pipeline) { nullptr };
+};
 
 
 } // namespace bee

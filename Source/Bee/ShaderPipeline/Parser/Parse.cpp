@@ -83,91 +83,6 @@ i32 bsc_find_node_index(const bsc_node_array_t<T>& array, const StringView& iden
  *
  ************************************
  */
-struct SubpassAttachmentConversion
-{
-    u32*                            count { nullptr };
-    u32*                            indices { nullptr };
-    i32                             indices_size { 0 };
-    const DynamicArray<StringView>& identifiers;
-
-    template <i32 Size>
-    SubpassAttachmentConversion(u32& new_count, u32(&new_indices)[Size], const DynamicArray<StringView>& to_convert)
-        : count(&new_count),
-          indices(new_indices),
-          indices_size(Size),
-          identifiers(to_convert)
-    {}
-};
-
-BscResolveError bsc_convert_subpass_attachments(const BscRenderPassNode& pass, SubpassAttachmentConversion* conversion)
-{
-    BEE_ASSERT(conversion->indices_size >= conversion->identifiers.size());
-
-    *conversion->count = 0;
-
-    for (const auto& attachment : conversion->identifiers)
-    {
-        const auto index = bsc_find_node_index(pass.attachments, attachment);
-        if (index < 0)
-        {
-            return BscResolveError(BscResolveErrorCode::undefined_symbol, attachment);
-        }
-
-        conversion->indices[*conversion->count] = sign_cast<u32>(index);
-        ++(*conversion->count);
-    }
-
-    return BscResolveError{};
-}
-
-BscResolveError bsc_convert_subpass(const BscRenderPassNode& pass, const i32 subpass_index, SubPassDescriptor* output)
-{
-    const auto& subpass = pass.subpasses[subpass_index].data;
-
-    SubpassAttachmentConversion conversions[] = {
-        { output->input_attachments.size, output->input_attachments.data, subpass.input_attachments },
-        { output->color_attachments.size, output->color_attachments.data, subpass.color_attachments },
-        { output->preserve_attachments.size, output->preserve_attachments.data, subpass.preserve_attachments },
-        { output->resolve_attachments.size, output->resolve_attachments.data, subpass.resolve_attachments }
-    };
-
-    BscResolveError err{};
-
-    for (auto& conversion : conversions)
-    {
-        err = bsc_convert_subpass_attachments(pass, &conversion);
-        if (!err)
-        {
-            return err;
-        }
-    }
-
-    return err;
-}
-
-BscResolveError bsc_add_pass(const BscRenderPassNode& input, ShaderFile* shader)
-{
-    const auto& pass = shader->add_pass(input.attachments.size(), input.subpasses.size());
-
-    for (int i = 0; i < input.attachments.size(); ++i)
-    {
-        shader->attachments[pass.attachments.offset + i] = input.attachments[i].data;
-    }
-
-    BscResolveError err{};
-
-    for (int i = 0; i < input.subpasses.size(); ++i)
-    {
-        err = bsc_convert_subpass(input, i, &shader->subpasses[pass.subpasses.offset + i]);
-        if (!err)
-        {
-            return err;
-        }
-    }
-
-    return err;
-}
-
 BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
 {
     if (output == nullptr)
@@ -180,25 +95,11 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
     // TODO(Jacob): ensure multiple-defined symbols are not possible - use a symbol table for resolving this
     DynamicHashMap<StringView, i32> symbol_map(module.allocator);
 
+    // Resolve all pipeline symbols
     for (int i = 0; i < module.pipeline_states.size(); ++i)
     {
         const auto& in = module.pipeline_states[i].data;
         auto& out_pipeline = output->add_pipeline(module.pipeline_states[i].identifier);
-
-        // Resolve all pipeline symbols
-        const auto pass_index = bsc_find_node_index(module.render_passes, in.render_pass);
-        if (pass_index < 0)
-        {
-            return { BscResolveErrorCode::undefined_symbol, in.render_pass };
-        }
-
-        const auto& pass = module.render_passes[pass_index].data;
-
-        auto subpass_index = bsc_find_node_index(pass.subpasses, in.subpass);
-        if (subpass_index < 0)
-        {
-            return { BscResolveErrorCode::undefined_symbol, in.subpass };
-        }
 
         // Raster state - not required
         if (!in.raster_state.empty())
@@ -209,7 +110,7 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
                 return raster_state.error;
             }
 
-            out_pipeline.info.raster_state = *raster_state;
+            out_pipeline.desc.raster_state = *raster_state;
         }
 
         // Multisample state - not required
@@ -221,7 +122,7 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
                 return multisample_state.error;
             }
 
-            out_pipeline.info.multisample_state = *multisample_state;
+            out_pipeline.desc.multisample_state = *multisample_state;
         }
 
         // Depth stencil state - not required
@@ -233,7 +134,7 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
                 return depth_stencil_state.error;
             }
 
-            out_pipeline.info.depth_stencil_state = *depth_stencil_state;
+            out_pipeline.desc.depth_stencil_state = *depth_stencil_state;
         }
 
         // Color blend state - required. Must be == attachment count
@@ -247,9 +148,9 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
                     return blend_state.error;
                 }
 
-                const int index = out_pipeline.info.color_blend_states.size;
-                ++out_pipeline.info.color_blend_states.size;
-                out_pipeline.info.color_blend_states[index] = *blend_state;
+                const int index = out_pipeline.desc.color_blend_states.size;
+                ++out_pipeline.desc.color_blend_states.size;
+                out_pipeline.desc.color_blend_states[index] = *blend_state;
             }
         }
 
@@ -318,24 +219,8 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
             out_pipeline.shaders[stage.index] = subshader_index->value;
         }
 
-        // validate the color blend states are compatible with the attachment count
-        auto& subpass = pass.subpasses[subpass_index];
-        if (sign_cast<i32>(out_pipeline.info.color_blend_states.size) < subpass.data.color_attachments.size())
-        {
-            return BscResolveError(BscResolveErrorCode::incompatible_color_blend_states, out_pipeline.name.view(), subpass.identifier);
-        }
-
-        // Generate the ShaderPass
-        auto error = bsc_add_pass(pass, output);
-        if (!error)
-        {
-            return error;
-        }
-
         // Generate the ShaderPipeline
-        out_pipeline.pass = pass_index;
-        out_pipeline.info.subpass_index = sign_cast<u32>(subpass_index);
-        out_pipeline.info.primitive_type = in.primitive_type;
+        out_pipeline.desc.primitive_type = in.primitive_type;
 
         // TODO(Jacob): push constants
     }
@@ -441,12 +326,6 @@ bool BscParser::parse_top_level_structure(BscLexer* lexer, BscModule* ast)
 
     switch (kind)
     {
-        case BscTokenKind::RenderPass:
-        {
-            ast->render_passes.emplace_back(ident, ast->allocator);
-            success = parse_render_pass(lexer, &ast->render_passes.back());
-            break;
-        }
         case BscTokenKind::RasterState:
         {
             ast->raster_states.emplace_back(ident);
@@ -502,74 +381,6 @@ bool BscParser::parse_top_level_structure(BscLexer* lexer, BscModule* ast)
     }
 
     return lexer->consume_as(BscTokenKind::close_bracket, &tok);
-}
-
-bool BscParser::parse_render_pass(BscLexer* lexer, BscNode<BscRenderPassNode>* node)
-{
-    BscToken tok{};
-
-    while (lexer->peek(&tok))
-    {
-        if (tok.kind == BscTokenKind::close_bracket)
-        {
-            break;
-        }
-
-        if (!lexer->consume(&tok))
-        {
-            return false;
-        }
-
-        const auto kind = tok.kind;
-
-        if (!lexer->consume_as(BscTokenKind::identifier, &tok))
-        {
-            return false;
-        }
-
-        StringView ident(tok.begin, tok.end);
-
-        if (!lexer->consume_as(BscTokenKind::open_bracket, &tok))
-        {
-            return false;
-        }
-
-        // parse attachments and subpasses
-        switch (kind)
-        {
-            case BscTokenKind::Attachment:
-            {
-                node->data.attachments.emplace_back(ident);
-                if (!parse_attachment(lexer, &node->data.attachments.back()))
-                {
-                    return false;
-                }
-                break;
-            }
-
-            case BscTokenKind::SubPass:
-            {
-                node->data.subpasses.emplace_back(ident);
-                if (!parse_subpass(lexer, &node->data.subpasses.back()))
-                {
-                    return false;
-                }
-                break;
-            }
-
-            default:
-            {
-                return report_error(BscErrorCode::invalid_object_type, lexer);
-            }
-        }
-
-        if (!lexer->consume_as(BscTokenKind::close_bracket, &tok))
-        {
-            return false;
-        }
-    }
-
-    return true;
 }
 
 bool BscParser::parse_raster_state(BscLexer* lexer, BscNode<RasterStateDescriptor>* node)
@@ -644,14 +455,6 @@ bool BscParser::parse_pipeline_state(BscLexer* lexer, BscNode<BscPipelineStateNo
             }
 
             node->data.primitive_type = static_cast<PrimitiveType>(constant);
-        }
-        else if (key == "render_pass")
-        {
-            node->data.render_pass = value;
-        }
-        else if (key == "subpass")
-        {
-            node->data.subpass = value;
         }
         else if (key == "raster_state")
         {
@@ -755,63 +558,6 @@ bool BscParser::parse_shader(BscLexer* lexer, BscNode<BscShaderNode>* node)
 bool BscParser::parse_attachment(BscLexer* lexer, BscNode<AttachmentDescriptor>* node)
 {
     return parse_fields(lexer, get_type_as<AttachmentDescriptor, RecordTypeInfo>(), &node->data);
-}
-
-bool BscParser::parse_subpass(BscLexer* lexer, BscNode<BscSubPassNode>* node)
-{
-    BscToken tok{};
-    StringView key{};
-
-    while (lexer->peek(&tok))
-    {
-        if (tok.kind == BscTokenKind::close_bracket)
-        {
-            break;
-        }
-
-        if (!parse_key(lexer, &key))
-        {
-            return false;
-        }
-
-        if (key == "depth_stencil")
-        {
-            if (!lexer->consume_as(BscTokenKind::identifier, &tok))
-            {
-                return false;
-            }
-            node->data.depth_stencil = StringView(tok.begin, tok.end);
-        }
-        else
-        {
-            DynamicArray<StringView>* array = nullptr;
-
-            if (key == "input_attachments")
-            {
-                array = &node->data.input_attachments;
-            }
-            else if (key == "color_attachments")
-            {
-                array = &node->data.color_attachments;
-            }
-            else if (key == "preserve_attachments")
-            {
-                array = &node->data.preserve_attachments;
-            }
-            else if (key == "resolve_attachments")
-            {
-                array = &node->data.resolve_attachments;
-            }
-            else
-            {
-                return report_error(BscErrorCode::invalid_object_field, lexer);
-            }
-
-            return parse_array(lexer, array);
-        }
-    }
-
-    return true;
 }
 
 bool BscParser::parse_blend_state(BscLexer* lexer, BscNode<BlendStateDescriptor>* node)
@@ -1180,19 +926,7 @@ bool BscParser::parse_array(BscLexer* lexer, const EnumType& enum_type, i32* arr
 // ShaderFile
 void ShaderFile::get_shader_pipeline_descriptor(const Pipeline& pipeline, ShaderPipelineDescriptor* dst)
 {
-    memcpy(&dst->create_info, &pipeline.info, sizeof(PipelineStateCreateInfo));
-
-    auto& pass = passes[pipeline.pass];
-
-    auto& render_pass_info = dst->render_pass_info;
-    render_pass_info.subpass_count = sign_cast<u32>(pass.subpasses.size);
-    render_pass_info.attachments.size = sign_cast<u32>(pass.attachments.size);
-    render_pass_info.subpasses = subpasses.data() + pass.subpasses.offset;
-    memcpy(
-        render_pass_info.attachments.data,
-        attachments.data() + pass.attachments.offset,
-        render_pass_info.attachments.size * sizeof(AttachmentDescriptor)
-    );
+    memcpy(&dst->pipeline, &pipeline.desc, sizeof(PipelineStateDescriptor));
 
     dst->name = pipeline.name.c_str();
 

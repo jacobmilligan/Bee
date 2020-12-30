@@ -17,19 +17,6 @@ namespace bee {
 
 #define BEE_SANDBOX_MODULE_NAME "BEE_SANDBOX"
 
-struct BEE_REFLECT(serializable) ShaderImportSettings
-{
-    bool compile_debug_shaders { false };
-};
-
-struct BEE_REFLECT(serializable) ShaderAsset
-{
-    DynamicArray<u32> shader_hashes;
-
-    ShaderAsset(Allocator* allocator = system_allocator())
-        : shader_hashes(allocator)
-    {}
-};
 
 struct SandboxModule
 {
@@ -43,7 +30,3 @@ struct SandboxModule
 
 
 } // namespace bee
-
-#ifdef BEE_ENABLE_REFLECTION
-    #include "Bee.Sandbox/Sandbox.generated.inl"
-#endif // BEE_ENABLE_REFLECTION

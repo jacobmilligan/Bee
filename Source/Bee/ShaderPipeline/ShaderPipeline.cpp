@@ -11,8 +11,8 @@
 namespace bee {
 
 
-extern void load_compiler_module(bee::PluginLoader* loader, const bee::PluginState state);
-extern void load_shader_modules(bee::PluginLoader* loader, const bee::PluginState state);
+extern void load_compiler_module(PluginLoader* loader, const PluginState state);
+extern void load_shader_modules(PluginLoader* loader, const PluginState state);
 
 
 } // namespace bee

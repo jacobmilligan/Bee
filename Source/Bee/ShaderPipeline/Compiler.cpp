@@ -10,6 +10,9 @@
 #include "Bee/ShaderPipeline/Compiler.hpp"
 #include "Bee/ShaderPipeline/Parser/Parse.hpp"
 #include "Bee/ShaderPipeline/Cache.hpp"
+#include "Bee/ShaderPipeline/Resource.inl"
+
+#include "Bee/AssetPipeline/AssetPipeline.hpp"
 
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/DynamicLibrary.hpp"
@@ -44,10 +47,12 @@ struct ShaderCompiler
 {
     DynamicLibrary          dxc;
     FixedArray<ThreadData>  thread_data;
+    AssetImporter           importer;
 };
 
 static ShaderCompiler*      g_compiler = nullptr;
 extern ShaderCacheModule    g_shader_cache;
+static AssetPipelineModule* g_asset_pipeline = nullptr;
 
 
 /*
@@ -413,7 +418,7 @@ ShaderFile::Range reflect_subshader(CompilationContext* ctx, const i32 subshader
     return range;
 }
 
-static bool merge_resource_layouts(const StringView& source_path, PipelineStateCreateInfo* info, const CompilationContext::resource_layouts_t& layouts)
+static bool merge_resource_layouts(const StringView& source_path, PipelineStateDescriptor* info, const CompilationContext::resource_layouts_t& layouts)
 {
     const u32 layout_max = sign_cast<u32>(math::min(sign_cast<i32>(info->resource_layouts.capacity), static_array_length(layouts)));
     for (u32 layout = 0; layout < layout_max; ++layout)
@@ -450,7 +455,7 @@ static bool merge_resource_layouts(const StringView& source_path, PipelineStateC
                  * with the pipeline states previously assigned binding (from a different shader). This ensures
                  * all shaders in a pipeline are compatible with each other
                  */
-                if (pipeline_layout.resources[resource.binding] != shader_layout.resources[i])
+                if (0 != memcmp(&pipeline_layout.resources[resource.binding], &shader_layout.resources[i], sizeof(ResourceDescriptor)))
                 {
                     log_error(
                         "Cannot compile %" BEE_PRIsv ": resources are incompatible at binding %u, layout %u",
@@ -626,7 +631,6 @@ static ShaderCompilerResult compile_shader_file(ShaderCache* cache, const String
 
     i32 update_freq_validation[BEE_GPU_MAX_RESOURCE_LAYOUTS] { -1 };
 
-    RenderPassCreateInfo render_pass_info{};
     ShaderPipelineDescriptor desc{};
 
     // Setup each pipelines create info
@@ -634,7 +638,7 @@ static ShaderCompilerResult compile_shader_file(ShaderCache* cache, const String
     {
         // Assign the reflected vertex description
         const auto vert_index = underlying_t(ShaderStageIndex::vertex);
-        pipeline.info.vertex_description = ctx.vertex_descriptors[pipeline.shaders[vert_index]];
+        pipeline.desc.vertex_description = ctx.vertex_descriptors[pipeline.shaders[vert_index]];
 
         // validate the resource layouts from the shaders and assign to the pipeline
         for (auto& shader_index : pipeline.shaders)
@@ -661,14 +665,14 @@ static ShaderCompilerResult compile_shader_file(ShaderCache* cache, const String
             }
 
             auto& shader_resources = ctx.resource_layouts[shader_index];
-            if (!merge_resource_layouts(source_path, &pipeline.info, shader_resources))
+            if (!merge_resource_layouts(source_path, &pipeline.desc, shader_resources))
             {
                 return ShaderCompilerResult::incompatible_resource_layouts;
             }
         }
 
         // sort the resource layouts so there's no gaps in the bindings
-        for (auto& layout : pipeline.info.resource_layouts)
+        for (auto& layout : pipeline.desc.resource_layouts)
         {
             auto* begin = layout.resources.begin();
             auto* end = layout.resources.end();
@@ -759,32 +763,83 @@ static ShaderCompilerResult compile_shader_file(ShaderCache* cache, const String
     return ShaderCompilerResult::success;
 }
 
-ShaderCompilerResult compile_shaders(ShaderCache* cache, const i32 count, const StringView* source_paths, const StringView* sources, const ShaderTarget* targets, DynamicArray<ShaderPipelineHandle>* dst)
-{
-    auto& thread = g_compiler->thread_data[job_worker_id()];
-
-    for (int i = 0; i < count; ++i)
-    {
-        const auto result = compile_shader_file(cache, source_paths[i], sources[i], targets[i], dst);
-
-        // reset the temp allocator automatically after each compilation
-        thread.temp_allocator.reset();
-
-        if (result != ShaderCompilerResult::success)
-        {
-            return result;
-        }
-    }
-
-    return ShaderCompilerResult::success;
-}
-
 ShaderCompilerResult compile_shader(ShaderCache* cache, const StringView& source_path, const StringView& source, const ShaderTarget target, DynamicArray<ShaderPipelineHandle>* dst)
 {
-    return compile_shaders(cache, 1, &source_path, &source, &target, dst);
+    auto& thread = g_compiler->thread_data[job_worker_id()];
+    const auto result = compile_shader_file(cache, source_path, source, target, dst);
+    thread.temp_allocator.reset();
+    return result;
 }
 
 
+/*
+ **********************************
+ *
+ * Asset pipeline importer
+ *
+ **********************************
+ */
+static const char* get_shader_importer_name()
+{
+    return "Bee.ShaderImporter";
+}
+
+static i32 get_shader_importer_file_types(const char** dst)
+{
+    if (dst != nullptr)
+    {
+        dst[0] = ".bsc";
+    }
+    return 1;
+}
+
+static Type get_shader_importer_properties_type()
+{
+    return get_type<ShaderImportSettings>();
+}
+
+static ImportErrorStatus import_shader(AssetImportContext* ctx, void* user_data)
+{
+    ShaderCache* cache = static_cast<ShaderCache*>(user_data);
+    DynamicArray<ShaderPipelineHandle> output(ctx->temp_allocator);
+    const auto content = fs::read(ctx->path, ctx->temp_allocator);
+    const auto result = compile_shader(
+        cache,
+        path_get_filename(ctx->path),
+        content.view(),
+        ShaderTarget::spirv,
+        &output
+    );
+
+    if (result != ShaderCompilerResult::success)
+    {
+        return ImportErrorStatus::fatal;
+    }
+
+    for (auto& handle : output)
+    {
+        ctx->add_artifact(&cache->pool[handle]);
+    }
+
+    return ImportErrorStatus::success;
+}
+
+static void register_importer(AssetPipeline* asset_pipeline, ShaderCache* shader_cache)
+{
+    if (g_asset_pipeline == nullptr)
+    {
+        g_asset_pipeline = static_cast<AssetPipelineModule*>(get_module(BEE_ASSET_PIPELINE_MODULE_NAME));
+        BEE_ASSERT(g_asset_pipeline != nullptr);
+    }
+
+    g_asset_pipeline->register_importer(asset_pipeline, &g_compiler->importer, shader_cache);
+}
+
+static void unregister_importer(AssetPipeline* asset_pipeline)
+{
+    BEE_ASSERT(g_asset_pipeline != nullptr);
+    g_asset_pipeline->unregister_importer(asset_pipeline, &g_compiler->importer);
+}
 
 /*
  **********************************
@@ -793,18 +848,24 @@ ShaderCompilerResult compile_shader(ShaderCache* cache, const StringView& source
  *
  **********************************
  */
-static ShaderCompilerModule g_module{};
+static ShaderCompilerModule g_shader_compiler{};
 
 void load_compiler_module(bee::PluginLoader* loader, const bee::PluginState state)
 {
     g_compiler = loader->get_static<ShaderCompiler>("Bee.ShaderCompiler");
 
-    g_module.init = init;
-    g_module.destroy = destroy;
-    g_module.compile_shaders = compile_shaders;
-    g_module.compile_shader = compile_shader;
+    g_shader_compiler.init = init;
+    g_shader_compiler.destroy = destroy;
+    g_shader_compiler.compile_shader = compile_shader;
+    g_shader_compiler.register_importer = register_importer;
+    g_shader_compiler.unregister_importer = unregister_importer;
 
-    loader->set_module(BEE_SHADER_COMPILER_MODULE_NAME, &g_module, state);
+    g_compiler->importer.name = get_shader_importer_name;
+    g_compiler->importer.supported_file_types = get_shader_importer_file_types;
+    g_compiler->importer.properties_type = get_shader_importer_properties_type;
+    g_compiler->importer.import = import_shader;
+
+    loader->set_module(BEE_SHADER_COMPILER_MODULE_NAME, &g_shader_compiler, state);
 }
 
 
