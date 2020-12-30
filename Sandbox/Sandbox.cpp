@@ -224,25 +224,6 @@ static bool startup()
     }
     g_shader_compiler->register_importer(g_app->pipeline, g_app->cache);
 
-    // load a shader cache if one already exists
-#ifdef SERIALIZE_TO_JSON
-    const auto shader_cache_path = g_app->shader_root.join("ShaderCache.json");
-    if (shader_cache_path.exists())
-    {
-        const auto json = fs::read(shader_cache_path);
-        JSONSerializer serializer(json.data(), rapidjson::ParseFlag::kParseInsituFlag);
-        g_shader_cache->load(g_app->cache, &serializer);
-    }
-#else
-    const auto shader_cache_path = g_app->shader_root.join("ShaderCache");
-    if (shader_cache_path.exists())
-    {
-        io::FileStream stream(shader_cache_path, "rb");
-        StreamSerializer serializer(&stream);
-        g_shader_cache->load(g_app->cache, &serializer);
-    }
-#endif // SERIALIZE_TO_JSON
-
     g_app->asset_cache = g_asset_cache->create_cache();
     if (g_app->asset_cache == nullptr)
     {
