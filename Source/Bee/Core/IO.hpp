@@ -315,6 +315,8 @@ public:
 
     i32 write_v(const char* src_fmt_str, va_list src_fmt_args);
 
+    i32 write_fmt(const char* format, ...) BEE_PRINTFLIKE(2, 3);
+
     i32 seek(i32 offset, SeekOrigin origin) override;
 
     inline i32 offset() const override

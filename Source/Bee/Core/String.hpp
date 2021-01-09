@@ -550,7 +550,7 @@ public:
             return *this;
         }
         BEE_ASSERT(index + count <= size_);
-        memmove(&buffer[index], &buffer_[index + count], size_ - (index + count));
+        memmove(&buffer_[index], &buffer_[index + count], size_ - (index + count));
         set_size(size_ - count);
         return *this;
     }
@@ -961,7 +961,7 @@ BEE_CORE_API String& trim(String* src, char character);
 /**
  * `split` - split a StringView using the delimiter character into an array of substrings
  */
-BEE_CORE_API void split(const StringView& src, DynamicArray<StringView>* dst, char delimiter);
+BEE_CORE_API void split(const StringView& src, DynamicArray<StringView>* dst, const char* delimiter);
 
 BEE_CORE_API bool is_ascii(const char c);
 
@@ -1140,6 +1140,141 @@ inline bool operator>=(const String& lhs, const char* rhs)
     return str::compare(lhs, rhs) >= 0;
 }
 
+/*
+ ******************************************
+ *
+ * `StaticString` global operator overloads
+ *
+ ******************************************
+ */
+
+
+/*
+ * `StaticString` - operator==
+ */
+template <i32 Size>
+inline bool operator==(const StaticString<Size>& lhs, const StaticString<Size>& rhs)
+{
+    return str::compare(lhs.view(), rhs.view()) == 0;
+}
+
+template <i32 Size>
+inline bool operator==(const StaticString<Size>& lhs, const String& rhs)
+{
+    return str::compare_n(lhs.view(), rhs.c_str(), rhs.size()) == 0;
+}
+
+template <i32 Size>
+inline bool operator==(const StaticString<Size>& lhs, const char* rhs)
+{
+    return str::compare(lhs.view(), rhs) == 0;
+}
+
+/*
+ * `StaticString` - operator!=
+ */
+template <i32 Size>
+inline bool operator!=(const StaticString<Size>& lhs, const StaticString<Size>& rhs)
+{
+    return !(lhs == rhs);
+}
+
+template <i32 Size>
+inline bool operator!=(const StaticString<Size>& lhs, const String& rhs)
+{
+    return !(lhs == rhs);
+}
+
+template <i32 Size>
+inline bool operator!=(const StaticString<Size>& lhs, const char* rhs)
+{
+    return !(lhs == rhs);
+}
+
+/*
+ * `StaticString` - operator<
+ */
+template <i32 Size>
+inline bool operator<(const StaticString<Size>& lhs, const StaticString<Size>& rhs)
+{
+    return str::compare(lhs.view(), rhs.view()) < 0;
+}
+
+template <i32 Size>
+inline bool operator<(const StaticString<Size>& lhs, const String& rhs)
+{
+    return str::compare_n(lhs.view(), rhs.c_str(), rhs.size()) < 0;
+}
+
+template <i32 Size>
+inline bool operator<(const StaticString<Size>& lhs, const char* rhs)
+{
+    return str::compare(lhs.view(), rhs) < 0;
+}
+
+/*
+ * `StaticString` - operator>
+ */
+template <i32 Size>
+inline bool operator>(const StaticString<Size>& lhs, const StaticString<Size>& rhs)
+{
+    return str::compare(lhs.view(), rhs.view()) > 0;
+}
+
+template <i32 Size>
+inline bool operator>(const StaticString<Size>& lhs, const String& rhs)
+{
+    return str::compare_n(lhs.view(), rhs.c_str(), rhs.size()) > 0;
+}
+
+template <i32 Size>
+inline bool operator>(const StaticString<Size>& lhs, const char* rhs)
+{
+    return str::compare(lhs.view(), rhs) > 0;
+}
+
+/*
+ * `StaticString` - operator<=
+ */
+template <i32 Size>
+inline bool operator<=(const StaticString<Size>& lhs, const StaticString<Size>& rhs)
+{
+    return str::compare(lhs.view(), rhs.view()) <= 0;
+}
+
+template <i32 Size>
+inline bool operator<=(const StaticString<Size>& lhs, const String& rhs)
+{
+    return str::compare_n(lhs.view(), rhs.c_str(), rhs.size()) <= 0;
+}
+
+template <i32 Size>
+inline bool operator<=(const StaticString<Size>& lhs, const char* rhs)
+{
+    return str::compare(lhs.view(), rhs) <= 0;
+}
+
+/*
+ * `StaticString` - operator>=
+ */
+template <i32 Size>
+inline bool operator>=(const StaticString<Size>& lhs, const StaticString<Size>& rhs)
+{
+    return str::compare(lhs.view(), rhs.view()) >= 0;
+}
+
+template <i32 Size>
+inline bool operator>=(const StaticString<Size>& lhs, const String& rhs)
+{
+    return str::compare_n(lhs.view(), rhs.c_str(), rhs.size()) >= 0;
+}
+
+template <i32 Size>
+inline bool operator>=(const StaticString<Size>& lhs, const char* rhs)
+{
+    return str::compare(lhs.view(), rhs) >= 0;
+}
+
 
 /*
  ******************************************
@@ -1280,6 +1415,12 @@ inline bool operator==(const char* lhs, const String& rhs)
     return str::compare_n(StringView(lhs), rhs.c_str(), rhs.size()) == 0;
 }
 
+template <i32 Size>
+inline bool operator==(const char* lhs, const StaticString<Size>& rhs)
+{
+    return str::compare_n(StringView(lhs), rhs.c_str(), rhs.size()) == 0;
+}
+
 /*
  * operator!=
  */
@@ -1289,6 +1430,12 @@ inline bool operator!=(const char* lhs, const StringView& rhs)
 }
 
 inline bool operator!=(const char* lhs, const String& rhs)
+{
+    return !(lhs == rhs);
+}
+
+template <i32 Size>
+inline bool operator!=(const char* lhs, const StaticString<Size>& rhs)
 {
     return !(lhs == rhs);
 }
@@ -1306,6 +1453,12 @@ inline bool operator<(const char* lhs, const String& rhs)
     return str::compare_n(StringView(lhs), rhs.c_str(), rhs.size()) < 0;
 }
 
+template <i32 Size>
+inline bool operator<(const char* lhs, const StaticString<Size>& rhs)
+{
+    return str::compare_n(StringView(lhs), rhs.c_str(), rhs.size()) < 0;
+}
+
 /*
  * operator>
  */
@@ -1315,6 +1468,12 @@ inline bool operator>(const char* lhs, const StringView& rhs)
 }
 
 inline bool operator>(const char* lhs, const String& rhs)
+{
+    return str::compare_n(StringView(lhs), rhs.c_str(), rhs.size()) > 0;
+}
+
+template <i32 Size>
+inline bool operator>(const char* lhs, const StaticString<Size>& rhs)
 {
     return str::compare_n(StringView(lhs), rhs.c_str(), rhs.size()) > 0;
 }
@@ -1332,6 +1491,12 @@ inline bool operator<=(const char* lhs, const String& rhs)
     return str::compare_n(StringView(lhs), rhs.c_str(), rhs.size()) <= 0;
 }
 
+template <i32 Size>
+inline bool operator<=(const char* lhs, const StaticString<Size>& rhs)
+{
+    return str::compare_n(StringView(lhs), rhs.c_str(), rhs.size()) <= 0;
+}
+
 /*
  * operator>=
  */
@@ -1341,6 +1506,12 @@ inline bool operator>=(const char* lhs, const StringView& rhs)
 }
 
 inline bool operator>=(const char* lhs, const String& rhs)
+{
+    return str::compare_n(StringView(lhs), rhs.c_str(), rhs.size()) >= 0;
+}
+
+template <i32 Size>
+inline bool operator>=(const char* lhs, const StaticString<Size>& rhs)
 {
     return str::compare_n(StringView(lhs), rhs.c_str(), rhs.size()) >= 0;
 }

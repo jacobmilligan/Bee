@@ -5,6 +5,8 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
+#include "BeeBuild/Environment.hpp"
+
 #include "Bee/Core/Main.hpp"
 #include "Bee/Core/CLI.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
@@ -18,20 +20,6 @@
 
 namespace bee {
 
-
-enum class BuildPlatform
-{
-    windows,
-    unknown
-};
-
-enum class BBGenerator
-{
-    vs2017,
-    vs2019,
-    clion,
-    unknown
-};
 
 enum class CMakeGenerator
 {
@@ -50,56 +38,29 @@ enum class BuildType
     unknown
 };
 
-BEE_TRANSLATION_TABLE(get_platform_string, BuildPlatform, const char*, BuildPlatform::unknown,
-    "Windows"                 // windows
-)
-
-BEE_TRANSLATION_TABLE(get_bb_generator_string, BBGenerator, const char*, BBGenerator::unknown,
-    "VS2017",   // vs2017
-    "VS2019",   // vs2019
-    "CLion"     // clion
-)
-
-BEE_TRANSLATION_TABLE(get_bb_vs_version, BBGenerator, const char*, BBGenerator::unknown,
-    "15.0",     // vs2017
-    "16.0",     // vs2019
-    nullptr     // clion
-)
-
-BEE_TRANSLATION_TABLE(get_cmake_generator_string, CMakeGenerator, const char*, CMakeGenerator::unknown,
+BEE_TRANSLATION_TABLE_FUNC(get_cmake_generator_string, CMakeGenerator, const char*, CMakeGenerator::unknown,
     "Visual Studio 15 2017 Win64",  // visual_studio_15_2017_win64
     "Visual Studio 16 2019",        // visual_studio_16_2019_win64
     "CodeBlocks - Ninja",           // ninja
     "CodeBlocks - NMake Makefiles"  // nmake
 )
 
-BEE_TRANSLATION_TABLE(get_build_type_string, BuildType, const char*, BuildType::unknown,
+BEE_TRANSLATION_TABLE_FUNC(get_build_type_string, BuildType, const char*, BuildType::unknown,
     "Debug",        // debug
     "Release",      // release
     "MultiConfig"
 )
 
-BEE_TRANSLATION_TABLE(get_extra_cmake_args, CMakeGenerator, const char*, CMakeGenerator::unknown,
+BEE_TRANSLATION_TABLE_FUNC(get_extra_cmake_args, CMakeGenerator, const char*, CMakeGenerator::unknown,
     nullptr,        // visual_studio_15_2017_win64
     "-A x64",       // visual_studio_16_2019_win64
     nullptr,        // ninja
     nullptr         // nmake
 )
 
-struct BuildEnvironment
-{
-    BuildPlatform   platform { BuildPlatform::unknown };
-    Path            project_root;
-    Path            build_dir;
-    Path            install_dir;
-    Path            cmake_path;
-    Path            vcvarsall_path[underlying_t(BBGenerator::unknown)];
-    i32             default_vcvarsall_path { -1 };
-};
-
 struct GeneratorInfo
 {
-    BBGenerator     bb {BBGenerator::unknown };
+    BuildIDE        ide {BuildIDE::unknown };
     CMakeGenerator  cmake { CMakeGenerator::unknown };
 };
 
@@ -117,104 +78,19 @@ struct ConfigureInfo
  * find_generator
  */
 static constexpr GeneratorInfo g_generators[] = {
-    { BBGenerator::vs2017, CMakeGenerator::visual_studio_15_2017_win64 },
-    { BBGenerator::vs2019, CMakeGenerator::visual_studio_16_2019_win64 },
-    { BBGenerator::clion,  CMakeGenerator::codeblocks_nmake_makefiles }
+    { BuildIDE::vs2017, CMakeGenerator::visual_studio_15_2017_win64 },
+    { BuildIDE::vs2019, CMakeGenerator::visual_studio_16_2019_win64 },
+    { BuildIDE::clion,  CMakeGenerator::codeblocks_nmake_makefiles }
 };
 
 GeneratorInfo find_generator(const char* name)
 {
     const auto index = find_index_if(g_generators, [&](const GeneratorInfo& info)
     {
-        return str::compare(name, get_bb_generator_string(info.bb)) == 0;
+        return str::compare(name, to_string(info.ide)) == 0;
     });
 
     return index >= 0 ? g_generators[index] : GeneratorInfo{};
-}
-
-bool init_build_environment(BuildEnvironment* env)
-{
-#if BEE_OS_WINDOWS == 1
-
-    env->platform = BuildPlatform::windows;
-#else
-    env->platform = BuildPlatform::unknown;
-#endif // BEE_OS_WINDOWS == 1
-
-    if (env->platform == BuildPlatform::unknown)
-    {
-        return false;
-    }
-
-    env->project_root = Path::executable_path().parent_path().parent_path().parent_path();
-    env->build_dir = env->project_root.join("Build");
-
-    const auto bin_root = env->project_root.join("ThirdParty/Binaries");
-
-    if (env->platform == BuildPlatform::windows)
-    {
-        env->cmake_path = bin_root.join("cmake/bin/cmake.exe").normalize();
-
-        // Get the path to vcvarsall - this is a complicated process so buckle up...
-
-        // Run cmake in a shell with vcvarsall if the CLion generator is used otherwise NMake won't know where to find VS
-        const auto vswhere_location = bin_root.join("vswhere.exe");
-
-        // Run vswhere to get VS2017 install directory
-        for (int i = 0; i < underlying_t(BBGenerator::unknown); ++i)
-        {
-            const char* vs_version = get_bb_vs_version(static_cast<BBGenerator>(i));
-            if (vs_version == nullptr || str::length(vs_version) <= 0)
-            {
-                continue;
-            }
-
-            auto vswhere_cmd = str::format(
-                "%s -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath -version %s",
-                vswhere_location.c_str(), vs_version
-            );
-
-            bee::ProcessHandle vswhere{};
-
-            bee::CreateProcessInfo proc_info{};
-            proc_info.handle = &vswhere;
-            proc_info.flags = bee::CreateProcessFlags::priority_high
-                | bee::CreateProcessFlags::create_hidden
-                | bee::CreateProcessFlags::create_read_write_pipes;
-            proc_info.command_line = vswhere_cmd.c_str();
-
-            if (!bee::create_process(proc_info))
-            {
-                bee::log_error("Couldn't find vswhere.exe - unable to use CLion generator");
-                return false;
-            }
-
-            bee::wait_for_process(vswhere);
-            auto vs_location = bee::read_process(vswhere);
-            bee::destroy_process(vswhere);
-
-            bee::str::replace(&vs_location, "\r\n", "");
-            if (!vs_location.empty())
-            {
-                if (env->default_vcvarsall_path < 0)
-                {
-                    env->default_vcvarsall_path = i;
-                }
-
-                // Setup path to vcvarsall.bat so we can run the shell with all the VS vars
-                env->vcvarsall_path[i] = str::format(R"(%s\VC\Auxiliary\Build\vcvarsall.bat)", vs_location.c_str()).view();
-                env->vcvarsall_path[i].normalize();
-            }
-        }
-    }
-
-    if (env->default_vcvarsall_path < 0)
-    {
-        bee::log_error("Couldn't find a visual studio installation on this machine");
-        return false;
-    }
-
-    return true;
 }
 
 bool configure(const ConfigureInfo& config_info)
@@ -226,7 +102,7 @@ bool configure(const ConfigureInfo& config_info)
     {
         const BuildType build_type = build_type_enumer.value;
         const auto* build_type_string = get_build_type_string(build_type);
-        const auto* bb_generator_string = get_bb_generator_string(generator_info.bb);
+        const auto* bb_generator_string = to_string(generator_info.ide);
         const auto* cmake_generator_string = get_cmake_generator_string(generator_info.cmake);
         auto output_directory = config_info.environment->build_dir.join(bb_generator_string);
 
@@ -250,11 +126,11 @@ bool configure(const ConfigureInfo& config_info)
         String cmd;
         io::StringStream stream(&cmd);
 
-        if (generator_info.bb == BBGenerator::clion)
+        if (generator_info.ide == BuildIDE::clion)
         {
             // Call vcvarsall before running cmake for clion builds
             const auto* env = config_info.environment;
-            const auto& vsvarsall = env->vcvarsall_path[env->default_vcvarsall_path];
+            const auto& vsvarsall = env->windows.vcvarsall_path[env->windows.default_ide];
             stream.write_fmt(R"("%s" x64 && )", vsvarsall.c_str());
         }
 
@@ -401,7 +277,7 @@ int bb_entry(int argc, char** argv)
 
     for (const auto generator : enumerate(g_generators))
     {
-        const auto* bb_name = get_bb_generator_string(generator.value.bb);
+        const auto* bb_name = to_string(generator.value.ide);
         const auto* cmake_name = get_cmake_generator_string(generator.value.cmake);
 
         stream.write_fmt("   - %s => %s", bb_name, cmake_name);
@@ -474,7 +350,7 @@ int bb_entry(int argc, char** argv)
     {
         const auto generator_info = find_generator(cli::get_positional(configure_cmd->value, 0));
 
-        if (generator_info.bb == BBGenerator::unknown)
+        if (generator_info.ide == BuildIDE::unknown)
         {
             log_error("Invalid generator specified: %s", cli::get_positional(configure_cmd->value, 0));
             return EXIT_FAILURE;
@@ -501,7 +377,7 @@ int bb_entry(int argc, char** argv)
         }
 
 
-        if (generator_info.bb == BBGenerator::clion)
+        if (generator_info.ide == BuildIDE::clion)
         {
             // CLion isn't multiconfig
             config_info.build_types.push_back(BuildType::debug);

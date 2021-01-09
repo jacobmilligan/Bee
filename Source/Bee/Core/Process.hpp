@@ -94,7 +94,7 @@ struct BEE_CORE_API CreateProcessInfo
 };
 
 #if BEE_OS_WINDOWS == 1
-    static constexpr char environment_path_delimiter = ';';
+    static constexpr const char* environment_path_delimiter = ";";
 #else
     #error "Platform not supported"
 #endif // BEE_OS_WINDOWS == 1

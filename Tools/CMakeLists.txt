@@ -1,4 +1,5 @@
 add_subdirectory(BeeBuild)
+add_subdirectory(ImGuiGenerator)
 
 if (BUILD_CLANG_TOOLS)
     bee_log("Building clang-based tools")
@@ -22,9 +23,9 @@ if (BUILD_CLANG_TOOLS)
 endif ()
 
 if (WIN32)
-    add_custom_target(Bee.Tools.PackageBinaries ALL)
+    add_custom_target(All_PackageTools ALL)
     add_custom_command(
-        TARGET Bee.Tools.PackageBinaries
+        TARGET All_PackageTools
         COMMAND cmd.exe /c .\\package.bat
         WORKING_DIRECTORY ${BEE_PROJECT_ROOT}/Tools
         COMMENT "Bee: packaging tool binaries..."

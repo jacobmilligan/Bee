@@ -120,9 +120,10 @@ endfunction()
 #
 ################################################################################
 function(bee_begin)
-    set(__bee_include_dirs ${BEE_SOURCES_ROOT} ${BEE_GENERATED_ROOT} CACHE INTERNAL "")
+    set(__bee_include_dirs ${BEE_SOURCES_ROOT} ${BEE_GENERATED_ROOT} ${BEE_PROJECT_ROOT}/Tools CACHE INTERNAL "")
     set(__bee_libraries "" CACHE INTERNAL "")
     set(__bee_plugins "" CACHE INTERNAL "")
+    set(__bee_tools "" CACHE INTERNAL "")
     set(__bee_current_source_root "" CACHE INTERNAL "")
     bee_new_source_root()
 endfunction()
@@ -132,11 +133,33 @@ function(bee_end)
         ALL
         DEPENDS ${__bee_plugins}
     )
+    add_custom_target(All_Tools
+        ALL
+        DEPENDS ${__bee_tools}
+    )
 
     if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
         add_custom_target(NatVis SOURCES ${BEE_CMAKE_ROOT}/Bee.natvis)
     endif ()
     bee_begin()
+endfunction()
+
+function(bee_package_tool name)
+    # Conditionally execute the command only in Release builds (we don't want debug binaries packaged)
+    # see: https://stackoverflow.com/questions/1620006/post-build-step-only-for-release-build
+    # this is, as far as I can tell, the only real way to conditionally execute a custom command
+    # for multi-config generators like VS. The trick is to output an echo before the copy command
+    # in order to short-circuit it
+    set(no_copy $<NOT:$<CONFIG:Release>>)
+    add_custom_command(
+        TARGET ${name}
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E
+        $<${no_copy}:echo>
+        $<${no_copy}:"Skipping tool copy command in non-release build: ">
+        copy $<TARGET_FILE:${name}> ${BEE_TOOLS_BINARY_DIR}
+    )
+    set(__bee_tools ${__bee_tools} ${name} CACHE INTERNAL "")
 endfunction()
 
 ################################################################################
@@ -291,7 +314,7 @@ endfunction()
 #
 ################################################################################
 function(bee_library name)
-    cmake_parse_arguments(ARGS "STATIC;KEEP_SOURCE_ROOT" "" "LINK_LIBRARIES" ${ARGN})
+    cmake_parse_arguments(ARGS "STATIC;KEEP_SOURCE_ROOT" "OVERRIDE_API_MACRO" "LINK_LIBRARIES" ${ARGN})
 
     __bee_get_api_macro(${name} api_macro)
 

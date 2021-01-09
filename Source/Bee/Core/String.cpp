@@ -464,7 +464,7 @@ i32 compare_n(const StringView& lhs, const char* rhs, i32 max_compare_count)
 
 i32 compare(const String& lhs, const String& rhs)
 {
-    return compare_n(lhs.c_str(), lhs.size(), rhs.c_str(), lhs.size());
+    return compare_n(lhs.c_str(), lhs.size(), rhs.c_str(), rhs.size());
 }
 
 i32 compare(const String& lhs, const char* rhs)
@@ -1256,17 +1256,17 @@ String& trim(String* src, char character)
     return trim_end(src, character);
 }
 
-void split(const StringView& src, DynamicArray<StringView>* dst, char delimiter)
+void split(const StringView& src, DynamicArray<StringView>* dst, const char* delimiter)
 {
-    auto begin = 0;
+    int current = 0;
+    const int delim_len = length(delimiter);
 
-    for (int current = 0; current < src.size(); ++current)
+    while (current < src.size())
     {
-        if (src[current] == delimiter || current == src.size() - 1)
-        {
-            dst->push_back(StringView(src.c_str() + begin, current - begin));
-            begin = current + 1;
-        }
+        const auto substr = substring(src, current, src.size() - current);
+        const auto next_index = first_index_of(substr, delimiter);
+        dst->push_back(StringView(substr.data(), next_index));
+        current += next_index + delim_len;
     }
 }
 

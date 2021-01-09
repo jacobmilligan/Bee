@@ -268,6 +268,18 @@ i32 FileStream::write_v(const char* src_fmt_str, va_list src_fmt_args)
     return size_written;
 }
 
+i32 FileStream::write_fmt(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+
+    const auto write_size = write_v(format, args);
+
+    va_end(args);
+
+    return write_size;
+}
+
 i32 FileStream::seek(i32 offset, SeekOrigin origin)
 {
     auto fseek_offset = offset;

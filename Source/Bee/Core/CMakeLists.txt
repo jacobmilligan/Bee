@@ -57,6 +57,7 @@ endif ()
 
 bee_library(Bee.Core KEEP_SOURCE_ROOT LINK_LIBRARIES ${core_link_libraries})
 bee_library(Bee.Core.StaticLib STATIC LINK_LIBRARIES ${core_link_libraries})
+bee_package_tool(Bee.Core)
 
 target_compile_definitions(Bee.Core PRIVATE BEE_BUILD_CORE_EXPORT_LIBRARY)
 bee_reflect(

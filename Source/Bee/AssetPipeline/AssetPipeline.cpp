@@ -411,7 +411,6 @@ void set_runtime_cache(AssetPipeline* pipeline, AssetCache* cache)
 
     if (pipeline->runtime_cache != nullptr)
     {
-        BEE_ASSERT(g_asset_cache != nullptr);
         g_asset_cache->unregister_locator(pipeline->runtime_cache, &pipeline->runtime_locator);
     }
 
