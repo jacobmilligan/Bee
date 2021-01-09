@@ -12,62 +12,24 @@
 namespace bee {
 
 
-SocketAddress::~SocketAddress()
+const char* SocketError::to_string() const
 {
-    if (info != nullptr)
-    {
-        freeaddrinfo(info);
-    }
-    info = nullptr;
-}
+    static thread_local StaticString<1024> msg { 1024, '\0' };
 
-const char* SocketAddress::to_string() const
-{
-    return info->ai_canonname;
-}
-
-i32 socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const port_t port)
-{
-    if (address->info != nullptr)
+    if (code == BEE_SOCKET_SUCCESS)
     {
-        address->~SocketAddress();
+        return "Success";
     }
 
-    ADDRINFOA hints{};
-    hints.ai_family = address_family == SocketAddressFamily::ipv4 ? AF_INET : AF_INET6;
-    hints.ai_socktype = type == SocketType::tcp ? SOCK_STREAM : SOCK_DGRAM;
-    hints.ai_protocol = type == SocketType::tcp ? IPPROTO_TCP : IPPROTO_UDP;
-    hints.ai_flags = AI_PASSIVE | AI_CANONNAME;
-
-    char port_string[8];
-    str::format_buffer(port_string, 8, "%u", htons(port));
-
-    return getaddrinfo(hostname, port_string, &hints, &address->info);
+    return win32_format_error(code, msg.data(), msg.size());
 }
 
-i32 socket_startup()
+SocketStatus SocketError::to_status() const
 {
-    WSADATA wsa;
-    return WSAStartup(MAKEWORD(2, 2), &wsa);
-}
-
-i32 socket_cleanup()
-{
-    return WSACleanup();
-}
-
-const char* socket_code_to_string(const i32 code)
-{
-    static thread_local char msg_buffer[1024];
-    return win32_format_error(code == SOCKET_ERROR ? WSAGetLastError() : code, msg_buffer, static_array_length(msg_buffer));
-}
-
-SocketError socket_code_to_error(const i32 code)
-{
-#define BEE_SOCKET_CODE_MAPPING(wsa_code, bee_error) case wsa_code: return SocketError::bee_error;
+#define BEE_SOCKET_CODE_MAPPING(wsa_code, bee_error) case wsa_code: return SocketStatus::bee_error;
     switch (code == SOCKET_ERROR ? WSAGetLastError() : code)
     {
-        case 0: return SocketError::success;
+        case 0: return SocketStatus::success;
         BEE_SOCKET_CODE_MAPPING(WSANOTINITIALISED, api_not_initialized)
         BEE_SOCKET_CODE_MAPPING(WSAENETDOWN, network_failure)
         BEE_SOCKET_CODE_MAPPING(WSAEFAULT, bad_address)
@@ -87,104 +49,179 @@ SocketError socket_code_to_error(const i32 code)
     }
 #undef BEE_SOCKET_CODE_MAPPING
 
-    return SocketError::unknown_error;
+    return SocketStatus::unknown_error;
 }
 
-i32 socket_open(socket_t* dst, const SocketAddress& address)
+SocketAddress::~SocketAddress()
+{
+    if (info != nullptr)
+    {
+        freeaddrinfo(info);
+    }
+    info = nullptr;
+}
+
+const char* SocketAddress::to_string() const
+{
+    return info->ai_canonname;
+}
+
+static Result<void, SocketError> void_or_err(const i32 code)
+{
+    if (code != 0)
+    {
+        return SocketError { code };
+    }
+    return {};
+}
+
+Result<void, SocketError> socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const port_t port)
+{
+    if (address->info != nullptr)
+    {
+        address->~SocketAddress();
+    }
+
+    ADDRINFOA hints{};
+    hints.ai_family = address_family == SocketAddressFamily::ipv4 ? AF_INET : AF_INET6;
+    hints.ai_socktype = type == SocketType::tcp ? SOCK_STREAM : SOCK_DGRAM;
+    hints.ai_protocol = type == SocketType::tcp ? IPPROTO_TCP : IPPROTO_UDP;
+    hints.ai_flags = AI_PASSIVE | AI_CANONNAME;
+
+    char port_string[8];
+    str::format_buffer(port_string, 8, "%u", htons(port));
+
+    return void_or_err(getaddrinfo(hostname, port_string, &hints, &address->info));
+}
+
+Result<void, SocketError> socket_startup()
+{
+    WSADATA wsa;
+    return void_or_err(WSAStartup(MAKEWORD(2, 2), &wsa));
+}
+
+Result<void, SocketError> socket_cleanup()
+{
+    return void_or_err(WSACleanup());
+}
+
+Result<void, SocketError> socket_open(socket_t* dst, const SocketAddress& address)
 {
     *dst = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
     if (*dst == INVALID_SOCKET)
     {
-        return WSAGetLastError();
+        return SocketError { WSAGetLastError() };
     }
 
-    return BEE_SOCKET_SUCCESS;
+    return {};
 }
 
-i32 socket_close(const socket_t& socket)
+Result<void, SocketError> socket_close(const socket_t& socket)
 {
-    return closesocket(socket);
+    return void_or_err(closesocket(socket));
 }
 
-i32 socket_connect(socket_t* dst, const SocketAddress& address)
+Result<void, SocketError> socket_connect(socket_t* dst, const SocketAddress& address)
 {
     auto result = connect(*dst, address->ai_addr, (int)address->ai_addrlen);
 
     if (result == 0)
     {
-        return BEE_SOCKET_SUCCESS;
+        return {};
     }
+
     result = WSAGetLastError();
 
     socket_close(*dst);
     *dst = INVALID_SOCKET;
-    return result;
+    return SocketError { result };
 }
 
-i32 socket_shutdown(const socket_t client)
+Result<void, SocketError> socket_shutdown(const socket_t socket)
 {
-    auto result = shutdown(client, SD_SEND);
+    auto result = shutdown(socket, SD_SEND);
     if (result == 0)
     {
-        return BEE_SOCKET_SUCCESS;
+        return {};
     }
     result = WSAGetLastError();
 
-    socket_close(client);
-    return result;
+    socket_close(socket);
+    return SocketError { result };
 }
 
-i32 socket_bind(const socket_t& socket, const SocketAddress& address)
+Result<void, SocketError> socket_bind(const socket_t& socket, const SocketAddress& address)
 {
     auto result = bind(socket, address->ai_addr, sign_cast<i32>(address->ai_addrlen));
     if (result == 0)
     {
-        return BEE_SOCKET_SUCCESS;
+        return {};
     }
 
     result = WSAGetLastError();
     socket_close(socket);
-    return result;
+    return SocketError { result };
 }
 
-i32 socket_listen(const socket_t& socket, const i32 max_waiting_clients)
+Result<void, SocketError> socket_listen(const socket_t& socket, const i32 max_waiting_clients)
 {
     auto result = listen(socket, max_waiting_clients);
     if (result == 0)
     {
-        return BEE_SOCKET_SUCCESS;
+        return {};
     }
 
     result = WSAGetLastError();
     socket_close(socket);
-    return result;
+    return SocketError { result };
 }
 
-i32 socket_accept(const socket_t& socket, socket_t* client)
+Result<void, SocketError> socket_accept(const socket_t& socket, socket_t* client)
 {
     *client = accept(socket, nullptr, nullptr);
     if (*client != INVALID_SOCKET)
     {
-        return BEE_SOCKET_SUCCESS;
+        return {};
     }
-    return WSAGetLastError();
+    return SocketError { WSAGetLastError() };
 }
 
 
 // close connection if result == 0, otherwise success with bytes recieved if > 0, otherwise error
-i32 socket_recv(const socket_t& client, char* buffer, const i32 buffer_length)
+Result<i32, SocketError> socket_recv(const socket_t& socket, void* buffer, const i32 buffer_length)
 {
-    return recv(client, buffer, buffer_length, 0);
+    const int result = recv(socket, static_cast<char*>(buffer), buffer_length, 0);
+
+    if (result == SOCKET_ERROR)
+    {
+        return SocketError { result };
+    }
+
+    return result;
 }
 
-i32 socket_send(const socket_t& client, const char* buffer, const i32 buffer_length)
+Result<i32, SocketError> socket_send(const socket_t& socket, const void* buffer, const i32 buffer_length)
 {
-    return send(client, buffer, buffer_length, 0);
+    const int result = send(socket, static_cast<const char*>(buffer), buffer_length, 0);
+
+    if (result == SOCKET_ERROR)
+    {
+        return SocketError { result };
+    }
+
+    return result;
 }
 
-i32 socket_select(const socket_t& socket, fd_set_t* read_fd_set, fd_set_t* write_fd_set, fd_set_t* except_fd_set, const timeval& timeout)
+Result<i32, SocketError> socket_select(const socket_t& socket, fd_set_t* read_fd_set, fd_set_t* write_fd_set, fd_set_t* except_fd_set, const timeval& timeout)
 {
-    return select(0, read_fd_set, write_fd_set, except_fd_set, &timeout);
+    const int result = select(0, read_fd_set, write_fd_set, except_fd_set, &timeout);
+
+    if (result == SOCKET_ERROR)
+    {
+        return SocketError { result };
+    }
+
+    return result;
 }
 
 void socket_fd_zero(fd_set_t* set)
@@ -197,9 +234,9 @@ void socket_fd_set(const socket_t& socket, fd_set_t* set)
     FD_SET(socket, set);
 }
 
-i32 socket_fd_isset(const socket_t& socket, fd_set_t* read_set)
+bool socket_fd_isset(const socket_t& socket, fd_set_t* read_set)
 {
-    return FD_ISSET(socket, read_set);
+    return FD_ISSET(socket, read_set) != 0;
 }
 
 

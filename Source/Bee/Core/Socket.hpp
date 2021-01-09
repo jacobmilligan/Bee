@@ -7,8 +7,10 @@
 
 #pragma once
 
-#include "Bee/Core/Config.hpp"
 #include "Bee/Core/NumericTypes.hpp"
+#include "Bee/Core/Result.hpp"
+#include "Bee/Core/Noncopyable.hpp"
+
 
 #if BEE_OS_WINDOWS == 1
     #include "Bee/Core/Win32/MinWindows.h"
@@ -55,7 +57,7 @@ enum class SocketAddressFamily
 using port_t = u16;
 
 
-enum class SocketError : i32
+enum class SocketStatus : i32
 {
     success = 0,
     api_not_initialized,
@@ -76,12 +78,41 @@ enum class SocketError : i32
     unknown_error
 };
 
+struct BEE_CORE_API SocketError
+{
+    i32 code { BEE_SOCKET_SUCCESS };
 
-struct BEE_CORE_API SocketAddress
+    const char* to_string() const;
+
+    SocketStatus to_status() const;
+
+    inline operator bool() const
+    {
+        return code == BEE_SOCKET_SUCCESS;
+    }
+};
+
+
+struct BEE_CORE_API SocketAddress : public Noncopyable
 {
     addrinfo_t* info { nullptr };
 
+    SocketAddress() = default;
+
+    SocketAddress(SocketAddress&& other) noexcept
+        : info(other.info)
+    {
+        other.info = nullptr;
+    }
+
     ~SocketAddress();
+
+    SocketAddress& operator=(SocketAddress&& other) noexcept
+    {
+        info = other.info;
+        other.info = nullptr;
+        return *this;
+    }
 
     inline const addrinfo_t* operator->() const
     {
@@ -98,43 +129,39 @@ struct BEE_CORE_API SocketAddress
 
 
 
-BEE_CORE_API i32 socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const port_t port);
+BEE_CORE_API Result<void, SocketError> socket_reset_address(SocketAddress* address, const SocketType type, const SocketAddressFamily address_family, const char* hostname, const port_t port);
 
-BEE_CORE_API i32 socket_startup();
+BEE_CORE_API Result<void, SocketError> socket_startup();
 
-BEE_CORE_API const char* socket_code_to_string(const i32 code);
+BEE_CORE_API Result<void, SocketError> socket_cleanup();
 
-BEE_CORE_API SocketError socket_code_to_error(const i32 code);
+BEE_CORE_API Result<void, SocketError> socket_open(socket_t* dst, const SocketAddress& address);
 
-BEE_CORE_API i32 socket_cleanup();
+BEE_CORE_API Result<void, SocketError> socket_close(const socket_t& socket);
 
-BEE_CORE_API i32 socket_open(socket_t* dst, const SocketAddress& address);
+BEE_CORE_API Result<void, SocketError> socket_connect(socket_t* dst, const SocketAddress& address);
 
-BEE_CORE_API i32 socket_close(const socket_t& socket);
+BEE_CORE_API Result<void, SocketError> socket_shutdown(const socket_t socket);
 
-BEE_CORE_API i32 socket_connect(socket_t* dst, const SocketAddress& address);
+BEE_CORE_API Result<void, SocketError> socket_bind(const socket_t& socket, const SocketAddress& address);
 
-BEE_CORE_API i32 socket_shutdown(const socket_t client);
+BEE_CORE_API Result<void, SocketError> socket_listen(const socket_t& socket, i32 max_waiting_clients);
 
-BEE_CORE_API i32 socket_bind(const socket_t& socket, const SocketAddress& address);
-
-BEE_CORE_API i32 socket_listen(const socket_t& socket, i32 max_waiting_clients);
-
-BEE_CORE_API i32 socket_accept(const socket_t& socket, socket_t* client);
+BEE_CORE_API Result<void, SocketError> socket_accept(const socket_t& socket, socket_t* client);
 
 
 // close connection if result == 0, otherwise success with bytes recieved if > 0, otherwise error
-BEE_CORE_API i32 socket_recv(const socket_t& client, char* buffer, const i32 buffer_length);
+BEE_CORE_API Result<i32, SocketError> socket_recv(const socket_t& socket, void* buffer, const i32 buffer_length);
 
-BEE_CORE_API i32 socket_send(const socket_t& client, const char* buffer, const i32 buffer_length);
+BEE_CORE_API Result<i32, SocketError> socket_send(const socket_t& socket, const void* buffer, const i32 buffer_length);
 
-BEE_CORE_API i32 socket_select(const socket_t& socket, fd_set_t* read_fd_set, fd_set_t* write_fd_set, fd_set_t* except_fd_set, const timeval& timeout);
+BEE_CORE_API Result<i32, SocketError> socket_select(const socket_t& socket, fd_set_t* read_fd_set, fd_set_t* write_fd_set, fd_set_t* except_fd_set, const timeval& timeout);
 
 BEE_CORE_API void socket_fd_zero(fd_set_t* set);
 
 BEE_CORE_API void socket_fd_set(const socket_t& socket, fd_set_t* set);
 
-BEE_CORE_API i32 socket_fd_isset(const socket_t& socket, fd_set_t* read_set);
+BEE_CORE_API bool socket_fd_isset(const socket_t& socket, fd_set_t* read_set);
 
 
 } // namespace bee
