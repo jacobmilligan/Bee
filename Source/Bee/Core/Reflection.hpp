@@ -138,7 +138,14 @@ BEE_FLAGS(SerializationFlags, u32)
      * serves as a hint to the serializer to attempt to serialize this field as a buffer of
      * bytes whenever it's encountered.
      */
-     bytes          = 1u << 3u
+     bytes          = 1u << 3u,
+
+     /**
+      * When used on a field:
+      * Marks the field as optional, allowing certain serializers to skip over this field if it's missing
+      * regardless of the parent types version and added/removed attribute values
+      */
+      optional      = 1u << 4u,
 };
 
 

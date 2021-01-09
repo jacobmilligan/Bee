@@ -186,7 +186,7 @@ const char* CodeGenerator::as_ident(const TypeInfo& type)
     return as_ident(type.name, type.is(TypeKind::array) ? "AT_" : nullptr);
 }
 
-BEE_TRANSLATION_TABLE(export_or_inline, CodegenMode, const char*, CodegenMode::none,
+BEE_TRANSLATION_TABLE_FUNC(export_or_inline, CodegenMode, const char*, CodegenMode::none,
     "BEE_EXPORT_SYMBOL",    // cpp
     "inline",               // inl
     "inline"                // templates_only

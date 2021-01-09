@@ -36,7 +36,8 @@ enum class BuiltinAttributeKind
     serializer_function,
     use_builder,
     ignored,
-    bytes
+    bytes,
+    optional
 };
 
 struct BuiltinAttribute
@@ -62,7 +63,8 @@ BuiltinAttribute g_builtin_attributes[] =
     { "serializer", BuiltinAttributeKind::serializer_function },
     { "use_builder", BuiltinAttributeKind::use_builder },
     { "ignored", BuiltinAttributeKind::ignored },
-    { "bytes", BuiltinAttributeKind::bytes }
+    { "bytes", BuiltinAttributeKind::bytes },
+    { "optional", BuiltinAttributeKind::optional },
 };
 
 
@@ -1286,6 +1288,15 @@ bool AttributeParser::parse_attribute(DynamicArray<Attribute>* dst_attributes, S
         case BuiltinAttributeKind::bytes:
         {
             serialization_info->flags |= SerializationFlags::bytes;
+            break;
+        }
+        case BuiltinAttributeKind::optional:
+        {
+            if (is_field)
+            {
+                serialization_info->flags |= SerializationFlags::optional;
+            }
+            break;
         }
         default: break;
     }

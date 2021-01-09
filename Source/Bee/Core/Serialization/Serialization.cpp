@@ -186,7 +186,12 @@ static void serialize_field(const i32 version, Serializer* serializer, const Fie
         field.serialization_flags
     );
 
-    serializer->serialize_field(field.name);
+    const bool field_is_missing = !serializer->serialize_field(field.name);
+    const bool is_optional_field = (field.serialization_flags & SerializationFlags::optional) != SerializationFlags::none;
+    if (field_is_missing && BEE_CHECK_F(is_optional_field, "required serialized field \"%s\" is missing", field.name))
+    {
+        return;
+    }
 
     if (field.template_argument_in_parent >= 0)
     {

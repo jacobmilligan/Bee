@@ -699,6 +699,7 @@ const char* reflection_flag_to_string(const SerializationFlags serialization_fla
         REFL_FLAG(table_format);
         REFL_FLAG(uses_builder);
         REFL_FLAG(bytes);
+        REFL_FLAG(optional);
         default:
         {
             BEE_UNREACHABLE("Missing SerializationFlags string representation");

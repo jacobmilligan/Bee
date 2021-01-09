@@ -40,12 +40,12 @@ BEE_FORCE_INLINE bool json_validate_type(const rapidjson::Type type, const rapid
 
 JSONSerializer::JSONSerializer(Allocator* allocator)
     : Serializer(SerializerFormat::text),
-      parse_flags_(static_cast<rapidjson::ParseFlag>(-1)),
+      parse_flags_(JSONSerializeFlags::none),
       stack_(allocator),
       base64_encode_buffer_(allocator)
 {}
 
-JSONSerializer::JSONSerializer(const char* src, const rapidjson::ParseFlag parse_flags, Allocator* allocator)
+JSONSerializer::JSONSerializer(const char* src, const JSONSerializeFlags parse_flags, Allocator* allocator)
     : Serializer(SerializerFormat::text),
       parse_flags_(parse_flags),
       stack_(allocator),
@@ -55,7 +55,7 @@ JSONSerializer::JSONSerializer(const char* src, const rapidjson::ParseFlag parse
     reset(src, parse_flags);
 }
 
-JSONSerializer::JSONSerializer(char* mutable_src, const rapidjson::ParseFlag parse_flags, Allocator* allocator)
+JSONSerializer::JSONSerializer(char* mutable_src, const JSONSerializeFlags parse_flags, Allocator* allocator)
     : Serializer(SerializerFormat::text),
       parse_flags_(parse_flags),
       stack_(allocator),
@@ -64,18 +64,64 @@ JSONSerializer::JSONSerializer(char* mutable_src, const rapidjson::ParseFlag par
     reset(mutable_src, parse_flags);
 }
 
-void JSONSerializer::reset(const char* src, const rapidjson::ParseFlag parse_flags)
+void JSONSerializer::reset(const char* src, const JSONSerializeFlags parse_flags)
 {
     src_ = src;
-    parse_flags_ = static_cast<rapidjson::ParseFlag>(parse_flags & ~rapidjson::ParseFlag::kParseInsituFlag);
+    parse_flags_ = static_cast<JSONSerializeFlags>(parse_flags & ~JSONSerializeFlags::parse_in_situ);
 }
 
-void JSONSerializer::reset(char* mutable_src, const rapidjson::ParseFlag parse_flags)
+void JSONSerializer::reset(char* mutable_src, const JSONSerializeFlags parse_flags)
 {
     src_ = mutable_src;
     parse_flags_ = parse_flags;
 }
 
+void JSONSerializer::next_element_if_array()
+{
+    if (!stack_.empty() && stack_.back()->IsArray())
+    {
+        BEE_ASSERT(!element_iter_stack_.empty());
+        ++element_iter_stack_.back();
+    }
+}
+
+void JSONSerializer::end_read_scope()
+{
+    BEE_ASSERT(!stack_.empty());
+    if (!stack_.back()->IsArray())
+    {
+        stack_.pop_back();
+    }
+    if (!stack_.empty() && stack_.back()->IsArray())
+    {
+        BEE_ASSERT(!element_iter_stack_.empty());
+        ++element_iter_stack_.back();
+    }
+}
+
+rapidjson::Value * JSONSerializer::current_value()
+{
+    if (stack_.empty())
+    {
+        return nullptr;
+    }
+
+    if (stack_.back()->IsArray())
+    {
+        BEE_ASSERT(element_iter_stack_.back() < sign_cast<i32>(stack_.back()->GetArray().Size()));
+        return &stack_.back()->GetArray()[element_iter_stack_.back()];
+    }
+
+    return stack_.back();
+}
+
+/*
+ *****************************************
+ *
+ * Serializer interface implementation
+ *
+ *****************************************
+ */
 size_t JSONSerializer::offset()
 {
     return 0; // The read and write buffers are both dynamic
@@ -92,7 +138,7 @@ bool JSONSerializer::begin()
     {
         stack_.clear();
 
-        if ((parse_flags_ & rapidjson::ParseFlag::kParseInsituFlag) != 0)
+        if ((parse_flags_ & JSONSerializeFlags::parse_in_situ) != JSONSerializeFlags::none)
         {
             reader_doc_.ParseInsitu(const_cast<char*>(src_));
         }
@@ -228,28 +274,28 @@ void JSONSerializer::end_array()
     stack_.pop_back();
 }
 
-void JSONSerializer::serialize_field(const char* name)
+bool JSONSerializer::serialize_field(const char* name)
 {
     if (mode == SerializerMode::writing)
     {
         writer_.Key(name);
-        return;
+        return true;
     }
     
     // If current element is not an object then we can't serialize a field
     if (!json_validate_type(rapidjson::kObjectType, stack_.back()))
     {
-        return;
+        return false;
     }
 
     const auto member = stack_.back()->FindMember(name);
-
-    if (BEE_FAIL_F(member != stack_.back()->GetObject().MemberEnd(), "JSONSerializer: missing field \"%s\"", name))
+    if (member == stack_.back()->GetObject().MemberEnd())
     {
-        return;
+        return false;
     }
 
     stack_.push_back(&member->value);
+    return true;
 }
 
 void JSONSerializer::serialize_key(String* key)
@@ -266,9 +312,14 @@ void JSONSerializer::serialize_key(String* key)
         return;
     }
 
-    key->append({ current_member_iter()->name.GetString(), static_cast<i32>(current_member_iter()->name.GetStringLength()) });
+    key->assign({ current_member_iter()->name.GetString(), static_cast<i32>(current_member_iter()->name.GetStringLength()) });
     stack_.push_back(&current_member_iter()->value);
     ++current_member_iter();
+
+    if (*key == "ImRect_Expand")
+    {
+//        BEE_DEBUG_BREAK();
+    }
 }
 
 void JSONSerializer::begin_text(i32* length)

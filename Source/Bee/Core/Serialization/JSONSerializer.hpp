@@ -19,18 +19,25 @@
 namespace bee {
 
 
+BEE_FLAGS(JSONSerializeFlags, u32)
+{
+    none                = 0u,
+    parse_in_situ       = 1u << 0u,
+};
+
+
 class BEE_CORE_API JSONSerializer final : public Serializer
 {
 public:
     explicit JSONSerializer(Allocator* allocator = system_allocator());
 
-    explicit JSONSerializer(const char* src, const rapidjson::ParseFlag parse_flags, Allocator* allocator = system_allocator());
+    explicit JSONSerializer(const char* src, const JSONSerializeFlags parse_flags, Allocator* allocator = system_allocator());
 
-    explicit JSONSerializer(char* mutable_src, const rapidjson::ParseFlag parse_flags, Allocator* allocator = system_allocator());
+    explicit JSONSerializer(char* mutable_src, const JSONSerializeFlags parse_flags, Allocator* allocator = system_allocator());
 
-    void reset(const char* src, const rapidjson::ParseFlag parse_flags);
+    void reset(const char* src, const JSONSerializeFlags parse_flag);
 
-    void reset(char* mutable_src, const rapidjson::ParseFlag parse_flags);
+    void reset(char* mutable_src, const JSONSerializeFlags parse_flag);
 
     inline const char* c_str() const
     {
@@ -64,7 +71,7 @@ public:
     void begin_bytes(i32* size) override;
     void end_bytes(u8* buffer, const i32 size) override;
 
-    void serialize_field(const char* name) override;
+    bool serialize_field(const char* name) override;
     void serialize_key(String* key) override;
     void serialize_fundamental(bool* data) override;
     void serialize_fundamental(char* data) override;
@@ -83,7 +90,7 @@ public:
 private:
     rapidjson::StringBuffer                             string_buffer_;
     rapidjson::PrettyWriter<rapidjson::StringBuffer>    writer_;
-    rapidjson::ParseFlag                                parse_flags_;
+    JSONSerializeFlags                                  parse_flags_;
     rapidjson::Document                                 reader_doc_;
     DynamicArray<rapidjson::Value*>                     stack_;
     DynamicArray<rapidjson::Value::MemberIterator>      member_iter_stack_;
@@ -91,28 +98,13 @@ private:
     String                                              base64_encode_buffer_;
     const char*                                         src_ { nullptr };
 
-    inline void next_element_if_array()
-    {
-        if (!stack_.empty() && stack_.back()->IsArray())
-        {
-            BEE_ASSERT(!element_iter_stack_.empty());
-            ++element_iter_stack_.back();
-        }
-    }
+    void next_element_if_array();
 
-    inline void end_read_scope()
-    {
-        BEE_ASSERT(!stack_.empty());
-        if (stack_.back()->IsArray())
-        {
-            BEE_ASSERT(!element_iter_stack_.empty());
-            ++element_iter_stack_.back();
-        }
-        else
-        {
-            stack_.pop_back();
-        }
-    }
+    void end_read_scope();
+
+    rapidjson::Value* current_value();
+
+    void begin_record();
 
     inline rapidjson::Value::MemberIterator& current_member_iter()
     {
@@ -123,24 +115,6 @@ private:
     {
         return element_iter_stack_.back();
     }
-
-    inline rapidjson::Value* current_value()
-    {
-        if (stack_.empty())
-        {
-            return nullptr;
-        }
-
-        if (stack_.back()->IsArray())
-        {
-            BEE_ASSERT(element_iter_stack_.back() < sign_cast<i32>(stack_.back()->GetArray().Size()));
-            return &stack_.back()->GetArray()[element_iter_stack_.back()];
-        }
-
-        return stack_.back();
-    }
-
-    void begin_record();
 };
 
 

@@ -38,7 +38,7 @@ struct BEE_CORE_API StreamSerializer final : public Serializer
     void begin_bytes(i32* size) override;
     void end_bytes(u8* buffer, const i32 size) override;
 
-    void serialize_field(const char* name) override;
+    bool serialize_field(const char* name) override;
     void serialize_key(String* key) override;
     void serialize_fundamental(bool* data) override;
     void serialize_fundamental(char* data) override;

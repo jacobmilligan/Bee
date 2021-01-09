@@ -75,7 +75,7 @@ struct BEE_CORE_API Serializer
     virtual void end_text(char* buffer, const i32 size, const i32 capacity) = 0;
     virtual void begin_bytes(i32* size) = 0;
     virtual void end_bytes(u8* buffer, const i32 size) = 0;
-    virtual void serialize_field(const char* name) = 0;
+    virtual bool serialize_field(const char* name) = 0;
     virtual void serialize_key(String* key) = 0;
     virtual void serialize_fundamental(bool* data) = 0;
     virtual void serialize_fundamental(char* data) = 0;
@@ -511,13 +511,14 @@ BEE_SERIALIZE_TYPE(SerializationBuilder* builder, HashMap<KeyType, ValueType, Mo
 
     if (builder->mode() == SerializerMode::reading)
     {
-        KeyValuePair<KeyType, ValueType> key_val{};
+        KeyType key;
 
         for (int i = 0; i < size; ++i)
         {
-            builder->key(&key_val.key);
-            builder->element(&key_val.value);
-            map->insert(key_val);
+            ValueType value;
+            builder->key(&key);
+            builder->element(&value);
+            map->insert(key, BEE_MOVE(value));
         }
     }
     else

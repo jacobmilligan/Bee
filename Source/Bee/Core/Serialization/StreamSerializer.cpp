@@ -41,9 +41,9 @@ void StreamSerializer::begin_array(i32* count)
     serialize_fundamental(count);
 }
 
-void StreamSerializer::serialize_field(const char* name)
+bool StreamSerializer::serialize_field(const char* name)
 {
-
+    return true;
 }
 
 void StreamSerializer::serialize_key(String* key)
