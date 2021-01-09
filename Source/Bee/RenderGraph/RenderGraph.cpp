@@ -1059,8 +1059,8 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     bee::g_module.setup = bee::setup;
     bee::g_module.execute = bee::execute;
 
-    loader->set_module(BEE_RENDER_GRAPH_MODULE, &bee::g_module, state);
-    loader->set_module(BEE_RENDER_GRAPH_BUILDER_MODULE, &bee::g_builder_module, state);
+    loader->set_module(BEE_RENDER_GRAPH_MODULE_NAME, &bee::g_module, state);
+    loader->set_module(BEE_RENDER_GRAPH_BUILDER_MODULE_NAME, &bee::g_builder_module, state);
 }
 
 BEE_PLUGIN_VERSION(0, 0, 0)

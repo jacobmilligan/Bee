@@ -66,13 +66,14 @@ struct RenderGraphStorage
     DeviceHandle (*get_device)(RenderGraphPass* pass) { nullptr };
 };
 
-#define BEE_RENDER_GRAPH_BUILDER_MODULE "BEE_RENDER_GRAPH_BUILDER"
+#define BEE_RENDER_GRAPH_BUILDER_MODULE_NAME "BEE_RENDER_GRAPH_BUILDER"
 
 struct RenderGraphBuilderModule;
 
 using render_graph_setup_pass_t = void(*)(RenderGraphPass* pass, RenderGraphBuilderModule* builder, const void* external_data, void* pass_data);
 using render_graph_execute_pass_t = void(*)(RenderGraphPass* pass, RenderGraphStorage* storage, GpuCommandBackend* cmd, CommandBuffer* cmdbuf, const void* external_data, void* pass_data);
 using render_graph_init_pass_t = void(*)(const void* external_data, void* pass_data);
+
 
 struct RenderGraphPassDesc
 {
@@ -107,7 +108,7 @@ struct RenderGraphBuilderModule
     void (*write_depth)(RenderGraphPass* pass, const RenderGraphResource& texture, const PixelFormat depth_format, const LoadOp load, const StoreOp store) { nullptr };
 };
 
-#define BEE_RENDER_GRAPH_MODULE "BEE_RENDER_GRAPH"
+#define BEE_RENDER_GRAPH_MODULE_NAME "BEE_RENDER_GRAPH"
 
 struct RenderGraphModule
 {
