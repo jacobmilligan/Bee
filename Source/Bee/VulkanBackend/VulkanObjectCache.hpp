@@ -106,6 +106,7 @@ struct VulkanPipelineKey
     const PipelineStateDescriptor*  desc;
     u32                             render_pass_hash { 0 };
     u32                             subpass_index { 0 };
+    u32                             shader_hashes[ShaderStageIndex::count] { 0 };
     VkRenderPass                    render_pass { VK_NULL_HANDLE };
 };
 
@@ -117,6 +118,7 @@ struct Hash<VulkanPipelineKey>
         HashState hash;
         hash.add(*key.desc);
         hash.add(key.render_pass_hash);
+        hash.add(key.shader_hashes, sizeof(u32) * static_array_length(key.shader_hashes));
         return hash.end();
     }
 };

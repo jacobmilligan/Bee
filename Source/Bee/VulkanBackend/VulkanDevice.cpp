@@ -1676,6 +1676,7 @@ ShaderHandle create_shader(const DeviceHandle& device_handle, const ShaderCreate
     const auto handle = thread.shaders.allocate();
     auto& shader = thread.shaders[handle];
     shader.entry = info.entry;
+    shader.hash = get_hash(info.code, info.code_size, 0x123fd9);
 
     BEE_VK_CHECK(vkCreateShaderModule(device.handle, &vk_info, nullptr, &shader.handle));
 

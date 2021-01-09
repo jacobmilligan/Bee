@@ -221,6 +221,8 @@ void draw(
     key.desc = &state;
     key.render_pass_hash = cmd_buf->current_render_pass->hash;
     key.render_pass = cmd_buf->current_render_pass->handle;
+    key.shader_hashes[ShaderStageIndex::vertex] = cmd_buf->device->shaders_get(state.vertex_stage).hash;
+    key.shader_hashes[ShaderStageIndex::fragment] = cmd_buf->device->shaders_get(state.fragment_stage).hash;
     auto& pipeline = cmd_buf->device->pipeline_cache.get_or_create(key);
 
     vkCmdBindPipeline(cmd_buf->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
@@ -241,6 +243,8 @@ void draw_indexed(
     key.desc = &state;
     key.render_pass_hash = cmd_buf->current_render_pass->hash;
     key.render_pass = cmd_buf->current_render_pass->handle;
+    key.shader_hashes[ShaderStageIndex::vertex] = cmd_buf->device->shaders_get(state.vertex_stage).hash;
+    key.shader_hashes[ShaderStageIndex::fragment] = cmd_buf->device->shaders_get(state.fragment_stage).hash;
     auto& pipeline = cmd_buf->device->pipeline_cache.get_or_create(key);
 
     vkCmdBindPipeline(cmd_buf->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);

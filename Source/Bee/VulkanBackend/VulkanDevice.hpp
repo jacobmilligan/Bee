@@ -170,6 +170,7 @@ struct VulkanTextureView
 
 struct VulkanShader
 {
+    u32                 hash { 0 };
     VkShaderModule      handle { VK_NULL_HANDLE };
     StaticString<256>   entry;
 };
