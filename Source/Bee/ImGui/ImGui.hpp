@@ -1,5 +1,5 @@
 /*
- *  ImGui.hpp.h
+ *  ImGui.hpp
  *  Bee
  *
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
@@ -7,19 +7,21 @@
 
 #pragma once
 
-#include "Bee/Gpu/Gpu.hpp"
-
-#define IMGUI_USER_CONFIG "ImConfig.hpp"
-#include <imgui.h>
+#include "Bee/ImGui/Api.hpp"
 
 namespace bee {
 
 
 #define BEE_IMGUI_MODULE_NAME "BEE_IMGUI_MODULE"
 
-struct ImGuiModule
+#define BEE_IMGUI_RENDER_MODULE "BEE_IMGUI_RENDER"
+
+struct RenderGraphPass;
+struct RenderGraph;
+struct RenderGraphModule;
+struct ImGuiRenderModule
 {
-    bool (*init)(const DeviceHandle device)
+    RenderGraphPass* (*add_render_pass)(RenderGraphModule* rg, RenderGraph* graph) { nullptr };
 };
 
 

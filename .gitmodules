@@ -34,6 +34,3 @@
 [submodule "ThirdParty/SPIRV-Headers"]
 	path = ThirdParty/SPIRV-Headers
 	url = https://github.com/KhronosGroup/SPIRV-Headers.git
-[submodule "ThirdParty/imgui"]
-	path = ThirdParty/imgui
-	url = https://github.com/ocornut/imgui.git

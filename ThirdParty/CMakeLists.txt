@@ -147,18 +147,11 @@ bee_library(lmdb STATIC)
 bee_add_include_dirs(${lmdb_root})
 lmdb_configure(lmdb)
 
-
 ###########################
 #
-# Imgui
+# ImGui
 #
 ##########################
-bee_new_source_root()
-bee_add_sources(
-        ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_draw.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_tables.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_widgets.cpp
-)
-bee_add_include_dirs(imgui)
-bee_library(imgui STATIC)
+set(IMGUI_STATIC "yes")
+add_subdirectory(cimgui)
+bee_add_include_dirs(cimgui)
