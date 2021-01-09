@@ -47,6 +47,7 @@ struct Window // NOLINT
 
 struct Platform // NOLINT
 {
+    bool        is_running { false };
     bool        quit_requested { false };
     i32         monitor_count { 0 };
     i32         primary_monitor { -1 };
@@ -180,6 +181,11 @@ static LRESULT CALLBACK g_window_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
 
 bool start(const char* app_name)
 {
+    if (BEE_FAIL_F(!g_platform->is_running, "Platform is already running"))
+    {
+        return false;
+    }
+
     discover_monitors();
 
     WNDCLASSEXW wndclass{};
@@ -195,18 +201,30 @@ bool start(const char* app_name)
 
     register_input_devices();
 
+    g_platform->is_running = true;
     return true;
 }
 
 bool shutdown()
 {
+    if (BEE_FAIL_F(g_platform->is_running, "Platform is already shut down"))
+    {
+        return false;
+    }
+
     g_platform->quit_requested = true;
     unregister_input_devices();
 
     const auto result = UnregisterClassW(BEE_WNDCLASSNAME, GetModuleHandleW(nullptr));
     BEE_ASSERT_F(result != 0, "Failed to unregister a Win32 window class: %s", win32_get_last_error_string());
 
+    g_platform->is_running = false;
     return true;
+}
+
+bool is_running()
+{
+    return g_platform->is_running;
 }
 
 bool quit_requested()
@@ -415,6 +433,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
 
     g_module.start = bee::start;
     g_module.shutdown = bee::shutdown;
+    g_module.is_running = bee::is_running;
     g_module.quit_requested = bee::quit_requested;
     g_module.enumerate_monitors = bee::enumerate_monitors;
     g_module.get_primary_monitor = bee::get_primary_monitor;

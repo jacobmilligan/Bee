@@ -59,6 +59,8 @@ struct PlatformModule
 
     bool (*shutdown)() { nullptr };
 
+    bool (*is_running)() { nullptr };
+
     bool (*quit_requested)() { nullptr };
 
     i32 (*enumerate_monitors)(MonitorInfo* dst) { nullptr };
