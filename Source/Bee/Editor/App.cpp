@@ -15,6 +15,7 @@
 #include "Bee/Platform/Platform.hpp"
 #include "Bee/RenderGraph/RenderGraph.hpp"
 #include "Bee/ImGui/ImGui.hpp"
+#include "Bee/ShaderPipeline/Cache.hpp"
 
 
 namespace bee {
@@ -24,21 +25,24 @@ static constexpr i32 editor_connection_port = 8888;
 
 struct EditorApp
 {
-    bool            quit_requested { false };
+    bool                quit_requested { false };
+    bool                reloaded { false };
 
     // Platform resources
-    WindowHandle    main_window;
+    WindowHandle        main_window;
 
     // GPU resources
-    GpuBackend*     gpu { nullptr };
-    DeviceHandle    device;
-    SwapchainHandle swapchain;
+    GpuBackend*         gpu { nullptr };
+    DeviceHandle        device;
+    SwapchainHandle     swapchain;
+    ShaderCache*        shader_cache { nullptr };
 
     // Rendering resources
-    RenderGraph*    render_graph { nullptr };
+    RenderGraph*        render_graph { nullptr };
+    RenderGraphPass*    imgui_pass { nullptr };
 
     // Data connection
-    DataConnection* connection { nullptr };
+    DataConnection*     connection { nullptr };
 };
 
 static EditorApp* g_app = nullptr;
@@ -49,6 +53,82 @@ static GpuModule*               g_gpu { nullptr };
 static RenderGraphModule*       g_render_graph { nullptr };
 static DataConnectionModule*    g_data_connection { nullptr };
 static ImGuiModule*             g_imgui { nullptr };
+static ImGuiRenderModule*       g_imgui_render { nullptr };
+static ShaderCacheModule*       g_shader_cache { nullptr };
+
+/*
+ ******************************************************
+ *
+ * ImGui render pass
+ *
+ ******************************************************
+ */
+struct ImGuiPassData
+{
+    ImGuiRender*        imgui_render { nullptr };
+    RenderGraphResource backbuffer;
+};
+
+static void init_pass(GpuBackend* gpu, const DeviceHandle device, const void* external_data, void* pass_data)
+{
+    auto* imgui_pass = static_cast<ImGuiPassData*>(pass_data);
+    auto res = g_imgui_render->create(device, gpu, g_app->shader_cache, system_allocator());
+    if (!res)
+    {
+        log_error("ImGuiRender error: %s", res.unwrap_error().to_string());
+        return;
+    }
+    imgui_pass->imgui_render = res.unwrap();
+}
+
+static void destroy_pass(GpuBackend* gpu, const DeviceHandle device, const void* external_data, void* pass_data)
+{
+    auto* imgui_pass = static_cast<ImGuiPassData*>(pass_data);
+    if (imgui_pass->imgui_render != nullptr)
+    {
+        g_imgui_render->destroy(imgui_pass->imgui_render);
+    }
+}
+
+static void setup_pass(RenderGraphPass* pass, RenderGraphBuilderModule* builder, const void* external_data, void* pass_data)
+{
+    auto* imgui_pass = static_cast<ImGuiPassData*>(pass_data);
+    imgui_pass->backbuffer = builder->import_backbuffer(pass, "Swapchain", g_app->swapchain);
+    builder->write_color(pass, imgui_pass->backbuffer, LoadOp::clear, StoreOp::store, 1);
+}
+
+static void execute_pass(
+    RenderGraphPass* pass,
+    RenderGraphStorage* storage,
+    GpuCommandBackend* cmd,
+    CommandBuffer* cmdbuf,
+    const void* external_data,
+    void* pass_data
+)
+{
+    auto* sandbox_pass = static_cast<ImGuiPassData*>(pass_data);
+
+    // Get the concrete GPU resources from the virtual RenderGraphPass object
+    const TextureViewHandle* attachments = nullptr;
+    const int attachment_count = storage->get_attachments(pass, &attachments);
+    const auto backbuffer_rect = storage->get_backbuffer_rect(pass, sandbox_pass->backbuffer);
+    ClearValue clear_value(0, 0, 0, 0);
+
+    // All draw calls etc. must take place within a render pass and because we're using the render graph we can
+    // just use the automatically-created one for this pass
+    cmd->begin_render_pass(
+        cmdbuf,
+        storage->get_gpu_pass(pass),
+        attachment_count, attachments,
+        backbuffer_rect,
+        attachment_count, &clear_value
+    );
+    // scissor and viewport are dynamic states by default so need to be set each frame
+    cmd->set_scissor(cmdbuf, backbuffer_rect);
+    cmd->set_viewport(cmdbuf, Viewport(0, 0, static_cast<float>(backbuffer_rect.width), static_cast<float>(backbuffer_rect.height)));
+    g_imgui_render->draw(sandbox_pass->imgui_render, cmdbuf);
+    cmd->end_render_pass(cmdbuf);
+}
 
 /*
  ******************************************************
@@ -112,6 +192,14 @@ bool startup()
         return false;
     }
 
+    // Initialize the editor shader cache
+    g_app->shader_cache = g_shader_cache->create();
+    if (g_app->shader_cache == nullptr)
+    {
+        log_error("Failed to create shader cache");
+        return false;
+    }
+
     // Create a new render graph to process the frame - manages creating GPU resources, automatic barriers etc.
     g_app->render_graph = g_render_graph->create_graph(g_app->gpu, g_app->device);
     if (g_app->render_graph == nullptr)
@@ -137,7 +225,7 @@ bool startup()
 
     g_app->connection = dc_res.unwrap();
 
-    g_imgui->create_context();
+//    g_imgui->c
 
     g_app->quit_requested = false;
 
@@ -196,8 +284,34 @@ void shutdown()
     }
 }
 
+static void reload_plugin()
+{
+    if (!g_app->reloaded)
+    {
+        return;
+    }
+
+    g_app->reloaded = false;
+
+    if (g_app->imgui_pass != nullptr)
+    {
+        g_render_graph->remove_pass(g_app->imgui_pass);
+    }
+
+    g_app->imgui_pass = g_render_graph->add_pass<ImGuiPassData>(
+        g_app->render_graph,
+        "ImGuiPass",
+        setup_pass,
+        execute_pass,
+        init_pass,
+        destroy_pass
+    );
+}
+
 void tick()
 {
+    reload_plugin();
+
     // Close the app if either the window is closed or the apps quit event fired
     if (g_platform->quit_requested() || g_platform->window_close_requested(g_app->main_window))
     {
@@ -262,6 +376,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     }
 
     bee::g_app = loader->get_static<bee::EditorApp>("Bee.EditorApp");
+    bee::g_app->reloaded = state == bee::PluginState::loading;
 
     g_module.startup = bee::startup;
     g_module.shutdown = bee::shutdown;
@@ -276,6 +391,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
         bee::g_render_graph = static_cast<bee::RenderGraphModule*>(loader->get_module(BEE_RENDER_GRAPH_MODULE_NAME));
         bee::g_data_connection = static_cast<bee::DataConnectionModule*>(loader->get_module(BEE_DATA_CONNECTION_MODULE_NAME));
         bee::g_imgui = static_cast<bee::ImGuiModule*>(loader->get_module(BEE_IMGUI_MODULE_NAME));
+        bee::g_imgui_render = static_cast<bee::ImGuiRenderModule*>(loader->get_module(BEE_IMGUI_RENDER_MODULE_NAME));
     }
 }
 

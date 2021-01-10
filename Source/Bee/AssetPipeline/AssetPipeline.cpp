@@ -17,9 +17,17 @@
 namespace bee {
 
 
+struct CommonAssetPipeline
+{
+    Mutex                           mutex;
+    DynamicArray<Path>              source_folders;
+    DynamicArray<AssetPipeline*>    pipelines;
+};
+
+static CommonAssetPipeline* g_common;
+
 AssetDatabaseModule*    g_assetdb = nullptr;
 AssetCacheModule*       g_asset_cache = nullptr;
-
 /*
  **********************************
  *
@@ -60,7 +68,7 @@ static void load_config(AssetPipeline* pipeline)
 {
     TempAlloc temp_alloc(pipeline);
     auto contents = fs::read(pipeline->config_path, temp_alloc);
-    JSONSerializer serializer(contents.data(), rapidjson::kParseInsituFlag, temp_alloc);
+    JSONSerializer serializer(contents.data(), JSONSerializeFlags::parse_in_situ, temp_alloc);
     serialize(SerializerMode::reading, &serializer, &pipeline->config);
 }
 
@@ -89,6 +97,17 @@ static bool init_pipeline(AssetPipeline* pipeline)
     {
         pipeline->source_watcher.add_directory(pipeline->config_path.parent_path().append(source_root.view()));
     }
+
+    // watch any external source folders added before the pipeline was created
+    {
+        scoped_lock_t lock(g_common->mutex);
+        g_common->pipelines.push_back(pipeline);
+        for (const auto& path : g_common->source_folders)
+        {
+            pipeline->source_watcher.add_directory(path);
+        }
+    }
+
     pipeline->source_watcher.start(pipeline->config.name.c_str());
 
     return pipeline;
@@ -138,7 +157,7 @@ AssetPipeline* load_pipeline(const StringView path)
 
     load_config(pipeline);
 
-    if (!init_pipeline(pipeline))
+    if (BEE_FAIL(init_pipeline(pipeline)))
     {
         BEE_DELETE(system_allocator(), pipeline);
         return nullptr;
@@ -155,6 +174,13 @@ void destroy_pipeline(AssetPipeline* pipeline)
         g_asset_cache->unregister_locator(pipeline->runtime_cache, &pipeline->runtime_locator);
     }
 
+    {
+        scoped_lock_t lock(g_common->mutex);
+        const int common_index = find_index(g_common->pipelines, pipeline);
+        BEE_ASSERT(common_index >= 0);
+        g_common->pipelines.erase(common_index);
+    }
+
     pipeline->source_watcher.stop();
     g_assetdb->close(pipeline->db);
     BEE_DELETE(system_allocator(), pipeline);
@@ -163,6 +189,68 @@ void destroy_pipeline(AssetPipeline* pipeline)
 AssetDatabase* get_asset_db(AssetPipeline* pipeline)
 {
     return pipeline->db;
+}
+
+void add_source_folder(AssetPipeline* pipeline, const Path& path)
+{
+    const int existing = find_index(pipeline->config.source_roots, path);
+    if (existing >= 0)
+    {
+        return;
+    }
+
+    pipeline->source_watcher.suspend();
+    pipeline->source_watcher.add_directory(path);
+    pipeline->source_watcher.resume();
+}
+
+void remove_source_folder(AssetPipeline* pipeline, const Path& path)
+{
+    const int existing = find_index(pipeline->config.source_roots, path);
+    if (existing < 0)
+    {
+        return;
+    }
+
+    pipeline->source_watcher.suspend();
+    pipeline->source_watcher.remove_directory(path);
+    pipeline->source_watcher.resume();
+}
+
+void watch_external_sources(const Path& folder, const bool watch)
+{
+    scoped_lock_t lock(g_common->mutex);
+
+    const int index = find_index(g_common->source_folders, folder);
+
+    if (watch)
+    {
+        if (index < 0)
+        {
+            g_common->source_folders.push_back(folder);
+        }
+
+        for (auto& pipeline : g_common->pipelines)
+        {
+            pipeline->source_watcher.add_directory(folder);
+        }
+
+        return;
+    }
+    else
+    {
+        if (index < 0)
+        {
+            return;
+        }
+
+        g_common->source_folders.erase(index);
+
+        for (auto& pipeline : g_common->pipelines)
+        {
+            pipeline->source_watcher.remove_directory(folder);
+        }
+    }
 }
 
 static FileTypeInfo& add_file_type(AssetPipeline* pipeline, const char* file_type, const u32 hash)
@@ -274,7 +362,7 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
     if (metadata_path.exists())
     {
         auto meta_file = fs::read(metadata_path, tmp);
-        JSONSerializer serializer(meta_file.data(), rapidjson::kParseInsituFlag, tmp);
+        JSONSerializer serializer(meta_file.data(), JSONSerializeFlags::parse_in_situ, tmp);
         auto res = g_assetdb->modify_serialized_asset(&txn, &serializer);
         if (res)
         {
@@ -337,12 +425,13 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
 
     txn.commit();
 
-    if (g_asset_cache != nullptr)
+    if (g_asset_cache != nullptr && g_asset_cache->is_asset_loaded(pipeline->runtime_cache, meta->guid))
     {
+        // reload the asset
         auto load_res = g_asset_cache->load_asset(pipeline->runtime_cache, meta->guid);
         if (!load_res)
         {
-            log_error("Failed to load asset at %s: %s", path.c_str(), load_res.unwrap_error().to_string());
+            log_error("Failed to reload asset at %s: %s", path.c_str(), load_res.unwrap_error().to_string());
         }
     }
 
@@ -392,6 +481,7 @@ static bool asset_db_locate(void* user_data, const GUID guid, AssetLocation* loc
     {
         location->streams[i].kind = AssetStreamKind::file;
         location->streams[i].hash = artifacts[i].content_hash;
+        location->streams[i].offset = 0;
         g_assetdb->get_artifact_path(&txn, artifacts[i].content_hash, &location->streams[i].path);
     }
 
@@ -438,11 +528,17 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
         return;
     }
 
+    bee::g_common = loader->get_static<bee::CommonAssetPipeline>("Bee.AssetPipeline.Common");
+
     bee::g_assetdb = static_cast<bee::AssetDatabaseModule*>(loader->get_module(BEE_ASSET_DATABASE_MODULE_NAME));
 
     g_module.create_pipeline = bee::create_pipeline;
     g_module.load_pipeline = bee::load_pipeline;
     g_module.destroy_pipeline = bee::destroy_pipeline;
+    g_module.get_asset_db = bee::get_asset_db;
+    g_module.add_source_folder = bee::add_source_folder;
+    g_module.remove_source_folder = bee::remove_source_folder;
+    g_module.watch_external_sources = bee::watch_external_sources;
     g_module.register_importer = bee::register_importer;
     g_module.unregister_importer = bee::unregister_importer;
     g_module.import_asset = bee::import_asset;

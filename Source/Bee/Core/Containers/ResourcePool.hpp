@@ -236,7 +236,20 @@ public:
     inline bool is_active(const HandleType& handle) const
     {
         const auto index = handle.index();
-        return chunks_[index / chunk_capacity_].active_states[index % chunk_capacity_];
+        const auto chunk_index = index / chunk_capacity_;
+        const auto resource_index = index % chunk_capacity_;
+        // validate chunk index
+        if (resource_count_ <= 0 || chunk_index >= chunk_count_ || resource_index >= chunk_capacity_)
+        {
+            return false;
+        }
+        // validate resource version
+        if (chunks_[chunk_index].versions[resource_index] != handle.version())
+        {
+            return false;
+        }
+        // validate resource is active
+        return chunks_[chunk_index].active_states[resource_index];
     }
 
     inline id_t size() const

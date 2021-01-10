@@ -280,58 +280,61 @@ DirectoryIterator end(const DirectoryIterator&)
  *
  ******************************************
  */
-const BeeRootDirs& get_root_dirs()
+static BeeRootDirs g_roots;
+
+void init_filesystem()
 {
-    static BeeRootDirs appdata{};
-
-    if (!appdata.data_root.empty())
-    {
-        // Already discovered appdata previously
-        return appdata;
-    }
-
     // Determine if we're running from an installed build or a dev build
     const auto editor_exe_path = Path(Path::executable_path().parent_path());
 
     // the .exe for installed builds lives in <install root>/<version>/Binaries - dev builds live in Bee/Build/<Config>
     bool is_installed_build = editor_exe_path.parent_path().filename() == "Binaries";
 
-    appdata.data_root = is_installed_build
+    g_roots.data = is_installed_build
                       ? fs::user_local_appdata_path().join("Bee").join(BEE_VERSION)
                       : editor_exe_path.parent_path().join("DevData");
 
-    if (!appdata.data_root.exists())
+    if (!g_roots.data.exists())
     {
-        fs::mkdir(appdata.data_root);
+        fs::mkdir(g_roots.data);
     }
 
-    appdata.logs_root = appdata.data_root.join("Logs");
+    g_roots.logs = g_roots.data.join("Logs");
 
-    if (!appdata.logs_root.exists())
+    if (!g_roots.logs.exists())
     {
-        fs::mkdir(appdata.logs_root);
+        fs::mkdir(g_roots.logs);
     }
 
     // Assume that the install directory is the directory the editor .exe is running in
-    appdata.binaries_root = editor_exe_path;
-    appdata.install_root = is_installed_build
-                         ? appdata.binaries_root.parent_path()
-                         : appdata.binaries_root.parent_path().parent_path();
+    g_roots.binaries = editor_exe_path;
+    g_roots.installation = is_installed_build
+                         ? g_roots.binaries.parent_path()
+                         : g_roots.binaries.parent_path().parent_path();
 
     /*
-     * In a dev build, the assets root is located in <binaries_root>/../../Assets - i.e. at
+     * In a dev build, the assets root is located in <binaries>/../../Assets - i.e. at
      * C:/Bee/Build/Debug/../../Assets => C:/Bee/Assets.
-     * Otherwise its at <binaries_root>/../Assets - i.e. at C:/Program Files (x86)/Bee/1.0.0/Binaries/../Assets =>
+     * Otherwise its at <binaries>/../Assets - i.e. at C:/Program Files (x86)/Bee/1.0.0/Binaries/../Assets =>
      * C:/Program Files (x86)/Bee/1.0.0/Assets
      */
-    appdata.assets_root =  appdata.install_root.join("Assets");
+    g_roots.assets =  g_roots.installation.join("Assets");
 
     // Installed builds have a /Config subdirectory whereas dev build output configs to /Build/<Build type>/../Config
-    appdata.config_root = appdata.install_root.join("Config");
+    g_roots.configs = g_roots.installation.join("Config");
 
-    appdata.sources_root = appdata.install_root.join("Source");
+    g_roots.sources = g_roots.installation.join("Source").append("Bee");
+}
 
-    return appdata;
+void shutdown_filesystem()
+{
+    destruct(&g_roots);
+}
+
+const BeeRootDirs& roots()
+{
+    BEE_ASSERT_F(!g_roots.data.empty(), "Roots have not been initialized via bee::fs::init_roots()");
+    return g_roots;
 }
 
 

@@ -109,6 +109,12 @@ struct AssetPipelineModule
 
     AssetDatabase* (*get_asset_db)(AssetPipeline* pipeline) { nullptr };
 
+    void (*add_source_folder)(AssetPipeline* pipeline, const Path& path) { nullptr };
+
+    void (*remove_source_folder)(AssetPipeline* pipeline, const Path& path) { nullptr };
+
+    void (*watch_external_sources)(const Path& folder, const bool watch) { nullptr };
+
     void (*register_importer)(AssetPipeline* pipeline, AssetImporter* importer, void* user_data) { nullptr };
 
     void (*unregister_importer)(AssetPipeline* pipeline, AssetImporter* importer) { nullptr };

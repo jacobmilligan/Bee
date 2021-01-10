@@ -7,8 +7,9 @@
 
 #pragma once
 
+#include "Bee/Gpu/GpuHandle.hpp"
+
 #include "Bee/Core/Enum.hpp"
-#include "Bee/Core/Handle.hpp"
 #include "Bee/Core/Hash.hpp"
 #include "Bee/Core/Containers/StaticArray.hpp"
 
@@ -42,8 +43,8 @@ namespace bee {
 #endif // BEE_GPU_MAX_DEVICES
 
 #ifndef BEE_GPU_MAX_ATTACHMENTS
-    // based off the metal feature set - seems to be the lowest of the API's
-    // see: https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf
+// based off the metal feature set - seems to be the lowest of the API's
+// see: https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf
     #define BEE_GPU_MAX_ATTACHMENTS 8u
 #endif // BEE_GPU_MAX_ATTACHMENTS
 
@@ -52,7 +53,7 @@ namespace bee {
 #endif // BEE_GPU_MAX_VERTEX_LAYOUTS
 
 #ifndef BEE_GPU_MAX_VERTEX_ATTRIBUTES
-    // 8 unique vertex attributes per vertex layout
+// 8 unique vertex attributes per vertex layout
     #define BEE_GPU_MAX_VERTEX_ATTRIBUTES 32u
 #endif // BEE_GPU_MAX_VERTEX_ATTRIBUTES
 
@@ -76,51 +77,6 @@ namespace bee {
     #define BEE_GPU_MAX_COMMAND_BUFFERS_PER_THREAD 8
 #endif // BEE_GPU_MAX_COMMAND_BUFFERS_PER_THREAD
 
-/*
- ********************************************************
- *
- * # GPU Handles
- *
- * Handles to GPU objects. Most of these are versioned
- * integer handles used to index into an array in the
- * backend.
- *
- ********************************************************
- */
-enum class GpuObjectType
-{
-    texture,
-    texture_view,
-    buffer,
-    buffer_view,
-    render_pass,
-    shader,
-    pipeline_state,
-    fence,
-    resource_binding,
-    sampler,
-    count
-};
-
-#define BEE_GPU_HANDLE(NAME, T)                                     \
-    struct NAME                                                     \
-    {                                                               \
-        static constexpr GpuObjectType type = GpuObjectType::T;     \
-        BEE_SPLIT_HANDLE_BODY(NAME, u64, 32u, 32u, value, thread)   \
-    }
-
-BEE_RAW_HANDLE_U32(DeviceHandle) BEE_REFLECT();
-BEE_RAW_HANDLE_U32(SwapchainHandle) BEE_REFLECT();
-BEE_GPU_HANDLE(TextureHandle, texture) BEE_REFLECT();
-BEE_GPU_HANDLE(TextureViewHandle, texture_view) BEE_REFLECT();
-BEE_GPU_HANDLE(BufferHandle, buffer) BEE_REFLECT();
-BEE_GPU_HANDLE(BufferViewHandle, buffer_view) BEE_REFLECT();
-BEE_GPU_HANDLE(RenderPassHandle, render_pass) BEE_REFLECT();
-BEE_GPU_HANDLE(ShaderHandle, shader) BEE_REFLECT();
-BEE_GPU_HANDLE(FenceHandle, fence) BEE_REFLECT();
-BEE_GPU_HANDLE(SamplerHandle, sampler) BEE_REFLECT();
-BEE_GPU_HANDLE(ResourceBindingHandle, resource_binding) BEE_REFLECT();
-struct CommandBuffer;
 
 /*
  ********************************************************
@@ -708,7 +664,7 @@ constexpr bool is_buffer_binding(const ResourceBindingType type)
 
 constexpr bool is_texture_binding(const ResourceBindingType type)
 {
-    return type < ResourceBindingType::uniform_buffer;
+    return type > ResourceBindingType::sampler && type < ResourceBindingType::uniform_buffer;
 }
 
 constexpr bool is_sampler_binding(const ResourceBindingType type)
@@ -1232,31 +1188,81 @@ struct ResourceBindingCreateInfo
     const ResourceLayoutDescriptor* layout { nullptr };
 };
 
+struct TextureBindingUpdate
+{
+    TextureViewHandle   texture;
+    SamplerHandle       sampler;
+
+    TextureBindingUpdate(const TextureViewHandle new_texture, const SamplerHandle new_sampler)
+        : texture(new_texture),
+          sampler(new_sampler)
+    {}
+
+    TextureBindingUpdate(const TextureViewHandle new_texture)
+        : texture(new_texture)
+    {}
+
+    TextureBindingUpdate(const SamplerHandle new_sampler)
+        : sampler(new_sampler)
+    {}
+};
+
+struct BufferBindingUpdate
+{
+    BufferHandle    buffer;
+    size_t          offset { 0 };
+    size_t          size { limits::max<u32>() };
+
+    BufferBindingUpdate(const BufferHandle new_buffer)
+        : buffer(new_buffer)
+    {}
+
+    BufferBindingUpdate(const BufferHandle new_buffer, const size_t new_offset, const size_t new_size = limits::max<u32>())
+        : buffer(new_buffer),
+          offset(new_offset),
+          size(new_size)
+    {}
+};
+
+
 struct ResourceBindingUpdate
 {
-    ResourceBindingType type { ResourceBindingType::unknown };
-    u32                 binding { 0 };
-    u32                 element { 0 };
-
-    struct TextureWrite
-    {
-        SamplerHandle       sampler;
-        TextureViewHandle   texture;
-    };
-
-    struct BufferWrite
-    {
-        BufferHandle    buffer;
-        size_t          offset { 0 };
-        size_t          size { 0 };
-    };
+    u32                         binding { 0 };
+    u32                         first_element { 0 };
+    u32                         element_count { 0 };
 
     union
     {
-        TextureWrite        texture;
-        BufferWrite         buffer;
-        BufferViewHandle    texel_buffer;
+        const TextureBindingUpdate* textures { nullptr };
+        const BufferBindingUpdate*  buffers;
+        const BufferViewHandle*     texel_buffers;
     };
+
+    ResourceBindingUpdate() = default;
+
+    ResourceBindingUpdate(const u32 new_binding, const u32 new_first_element, const u32 new_element_count, const TextureBindingUpdate* texture_bindings)
+        : binding(new_binding),
+          first_element(new_first_element),
+          element_count(new_element_count)
+    {
+        textures = texture_bindings;
+    }
+
+    ResourceBindingUpdate(const u32 new_binding, const u32 new_first_element, const u32 new_element_count, const BufferBindingUpdate* buffer_bindings)
+        : binding(new_binding),
+          first_element(new_first_element),
+          element_count(new_element_count)
+    {
+        buffers = buffer_bindings;
+    }
+
+    ResourceBindingUpdate(const u32 new_binding, const u32 new_first_element, const u32 new_element_count, const BufferViewHandle* texel_buffer_bindings)
+        : binding(new_binding),
+          first_element(new_first_element),
+          element_count(new_element_count)
+    {
+        texel_buffers = texel_buffer_bindings;
+    }
 };
 
 struct BEE_REFLECT(serializable) PushConstantRange
@@ -1552,6 +1558,8 @@ struct GpuBackend
 
     TextureViewHandle (*create_texture_view)(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info) { nullptr };
 
+    TextureViewHandle (*create_texture_view_from)(const DeviceHandle& device_handle, const TextureHandle& texture_handle) { nullptr };
+
     void (*destroy_texture_view)(const DeviceHandle& device_handle, const TextureViewHandle& texture_view_handle) { nullptr };
 
     FenceHandle (*create_fence)(const DeviceHandle& device_handle, const FenceState initial_state) { nullptr };
@@ -1561,6 +1569,8 @@ struct GpuBackend
     ResourceBindingHandle (*create_resource_binding)(const DeviceHandle& device_handle, const ResourceBindingCreateInfo& create_info) { nullptr };
 
     void (*destroy_resource_binding)(const DeviceHandle& device_handle, const ResourceBindingHandle& binding_handle) { nullptr };
+
+    void (*update_resource_binding)(const DeviceHandle& device_handle, const ResourceBindingHandle& binding_handle, const i32 count, const ResourceBindingUpdate* updates) { nullptr };
 
     SamplerHandle (*create_sampler)(const DeviceHandle& device_handle, const SamplerCreateInfo& info) { nullptr };
 

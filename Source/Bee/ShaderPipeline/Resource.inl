@@ -22,25 +22,30 @@
 namespace bee {
 
 
+using ResourceUpdateFrequencyArray = StaticArray<ResourceBindingUpdateFrequency, BEE_GPU_MAX_RESOURCE_LAYOUTS>;
+using ResourceBindingHandleArray = StaticArray<ResourceBindingHandle, BEE_GPU_MAX_RESOURCE_LAYOUTS>;
+
 struct BEE_REFLECT(serializable, version = 1) ShaderPipelineStage
 {
     StaticString<256>               entry;
     ShaderStageFlags                flags;
-
     BEE_REFLECT(bytes)
     FixedArray<u8>                  code;
+    ResourceUpdateFrequencyArray    update_frequencies;
 
-    BEE_REFLECT(nonserialized)
+    BEE_REFLECT(ignored)
     ShaderHandle                    shader_resource;
-
-    StaticArray<ResourceBindingUpdateFrequency, BEE_GPU_MAX_RESOURCE_LAYOUTS> update_frequencies;
 };
 
-struct BEE_REFLECT(serializable, version = 1, use_builder) ShaderPipeline
+struct BEE_REFLECT(serializable, version = 1) ShaderPipeline
 {
+    GUID                                                        guid;
     u32                                                         name_hash { 0 };
     PipelineStateDescriptor                                     pipeline_desc;
     StaticArray<ShaderPipelineStage, ShaderStageIndex::count>   stages;
+
+    BEE_REFLECT(ignored)
+    ResourceBindingHandleArray                                  resource_bindings;
 };
 
 struct ShaderCache

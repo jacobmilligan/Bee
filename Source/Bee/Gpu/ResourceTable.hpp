@@ -14,14 +14,14 @@
 namespace bee {
 
 
-BEE_VERSIONED_HANDLE_32(GpuObjectHandle);
+BEE_VERSIONED_HANDLE_32(GpuTableHandle);
 
 template <typename HandleType, typename ValueType>
 struct GpuResourceTable
 {
     u32                                         thread { limits::max<u32>() };
-    ResourcePool<GpuObjectHandle, ValueType>    pool;
-    FixedArray<DynamicArray<GpuObjectHandle>>   pending_deallocations;
+    ResourcePool<GpuTableHandle, ValueType>     pool;
+    FixedArray<DynamicArray<GpuTableHandle>>    pending_deallocations;
 
     GpuResourceTable() = default;
 
@@ -42,7 +42,7 @@ struct GpuResourceTable
     ValueType& deallocate(const HandleType handle)
     {
         BEE_ASSERT(handle.thread() == thread);
-        const GpuObjectHandle local_handle(static_cast<u32>(handle.value()));
+        const GpuTableHandle local_handle(static_cast<u32>(handle.value()));
         pending_deallocations[job_worker_id()].push_back(local_handle);
         return pool[local_handle];
     }
@@ -50,7 +50,7 @@ struct GpuResourceTable
     ValueType& operator[](const HandleType handle)
     {
         BEE_ASSERT(handle.thread() == thread);
-        return pool[GpuObjectHandle { static_cast<u32>(handle.value()) }];
+        return pool[GpuTableHandle { static_cast<u32>(handle.value()) }];
     }
 
     void flush_deallocations()

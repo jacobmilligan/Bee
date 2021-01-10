@@ -155,13 +155,13 @@ Result<AssetHandle, AssetCacheError> load_asset(AssetCache* cache, const GUID gu
     if (locator < 0)
     {
         cache->assets.deallocate(handle);
-        return AssetCacheError { AssetCacheError::Status::failed_to_locate };
+        return { AssetCacheError::failed_to_locate };
     }
 
     if (cache->type_to_loader.find(new_asset.location.type) == nullptr)
     {
         cache->assets.deallocate(handle);
-        return AssetCacheError { AssetCacheError::Status::no_loader_for_type };
+        return { AssetCacheError::no_loader_for_type };
     }
 
 
@@ -172,7 +172,7 @@ Result<AssetHandle, AssetCacheError> load_asset(AssetCache* cache, const GUID gu
     if (loader_info == nullptr)
     {
         cache->assets.deallocate(handle);
-        return AssetCacheError { AssetCacheError::no_loader_for_type };
+        return { AssetCacheError::no_loader_for_type };
     }
 
     auto res = loader_info->value.loader->load(&asset.location, loader_info->value.user_data);
@@ -182,10 +182,19 @@ Result<AssetHandle, AssetCacheError> load_asset(AssetCache* cache, const GUID gu
         return res.unwrap_error();
     }
 
+    cache->lookup.insert(guid, handle);
+
     ++asset.refcount;
     asset.loader = loader_info->value;
     asset.data = res.unwrap();
+
     return handle;
+}
+
+bool is_asset_loaded(AssetCache* cache, const GUID guid)
+{
+    auto* existing_asset = cache->lookup.find(guid);
+    return existing_asset != nullptr && cache->assets[existing_asset->value].refcount > 0;
 }
 
 Result<i32, AssetCacheError> unload_asset(AssetCache* cache, const AssetHandle handle)
@@ -207,6 +216,17 @@ Result<i32, AssetCacheError> unload_asset(AssetCache* cache, const AssetHandle h
     return 0;
 }
 
+Result<void*, AssetCacheError> get_asset_data(AssetCache* cache, const AssetHandle handle)
+{
+    if (!cache->assets.is_active(handle))
+    {
+        return { AssetCacheError::invalid_asset_handle };
+    }
+
+    auto& asset = cache->assets[handle];
+    return asset.data;
+}
+
 
 } // namespace bee
 
@@ -221,6 +241,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     g_module.register_locator = bee::register_locator;
     g_module.unregister_locator = bee::unregister_locator;
     g_module.load_asset = bee::load_asset;
+    g_module.is_asset_loaded = bee::is_asset_loaded;
 
     loader->set_module(BEE_ASSET_CACHE_MODULE_NAME, &g_module, state);
 }

@@ -8,6 +8,7 @@
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/Thread.hpp"
 #include "Bee/Core/Reflection.hpp"
+#include "Bee/Core/Filesystem.hpp"
 
 #include <stdlib.h>
 
@@ -28,6 +29,8 @@ void preinit_main()
 {
     current_thread::set_as_main();
     global_allocators_init();
+    fs::init_filesystem();
+
     temp_allocator_register_thread();
     /*
      * Register logger before handlers so we can print something if anything goes wrong with their initialization.
@@ -52,6 +55,7 @@ void post_main()
     disable_exception_handling();
     logger_shutdown();
     temp_allocator_unregister_thread();
+    fs::shutdown_filesystem();
     global_allocators_shutdown();
 }
 

@@ -77,7 +77,7 @@ static SandboxApp*              g_app = nullptr;
 // - setup: called serially at the beginning of each frame and used to specify the passes input/output dependencies.
 // - execute: called in a job thread asynchronously if the pass wasn't culled by the graph - handles command buffer
 //   generation and other GPU functions
-static void init_pass(const void* external_data, void* pass_data)
+static void init_pass(GpuBackend* gpu, const DeviceHandle device, const void* external_data, void* pass_data)
 {
     auto* sandbox_pass = static_cast<SandboxPassData*>(pass_data);
 
@@ -230,7 +230,7 @@ static bool startup()
 
     // Setup the asset pipeline - this manages both the asset database (mapping GUID->metadata and artifact buffers)
     // and registered importers for the various asset types.
-    const auto pipeline_path = bee::fs::get_root_dirs().install_root.join("Sandbox/AssetPipeline.json", temp_allocator());
+    const auto pipeline_path = bee::fs::roots().installation.join("Sandbox/AssetPipeline.json", temp_allocator());
     g_app->asset_pipeline = g_asset_pipeline->load_pipeline(pipeline_path.view());
     if (g_app->asset_pipeline == nullptr)
     {

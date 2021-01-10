@@ -275,7 +275,7 @@ BEE_TRANSLATION_TABLE_FUNC(convert_pixel_format, PixelFormat, VkFormat, PixelFor
     VK_FORMAT_R32G32_SINT,          // rg32s
     VK_FORMAT_R32G32_SFLOAT,        // rg32f
     VK_FORMAT_R16G16B16A16_UNORM,   // rgba16
-    VK_FORMAT_R16G16B16A16_SINT,    // rgbai
+    VK_FORMAT_R16G16B16A16_SINT,    // rgba16i
     VK_FORMAT_R16G16B16A16_UINT,    // rgba16u
     VK_FORMAT_R16G16B16A16_SNORM,   // rgba16s
     VK_FORMAT_R16G16B16A16_SFLOAT,  // rgba16f
@@ -293,6 +293,72 @@ BEE_TRANSLATION_TABLE_FUNC(convert_pixel_format, PixelFormat, VkFormat, PixelFor
     VK_FORMAT_D32_SFLOAT_S8_UINT,   // d32s8
     VK_FORMAT_UNDEFINED             // invalid
 )
+
+PixelFormat convert_vk_format(const VkFormat format)
+{
+#define BEE_VK_FMT(VK, PF) case VK: return PixelFormat::PF;
+    switch (format)
+    {
+        // Ordinary 8 bit formats
+        BEE_VK_FMT(VK_FORMAT_R8_UNORM, r8)
+        BEE_VK_FMT(VK_FORMAT_R8_SINT, r8i)
+        BEE_VK_FMT(VK_FORMAT_R8_UINT, r8u)
+        BEE_VK_FMT(VK_FORMAT_R8_SNORM, r8s)
+
+        // Ordinary 16 bit formats
+        BEE_VK_FMT(VK_FORMAT_R16_UNORM, r16)
+        BEE_VK_FMT(VK_FORMAT_R16_SINT, r16i)
+        BEE_VK_FMT(VK_FORMAT_R16_UINT, r16u)
+        BEE_VK_FMT(VK_FORMAT_R16_SNORM, r16s)
+        BEE_VK_FMT(VK_FORMAT_R16_SFLOAT, r16f)
+        BEE_VK_FMT(VK_FORMAT_R8G8_UNORM, rg8)
+        BEE_VK_FMT(VK_FORMAT_R8G8_SINT, rg8i)
+        BEE_VK_FMT(VK_FORMAT_R8G8_UINT, rg8u)
+        BEE_VK_FMT(VK_FORMAT_R8G8_SNORM, rg8s)
+
+        // Ordinary 32 bit formats
+        BEE_VK_FMT(VK_FORMAT_R32_UINT, r32u)
+        BEE_VK_FMT(VK_FORMAT_R32_SINT, r32i)
+        BEE_VK_FMT(VK_FORMAT_R32_SFLOAT, r32f)
+        BEE_VK_FMT(VK_FORMAT_R16G16_UNORM, rg16)
+        BEE_VK_FMT(VK_FORMAT_R16G16_SINT, rg16i)
+        BEE_VK_FMT(VK_FORMAT_R16G16_UINT, rg16u)
+        BEE_VK_FMT(VK_FORMAT_R16G16_SNORM, rg16s)
+        BEE_VK_FMT(VK_FORMAT_R16G16_SFLOAT, rg16f)
+        BEE_VK_FMT(VK_FORMAT_R8G8B8A8_UNORM, rgba8)
+        BEE_VK_FMT(VK_FORMAT_R8G8B8A8_SINT, rgba8i)
+        BEE_VK_FMT(VK_FORMAT_R8G8B8A8_UINT, rgba8u)
+        BEE_VK_FMT(VK_FORMAT_R8G8B8A8_SNORM, rgba8s)
+        BEE_VK_FMT(VK_FORMAT_B8G8R8A8_UNORM, bgra8)
+
+        // Ordinary 64 bit formats
+        BEE_VK_FMT(VK_FORMAT_R32G32_UINT, rg32u)
+        BEE_VK_FMT(VK_FORMAT_R32G32_SINT, rg32s)
+        BEE_VK_FMT(VK_FORMAT_R32G32_SFLOAT, rg32f)
+        BEE_VK_FMT(VK_FORMAT_R16G16B16A16_UNORM, rgba16)
+        BEE_VK_FMT(VK_FORMAT_R16G16B16A16_SINT, rgba16i)
+        BEE_VK_FMT(VK_FORMAT_R16G16B16A16_UINT, rgba16u)
+        BEE_VK_FMT(VK_FORMAT_R16G16B16A16_SNORM, rgba16s)
+        BEE_VK_FMT(VK_FORMAT_R16G16B16A16_SFLOAT, rgba16f)
+
+        // Ordinary 128 bit formats
+        BEE_VK_FMT(VK_FORMAT_R32G32B32A32_UINT, rgba32u)
+        BEE_VK_FMT(VK_FORMAT_R32G32B32A32_SINT, rgba32i)
+        BEE_VK_FMT(VK_FORMAT_R32G32B32A32_SFLOAT, rgba32f)
+
+        // Depth and stencil formats
+        BEE_VK_FMT(VK_FORMAT_D16_UNORM, d16)
+        BEE_VK_FMT(VK_FORMAT_D32_SFLOAT, d32f)
+        BEE_VK_FMT(VK_FORMAT_S8_UINT, s8)
+        BEE_VK_FMT(VK_FORMAT_D24_UNORM_S8_UINT, d24s8)
+        BEE_VK_FMT(VK_FORMAT_D32_SFLOAT_S8_UINT, d32s8)
+
+        default: break;
+    }
+#undef BEE_VK_FMT
+
+    return PixelFormat::invalid;
+}
 
 BEE_TRANSLATION_TABLE_FUNC(convert_load_op, LoadOp, VkAttachmentLoadOp, LoadOp::unknown,
     VK_ATTACHMENT_LOAD_OP_LOAD,         // load

@@ -33,26 +33,32 @@ enum class AssetStreamKind
 
 struct AssetCacheError
 {
-    enum Status
+    enum Enum
     {
         unknown,
         failed_to_locate,
         no_loader_for_type,
         failed_to_load,
         failed_to_unload,
+        invalid_asset_handle,
+        missing_data,
+        invalid_data,
         count
     };
 
-    Status      status { unknown };
+    BEE_ENUM_STRUCT(AssetCacheError);
 
     const char* to_string() const
     {
-        BEE_TRANSLATION_TABLE(status, Status, const char*, Status::count,
+        BEE_TRANSLATION_TABLE(value, Enum, const char*, Enum::count,
             "Unknown Asset Cache error",                                        // unknown
             "Failed to locate asset from GUID",                                 // failed_to_locate
             "Unable to find a loader registered for the located asset type",    // no_loader_for_type
             "Failed to load asset data",                                        // failed_to_load
             "Failed to unload asset data",                                      // failed_to_unload
+            "Invalid asset handle",                                             // invalid_asset_handle
+            "Content hash for asset resolved to missing data",                  // missing_data
+            "Asset data has an invalid format or is corrupted",                 // invalid_data
         )
     }
 };
@@ -64,6 +70,7 @@ struct AssetStreamInfo
     u128            hash;
     void*           buffer;
     size_t          offset { 0 };
+    size_t          size { 0 };
 };
 
 struct AssetLocation
@@ -85,7 +92,7 @@ struct AssetLoader
 
     Result<void*, AssetCacheError> (*load)(const AssetLocation* location, void* user_data) { nullptr };
 
-    bool (*unload)(const Type type, void* data, void* user_data) { nullptr };
+    Result<void, AssetCacheError> (*unload)(const Type type, void* data, void* user_data) { nullptr };
 };
 
 #define BEE_ASSET_CACHE_MODULE_NAME "BEE_ASSET_CACHE"
@@ -107,7 +114,22 @@ struct AssetCacheModule
 
     Result<AssetHandle, AssetCacheError> (*load_asset)(AssetCache* cache, const GUID guid) { nullptr };
 
+    bool (*is_asset_loaded)(AssetCache* cache, const GUID guid) { nullptr };
+
     Result<i32, AssetCacheError> (*unload_asset)(AssetCache* cache, const AssetHandle handle) { nullptr };
+
+    Result<void*, AssetCacheError> (*get_asset_data)(AssetCache* cache, const AssetHandle handle) { nullptr };
+
+    template <typename T>
+    Result<T*, AssetCacheError> get_asset(AssetCache* cache, const AssetHandle handle)
+    {
+        auto data = get_asset_data(cache, handle);
+        if (!data)
+        {
+            return data.unwrap_error();
+        }
+        return static_cast<T*>(data.unwrap());
+    }
 };
 
 

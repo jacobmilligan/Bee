@@ -9,6 +9,7 @@
 
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
+#include "Bee/Core/IO.hpp"
 #include "Bee/Core/Serialization/StreamSerializer.hpp"
 
 
@@ -30,7 +31,7 @@ static AssetCacheModule*    g_asset_cache = nullptr;
  *
  **********************************
  */
-void unload_shader(ShaderCache* cache, ShaderPipeline* shader)
+void unload_pipeline(ShaderCache* cache, ShaderPipeline* shader)
 {
     for (const auto& stage : shader->stages)
     {
@@ -50,7 +51,7 @@ void destroy(ShaderCache* cache)
 {
     for (auto shader : cache->pool)
     {
-        unload_shader(cache, &shader.resource);
+        unload_pipeline(cache, &shader.resource);
     }
 
     BEE_DELETE(system_allocator(), cache);
@@ -168,6 +169,108 @@ u32 get_shader_hash(ShaderCache* cache, const ShaderPipelineHandle handle)
     return cache->pool[handle].name_hash;
 }
 
+bool load_shader(ShaderCache* cache, const ShaderPipelineHandle handle)
+{
+    if (!cache->pool.is_active(handle))
+    {
+        return false;
+    }
+
+    auto& pipeline = cache->pool[handle];
+
+    ShaderCreateInfo info{};
+    for (int stage_index = 0; stage_index < pipeline.stages.size; ++stage_index)
+    {
+        auto& stage = pipeline.stages[stage_index];
+        if (stage.shader_resource.is_valid())
+        {
+            cache->gpu->destroy_shader(cache->device, stage.shader_resource);
+        }
+
+        info.code = stage.code.data();
+        info.code_size = stage.code.size();
+        info.entry = stage.entry.data();
+
+        switch (static_cast<ShaderStageIndex>(stage_index))
+        {
+            case ShaderStageIndex::vertex:
+            {
+                pipeline.pipeline_desc.vertex_stage = stage.shader_resource;
+                break;
+            }
+            case ShaderStageIndex::fragment:
+            {
+                pipeline.pipeline_desc.fragment_stage = stage.shader_resource;
+                break;
+            }
+            default:
+            {
+                return false;
+            }
+        }
+
+        stage.shader_resource = cache->gpu->create_shader(cache->device, info);
+        BEE_ASSERT(stage.shader_resource.is_valid());
+    }
+
+    ResourceBindingCreateInfo binding_info{};
+    for (u32 layout_index = 0; layout_index < pipeline.pipeline_desc.resource_layouts.size; ++layout_index)
+    {
+        auto& layout = pipeline.pipeline_desc.resource_layouts[layout_index];
+        if (pipeline.resource_bindings[layout_index].is_valid())
+        {
+            cache->gpu->destroy_resource_binding(cache->device, pipeline.resource_bindings[layout_index]);
+        }
+
+        binding_info.layout = &layout;
+        pipeline.resource_bindings[layout_index] = cache->gpu->create_resource_binding(cache->device, binding_info);
+    }
+
+
+    return true;
+}
+
+bool unload_shader(ShaderCache* cache, const ShaderPipelineHandle handle)
+{
+    if (!cache->pool.is_active(handle))
+    {
+        return false;
+    }
+
+    auto& pipeline = cache->pool[handle];
+    unload_pipeline(cache, &pipeline);
+    return true;
+}
+
+const PipelineStateDescriptor& get_pipeline_desc(ShaderCache* cache, const ShaderPipelineHandle handle)
+{
+    return cache->pool[handle].pipeline_desc;
+}
+
+void update_resources(ShaderCache* cache, const ShaderPipelineHandle handle, const u32 layout, const i32 count, const ResourceBindingUpdate* updates)
+{
+    auto& pipeline = cache->pool[handle];
+    const auto binding = pipeline.resource_bindings[layout];
+    cache->gpu->update_resource_binding(cache->device, binding, count, updates);
+}
+
+void bind_resource_layout(ShaderCache* cache, const ShaderPipelineHandle handle, CommandBuffer* cmd_buf, const u32 layout)
+{
+    auto& pipeline = cache->pool[handle];
+    auto* cmd = cache->gpu->get_command_backend();
+    cmd->bind_resources(cmd_buf, layout, pipeline.resource_bindings[layout]);
+}
+
+void bind_resources(ShaderCache* cache, const ShaderPipelineHandle handle, CommandBuffer* cmd_buf)
+{
+    auto& pipeline = cache->pool[handle];
+    auto* cmd = cache->gpu->get_command_backend();
+    for (int i = 0; i < pipeline.resource_bindings.size; ++i)
+    {
+        cmd->bind_resources(cmd_buf, i, pipeline.resource_bindings[i]);
+    }
+}
+
 /*
  ********************************************
  *
@@ -176,7 +279,7 @@ u32 get_shader_hash(ShaderCache* cache, const ShaderPipelineHandle handle)
  ********************************************
  */
 
-static i32 get_shader_loader_types(Type* dst)
+static i32 asset_cache_get_shader_types(Type* dst)
 {
     if (dst != nullptr)
     {
@@ -185,122 +288,55 @@ static i32 get_shader_loader_types(Type* dst)
     return 1;
 }
 
-static bool load_shader_pipeline(ShaderCache* cache, const AssetStreamInfo& stream_info)
-{
-    const auto hash = get_hash(stream_info.hash);
-    auto handle = lookup_shader(cache, hash);
-    if (!handle.is_valid())
-    {
-        handle = cache->pool.allocate();
-        cache->lookup.insert(hash, handle);
-    }
-    auto& shader = cache->pool[handle];
-
-    for (const auto& stage : shader.stages)
-    {
-        if (stage.shader_resource.is_valid())
-        {
-            cache->gpu->destroy_shader(cache->device, stage.shader_resource);
-        }
-    }
-
-    io::FileStream stream(stream_info.path, "rb");
-    StreamSerializer serializer(&stream);
-    serialize(SerializerMode::reading, &serializer, &shader, temp_allocator());
-
-    ShaderCreateInfo info{};
-    for (int stage_index = 0; stage_index < shader.stages.size; ++stage_index)
-    {
-        auto& stage = shader.stages[stage_index];
-
-        info.code = stage.code.data();
-        info.code_size = stage.code.size();
-        info.entry = stage.entry.data();
-        stage.shader_resource = cache->gpu->create_shader(cache->device, info);
-        BEE_ASSERT(stage.shader_resource.is_valid());
-
-        switch (static_cast<ShaderStageIndex>(stage_index))
-        {
-            case ShaderStageIndex::vertex:
-            {
-                shader.pipeline_desc.vertex_stage = stage.shader_resource;
-                break;
-            }
-            case ShaderStageIndex::fragment:
-            {
-                shader.pipeline_desc.fragment_stage = stage.shader_resource;
-                break;
-            }
-            default:
-            {
-                BEE_UNREACHABLE("Unsupported shader stage");
-            }
-        }
-    }
-
-    return true;
-}
-
-Result<void*, AssetCacheError> load_shader(const AssetLocation* location, void* user_data)
+Result<void*, AssetCacheError> asset_cache_load_shader(const AssetLocation* location, void* user_data)
 {
     auto* cache = static_cast<ShaderCache*>(user_data);
-    auto* asset = BEE_NEW(system_allocator(), ShaderAsset);
+    auto* asset = BEE_NEW(system_allocator(), FixedArray<u32>);
+    auto& stream_info = location->streams[0];
 
-    asset->pipelines.resize(location->streams.size);
-
-    for (int i = 0; i < location->streams.size; ++i)
+    if (stream_info.kind == AssetStreamKind::file)
     {
-        load_shader_pipeline(cache, location->streams[i]);
+        io::FileStream stream(stream_info.path, "rb");
+        stream.seek(stream_info.offset, io::SeekOrigin::begin);
+        StreamSerializer serializer(&stream);
+        serialize(SerializerMode::reading, &serializer, asset, temp_allocator());
+    }
+    else
+    {
+        io::MemoryStream stream(stream_info.buffer, stream_info.size);
+        stream.seek(stream_info.offset, io::SeekOrigin::begin);
+        StreamSerializer serializer(&stream);
+        serialize(SerializerMode::reading, &serializer, asset, temp_allocator());
+    }
+
+    for (const u32 hash : *asset)
+    {
+        const auto handle = lookup_shader(cache, hash);
+        load_shader(cache, handle);
     }
 
     return asset;
 }
 
-bool unload_shader(const Type type, void* data, void* user_data)
+Result<void, AssetCacheError> asset_cache_unload_shader(const Type type, void* data, void* user_data)
 {
-    auto* asset = static_cast<ShaderAsset*>(data);
+    auto* asset = static_cast<FixedArray<u32>*>(data);
     auto* cache = static_cast<ShaderCache*>(user_data);
 
-    for (int i = 0; i < asset->pipelines.size(); ++i)
+    for (const u32 hash : *asset)
     {
-        auto& pipeline = cache->pool[asset->pipelines[i]];
-        unload_shader(cache, &pipeline);
+        const auto handle = lookup_shader(cache, hash);
+        if (!handle.is_valid())
+        {
+            return { AssetCacheError::missing_data };
+        }
+
+        auto& pipeline = cache->pool[handle];
+        unload_pipeline(cache, &pipeline);
     }
 
     BEE_DELETE(system_allocator(), asset);
-    return true;
-}
-
-/*
- **********************************
- *
- * Shader implementation
- *
- **********************************
- */
-RenderPassHandle get_render_pass(const ShaderPipelineHandle shader)
-{
-    return RenderPassHandle{};
-}
-
-PipelineStateDescriptor get_pipeline_state(const ShaderPipelineHandle shader)
-{
-    return PipelineStateDescriptor{};
-}
-
-ShaderHandle get_stage(const ShaderPipelineHandle, const ShaderStageIndex stage)
-{
-    return ShaderHandle{};
-}
-
-void load(const ShaderPipelineHandle handle)
-{
-
-}
-
-void unload(const ShaderPipelineHandle handle)
-{
-
+    return {};
 }
 
 /*
@@ -316,9 +352,9 @@ void load_shader_modules(bee::PluginLoader* loader, const bee::PluginState state
 {
     g_global = loader->get_static<GlobalData>("Bee.RuntimeShaderData");
 
-    g_global->loader.get_types = get_shader_loader_types;
-    g_global->loader.load = load_shader;
-    g_global->loader.unload = unload_shader;
+    g_global->loader.get_types = asset_cache_get_shader_types;
+    g_global->loader.load = asset_cache_load_shader;
+    g_global->loader.unload = asset_cache_unload_shader;
 
     // ShaderCache module
     g_shader_cache.create = create;

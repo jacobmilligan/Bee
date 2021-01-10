@@ -34,10 +34,6 @@ struct ShaderPipelineDescriptor
     ShaderPipelineStageResourceDescriptor   shader_resources[ShaderStageIndex::count];
 };
 
-struct ShaderAsset
-{
-    FixedArray<ShaderPipelineHandle> pipelines;
-};
 
 #define BEE_SHADER_CACHE_MODULE_NAME "BEE_SHADER_CACHE"
 
@@ -68,13 +64,26 @@ struct ShaderCacheModule
 
     void (*unregister_asset_loader)(ShaderCache* shader_cache, AssetCache* asset_cache) { nullptr };
 
+    bool (*load_shader)(ShaderCache* cache, const ShaderPipelineHandle handle) { nullptr };
+
+    bool (*unload_shader)(ShaderCache* cache, const ShaderPipelineHandle handle) { nullptr };
+
+    const PipelineStateDescriptor& (*get_pipeline_desc)(ShaderCache* cache, const ShaderPipelineHandle handle) { nullptr };
+
+    void (*update_resources)(ShaderCache* cache, const ShaderPipelineHandle handle, const u32 layout, const i32 count, const ResourceBindingUpdate* updates) { nullptr };
+
+    void (*bind_resource_layout)(ShaderCache* cache, const ShaderPipelineHandle handle, CommandBuffer* cmd_buf, const u32 layout) { nullptr };
+
+    void (*bind_resources)(ShaderCache* cache, const ShaderPipelineHandle handle, CommandBuffer* cmd_buf) { nullptr };
+
+
     template <i32 Size>
-    ShaderPipelineHandle get_shader_by_name(ShaderCache* cache, char(&name)[Size])
+    ShaderPipelineHandle lookup_shader_by_name(ShaderCache* cache, const char(&name)[Size])
     {
-        return lookup_shader(get_static_string_hash(name));
+        return lookup_shader(cache, get_static_string_hash(name));
     }
 
-    inline ShaderPipelineHandle get_shader_by_name(ShaderCache* cache, const StringView& name)
+    inline ShaderPipelineHandle lookup_shader_by_name(ShaderCache* cache, const StringView& name)
     {
         return lookup_shader(cache, get_shader_name_hash(name));
     }

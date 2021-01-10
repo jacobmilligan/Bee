@@ -1,5 +1,6 @@
 bee_new_source_root()
 bee_add_sources(
+        GpuHandle.hpp
     Gpu.hpp Gpu.cpp
     ResourceTable.hpp
 )

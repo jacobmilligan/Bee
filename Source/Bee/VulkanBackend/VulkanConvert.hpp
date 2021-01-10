@@ -49,6 +49,8 @@ VkPipelineStageFlags select_pipeline_stage_from_access(const VkAccessFlags acces
 
 VkFormat convert_pixel_format(const PixelFormat value);
 
+PixelFormat convert_vk_format(const VkFormat value);
+
 VkAttachmentLoadOp convert_load_op(const LoadOp value);
 
 VkAttachmentStoreOp convert_store_op(const StoreOp value);

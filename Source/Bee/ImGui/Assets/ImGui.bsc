@@ -16,6 +16,15 @@ Shader ImGui
     fragment: frag
     code:
     {
+        BEE_BINDING(0, 0) cbuffer Params
+        {
+            float4x4 view_proj;
+        };
+
+        BEE_BINDING(1, 0) Texture2D<float4> main_tex;
+        
+        BEE_BINDING(2, 0) sampler main_sampler;
+
         struct AppData 
         {
             float4 position: POSITION;
@@ -43,7 +52,7 @@ Shader ImGui
     }
 }
 
-PipelineState ImGuiPipelineState
+PipelineState ImGuiPipeline
 {
     primitive_type: triangle
     raster_state: ImGuiRasterState

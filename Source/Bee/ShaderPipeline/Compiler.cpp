@@ -89,7 +89,7 @@ bool init()
 {
     g_compiler->thread_data.resize(job_system_worker_count());
 
-    auto dxc_path = fs::get_root_dirs().binaries_root.join("Plugins").join("dxcompiler");
+    auto dxc_path = fs::roots().binaries .join("Plugins").join("dxcompiler");
 #if BEE_OS_WINDOWS == 1
     dxc_path.set_extension(".dll");
 #else
@@ -816,11 +816,16 @@ static ImportErrorStatus import_shader(AssetImportContext* ctx, void* user_data)
         return ImportErrorStatus::fatal;
     }
 
+    FixedArray<u32> asset(output.size(), ctx->temp_allocator);
+
     for (auto& handle : output)
     {
-        ctx->add_artifact(&cache->pool[handle]);
+        auto& pipeline = cache->pool[handle];
+        pipeline.guid = ctx->metadata->guid;
+        asset.push_back(pipeline.name_hash);
     }
 
+    ctx->add_artifact(&asset);
     return ImportErrorStatus::success;
 }
 

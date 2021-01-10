@@ -42,19 +42,6 @@ CommandBufferState get_state(CommandBuffer* cmd_buf)
     return cmd_buf->state;
 }
 
-void allocate_dynamic_binding(VulkanDevice* device, VulkanResourceBinding* binding)
-{
-    auto* pool = get_or_create_descriptor_pool(device, binding->update_frequency, binding->layout);
-    VkDescriptorSetAllocateInfo set_info { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr };
-    set_info.descriptorPool = binding->pool->handle;
-    set_info.descriptorSetCount = 1;
-    set_info.pSetLayouts = &pool->layout;
-
-    BEE_VK_CHECK(vkAllocateDescriptorSets(device->handle, &set_info, &binding->set));
-
-    binding->allocated_frame = device->current_frame;
-}
-
 bool setup_draw(CommandBuffer* cmd_buf)
 {
     if (cmd_buf->bound_pipeline == nullptr)
@@ -313,11 +300,11 @@ void transition_resources(CommandBuffer* cmd_buf, const u32 count, const GpuTran
                 barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 barrier.image = texture.handle;
-                barrier.subresourceRange.aspectMask = select_access_mask_from_format(texture.format);
+                barrier.subresourceRange.aspectMask = select_access_mask_from_format(texture.create_info.format);
                 barrier.subresourceRange.baseMipLevel = 0;
-                barrier.subresourceRange.levelCount = texture.levels;
+                barrier.subresourceRange.levelCount = texture.create_info.mip_count;
                 barrier.subresourceRange.baseArrayLayer = 0;
-                barrier.subresourceRange.layerCount = texture.layers;
+                barrier.subresourceRange.layerCount = texture.create_info.array_element_count;
 
                 src_access |= barrier.srcAccessMask;
                 dst_access |= barrier.dstAccessMask;

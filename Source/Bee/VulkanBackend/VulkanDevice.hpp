@@ -145,18 +145,12 @@ struct VulkanCommandPool
 
 struct VulkanTexture // NOLINT
 {
-    u32                 width { 0 };
-    u32                 height { 0 };
-    u32                 depth { 1 };
-    u32                 layers { 0 };
-    u32                 levels { 0 };
-    u32                 samples { 0 };
-    TextureUsage        usage { TextureUsage::unknown };
-    PixelFormat         format { PixelFormat::unknown };
+    TextureCreateInfo   create_info;
     VmaAllocation       allocation { VK_NULL_HANDLE };
     VmaAllocationInfo   allocation_info;
     VkImage             handle { VK_NULL_HANDLE };
     i32                 swapchain { -1 };
+    VkImageLayout       layout { VK_IMAGE_LAYOUT_UNDEFINED };
 };
 
 struct VulkanTextureView
@@ -299,12 +293,6 @@ private:
  *
  ******************************************
  */
-struct VulkanPendingDelete
-{
-    GpuObjectType   type;
-    GpuObjectHandle handle;
-};
-
 struct VulkanThreadData
 {
     // Owned and allocated Vulkan objects
@@ -517,6 +505,8 @@ BEE_FORCE_INLINE i32 queue_type_index(const QueueType type)
 }
 
 void create_texture_view_internal(VulkanDevice* device, const TextureViewCreateInfo& desc, VulkanTextureView* dst);
+
+void allocate_dynamic_binding(VulkanDevice* device, VulkanResourceBinding* binding);
 
 /*
  ******************************************

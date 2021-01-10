@@ -72,7 +72,7 @@ struct RenderGraphBuilderModule;
 
 using render_graph_setup_pass_t = void(*)(RenderGraphPass* pass, RenderGraphBuilderModule* builder, const void* external_data, void* pass_data);
 using render_graph_execute_pass_t = void(*)(RenderGraphPass* pass, RenderGraphStorage* storage, GpuCommandBackend* cmd, CommandBuffer* cmdbuf, const void* external_data, void* pass_data);
-using render_graph_init_pass_t = void(*)(const void* external_data, void* pass_data);
+using render_graph_init_pass_t = void(*)(GpuBackend* backend, const DeviceHandle device, const void* external_data, void* pass_data);
 
 
 struct RenderGraphPassDesc

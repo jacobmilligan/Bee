@@ -991,7 +991,7 @@ bool recreate_swapchain(VulkanDevice* device, VulkanSwapchain* swapchain, const 
      */
     TextureViewCreateInfo view_info;
     view_info.type                  = TextureType::tex2d;
-    view_info.format                = create_info.texture_format;
+    view_info.format                = convert_vk_format(selected_format.format);
     view_info.mip_level_count       = 1;
     view_info.mip_level_offset      = 0;
     view_info.array_element_offset  = 0;
@@ -1006,14 +1006,14 @@ bool recreate_swapchain(VulkanDevice* device, VulkanSwapchain* swapchain, const 
             swapchain->images[si] = thread.textures.allocate();
             auto& texture = thread.textures[swapchain->images[si]];
 
-            texture.swapchain           = swapchain_index;
-            texture.width               = swapchain_info.imageExtent.width;
-            texture.height              = swapchain_info.imageExtent.height;
-            texture.layers              = swapchain_info.imageArrayLayers;
-            texture.levels              = 1;
-            texture.samples             = VK_SAMPLE_COUNT_1_BIT;
-            texture.format              = create_info.texture_format;
-            texture.handle              = swapchain_images[si];
+            texture.swapchain                       = swapchain_index;
+            texture.create_info.width               = swapchain_info.imageExtent.width;
+            texture.create_info.height              = swapchain_info.imageExtent.height;
+            texture.create_info.array_element_count = swapchain_info.imageArrayLayers;
+            texture.create_info.mip_count           = 1;
+            texture.create_info.sample_count        = VK_SAMPLE_COUNT_1_BIT;
+            texture.create_info.format              = create_info.texture_format;
+            texture.handle                          = swapchain_images[si];
             set_vk_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, texture.handle, "Swapchain image");
 
         }
@@ -1021,11 +1021,11 @@ bool recreate_swapchain(VulkanDevice* device, VulkanSwapchain* swapchain, const 
         {
             // TODO(Jacob): do we only need to reassign the texture params when recreating a swapchain?
             auto& texture = device->textures_get(swapchain->images[si]);
-            texture.width               = swapchain_info.imageExtent.width;
-            texture.height              = swapchain_info.imageExtent.height;
-            texture.layers              = swapchain_info.imageArrayLayers;
-            texture.format              = create_info.texture_format;
-            texture.handle              = swapchain_images[si];
+            texture.create_info.width               = swapchain_info.imageExtent.width;
+            texture.create_info.height              = swapchain_info.imageExtent.height;
+            texture.create_info.array_element_count = swapchain_info.imageArrayLayers;
+            texture.create_info.format              = create_info.texture_format;
+            texture.handle                          = swapchain_images[si];
         }
 
         // Create a texture view as well
@@ -1188,7 +1188,7 @@ PixelFormat get_texture_format(const DeviceHandle& device_handle, const TextureH
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread(handle);
     auto& texture = thread.textures[handle];
-    return texture.format;
+    return texture.create_info.format;
 }
 
 void submit(const DeviceHandle& device_handle, const SubmitInfo& info)
@@ -1652,7 +1652,7 @@ RenderPassHandle create_render_pass(const DeviceHandle& device_handle, const Ren
 
     BEE_VK_CHECK(vkCreateRenderPass(device.handle, &vk_info, nullptr, &render_pass.handle));
 
-    return RenderPassHandle { handle.id, thread.index };
+    return handle;
 }
 
 void destroy_render_pass(const DeviceHandle& device_handle, const RenderPassHandle& handle)
@@ -1680,7 +1680,7 @@ ShaderHandle create_shader(const DeviceHandle& device_handle, const ShaderCreate
 
     BEE_VK_CHECK(vkCreateShaderModule(device.handle, &vk_info, nullptr, &shader.handle));
 
-    return ShaderHandle { handle.id, thread.index };
+    return handle;
 }
 
 void destroy_shader(const DeviceHandle& device_handle, const ShaderHandle& shader_handle)
@@ -1729,7 +1729,7 @@ BufferHandle create_buffer(const DeviceHandle& device_handle, const BufferCreate
         set_vk_object_name(&device, VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT, buffer.handle, create_info.debug_name);
     }
 
-    return BufferHandle { handle.id, thread.index };
+    return handle;
 }
 
 void destroy_buffer(const DeviceHandle& device_handle, const BufferHandle& buffer_handle)
@@ -1815,13 +1815,7 @@ TextureHandle create_texture(const DeviceHandle& device_handle, const TextureCre
 
     auto handle = thread.textures.allocate();
     auto& texture = thread.textures[handle];
-    texture.width = create_info.width;
-    texture.height = create_info.height;
-    texture.layers = create_info.array_element_count;
-    texture.levels = create_info.mip_count;
-    texture.format = create_info.format;
-    texture.samples = create_info.sample_count;
-    texture.usage = create_info.usage;
+    memcpy(&texture.create_info, &create_info, sizeof(TextureCreateInfo));
 
     VmaAllocationCreateInfo alloc_info{};
     alloc_info.flags = 0;
@@ -1846,7 +1840,7 @@ TextureHandle create_texture(const DeviceHandle& device_handle, const TextureCre
         set_vk_object_name(&device, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, texture.handle, create_info.debug_name);
     }
 
-    return TextureHandle { handle.id, thread.index };
+    return handle;
 }
 
 void destroy_texture(const DeviceHandle& device_handle, const TextureHandle& texture_handle)
@@ -1870,14 +1864,14 @@ void update_texture(const DeviceHandle& device_handle, const TextureHandle& text
     auto& texture = device.textures_get(texture_handle);
 
     VulkanStagingChunk chunk{};
-    thread.staging.allocate(texture.width * texture.height * texture.depth, 1, &chunk);
+    thread.staging.allocate(texture.create_info.width * texture.create_info.height * texture.create_info.depth, 1, &chunk);
 
     const auto size = extent.width * extent.height * extent.depth;
     memcpy(chunk.data, data, size);
 
     VkBufferImageCopy copy{};
     copy.bufferOffset = chunk.offset;
-    copy.imageSubresource.aspectMask = is_depth_format(texture.format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    copy.imageSubresource.aspectMask = is_depth_format(texture.create_info.format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
     copy.imageSubresource.mipLevel = mip_level;
     copy.imageSubresource.baseArrayLayer = element;
     copy.imageSubresource.layerCount = 1;
@@ -1898,11 +1892,11 @@ void update_texture(const DeviceHandle& device_handle, const TextureHandle& text
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = texture.handle;
-    barrier.subresourceRange.aspectMask = select_access_mask_from_format(texture.format);
+    barrier.subresourceRange.aspectMask = select_access_mask_from_format(texture.create_info.format);
     barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = texture.levels;
+    barrier.subresourceRange.levelCount = texture.create_info.mip_count;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = texture.layers;
+    barrier.subresourceRange.layerCount = texture.create_info.array_element_count;
 
     vkCmdPipelineBarrier(
         chunk.cmd,
@@ -1944,8 +1938,8 @@ void create_texture_view_internal(VulkanDevice* device, const TextureViewCreateI
 
     dst->handle = img_view;
     dst->viewed_texture = create_info.texture;
-    dst->format = texture.format;
-    dst->samples = texture.samples;
+    dst->format = texture.create_info.format;
+    dst->samples = texture.create_info.sample_count;
 }
 
 TextureViewHandle create_texture_view(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info)
@@ -1957,8 +1951,30 @@ TextureViewHandle create_texture_view(const DeviceHandle& device_handle, const T
 
     create_texture_view_internal(&device, create_info, &texture_view);
 
-    return TextureViewHandle { handle.id, thread.index };
+    return handle;
 }
+
+TextureViewHandle create_texture_view_from(const DeviceHandle& device_handle, const TextureHandle& texture_handle)
+{
+    auto& device = validate_device(device_handle);
+    auto& thread = device.get_thread();
+    auto& texture = device.textures_get(texture_handle);
+    const auto handle = thread.texture_views.allocate();
+    auto& texture_view = thread.texture_views[handle];
+
+    TextureViewCreateInfo info{};
+    info.texture = texture_handle;
+    info.type = texture.create_info.type;
+    info.format = texture.create_info.format;
+    info.mip_level_offset = 0;
+    info.mip_level_count = texture.create_info.mip_count;
+    info.array_element_offset = 0;
+    info.array_element_count = texture.create_info.array_element_count;
+
+    create_texture_view_internal(&device, info, &texture_view);
+
+    return handle;
+};
 
 void destroy_texture_view(const DeviceHandle& device_handle, const TextureViewHandle& texture_view_handle)
 {
@@ -1984,7 +2000,7 @@ FenceHandle create_fence(const DeviceHandle& device_handle, const FenceState ini
     const auto handle = thread.fences.allocate();
     auto& fence = thread.fences[handle];
     BEE_VK_CHECK(vkCreateFence(device.handle, &info, nullptr, &fence));
-    return FenceHandle { handle.id, thread.index };
+    return handle;
 }
 
 void destroy_fence(const DeviceHandle& device_handle, const FenceHandle& fence_handle)
@@ -2129,7 +2145,7 @@ ResourceBindingHandle create_resource_binding(const DeviceHandle& device_handle,
         BEE_VK_CHECK(vkAllocateDescriptorSets(device.handle, &set_info, &binding.set));
     }
 
-    return ResourceBindingHandle { handle.id, thread.index };
+    return handle;
 }
 
 void destroy_resource_binding(const DeviceHandle& device_handle, const ResourceBindingHandle& resource_binding_handle)
@@ -2156,6 +2172,112 @@ void destroy_resource_binding(const DeviceHandle& device_handle, const ResourceB
         auto& thread = device.get_thread(resource_binding_handle);
         thread.resource_bindings.deallocate(resource_binding_handle);
     }
+}
+
+void allocate_dynamic_binding(VulkanDevice* device, VulkanResourceBinding* binding)
+{
+    auto* pool = get_or_create_descriptor_pool(device, binding->update_frequency, binding->layout);
+    VkDescriptorSetAllocateInfo set_info { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr };
+    set_info.descriptorPool = binding->pool->handle;
+    set_info.descriptorSetCount = 1;
+    set_info.pSetLayouts = &pool->layout;
+
+    BEE_VK_CHECK(vkAllocateDescriptorSets(device->handle, &set_info, &binding->set));
+
+    binding->allocated_frame = device->current_frame;
+}
+
+void update_resource_binding(const DeviceHandle& device_handle, const ResourceBindingHandle& binding_handle, const i32 count, const ResourceBindingUpdate* updates)
+{
+    auto& device = validate_device(device_handle);
+    auto& binding = device.resource_bindings_get(binding_handle);
+
+    if (binding.set == VK_NULL_HANDLE && binding.update_frequency != ResourceBindingUpdateFrequency::persistent)
+    {
+        allocate_dynamic_binding(&device, &binding);
+    }
+
+    struct DescriptorWrite
+    {
+        VkDescriptorImageInfo*     pImageInfo { nullptr };
+        VkDescriptorBufferInfo*    pBufferInfo { nullptr };
+        VkBufferView*              pTexelBufferView { nullptr };
+    };
+
+    auto* writes = BEE_ALLOCA_ARRAY(VkWriteDescriptorSet, count);
+    auto* elements = BEE_ALLOCA_ARRAY(DescriptorWrite, count);
+
+    for (int i = 0; i < count; ++i)
+    {
+        const auto resource_type = binding.layout.resources[updates[i].binding].type;
+        auto& write = writes[i];
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.pNext = nullptr;
+        write.dstSet = binding.set;
+        write.dstBinding = updates[i].binding;
+        write.dstArrayElement = updates[i].first_element;
+        write.descriptorCount = updates[i].element_count;
+        write.descriptorType = convert_resource_binding_type(resource_type);
+        switch (resource_type)
+        {
+            case ResourceBindingType::sampler:
+            case ResourceBindingType::combined_texture_sampler:
+            case ResourceBindingType::sampled_texture:
+            case ResourceBindingType::storage_texture:
+            case ResourceBindingType::input_attachment:
+            {
+                elements[i].pImageInfo = BEE_ALLOCA_ARRAY(VkDescriptorImageInfo, write.descriptorCount);
+
+                if (is_sampler_binding(resource_type))
+                {
+                    for (u32 element = 0; element < write.descriptorCount; ++element)
+                    {
+                        elements[i].pImageInfo[element].sampler = device.samplers_get(updates[i].textures[element].sampler);
+                    }
+                }
+
+                if (is_texture_binding(resource_type))
+                {
+                    for (u32 element = 0; element < write.descriptorCount; ++element)
+                    {
+                        auto& texture_view = device.texture_views_get(updates[i].textures[element].texture);
+                        auto& texture = device.textures_get(texture_view.viewed_texture);
+                        elements[i].pImageInfo[element].imageView = texture_view.handle;
+                        elements[i].pImageInfo[element].imageLayout = texture.layout;
+                    }
+                }
+
+                write.pImageInfo = write.pImageInfo;
+                break;
+            }
+            case ResourceBindingType::uniform_buffer:
+            case ResourceBindingType::storage_buffer:
+            case ResourceBindingType::dynamic_uniform_buffer:
+            case ResourceBindingType::dynamic_storage_buffer:
+            {
+                elements[i].pBufferInfo = BEE_ALLOCA_ARRAY(VkDescriptorBufferInfo, write.descriptorCount);
+
+                for (u32 element = 0; element < write.descriptorCount; ++element)
+                {
+                    elements[i].pBufferInfo[element].buffer = device.buffers_get(updates[i].buffers[element].buffer).handle;
+                    elements[i].pBufferInfo[element].offset = updates[i].buffers[element].offset;
+                    elements[i].pBufferInfo[element].range = updates[i].buffers[element].size == limits::max<u32>() ? VK_WHOLE_SIZE : updates[i].buffers[element].size;
+                }
+
+                write.pBufferInfo = write.pBufferInfo;
+                break;
+            }
+            case ResourceBindingType::uniform_texel_buffer:
+            case ResourceBindingType::storage_texel_buffer:
+            default:
+            {
+                BEE_UNREACHABLE("Invalid or unimplemented resource binding type");
+                break;
+            }
+        }
+    }
+
+    vkUpdateDescriptorSets(device.handle, count, writes, 0, nullptr);
 }
 
 SamplerHandle create_sampler(const DeviceHandle& device_handle, const SamplerCreateInfo& info)
@@ -2185,7 +2307,7 @@ SamplerHandle create_sampler(const DeviceHandle& device_handle, const SamplerCre
     auto& sampler = thread.samplers[handle];
     BEE_VK_CHECK(vkCreateSampler(device.handle, &vkinfo, nullptr, &sampler));
 
-    return SamplerHandle { handle.id, thread.index };
+    return handle;
 };
 
 void destroy_sampler(const DeviceHandle& device_handle, const SamplerHandle& sampler_handle)
@@ -2247,11 +2369,13 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     bee::g_backend->api.destroy_texture = bee::destroy_texture;
     bee::g_backend->api.update_texture = bee::update_texture;
     bee::g_backend->api.create_texture_view = bee::create_texture_view;
+    bee::g_backend->api.create_texture_view_from = bee::create_texture_view_from;
     bee::g_backend->api.destroy_texture_view = bee::destroy_texture_view;
     bee::g_backend->api.create_fence = bee::create_fence;
     bee::g_backend->api.destroy_fence = bee::destroy_fence;
     bee::g_backend->api.create_resource_binding = bee::create_resource_binding;
     bee::g_backend->api.destroy_resource_binding = bee::destroy_resource_binding;
+    bee::g_backend->api.update_resource_binding = bee::update_resource_binding;
     bee::g_backend->api.create_sampler = bee::create_sampler;
     bee::g_backend->api.destroy_sampler = bee::destroy_sampler;
 

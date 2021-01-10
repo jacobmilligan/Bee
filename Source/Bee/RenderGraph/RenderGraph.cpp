@@ -469,7 +469,7 @@ RenderGraphPass* add_static_pass(RenderGraph* graph, const RenderGraphPassDesc& 
 
     if (desc.init != nullptr)
     {
-        desc.init(pass->external_data, pass->data);
+        desc.init(graph->backend, graph->device, pass->external_data, pass->data);
     }
 
     return pass;
@@ -486,7 +486,7 @@ void remove_pass(RenderGraphPass* pass)
 
     if (pass->desc.destroy != nullptr)
     {
-        pass->desc.destroy(pass->external_data, pass->data);
+        pass->desc.destroy(graph->backend, graph->device, pass->external_data, pass->data);
     }
 
     graph->virtual_passes.erase(index);

@@ -147,15 +147,18 @@ private:
 
 struct BeeRootDirs
 {
-    Path    data_root;
-    Path    logs_root;
-    Path    binaries_root;
-    Path    assets_root;
-    Path    config_root;
-    Path    sources_root;
-    Path    install_root;
+    Path    data;
+    Path    logs;
+    Path    binaries;
+    Path    assets;
+    Path    configs;
+    Path    sources;
+    Path    installation;
 };
 
+BEE_CORE_API void init_filesystem();
+
+BEE_CORE_API void shutdown_filesystem();
 
 BEE_CORE_API bool is_dir(const Path& path);
 
@@ -196,7 +199,7 @@ BEE_CORE_API DirectoryIterator end(const DirectoryIterator&);
  *
  *********************************
  */
-BEE_CORE_API const BeeRootDirs& get_root_dirs();
+BEE_CORE_API const BeeRootDirs& roots();
 
 BEE_CORE_API Path user_local_appdata_path();
 
