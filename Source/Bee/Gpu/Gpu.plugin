@@ -1,0 +1,10 @@
+{
+    "name": "Bee.Gpu",
+    "version": "0.0.0",
+    "dependencies": [
+        {
+            "name": "Bee.Platform",
+            "version": "0.0.0"
+        }
+    ]
+}

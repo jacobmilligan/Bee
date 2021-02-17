@@ -48,7 +48,7 @@ struct AssetImporterInfo
     DynamicArray<u32>   file_type_hashes;
 };
 
-struct AssetPipeline
+struct AssetImportPipeline
 {
     Path                                config_path;
     Path                                full_cache_path;
@@ -72,7 +72,7 @@ struct AssetPipeline
 class TempAlloc
 {
 public:
-    TempAlloc(AssetPipeline* pipeline);
+    TempAlloc(AssetImportPipeline* pipeline);
 
     ~TempAlloc();
 

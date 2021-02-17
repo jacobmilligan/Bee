@@ -10,7 +10,7 @@ bee_begin()
     add_subdirectory(ThirdParty)
     add_subdirectory(Source/Bee)
     add_subdirectory(Tools)
-    add_subdirectory(Sandbox)
+#    add_subdirectory(Sandbox)
 
     if (BUILD_TESTS)
         add_subdirectory(Tests)

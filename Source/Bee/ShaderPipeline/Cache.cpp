@@ -22,7 +22,7 @@ struct GlobalData
 };
 
 static GlobalData*          g_global = nullptr;
-static AssetCacheModule*    g_asset_cache = nullptr;
+static AssetPipelineModule* g_asset_pipeline = nullptr;
 
 /*
  **********************************
@@ -135,31 +135,36 @@ void remove_shader(ShaderCache* cache, const ShaderPipelineHandle handle)
     cache->pool.deallocate(handle);
 }
 
-void register_asset_loader(ShaderCache* shader_cache, AssetCache* asset_cache, const GpuBackend* gpu, const DeviceHandle device)
+void register_asset_loader(ShaderCache* shader_cache, AssetPipeline* asset_pipeline, const GpuBackend* gpu, const DeviceHandle device)
 {
     BEE_ASSERT(shader_cache->gpu == nullptr);
     BEE_ASSERT(!shader_cache->device.is_valid());
 
-    if (g_asset_cache == nullptr)
+    if (g_asset_pipeline == nullptr)
     {
-        g_asset_cache = static_cast<AssetCacheModule*>(get_module(BEE_ASSET_CACHE_MODULE_NAME));
+        g_asset_pipeline = static_cast<AssetPipelineModule*>(get_module(BEE_ASSET_PIPELINE_MODULE_NAME));
     }
 
     shader_cache->gpu = gpu;
     shader_cache->device = device;
-    g_asset_cache->register_loader(asset_cache, &g_global->loader, shader_cache);
+    g_asset_pipeline->register_loader(asset_pipeline, &g_global->loader, shader_cache);
 }
 
-void unregister_asset_loader(ShaderCache* shader_cache, AssetCache* asset_cache)
+void unregister_asset_loader(ShaderCache* shader_cache, AssetPipeline* asset_pipeline)
 {
-    BEE_ASSERT(g_asset_cache != nullptr);
-    g_asset_cache->unregister_loader(asset_cache, &g_global->loader);
+    BEE_ASSERT(g_asset_pipeline != nullptr);
+    g_asset_pipeline->unregister_loader(asset_pipeline, &g_global->loader);
 }
 
 ShaderPipelineHandle lookup_shader(ShaderCache* cache, const u32 name_hash)
 {
     scoped_recursive_lock_t lock(cache->mutex);
     auto* handle = cache->lookup.find(name_hash);
+    if (handle == nullptr)
+    {
+        return {};
+    }
+
     return handle == nullptr ? ShaderPipelineHandle{} : handle->value;
 }
 
@@ -288,7 +293,7 @@ static i32 asset_cache_get_shader_types(Type* dst)
     return 1;
 }
 
-Result<void*, AssetCacheError> asset_cache_load_shader(const AssetLocation* location, void* user_data)
+Result<void*, AssetPipelineError> asset_pipeline_load_shader(const GUID guid, const AssetLocation* location, void* user_data, const AssetHandle handle, void* data)
 {
     auto* cache = static_cast<ShaderCache*>(user_data);
     auto* asset = BEE_NEW(system_allocator(), FixedArray<u32>);
@@ -311,14 +316,14 @@ Result<void*, AssetCacheError> asset_cache_load_shader(const AssetLocation* loca
 
     for (const u32 hash : *asset)
     {
-        const auto handle = lookup_shader(cache, hash);
-        load_shader(cache, handle);
+        const auto shader_handle = lookup_shader(cache, hash);
+        load_shader(cache, shader_handle);
     }
 
     return asset;
 }
 
-Result<void, AssetCacheError> asset_cache_unload_shader(const Type type, void* data, void* user_data)
+Result<void, AssetPipelineError> asset_pipeline_unload_shader(const Type type, void* data, void* user_data)
 {
     auto* asset = static_cast<FixedArray<u32>*>(data);
     auto* cache = static_cast<ShaderCache*>(user_data);
@@ -328,7 +333,7 @@ Result<void, AssetCacheError> asset_cache_unload_shader(const Type type, void* d
         const auto handle = lookup_shader(cache, hash);
         if (!handle.is_valid())
         {
-            return { AssetCacheError::missing_data };
+            return { AssetPipelineError::missing_data };
         }
 
         auto& pipeline = cache->pool[handle];
@@ -353,8 +358,8 @@ void load_shader_modules(bee::PluginLoader* loader, const bee::PluginState state
     g_global = loader->get_static<GlobalData>("Bee.RuntimeShaderData");
 
     g_global->loader.get_types = asset_cache_get_shader_types;
-    g_global->loader.load = asset_cache_load_shader;
-    g_global->loader.unload = asset_cache_unload_shader;
+    g_global->loader.load = asset_pipeline_load_shader;
+    g_global->loader.unload = asset_pipeline_unload_shader;
 
     // ShaderCache module
     g_shader_cache.create = create;

@@ -6,7 +6,7 @@
  */
 
 #include "Bee/ShaderPipeline/Parser/Parse.hpp"
-#include "Bee/ShaderPipeline/Cache.hpp"
+#include "Bee/ShaderPipeline/Compiler.hpp"
 
 #include "Bee/Core/Containers/HashMap.hpp"
 
@@ -160,8 +160,6 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
         stage_names[underlying_t(ShaderStageIndex::vertex)] = in.vertex_stage;
         stage_names[underlying_t(ShaderStageIndex::fragment)] = in.fragment_stage;
 
-        int pipeline_layout_frequencies[BEE_GPU_MAX_RESOURCE_LAYOUTS] { -1 };
-
         for (const auto stage : enumerate(stage_names))
         {
             if (stage.value.empty())
@@ -197,22 +195,24 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
                 }
 
                 // resource update frequencies
-                subshader.resource_layout_count = shader.data.resource_layout_count;
-                memcpy(subshader.resource_layout_frequencies,
-                    shader.data.resource_layouts,
-                    sizeof(ResourceBindingUpdateFrequency) * shader.data.resource_layout_count
-                );
+                subshader.update_frequencies.append(shader.data.update_frequencies.const_span());
 
-                // validate shaders have compatible layouts
-                for (int layout = 0; layout < subshader.resource_layout_count; ++layout)
+                // resolve sampler identifiers to sampler create info indices
+                for (const auto& sampler : shader.data.samplers)
                 {
-                    const i32 freq_as_int = underlying_t(subshader.resource_layout_frequencies[layout]);
-                    if (pipeline_layout_frequencies[layout] >= 0 && freq_as_int != pipeline_layout_frequencies[layout])
+                    const int src_index = find_index_if(module.sampler_states, [&](const BscNode<SamplerCreateInfo>& info)
                     {
-                        return { BscResolveErrorCode::incompatible_resource_layouts, module.pipeline_states[i].identifier };
+                        return info.identifier == sampler.data;
+                    });
+
+                    if (src_index < 0)
+                    {
+                       return { BscResolveErrorCode::undefined_symbol, sampler.data };
                     }
 
-                    pipeline_layout_frequencies[layout] = freq_as_int;
+                    // add_sampler handles any duplicate samplers via the src_index param
+                    const int ref_index = output->add_sampler(src_index, module.sampler_states[src_index].data);
+                    subshader.add_sampler_ref(sampler.identifier, ref_index);
                 }
             }
 
@@ -284,6 +284,11 @@ bool BscParser::parse(const StringView& source, BscModule* ast)
 {
     BscLexer lexer(source);
 
+    if (source.empty())
+    {
+        return report_error(BscErrorCode::unexpected_eof, &lexer);
+    }
+
     while (lexer.is_valid())
     {
         if (!parse_top_level_structure(&lexer, ast))
@@ -352,7 +357,7 @@ bool BscParser::parse_top_level_structure(BscLexer* lexer, BscModule* ast)
         }
         case BscTokenKind::Shader:
         {
-            ast->shaders.emplace_back(ident);
+            ast->shaders.emplace_back(ident, ast->allocator);
             success = parse_shader(lexer, &ast->shaders.back());
             break;
         }
@@ -524,17 +529,16 @@ bool BscParser::parse_shader(BscLexer* lexer, BscNode<BscShaderNode>* node)
 
             node->data.stages[underlying_t(ShaderStageIndex::fragment)] = StringView(tok.begin, tok.end);
         }
-        else if (key == "resource_layouts")
+        else if (key == "samplers")
         {
-            const auto layouts_success = parse_array(
-                lexer,
-                get_type_as<ResourceBindingUpdateFrequency, EnumTypeInfo>(),
-                reinterpret_cast<i32*>(node->data.resource_layouts),
-                static_array_length(node->data.resource_layouts),
-                &node->data.resource_layout_count
-            );
-
-            if (!layouts_success)
+            if (!parse_array(lexer, &node->data.samplers))
+            {
+                return false;
+            }
+        }
+        else if (key == "update_frequencies")
+        {
+            if (!parse_update_frequencies(lexer, &node->data.update_frequencies))
             {
                 return false;
             }
@@ -553,11 +557,6 @@ bool BscParser::parse_shader(BscLexer* lexer, BscNode<BscShaderNode>* node)
     }
 
     return true;
-}
-
-bool BscParser::parse_attachment(BscLexer* lexer, BscNode<AttachmentDescriptor>* node)
-{
-    return parse_fields(lexer, get_type_as<AttachmentDescriptor, RecordTypeInfo>(), &node->data);
 }
 
 bool BscParser::parse_blend_state(BscLexer* lexer, BscNode<BlendStateDescriptor>* node)
@@ -691,6 +690,72 @@ bool BscParser::parse_value(BscLexer* lexer, const Field& field, u8* data)
     }
 
     return true;
+}
+
+bool BscParser::parse_update_frequencies(BscLexer* lexer, DynamicArray<ShaderFile::UpdateFrequency>* dst)
+{
+    BscToken tok{};
+
+    if (!lexer->consume_as(BscTokenKind::open_bracket, &tok))
+    {
+        return false;
+    }
+
+    StringView ident{};
+    while (parse_key(lexer, &ident))
+    {
+        // parse key (i.e. `layout_0`) and validate format
+        const int index = str::first_index_of(ident, "layout_");
+        if (index != 0)
+        {
+            return report_error(BscErrorCode::invalid_layout_name, lexer);
+        }
+
+        // grab the layout index
+        int layout = -1;
+        if (!str::to_i32(str::substring(ident, index + sizeof("layout_")), &layout))
+        {
+            return report_error(BscErrorCode::invalid_layout_name, lexer);
+        }
+
+        if (!lexer->consume_as(BscTokenKind::identifier, &tok))
+        {
+            return false;
+        }
+
+        // Parse the frequency identifier to a valid enum value
+        const auto freq = enum_from_string<ResourceBindingUpdateFrequency>(StringView(tok.begin, tok.end));
+        if (static_cast<isize>(freq) < 0)
+        {
+            return report_error(BscErrorCode::invalid_field_value, lexer);
+        }
+
+        if (dst->size() == BEE_GPU_MAX_RESOURCE_LAYOUTS)
+        {
+            return report_error(BscErrorCode::array_too_large, lexer);
+        }
+
+        dst->emplace_back();
+        dst->back().layout = layout;
+        dst->back().frequency = freq;
+
+        if (!lexer->peek(&tok))
+        {
+            return false;
+        }
+
+        if (tok.kind == BscTokenKind::close_bracket)
+        {
+            break;
+        }
+    }
+
+    if (lexer->get_error().code != BscErrorCode::none)
+    {
+        return false;
+    }
+
+    return lexer->consume_as(BscTokenKind::close_bracket, &tok);
 }
 
 bool BscParser::parse_code(BscLexer* lexer, StringView* dst)
@@ -831,6 +896,40 @@ bool BscParser::parse_array(BscLexer* lexer, DynamicArray<StringView>* array)
     return lexer->consume_as(BscTokenKind::close_square_bracket, &tok);
 }
 
+bool BscParser::parse_array(BscLexer* lexer, bsc_node_array_t<StringView>* array)
+{
+    BscToken tok{};
+
+    if (!lexer->consume_as(BscTokenKind::open_bracket, &tok))
+    {
+        return false;
+    }
+
+    StringView key{};
+    while (parse_key(lexer, &key))
+    {
+        if (!lexer->consume_as(BscTokenKind::identifier, &tok))
+        {
+            return false;
+        }
+
+        array->emplace_back(key);
+        array->back().data = StringView(tok.begin, tok.end);
+
+        if (!lexer->peek(&tok))
+        {
+            return false;
+        }
+
+        if (tok.kind == BscTokenKind::close_bracket)
+        {
+            break;
+        }
+    }
+
+    return lexer->consume_as(BscTokenKind::close_bracket, &tok);
+}
+
 bool BscParser::parse_array(BscLexer* lexer, StringView* array, const i32 capacity, i32* count)
 {
     BscToken tok{};
@@ -924,11 +1023,16 @@ bool BscParser::parse_array(BscLexer* lexer, const EnumType& enum_type, i32* arr
 }
 
 // ShaderFile
-void ShaderFile::get_shader_pipeline_descriptor(const Pipeline& pipeline, ShaderPipelineDescriptor* dst)
+void ShaderFile::copy_to_asset(const Pipeline& pipeline, Shader* dst)
 {
-    memcpy(&dst->pipeline, &pipeline.desc, sizeof(PipelineStateDescriptor));
+    dst->name = pipeline.name.view();
+    memcpy(&dst->pipeline_desc, &pipeline.desc, sizeof(PipelineStateDescriptor));
 
-    dst->name = pipeline.name.c_str();
+    dst->update_frequencies.size = pipeline.desc.resource_layouts.size;
+    for (auto& freq : dst->update_frequencies)
+    {
+        freq = ResourceBindingUpdateFrequency::persistent;
+    }
 
     for (auto index : enumerate(pipeline.shaders))
     {
@@ -940,21 +1044,43 @@ void ShaderFile::get_shader_pipeline_descriptor(const Pipeline& pipeline, Shader
         const ShaderStageIndex stage_index(index.index);
         const int subshader_index = index.value;
         auto& subshader = subshaders[subshader_index];
-        auto& shader_info = dst->shader_info[dst->shader_stage_count];
-        auto& resource_desc = dst->shader_resources[dst->shader_stage_count];
+        auto& stage = dst->stages[dst->stages.size];
 
-        dst->shader_stages[dst->shader_stage_count] = stage_index.to_flags();
-        shader_info.entry = subshader.stage_entries[stage_index].c_str();
-        shader_info.code = code.data() + subshader.stage_code_ranges[stage_index].offset;
-        shader_info.code_size = sign_cast<size_t>(subshader.stage_code_ranges[stage_index].size);
-        resource_desc.layout_count = subshader.resource_layout_count;
-        memcpy(
-            resource_desc.frequencies,
-            subshader.resource_layout_frequencies,
-            resource_desc.layout_count * sizeof(ResourceBindingUpdateFrequency)
-        );
+        stage.flags = stage_index.to_flags();
+        stage.entry = subshader.stage_entries[stage_index].view();
+        const u8* code_begin = code.data() + subshader.stage_code_ranges[stage_index].offset;
+        const size_t code_size = sign_cast<size_t>(subshader.stage_code_ranges[stage_index].size);
+        stage.code.resize(code_size);
+        stage.code.copy(0, code_begin, code_begin + code_size);
 
-        ++dst->shader_stage_count;
+        // Update frequencies
+        for (const auto& freq : subshader.update_frequencies)
+        {
+            dst->update_frequencies[freq.layout] = freq.frequency;
+        }
+
+        // Sampler refs
+        for (const auto& ref : subshader.samplers)
+        {
+            const u32 hash = get_hash(samplers[ref.resource_index]);
+            const int existing = find_index_if(dst->samplers, [&](const ShaderSampler& s)
+            {
+                return hash == s.hash;
+            });
+            if (existing >= 0)
+            {
+                continue;
+            }
+
+            dst->samplers.resize(dst->samplers.size() + 1);
+            auto& sampler = dst->samplers.back();
+            sampler.hash = hash;
+            sampler.binding = ref.binding;
+            sampler.layout = ref.layout;
+            memcpy(&sampler.info, &samplers[ref.resource_index].info, sizeof(SamplerCreateInfo));
+        }
+
+        ++dst->stages.size;
     }
 }
 

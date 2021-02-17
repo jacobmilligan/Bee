@@ -341,7 +341,7 @@ void BeeJsonReader::serialize_fundamental(u128* data)
         return;
     }
 
-    *data = str::to_u128(doc_.get_data(stack_.back()).as_string());
+    BEE_CHECK(str::to_u128(doc_.get_data(stack_.back()).as_string(), data));
     end_read_scope();
 }
 

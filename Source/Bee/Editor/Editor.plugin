@@ -1,0 +1,30 @@
+{
+    "name": "Bee.Editor",
+    "version": "0.0.0",
+    "dependencies": [
+        {
+            "name": "Bee.Platform",
+            "version": "0.0.0"
+        },
+        {
+            "name": "Bee.VulkanBackend",
+            "version": "0.0.0"
+        },
+        {
+            "name": "Bee.RenderGraph",
+            "version": "0.0.0"
+        },
+        {
+            "name": "Bee.DataConnection",
+            "version": "0.0.0"
+        },
+        {
+            "name": "Bee.ImGui",
+            "version": "0.0.0"
+        },
+        {
+            "name": "Bee.AssetPipeline",
+            "version": "0.0.0"
+        }
+    ]
+}

@@ -115,5 +115,3 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
 
     loader->set_module(BEE_INPUT_MODULE_NAME, &g_module, state);
 }
-
-BEE_PLUGIN_VERSION(0, 0, 0)

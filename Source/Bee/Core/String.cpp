@@ -1160,46 +1160,56 @@ String to_string(const u128& value, Allocator* allocator)
     return format(allocator, "%" BEE_PRIxu128, BEE_FMT_u128(value));
 }
 
-i32 to_i32(const StringView& src)
+bool to_i32(const StringView& src, i32* result)
 {
-    return sign_cast<i32>(strtol(src.c_str(), nullptr, 10));
+    char* endptr = nullptr;
+    *result = sign_cast<i32>(strtol(src.c_str(), &endptr, 10));
+    return endptr != src.data() || errno != ERANGE;
 }
 
-u32 to_u32(const StringView& src)
+bool to_u32(const StringView& src, u32* result)
 {
-    return sign_cast<u32>(strtoul(src.c_str(), nullptr, 10));
+    char* endptr = nullptr;
+    *result = sign_cast<u32>(strtoul(src.c_str(), &endptr, 10));
+    return endptr != src.data() || errno != ERANGE;
 }
 
-i64 to_i64(const StringView& src)
+bool to_i64(const StringView& src, i64* result)
 {
-    return sign_cast<i64>(strtoimax(src.c_str(), nullptr, 10));
+    char* endptr = nullptr;
+    *result = sign_cast<i64>(strtoimax(src.c_str(), &endptr, 10));
+    return endptr != src.data() || errno != ERANGE;
 }
 
-u64 to_u64(const StringView& src)
+bool to_u64(const StringView& src, u64* result)
 {
-    return sign_cast<u64>(strtoumax(src.c_str(), nullptr, 10));
+    char* endptr = nullptr;
+    *result = sign_cast<u64>(strtoumax(src.c_str(), &endptr, 10));
+    return endptr != src.data() || errno != ERANGE;
 }
 
-float to_float(const StringView& src)
+bool to_float(const StringView& src, float* result)
 {
-    return strtof(src.c_str(), nullptr);
+    char* endptr = nullptr;
+    *result = strtof(src.c_str(), &endptr);
+    return endptr != src.data() || errno != ERANGE;
 }
 
-double to_double(const StringView& src)
+bool to_double(const StringView& src, double* result)
 {
-    return strtod(src.c_str(), nullptr);
+    char* endptr = nullptr;
+    *result = strtod(src.c_str(), &endptr);
+    return endptr != src.data() || errno != ERANGE;
 }
 
-u128 to_u128(const StringView& src)
+bool to_u128(const StringView& src, u128* result)
 {
-    BEE_ASSERT(src.size() == 32);
+    if (src.size() != 32)
+    {
+        return false;
+    }
 
-    u128 value{};
-    const auto scan_result = sscanf(src.c_str(), "%16zx%16zx", &value.high, &value.low);
-
-    BEE_ASSERT(scan_result == 2);
-
-    return value;
+    return 2 == sscanf(src.c_str(), "%16zx%16zx", &result->high, &result->low);
 }
 
 /*
@@ -1268,6 +1278,33 @@ void split(const StringView& src, DynamicArray<StringView>* dst, const char* del
         dst->push_back(StringView(substr.data(), next_index));
         current += next_index + delim_len;
     }
+}
+
+i32 split(const StringView& src, StringView* dst_array, const i32 dst_array_capacity, const char* delimiter)
+{
+    if (dst_array_capacity <= 0)
+    {
+        return 0;
+    }
+
+    int current = 0;
+    int count = 0;
+    const int delim_len = length(delimiter);
+
+    while (current < src.size())
+    {
+        const auto substr = substring(src, current, src.size() - current);
+        const auto next_index = first_index_of(substr, delimiter);
+        dst_array[count++] = StringView(substr.data(), next_index);
+        current += next_index + delim_len;
+
+        if (count >= dst_array_capacity)
+        {
+            break;
+        }
+    }
+
+    return count;
 }
 
 bool is_ascii(const char c)

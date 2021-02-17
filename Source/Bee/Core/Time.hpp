@@ -37,19 +37,28 @@ BEE_CORE_API u64 ticks_per_minute() noexcept;
 /// Represents the amount of ticks that occur for every hour
 BEE_CORE_API u64 ticks_per_hour() noexcept;
 
+BEE_CORE_API u64 microseconds(const u64 us);
+
+BEE_CORE_API u64 milliseconds(const u64 ms);
+
+BEE_CORE_API u64 seconds(const u64 s);
+
+BEE_CORE_API u64 minutes(const u64 m);
+
+BEE_CORE_API u64 hours(const u64 h);
+
+BEE_CORE_API double total_microseconds(const u64 ticks);
+
+BEE_CORE_API double total_milliseconds(const u64 ticks);
+
+BEE_CORE_API double total_seconds(const u64 ticks);
+
+BEE_CORE_API double total_minutes(const u64 ticks);
+
+BEE_CORE_API double total_hours(const u64 ticks);
 
 } // namespace time
 
-
-enum class TimeInterval
-{
-    ticks,
-    microseconds,
-    milliseconds,
-    seconds,
-    minutes,
-    hours
-};
 
 class BEE_CORE_API TimePoint {
 public:
@@ -119,59 +128,9 @@ public:
 
     bool operator<=(const TimePoint& other) const;
 private:
-    /// The fraction of a microsecond that each system tick is worth
-    static const double microseconds_per_tick;
-    /// The fraction of a millisecond that each system tick is worth
-    static const double milliseconds_per_tick;
-    /// The fraction of a second that each system tick is worth
-    static const double seconds_per_tick;
-    /// The fraction of a minute that each system tick is worth
-    static const double minutes_per_tick;
-    /// The fraction of a hours that each system tick is worth
-    static const double hours_per_tick;
-
     /// timepoint value in raw system ticks
     u64 ticks_ { 0 };
 };
-
-template<TimeInterval Interval>
-TimePoint make_time_point(u64 ticks);
-
-template<>
-inline TimePoint make_time_point<TimeInterval::ticks>(const u64 ticks)
-{
-    return TimePoint(ticks);
-}
-
-template<>
-inline TimePoint make_time_point<TimeInterval::microseconds>(const u64 ticks)
-{
-    return TimePoint(static_cast<u64>(time::ticks_per_microsecond() * ticks));
-}
-
-template<>
-inline TimePoint make_time_point<TimeInterval::milliseconds>(const u64 ticks)
-{
-    return TimePoint(static_cast<u64>(time::ticks_per_millisecond() * ticks));
-}
-
-template<>
-inline TimePoint make_time_point<TimeInterval::seconds>(const u64 ticks)
-{
-    return TimePoint(static_cast<u64>(time::ticks_per_second() * ticks));
-}
-
-template<>
-inline TimePoint make_time_point<TimeInterval::minutes>(const u64 ticks)
-{
-    return TimePoint(static_cast<u64>(time::ticks_per_minute() * ticks));
-}
-
-template<>
-inline TimePoint make_time_point<TimeInterval::hours>(const u64 ticks)
-{
-    return TimePoint(static_cast<u64>(time::ticks_per_hour() * ticks));
-}
 
 
 } // namespace bee

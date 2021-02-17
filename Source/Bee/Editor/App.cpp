@@ -8,6 +8,7 @@
 #include "Bee/Editor/App.hpp"
 
 #include "Bee/Core/Plugin.hpp"
+#include "Bee/Core/Filesystem.hpp"
 
 #include "Bee/DataConnection/DataConnection.hpp"
 #include "Bee/Gpu/Gpu.hpp"
@@ -15,7 +16,8 @@
 #include "Bee/Platform/Platform.hpp"
 #include "Bee/RenderGraph/RenderGraph.hpp"
 #include "Bee/ImGui/ImGui.hpp"
-#include "Bee/ShaderPipeline/Cache.hpp"
+#include "Bee/AssetPipelineV2/AssetPipeline.hpp"
+#include "Bee/ShaderPipeline/ShaderPipeline.hpp"
 
 
 namespace bee {
@@ -27,6 +29,7 @@ struct EditorApp
 {
     bool                quit_requested { false };
     bool                reloaded { false };
+    ImGuiBackend*       imgui_backend { nullptr };
 
     // Platform resources
     WindowHandle        main_window;
@@ -35,13 +38,13 @@ struct EditorApp
     GpuBackend*         gpu { nullptr };
     DeviceHandle        device;
     SwapchainHandle     swapchain;
-    ShaderCache*        shader_cache { nullptr };
 
     // Rendering resources
     RenderGraph*        render_graph { nullptr };
     RenderGraphPass*    imgui_pass { nullptr };
 
     // Data connection
+    AssetPipeline*      asset_pipeline { nullptr };
     DataConnection*     connection { nullptr };
 };
 
@@ -53,8 +56,9 @@ static GpuModule*               g_gpu { nullptr };
 static RenderGraphModule*       g_render_graph { nullptr };
 static DataConnectionModule*    g_data_connection { nullptr };
 static ImGuiModule*             g_imgui { nullptr };
-static ImGuiRenderModule*       g_imgui_render { nullptr };
-static ShaderCacheModule*       g_shader_cache { nullptr };
+static ImGuiBackendModule*      g_imgui_backend { nullptr };
+static AssetPipelineModule*     g_asset_pipeline { nullptr };
+static ShaderPipelineModule*    g_shader_pipeline { nullptr };
 
 /*
  ******************************************************
@@ -65,28 +69,28 @@ static ShaderCacheModule*       g_shader_cache { nullptr };
  */
 struct ImGuiPassData
 {
-    ImGuiRender*        imgui_render { nullptr };
     RenderGraphResource backbuffer;
 };
 
 static void init_pass(GpuBackend* gpu, const DeviceHandle device, const void* external_data, void* pass_data)
 {
-    auto* imgui_pass = static_cast<ImGuiPassData*>(pass_data);
-    auto res = g_imgui_render->create(device, gpu, g_app->shader_cache, system_allocator());
-    if (!res)
+    if (g_app->imgui_backend == nullptr)
     {
-        log_error("ImGuiRender error: %s", res.unwrap_error().to_string());
-        return;
+        auto res = g_imgui_backend->create_backend(device, gpu, g_app->asset_pipeline, system_allocator());
+        if (!res)
+        {
+            log_error("%s", res.unwrap_error().to_string());
+            return;
+        }
+        g_app->imgui_backend = res.unwrap();
     }
-    imgui_pass->imgui_render = res.unwrap();
 }
 
 static void destroy_pass(GpuBackend* gpu, const DeviceHandle device, const void* external_data, void* pass_data)
 {
-    auto* imgui_pass = static_cast<ImGuiPassData*>(pass_data);
-    if (imgui_pass->imgui_render != nullptr)
+    if (g_app->imgui_backend != nullptr)
     {
-        g_imgui_render->destroy(imgui_pass->imgui_render);
+        g_imgui_backend->destroy_backend(g_app->imgui_backend);
     }
 }
 
@@ -112,7 +116,7 @@ static void execute_pass(
     const TextureViewHandle* attachments = nullptr;
     const int attachment_count = storage->get_attachments(pass, &attachments);
     const auto backbuffer_rect = storage->get_backbuffer_rect(pass, sandbox_pass->backbuffer);
-    ClearValue clear_value(0, 0, 0, 0);
+    ClearValue clear_value(0.3f, 0.3f, 0.3f, 1.0f);
 
     // All draw calls etc. must take place within a render pass and because we're using the render graph we can
     // just use the automatically-created one for this pass
@@ -126,7 +130,7 @@ static void execute_pass(
     // scissor and viewport are dynamic states by default so need to be set each frame
     cmd->set_scissor(cmdbuf, backbuffer_rect);
     cmd->set_viewport(cmdbuf, Viewport(0, 0, static_cast<float>(backbuffer_rect.width), static_cast<float>(backbuffer_rect.height)));
-    g_imgui_render->draw(sandbox_pass->imgui_render, cmdbuf);
+    g_imgui_backend->draw(g_app->imgui_backend, cmdbuf);
     cmd->end_render_pass(cmdbuf);
 }
 
@@ -193,12 +197,27 @@ bool startup()
     }
 
     // Initialize the editor shader cache
-    g_app->shader_cache = g_shader_cache->create();
-    if (g_app->shader_cache == nullptr)
+    Path cache_root = fs::roots().data.view();
+    cache_root.append("EditorCache");
+
+    AssetPipelineImportInfo import_info{};
+    import_info.name = "Editor";
+    import_info.cache_root = cache_root.view();
+
+    AssetPipelineInfo asset_pipeline_info{};
+    asset_pipeline_info.import = &import_info;
+    asset_pipeline_info.flags = AssetPipelineFlags::import | AssetPipelineFlags::load;
+
+    auto res = g_asset_pipeline->create_pipeline(asset_pipeline_info);
+    if (!res)
     {
-        log_error("Failed to create shader cache");
+        log_error("Failed to create asset pipeline: %s", res.unwrap_error().to_string());
         return false;
     }
+    g_app->asset_pipeline = res.unwrap();
+
+    // Init the shader pipeline
+    g_shader_pipeline->init(g_app->asset_pipeline, g_app->gpu, g_app->device);
 
     // Create a new render graph to process the frame - manages creating GPU resources, automatic barriers etc.
     g_app->render_graph = g_render_graph->create_graph(g_app->gpu, g_app->device);
@@ -225,8 +244,6 @@ bool startup()
 
     g_app->connection = dc_res.unwrap();
 
-//    g_imgui->c
-
     g_app->quit_requested = false;
 
     return true;
@@ -234,6 +251,19 @@ bool startup()
 
 void shutdown()
 {
+    // Non-core modules - these *may* have assets associated with them so we need to do this before the final asset
+    // pipeline refresh
+    if (g_app->imgui_pass != nullptr)
+    {
+        g_render_graph->remove_pass(g_app->imgui_pass);
+    }
+
+    // Core modules - these don't have assets associated with them so it's safe to do the final refresh here
+    g_asset_pipeline->refresh(g_app->asset_pipeline);
+
+    // Safe to shut down importers/loaders/locators now
+    g_shader_pipeline->shutdown();
+
     if (g_app->connection != nullptr)
     {
         auto res = g_data_connection->destroy_connection(g_app->connection);
@@ -296,6 +326,7 @@ static void reload_plugin()
     if (g_app->imgui_pass != nullptr)
     {
         g_render_graph->remove_pass(g_app->imgui_pass);
+        g_app->imgui_pass = nullptr;
     }
 
     g_app->imgui_pass = g_render_graph->add_pass<ImGuiPassData>(
@@ -325,11 +356,28 @@ void tick()
     // Poll input for the app and show some info logs for when the keyboard/mouse was triggered
     g_platform->poll_input();
 
+    auto ap_res = g_asset_pipeline->refresh(g_app->asset_pipeline);
+    if (!ap_res)
+    {
+        log_error("Asset pipeline error: %s", ap_res.unwrap_error().to_string());
+    }
+
     auto res = g_data_connection->flush(g_app->connection, 1);
     if (!res)
     {
         log_error("Editor data connection error: %s", res.unwrap_error().to_string());
     }
+
+    if (g_app->imgui_backend != nullptr)
+    {
+        g_imgui_backend->new_frame(g_app->imgui_backend, g_app->main_window);
+        g_imgui->Text("Hello World!");
+        g_imgui->Render();
+    }
+
+    g_render_graph->setup(g_app->render_graph);
+    g_render_graph->execute(g_app->render_graph);
+    g_app->gpu->commit_frame(g_app->device);
 }
 
 bool quit_requested()
@@ -345,36 +393,6 @@ static bee::EditorAppModule g_module{};
 
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::PluginState state)
 {
-    if (!loader->require_plugin("Bee.Platform", bee::PluginVersion{ 0, 0, 0 }))
-    {
-        bee::log_error("Missing dependency: Bee.Platform");
-        return;
-    }
-
-    if (!loader->require_plugin("Bee.VulkanBackend", bee::PluginVersion{ 0, 0, 0 }))
-    {
-        bee::log_error("Missing dependency: Bee.VulkanBackend");
-        return;
-    }
-
-    if (!loader->require_plugin("Bee.RenderGraph", bee::PluginVersion{ 0, 0, 0 }))
-    {
-        bee::log_error("Missing dependency: Bee.RenderGraph");
-        return;
-    }
-
-    if (!loader->require_plugin("Bee.DataConnection", bee::PluginVersion{ 0, 0, 0 }))
-    {
-        bee::log_error("Missing dependency: Bee.DataConnection");
-        return;
-    }
-
-    if (!loader->require_plugin("Bee.ImGui", bee::PluginVersion{ 0, 0, 0 }))
-    {
-        bee::log_error("Missing dependency: Bee.ImGui");
-        return;
-    }
-
     bee::g_app = loader->get_static<bee::EditorApp>("Bee.EditorApp");
     bee::g_app->reloaded = state == bee::PluginState::loading;
 
@@ -391,8 +409,8 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
         bee::g_render_graph = static_cast<bee::RenderGraphModule*>(loader->get_module(BEE_RENDER_GRAPH_MODULE_NAME));
         bee::g_data_connection = static_cast<bee::DataConnectionModule*>(loader->get_module(BEE_DATA_CONNECTION_MODULE_NAME));
         bee::g_imgui = static_cast<bee::ImGuiModule*>(loader->get_module(BEE_IMGUI_MODULE_NAME));
-        bee::g_imgui_render = static_cast<bee::ImGuiRenderModule*>(loader->get_module(BEE_IMGUI_RENDER_MODULE_NAME));
+        bee::g_imgui_backend = static_cast<bee::ImGuiBackendModule*>(loader->get_module(BEE_IMGUI_BACKEND_MODULE_NAME));
+        bee::g_asset_pipeline = static_cast<bee::AssetPipelineModule*>(loader->get_module(BEE_ASSET_PIPELINE_MODULE_NAME));
+        bee::g_shader_pipeline = static_cast<bee::ShaderPipelineModule*>(loader->get_module(BEE_SHADER_PIPELINE_MODULE_NAME));
     }
 }
-
-BEE_PLUGIN_VERSION(0, 0, 0)

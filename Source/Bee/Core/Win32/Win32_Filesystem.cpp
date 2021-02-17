@@ -19,6 +19,11 @@
 
 
 namespace bee {
+
+
+extern const char* get_null_terminated_path(const StringView& path);
+
+
 namespace fs {
 
 
@@ -146,7 +151,7 @@ struct WatchedDirectory
 
 static constexpr auto notify_flags = FILE_NOTIFY_CHANGE_LAST_WRITE
     | FILE_NOTIFY_CHANGE_DIR_NAME
-    | FILE_NOTIFY_CHANGE_ATTRIBUTES
+    | FILE_NOTIFY_CHANGE_CREATION
     | FILE_NOTIFY_CHANGE_FILE_NAME;
 
 
@@ -457,26 +462,31 @@ u64 last_modified(const Path& path)
     return (static_cast<u64>(filetime.dwHighDateTime) << 32) + static_cast<u64>(filetime.dwLowDateTime);
 }
 
-bool mkdir(const Path& directory_path, const bool recursive)
+bool mkdir(const StringView& directory_path, const bool recursive)
 {
     if (recursive)
     {
-        const auto parent = directory_path.parent_path(temp_allocator());
-        if (!parent.exists())
+        const auto parent = path_get_parent(directory_path);
+        if (!path_exists(parent))
         {
             mkdir(parent, recursive);
         }
     }
 
-    const auto result = CreateDirectory(directory_path.c_str(), nullptr);
+    const auto result = CreateDirectory(get_null_terminated_path(directory_path), nullptr);
 
     if (result != FALSE)
     {
         return true;
     }
 
-    log_error("Unable to make directory at path: %s: %s", directory_path.c_str(), win32_get_last_error_string());
+    log_error("Unable to make directory at path: %" BEE_PRIsv ": %s", BEE_FMT_SV(directory_path), win32_get_last_error_string());
     return false;
+}
+
+bool mkdir(const Path& directory_path, const bool recursive)
+{
+    return mkdir(directory_path.view(), recursive);
 }
 
 bool native_rmdir_non_recursive(const Path& directory_path)

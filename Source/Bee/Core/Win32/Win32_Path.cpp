@@ -50,9 +50,22 @@ Path Path::get_normalized(Allocator* allocator) const
     return BEE_MOVE(normalized_path);
 }
 
-bool Path::exists() const
+const char* get_null_terminated_path(const StringView& path)
 {
-    auto attrs = GetFileAttributesA(data_.c_str());
+    static thread_local StaticString<MAX_PATH> null_terminated;
+
+    if (path.data()[path.size()] == '\0')
+    {
+        return path.data();
+    }
+
+    null_terminated = path;
+    return null_terminated.data();
+}
+
+bool path_exists(const StringView& path)
+{
+    auto attrs = GetFileAttributesA(get_null_terminated_path(path));
     if (attrs == INVALID_FILE_ATTRIBUTES)
     {
         const auto error = GetLastError();
@@ -73,7 +86,7 @@ bool Path::exists() const
 
         return BEE_CHECK_F(
             attrs != INVALID_FILE_ATTRIBUTES,
-            "Path::exists failed for path at '%s' with error: %s", data_.c_str(), win32_get_last_error_string()
+            "Path::exists failed for path at '%" BEE_PRIsv "` with error: %s", BEE_FMT_SV(path), win32_get_last_error_string()
         );
     }
 

@@ -30,20 +30,20 @@ namespace bee {
     BSC_CHAR_TOK(colon, ':')                    \
     BSC_CHAR_TOK(comma, ',')
 
-#define BSC_TOKENS          \
-    BSC_TOK(invalid)        \
-    BSC_TOK(eof)            \
-    BSC_TOK(identifier)     \
-    BSC_TOK(enum_const)     \
-    BSC_TOK(bool_true)      \
-    BSC_TOK(bool_false)     \
-    BSC_TOK(signed_int)     \
-    BSC_TOK(unsigned_int)   \
-    BSC_TOK(floating_point) \
-    BSC_TOK(string_literal) \
-    BSC_TOK(code)           \
-    BSC_TOK(resource_layouts)
-
+#define BSC_TOKENS              \
+    BSC_TOK(invalid)            \
+    BSC_TOK(eof)                \
+    BSC_TOK(identifier)         \
+    BSC_TOK(enum_const)         \
+    BSC_TOK(bool_true)          \
+    BSC_TOK(bool_false)         \
+    BSC_TOK(signed_int)         \
+    BSC_TOK(unsigned_int)       \
+    BSC_TOK(floating_point)     \
+    BSC_TOK(string_literal)     \
+    BSC_TOK(code)               \
+    BSC_TOK(samplers)           \
+    BSC_TOK(update_frequencies)
 
 #define BSC_ALL_TOKENS  \
     BSC_KEYWORDS        \
@@ -85,6 +85,7 @@ enum class BscErrorCode
     unexpected_token_kind,
     number_too_long,
     invalid_number_format,
+    invalid_layout_name,
     none
 };
 

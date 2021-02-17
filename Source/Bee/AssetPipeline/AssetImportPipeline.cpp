@@ -10,8 +10,8 @@
 #include "Bee/Core/Jobs/JobSystem.hpp"
 
 #include "Bee/AssetDatabase/AssetDatabase.hpp"
-#include "Bee/AssetPipeline/AssetPipeline.hpp"
-#include "Bee/AssetPipeline/AssetPipeline.inl"
+#include "Bee/AssetPipeline/AssetImportPipeline.hpp"
+#include "Bee/AssetPipeline/AssetImportPipeline.inl"
 
 
 namespace bee {
@@ -21,7 +21,7 @@ struct CommonAssetPipeline
 {
     Mutex                           mutex;
     DynamicArray<Path>              source_folders;
-    DynamicArray<AssetPipeline*>    pipelines;
+    DynamicArray<AssetImportPipeline*>    pipelines;
 };
 
 static CommonAssetPipeline* g_common;
@@ -36,7 +36,7 @@ AssetCacheModule*       g_asset_cache = nullptr;
  *
  **********************************
  */
-TempAlloc::TempAlloc(AssetPipeline* pipeline)
+TempAlloc::TempAlloc(AssetImportPipeline* pipeline)
 {
     allocator_ = &pipeline->thread_data[job_worker_id()].temp_allocator;
     offset_ = allocator_->offset();
@@ -56,7 +56,7 @@ TempAlloc::~TempAlloc()
  */
 static constexpr const char* g_artifacts_dirname = "Artifacts";
 
-static void save_config(AssetPipeline* pipeline)
+static void save_config(AssetImportPipeline* pipeline)
 {
     TempAlloc temp_alloc(pipeline);
     JSONSerializer serializer(temp_alloc);
@@ -64,7 +64,7 @@ static void save_config(AssetPipeline* pipeline)
     fs::write(pipeline->config_path, serializer.c_str());
 }
 
-static void load_config(AssetPipeline* pipeline)
+static void load_config(AssetImportPipeline* pipeline)
 {
     TempAlloc temp_alloc(pipeline);
     auto contents = fs::read(pipeline->config_path, temp_alloc);
@@ -72,7 +72,7 @@ static void load_config(AssetPipeline* pipeline)
     serialize(SerializerMode::reading, &serializer, &pipeline->config);
 }
 
-static bool init_pipeline(AssetPipeline* pipeline)
+static bool init_pipeline(AssetImportPipeline* pipeline)
 {
     pipeline->thread_data.resize(job_system_worker_count());
     pipeline->full_cache_path = pipeline->config_path.parent_path();
@@ -113,9 +113,9 @@ static bool init_pipeline(AssetPipeline* pipeline)
     return pipeline;
 }
 
-AssetPipeline* create_pipeline(const AssetPipelineInfo& info)
+AssetImportPipeline* create_pipeline(const AssetPipelineInfo& info)
 {
-    auto* pipeline = BEE_NEW(system_allocator(), AssetPipeline);
+    auto* pipeline = BEE_NEW(system_allocator(), AssetImportPipeline);
     pipeline->config_path = info.config_path;
     pipeline->config.cache_root = info.cache_root;
     pipeline->config.name = info.name;
@@ -143,9 +143,9 @@ AssetPipeline* create_pipeline(const AssetPipelineInfo& info)
     return pipeline;
 }
 
-AssetPipeline* load_pipeline(const StringView path)
+AssetImportPipeline* load_pipeline(const StringView path)
 {
-    auto* pipeline = BEE_NEW(system_allocator(), AssetPipeline);
+    auto* pipeline = BEE_NEW(system_allocator(), AssetImportPipeline);
     pipeline->config_path = path;
     pipeline->thread_data.resize(job_system_worker_count());
 
@@ -166,7 +166,7 @@ AssetPipeline* load_pipeline(const StringView path)
     return pipeline;
 }
 
-void destroy_pipeline(AssetPipeline* pipeline)
+void destroy_pipeline(AssetImportPipeline* pipeline)
 {
     if (pipeline->runtime_cache != nullptr)
     {
@@ -186,12 +186,12 @@ void destroy_pipeline(AssetPipeline* pipeline)
     BEE_DELETE(system_allocator(), pipeline);
 }
 
-AssetDatabase* get_asset_db(AssetPipeline* pipeline)
+AssetDatabase* get_asset_db(AssetImportPipeline* pipeline)
 {
     return pipeline->db;
 }
 
-void add_source_folder(AssetPipeline* pipeline, const Path& path)
+void add_source_folder(AssetImportPipeline* pipeline, const Path& path)
 {
     const int existing = find_index(pipeline->config.source_roots, path);
     if (existing >= 0)
@@ -204,7 +204,7 @@ void add_source_folder(AssetPipeline* pipeline, const Path& path)
     pipeline->source_watcher.resume();
 }
 
-void remove_source_folder(AssetPipeline* pipeline, const Path& path)
+void remove_source_folder(AssetImportPipeline* pipeline, const Path& path)
 {
     const int existing = find_index(pipeline->config.source_roots, path);
     if (existing < 0)
@@ -253,7 +253,7 @@ void watch_external_sources(const Path& folder, const bool watch)
     }
 }
 
-static FileTypeInfo& add_file_type(AssetPipeline* pipeline, const char* file_type, const u32 hash)
+static FileTypeInfo& add_file_type(AssetImportPipeline* pipeline, const char* file_type, const u32 hash)
 {
     pipeline->file_type_hashes.push_back(hash);
     pipeline->file_types.emplace_back();
@@ -262,7 +262,7 @@ static FileTypeInfo& add_file_type(AssetPipeline* pipeline, const char* file_typ
     return info;
 }
 
-void register_importer(AssetPipeline* pipeline, AssetImporter* importer, void* user_data)
+void register_importer(AssetImportPipeline* pipeline, AssetImporter* importer, void* user_data)
 {
     const u32 hash = get_hash(importer->name());
     const int existing_index = find_index(pipeline->importer_hashes, hash);
@@ -301,7 +301,7 @@ void register_importer(AssetPipeline* pipeline, AssetImporter* importer, void* u
     }
 }
 
-void unregister_importer(AssetPipeline* pipeline, AssetImporter* importer)
+void unregister_importer(AssetImportPipeline* pipeline, AssetImporter* importer)
 {
     const u32 hash = get_hash(importer->name());
     const int index = find_index(pipeline->importer_hashes, hash);
@@ -336,7 +336,7 @@ void unregister_importer(AssetPipeline* pipeline, AssetImporter* importer)
     pipeline->importers.erase(index);
 }
 
-i32 get_default_importer_for_file_type(AssetPipeline* pipeline, const StringView& ext)
+i32 get_default_importer_for_file_type(AssetImportPipeline* pipeline, const StringView& ext)
 {
     const u32 hash = get_hash(ext);
     for (int i = 0; i < pipeline->importers.size(); ++i)
@@ -349,7 +349,7 @@ i32 get_default_importer_for_file_type(AssetPipeline* pipeline, const StringView
     return -1;
 }
 
-ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, const AssetPlatform platform)
+ImportErrorStatus import_asset(AssetImportPipeline* pipeline, const StringView path, const AssetPlatform platform)
 {
     auto txn = g_assetdb->write(pipeline->db);
     AssetMetadata* meta = nullptr;
@@ -438,7 +438,7 @@ ImportErrorStatus import_asset(AssetPipeline* pipeline, const StringView path, c
     return ImportErrorStatus::success;
 }
 
-void refresh(AssetPipeline* pipeline)
+void refresh(AssetImportPipeline* pipeline)
 {
     pipeline->source_watcher.pop_events(&pipeline->fs_events);
 
@@ -464,7 +464,7 @@ void refresh(AssetPipeline* pipeline)
 
 static bool asset_db_locate(void* user_data, const GUID guid, AssetLocation* location)
 {
-    auto* pipeline = static_cast<AssetPipeline*>(user_data);
+    auto* pipeline = static_cast<AssetImportPipeline*>(user_data);
     auto txn = g_assetdb->read(pipeline->db);
     if (!g_assetdb->asset_exists(&txn, guid))
     {
@@ -488,7 +488,7 @@ static bool asset_db_locate(void* user_data, const GUID guid, AssetLocation* loc
     return true;
 }
 
-void set_runtime_cache(AssetPipeline* pipeline, AssetCache* cache)
+void set_runtime_cache(AssetImportPipeline* pipeline, AssetCache* cache)
 {
     if (g_asset_cache == nullptr)
     {
@@ -519,7 +519,7 @@ void set_runtime_cache(AssetPipeline* pipeline, AssetCache* cache)
 
 } // namespace bee
 
-static bee::AssetPipelineModule g_module{};
+static bee::AssetImportPipelineModule g_module{};
 
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::PluginState state)
 {

@@ -78,11 +78,6 @@ static bee::GpuModule g_module{};
 
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::PluginState state)
 {
-    if (!loader->require_plugin("Bee.Platform", bee::PluginVersion{ 0, 0, 0 }))
-    {
-        return;
-    }
-
     bee::g_setup = loader->get_static<bee::GpuSetup>("Bee.GpuSetup");
 
     g_module.register_backend = bee::register_backend;
@@ -93,5 +88,3 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
 
     loader->set_module(BEE_GPU_MODULE_NAME, &g_module, state);
 }
-
-BEE_PLUGIN_VERSION(0, 0, 0)

@@ -579,7 +579,7 @@ void JSONSerializer::serialize_fundamental(u128* data)
 
     if (json_validate_type(rapidjson::kStringType, current_value()))
     {
-        *data = str::to_u128(StringView(current_value()->GetString(), current_value()->GetStringLength()));
+        BEE_CHECK(str::to_u128(StringView(current_value()->GetString(), current_value()->GetStringLength()), data));
         end_read_scope();
     }
 }

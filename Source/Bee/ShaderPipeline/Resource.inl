@@ -9,7 +9,7 @@
 
 #include "Bee/ShaderPipeline/Cache.hpp"
 
-#include "Bee/AssetCache/AssetCache.hpp"
+#include "Bee/AssetPipelineV2/AssetPipeline.hpp"
 
 #include "Bee/Core/Containers/Array.hpp"
 #include "Bee/Core/Containers/ResourcePool.hpp"

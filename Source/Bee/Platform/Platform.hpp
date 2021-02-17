@@ -10,6 +10,7 @@
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Handle.hpp"
 #include "Bee/Core/Reflection.hpp"
+#include "Bee/Core/Math/float2.hpp"
 
 namespace bee {
 
@@ -29,6 +30,11 @@ struct Point
 {
     i32 x { 0 };
     i32 y { 0 };
+
+    inline float2 to_float2() const
+    {
+        return float2(static_cast<float>(x), static_cast<float>(y));
+    }
 };
 
 struct MonitorInfo

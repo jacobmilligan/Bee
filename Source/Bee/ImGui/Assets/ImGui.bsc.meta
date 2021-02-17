@@ -1,0 +1,13 @@
+{
+    "bee::version": 1,
+    "bee::flags": 1,
+    "guid": "99bb46b8911545ada289b0606edfbbaf",
+    "importer": 2934938091,
+    "kind": "file",
+    "settings": {
+        "bee::type": 1391020480,
+        "bee::version": 1,
+        "bee::flags": 1,
+        "output_debug_shaders": true
+    }
+}

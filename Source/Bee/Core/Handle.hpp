@@ -137,6 +137,7 @@ struct Name                                                                     
     BEE_SPLIT_HANDLE_BODY(Name, IdType, LowBits, HighBits, LowName, HighName)                   \
 }
 
+#define BEE_VERSIONED_HANDLE_BODY(Name, IdType, IndexBits, VersionBits) BEE_SPLIT_HANDLE_BODY(Name, IdType, IndexBits, VersionBits, index, version)
 
 /**
  * Convenience macros to avoid having to overload constructors when doing CRTP for handle tagging, i.e:
@@ -148,8 +149,8 @@ struct Name                                                                     
  * ```
  * would be necessary to do without these macros
  */
-#define BEE_VERSIONED_HANDLE_32(Name) BEE_VERSIONED_HANDLE(Name, bee::u32, 24u, 8u)
-#define BEE_VERSIONED_HANDLE_64(Name) BEE_VERSIONED_HANDLE(Name, bee::u64, 48u, 16u)
+#define BEE_VERSIONED_HANDLE_32(Name) struct Name { BEE_VERSIONED_HANDLE_BODY(Name, bee::u32, 24u, 8u) };
+#define BEE_VERSIONED_HANDLE_64(Name) struct Name { BEE_VERSIONED_HANDLE(Name, bee::u64, 48u, 16u) };
 
 
 } // namespace bee

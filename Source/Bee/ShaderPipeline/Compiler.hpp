@@ -7,24 +7,43 @@
 
 #pragma once
 
-#include "Bee/Gpu/Gpu.hpp"
+#include "Bee/ShaderPipeline/ShaderPipeline.hpp"
+
+#include "Bee/Core/Result.hpp"
+#include "Bee/Core/GUID.hpp"
 
 
 namespace bee {
 
 
-struct Shader;
-
-enum class ShaderCompilerResult
+struct ShaderCompilerError
 {
-    success,
-    invalid_source,
-    shader_cache_create_failed,
-    dxc_compilation_failed,
-    spirv_failed_to_generate,
-    reflection_failed,
-    incompatible_resource_layouts,
-    fatal_error
+    enum Enum
+    {
+        invalid_source,
+        shader_cache_create_failed,
+        dxc_compilation_failed,
+        spirv_failed_to_generate,
+        reflection_failed,
+        incompatible_resource_layouts,
+        fatal_error,
+        unknown
+    };
+
+    BEE_ENUM_STRUCT(ShaderCompilerError);
+
+    const char* to_string() const
+    {
+        BEE_TRANSLATION_TABLE(value, Enum, const char*, Enum::unknown,
+            "invalid_source",
+            "shader_cache_create_failed",
+            "dxc_compilation_failed",
+            "spirv_failed_to_generate",
+            "reflection_failed",
+            "incompatible_resource_layouts",
+            "fatal_error",
+        )
+    }
 };
 
 BEE_REFLECTED_FLAGS(ShaderTarget, u32, serializable)
@@ -34,28 +53,20 @@ BEE_REFLECTED_FLAGS(ShaderTarget, u32, serializable)
     spirv_debug = 1u << 1u
 };
 
-struct BEE_REFLECT(serializable, version = 1) ShaderImportSettings
-{
-    bool output_debug_shaders { false };
-};
-
 
 #define BEE_SHADER_COMPILER_MODULE_NAME "BEE_SHADER_COMPILER"
 
 struct AssetPipeline;
 struct ShaderCache;
-struct ShaderPipelineHandle;
 struct ShaderCompilerModule
 {
     bool (*init)() { nullptr };
 
     void (*destroy)() { nullptr };
 
-    ShaderCompilerResult (*compile_shader)(ShaderCache* cache, const StringView& source_path, const StringView& source, const ShaderTarget target, DynamicArray<ShaderPipelineHandle>* dst) { nullptr };
+    Result<void, ShaderCompilerError> (*compile_shader)(const StringView& source_path, const StringView& source, const ShaderTarget target, DynamicArray<Shader>* dst, Allocator* code_allocator) { nullptr };
 
-    void (*register_importer)(AssetPipeline* pipeline, ShaderCache* cache) { nullptr };
-
-    void (*unregister_importer)(AssetPipeline* pipeline) { nullptr };
+    void (*disassemble_shader)(const StringView& source_path, const Shader& shader, String* dst) { nullptr };
 };
 
 

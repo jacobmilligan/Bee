@@ -7,9 +7,13 @@
 
 #pragma once
 
+#ifndef BEE_IMGUI_INTERNAL
 #include "Bee/ImGui/Api.hpp"
+#endif // BEE_IMGUI_INTERNAL
 
 #include "Bee/Gpu/GpuHandle.hpp"
+
+#include "Bee/Platform/Platform.hpp"
 
 #include "Bee/Core/Result.hpp"
 #include "Bee/Core/Enum.hpp"
@@ -19,14 +23,12 @@ namespace bee {
 
 
 class Allocator;
-struct AssetPipelineModule;
 struct AssetPipeline;
-struct ShaderCache;
 struct GpuBackend;
 
 
 #define BEE_IMGUI_MODULE_NAME "BEE_IMGUI_MODULE"
-#define BEE_IMGUI_RENDER_MODULE_NAME "BEE_IMGUI_RENDER"
+#define BEE_IMGUI_BACKEND_MODULE_NAME "BEE_IMGUI_BACKEND"
 
 struct ImGuiError
 {
@@ -43,21 +45,23 @@ struct ImGuiError
     const char* to_string() const
     {
         BEE_TRANSLATION_TABLE(value, Enum, const char*, Enum::count,
-            "ImGui shader was missing in the shader cache", // missing_shader
+            "Missing ImGui shader",                         // missing_shader
             "ImGui shader failed to load",                  // failed_to_load_shader
             "Failed to create ImGui font texture",          // failed_to_create_font_texture
         )
     }
 };
 
-struct ImGuiRender;
-struct ImGuiRenderModule
+struct ImGuiBackend;
+struct ImGuiBackendModule
 {
-    Result<ImGuiRender*, ImGuiError> (*create)(const DeviceHandle device, GpuBackend* gpu, ShaderCache* shader_cache, Allocator* allocator) { nullptr };
+    Result<ImGuiBackend*, ImGuiError> (*create_backend)(const DeviceHandle device, GpuBackend* gpu, AssetPipeline* asset_pipeline, Allocator* allocator) { nullptr };
 
-    Result<void, ImGuiError> (*destroy)(ImGuiRender* render) { nullptr };
+    Result<void, ImGuiError> (*destroy_backend)(ImGuiBackend* render) { nullptr };
 
-    void (*draw)(ImGuiRender* render, CommandBuffer* cmd_buf) { nullptr };
+    void (*draw)(ImGuiBackend* render, CommandBuffer* cmd_buf) { nullptr };
+
+    void (*new_frame)(ImGuiBackend* frame, const WindowHandle window_handle) { nullptr };
 };
 
 

@@ -484,6 +484,8 @@ void remove_pass(RenderGraphPass* pass)
         return;
     }
 
+    pass->graph->backend->submissions_wait(pass->graph->device);
+
     if (pass->desc.destroy != nullptr)
     {
         pass->desc.destroy(graph->backend, graph->device, pass->external_data, pass->data);
@@ -1024,11 +1026,6 @@ void execute(RenderGraph* graph)
 
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::PluginState state)
 {
-    if (!loader->require_plugin("Bee.Gpu", bee::PluginVersion{0, 0, 0}))
-    {
-        return;
-    }
-
     bee::g_data = loader->get_static<bee::RenderGraphModuleData>("Bee.RenderGraphModule");
 
     // RenderGraphStorage
@@ -1062,5 +1059,3 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     loader->set_module(BEE_RENDER_GRAPH_MODULE_NAME, &bee::g_module, state);
     loader->set_module(BEE_RENDER_GRAPH_BUILDER_MODULE_NAME, &bee::g_builder_module, state);
 }
-
-BEE_PLUGIN_VERSION(0, 0, 0)

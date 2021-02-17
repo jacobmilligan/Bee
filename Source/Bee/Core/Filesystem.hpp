@@ -83,6 +83,8 @@ private:
 struct FileNotifyInfo
 {
     u32         hash { 0 };
+    u64         modified_time { 0 };
+    u64         event_time { 0 };
     FileAction  action { FileAction::none };
     Path        file;
 };
@@ -181,6 +183,8 @@ BEE_CORE_API bool remove(const Path& filepath);
 BEE_CORE_API bool move(const Path& current_path, const Path& new_path);
 
 BEE_CORE_API bool copy(const Path& src_filepath, const Path& dst_filepath, bool overwrite = false);
+
+BEE_CORE_API bool mkdir(const StringView& directory_path, const bool recursive = false);
 
 BEE_CORE_API bool mkdir(const Path& directory_path, const bool recursive = false);
 

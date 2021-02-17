@@ -865,6 +865,14 @@ inline String enum_to_string(const T& value, Allocator* allocator = system_alloc
     return BEE_MOVE(result);
 }
 
+template <typename T>
+inline void enum_to_string(const T& value, String* dst)
+{
+    dst->clear();
+    io::StringStream stream(dst);
+    enum_to_string<T>(&stream, value);
+}
+
 BEE_CORE_API isize enum_from_string(const EnumType& type, const StringView& string);
 
 template <typename T>

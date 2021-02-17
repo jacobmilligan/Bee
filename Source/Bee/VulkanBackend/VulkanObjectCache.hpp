@@ -268,6 +268,8 @@ private:
  *
  ********************************************
  */
+struct VulkanPipelineState;
+
 void create_descriptor_set_layout(VulkanDevice* device, const ResourceLayoutDescriptor& key, VkDescriptorSetLayout* layout);
 
 void destroy_descriptor_set_layout(VulkanDevice* device, VkDescriptorSetLayout* layout);
@@ -280,9 +282,9 @@ void create_framebuffer(VulkanDevice* device, const VulkanFramebufferKey& key, V
 
 void destroy_framebuffer(VulkanDevice* device, VkFramebuffer* framebuffer);
 
-void create_pipeline(VulkanDevice* device, const VulkanPipelineKey& key, VkPipeline* pipeline);
+void create_pipeline(VulkanDevice* device, const VulkanPipelineKey& key, VulkanPipelineState* pipeline);
 
-void destroy_pipeline(VulkanDevice* device, VkPipeline* pipeline);
+void destroy_pipeline(VulkanDevice* device, VulkanPipelineState* pipeline);
 
 
 

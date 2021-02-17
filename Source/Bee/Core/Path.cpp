@@ -70,6 +70,40 @@ static i32 get_filename_index(const StringView& path)
     return filename_idx >= 0 ? filename_idx : 0;
 }
 
+static i32 get_last_slash(const StringView& path)
+{
+    for (int c = path.size() - 1; c >= 0; --c)
+    {
+        if (path[c] == Path::preferred_slash || path[c] == Path::generic_slash)
+        {
+            while (c > 0)
+            {
+                if (!is_slash(path.c_str() + c - 1))
+                {
+                    break;
+                }
+                --c;
+            }
+
+            return c;
+        }
+    }
+
+    return -1;
+}
+
+static i32 get_first_slash(const StringView& path)
+{
+    for (int c = 0; c < path.size(); ++c)
+    {
+        if (path[c] == Path::preferred_slash || path[c] == Path::generic_slash)
+        {
+            return c;
+        }
+    }
+
+    return -1;
+}
 
 /*
  ***************************************
@@ -105,41 +139,6 @@ Path& Path::operator=(Path&& other) noexcept
 {
     data_ = BEE_MOVE(other.data_);
     return *this;
-}
-
-i32 Path::get_last_slash() const
-{
-    for (int c = data_.size() - 1; c >= 0; --c)
-    {
-        if (data_[c] == preferred_slash || data_[c] == generic_slash)
-        {
-            while (c > 0)
-            {
-                if (!is_slash(data_.c_str() + c - 1))
-                {
-                    break;
-                }
-                --c;
-            }
-
-            return c;
-        }
-    }
-
-    return -1;
-}
-
-i32 Path::get_first_slash() const
-{
-    for (int c = 0; c < data_.size(); ++c)
-    {
-        if (data_[c] == preferred_slash || data_[c] == generic_slash)
-        {
-            return c;
-        }
-    }
-
-    return -1;
 }
 
 Path Path::join(const StringView& src, Allocator* allocator) const
@@ -280,6 +279,11 @@ Path& Path::set_extension(const StringView& ext)
     return *this;
 }
 
+bool Path::exists() const
+{
+    return path_exists(data_.view());
+}
+
 StringView Path::filename() const
 {
     return path_get_filename(data_.view());
@@ -353,30 +357,17 @@ StringView Path::root_path() const
 
 StringView Path::stem() const
 {
-    const auto last_dot = str::last_index_of(data_, '.');
-    if (last_dot == -1)
-    {
-        return data_.view();
-    }
-
-    const auto last_slash = get_last_slash() + 1; // ensures index is 0 if there is no slash
-    return str::substring(data_, last_slash, last_dot - last_slash);
+    return path_get_stem(data_.view());
 }
 
 StringView Path::parent_view() const
 {
-    auto last_slash = get_last_slash();
-    if (last_slash == -1)
-    {
-        return view();
-    }
-
-    return str::substring(data_, 0, last_slash);
+    return path_get_parent(data_.view());
 }
 
 Path Path::parent_path(Allocator* allocator) const
 {
-    return Path(parent_view(), allocator);
+    return Path(path_get_parent(data_.view()), allocator);
 }
 
 StringView Path::view() const
@@ -458,7 +449,7 @@ Path Path::relative_path(Allocator* allocator) const
 
 StringView Path::relative_view() const
 {
-    const auto first_slash = get_first_slash();
+    const auto first_slash = get_first_slash(data_.view());
 
     if (first_slash < 0)
     {
@@ -637,6 +628,34 @@ StringView path_get_filename(const char* c_string)
 StringView path_get_filename(const StringView& path)
 {
     return str::substring(path, get_filename_index(path));
+}
+
+StringView path_get_stem(const char* c_string)
+{
+    return path_get_stem(StringView(c_string));
+}
+
+StringView path_get_stem(const StringView& path)
+{
+    const auto last_dot = str::last_index_of(path, '.');
+    if (last_dot == -1)
+    {
+        return path;
+    }
+
+    const auto last_slash = get_last_slash(path) + 1; // ensures index is 0 if there is no slash
+    return str::substring(path, last_slash, last_dot - last_slash);
+}
+
+StringView path_get_parent(const StringView& path)
+{
+    auto last_slash = get_last_slash(path);
+    if (last_slash == -1)
+    {
+        return path;
+    }
+
+    return str::substring(path, 0, last_slash);
 }
 
 

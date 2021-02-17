@@ -9,10 +9,6 @@
 
 #include "Bee/ShaderPipeline/Compiler.hpp"
 #include "Bee/ShaderPipeline/Parser/Parse.hpp"
-#include "Bee/ShaderPipeline/Cache.hpp"
-#include "Bee/ShaderPipeline/Resource.inl"
-
-#include "Bee/AssetPipeline/AssetPipeline.hpp"
 
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/DynamicLibrary.hpp"
@@ -47,12 +43,9 @@ struct ShaderCompiler
 {
     DynamicLibrary          dxc;
     FixedArray<ThreadData>  thread_data;
-    AssetImporter           importer;
 };
 
 static ShaderCompiler*      g_compiler = nullptr;
-extern ShaderCacheModule    g_shader_cache;
-static AssetPipelineModule* g_asset_pipeline = nullptr;
 
 
 /*
@@ -66,10 +59,10 @@ struct CompilationContext
 {
     using resource_layouts_t = ResourceLayoutDescriptor[BEE_GPU_MAX_RESOURCE_LAYOUTS];
 
-    ThreadData*                     thread { nullptr };
-    ShaderFile*                     shader { nullptr };
-    FixedArray<VertexDescriptor>    vertex_descriptors;
-    FixedArray<resource_layouts_t>  resource_layouts;
+    ThreadData*                                 thread { nullptr };
+    ShaderFile*                                 shader { nullptr };
+    FixedArray<VertexDescriptor>                vertex_descriptors;
+    FixedArray<resource_layouts_t>              resource_layouts;
 
     CompilationContext(ThreadData* thread_data, ShaderFile* shader_file)
         : thread(thread_data),
@@ -315,7 +308,7 @@ BEE_TRANSLATION_TABLE_FUNC(convert_descriptor_type, SpvReflectDescriptorType, Re
 );
 
 
-bool reflect_resources(CompilationContext* ctx, SpvReflectShaderModule* reflect_module, const i32 subshader, const ShaderStageIndex stage_index)
+bool reflect_resources(CompilationContext* ctx, SpvReflectShaderModule* reflect_module, const i32 subshader_index, const ShaderStageIndex stage_index)
 {
     u32 count = 0;
     auto success = spv_reflect_check(spvReflectEnumerateDescriptorBindings(
@@ -327,11 +320,11 @@ bool reflect_resources(CompilationContext* ctx, SpvReflectShaderModule* reflect_
         return false;
     }
 
-    SpvReflectDescriptorBinding** bindings = nullptr;
+    auto& subshader = ctx->shader->subshaders[subshader_index];
 
     if (count > 0)
     {
-        bindings = BEE_ALLOCA_ARRAY(SpvReflectDescriptorBinding*, count);
+        auto* bindings = BEE_ALLOCA_ARRAY(SpvReflectDescriptorBinding*, count);
 
         success = spv_reflect_check(spvReflectEnumerateDescriptorBindings(
             reflect_module, &count, bindings
@@ -341,34 +334,79 @@ bool reflect_resources(CompilationContext* ctx, SpvReflectShaderModule* reflect_
         {
             return false;
         }
-    }
 
-    if (bindings == nullptr)
-    {
-        return true;
-    }
+        auto& resource_layouts = ctx->resource_layouts[subshader_index];
 
-    auto& resource_layouts = ctx->resource_layouts[subshader];
-    for (u32 i = 0; i < count; ++i)
-    {
-        auto& layout = resource_layouts[bindings[i]->set];
-        auto& binding = layout.resources[layout.resources.size];
-        binding.binding = bindings[i]->binding;
-        binding.type = convert_descriptor_type(bindings[i]->descriptor_type);;
-        binding.element_count = bindings[i]->count;
-        binding.shader_stages = stage_index.to_flags();
-        ++layout.resources.size;
-    }
-
-    // sort the descriptors by their binding ID for validation later
-    for (auto& layout : resource_layouts)
-    {
-        if (layout.resources.size > 0)
+        for (u32 i = 0; i < count; ++i)
         {
-            std::sort(layout.resources.begin(), layout.resources.end(), [&](const ResourceDescriptor& lhs, const ResourceDescriptor& rhs)
+            auto& layout = resource_layouts[bindings[i]->set];
+            auto& binding = layout.resources[layout.resources.size];
+            binding.binding = bindings[i]->binding;
+            binding.type = convert_descriptor_type(bindings[i]->descriptor_type);;
+            binding.element_count = bindings[i]->count;
+            binding.shader_stages = stage_index.to_flags();
+
+            // If this is a sampler, now is the time to resolve the reference to the named SamplerState in the bsc file
+            // if it references one
+            if (binding.type == ResourceBindingType::sampler || binding.type == ResourceBindingType::combined_texture_sampler)
             {
-                return lhs.binding < rhs.binding;
-            });
+                const int ref = find_index_if(subshader.samplers, [&](const ShaderFile::SamplerRef& r)
+                {
+                    return r.shader_resource_name == bindings[i]->name;
+                });
+                if (ref >= 0)
+                {
+                    subshader.samplers[ref].binding = layout.resources.size;
+                    subshader.samplers[ref].layout = bindings[i]->set;
+                }
+            }
+
+            ++layout.resources.size;
+        }
+
+        // sort the descriptors by their binding ID for validation later
+        for (auto& layout : resource_layouts)
+        {
+            if (layout.resources.size > 0)
+            {
+                std::sort(layout.resources.begin(), layout.resources.end(), [&](const ResourceDescriptor& lhs, const ResourceDescriptor& rhs)
+                {
+                    return lhs.binding < rhs.binding;
+                });
+            }
+        }
+    }
+
+    // Reflect push constant ranges
+    u32 push_constant_range_count = 0;
+    if (!spv_reflect_check(spvReflectEnumeratePushConstantBlocks(reflect_module, &push_constant_range_count, nullptr), "Failed to reflect push constant ranges"))
+    {
+        return false;
+    }
+
+    if (push_constant_range_count > 0)
+    {
+        auto* push_constants = BEE_ALLOCA_ARRAY(SpvReflectBlockVariable*, push_constant_range_count);
+        spvReflectEnumeratePushConstantBlocks(reflect_module, &push_constant_range_count, push_constants);
+
+        for (u32 i = 0; i < push_constant_range_count; ++i)
+        {
+            const u32 hash = get_hash(push_constants[i]->name);
+            i32 existing = find_index(subshader.push_constant_hashes, hash);
+            if (existing < 0)
+            {
+                ++subshader.push_constants.size;
+                ++subshader.push_constant_hashes.size;
+
+                existing = subshader.push_constants.size - 1;
+
+                subshader.push_constant_hashes[existing] = hash;
+                subshader.push_constants[existing].shader_stages = ShaderStageFlags::unknown;
+                subshader.push_constants[existing].size = push_constants[i]->size;
+                subshader.push_constants[existing].offset = push_constants[i]->offset;
+            }
+
+            subshader.push_constants[existing].shader_stages |= stage_index.to_flags();
         }
     }
 
@@ -486,7 +524,7 @@ static bool merge_resource_layouts(const StringView& source_path, PipelineStateD
  *
  **********************************************
  */
-ShaderCompilerResult compile_subshader(CompilationContext* ctx, const i32 subshader_index, const StringView& code)
+Result<void, ShaderCompilerError> compile_subshader(CompilationContext* ctx, const i32 subshader_index, const StringView& code)
 {
     auto& subshader = ctx->shader->subshaders[subshader_index];
 
@@ -526,7 +564,8 @@ ShaderCompilerResult compile_subshader(CompilationContext* ctx, const i32 subsha
         };
 
         DxcDefine dxc_defines[] = {
-            { L"BEE_BINDING(b, s)", L"[[vk::binding(b, s)]]" }
+            { L"BEE_BINDING(b, s)", L"[[vk::binding(b, s)]]" },
+            { L"BEE_PUSH_CONSTANT", L"[[vk::push_constant]]"}
         };
 
         CComPtr<IDxcOperationResult> compilation_result = nullptr;
@@ -560,7 +599,7 @@ ShaderCompilerResult compile_subshader(CompilationContext* ctx, const i32 subsha
 
             log_error("DXC error: %" BEE_PRIsv "", BEE_FMT_SV(error_message));
 
-            return ShaderCompilerResult::dxc_compilation_failed;
+            return { ShaderCompilerError::dxc_compilation_failed };
         }
 
         // get spirv data
@@ -569,7 +608,7 @@ ShaderCompilerResult compile_subshader(CompilationContext* ctx, const i32 subsha
 
         if (spirv_blob == nullptr)
         {
-            return ShaderCompilerResult::spirv_failed_to_generate;
+            return { ShaderCompilerError::spirv_failed_to_generate };
         }
 
         subshader.stage_code_ranges[stage_index] = reflect_subshader(
@@ -582,21 +621,16 @@ ShaderCompilerResult compile_subshader(CompilationContext* ctx, const i32 subsha
         if (subshader.stage_code_ranges[stage_index].size < 0)
         {
             log_error("ShaderCompiler: failed to reflect shader");
-            return ShaderCompilerResult::reflection_failed;
+            return { ShaderCompilerError::reflection_failed };
         }
     }
 
-    return ShaderCompilerResult::success;
+    return {};
 }
 
-static ShaderCompilerResult compile_shader_file(ShaderCache* cache, const StringView& source_path, const StringView& src, const ShaderTarget target_flags, DynamicArray<ShaderPipelineHandle>* dst)
+static Result<void, ShaderCompilerError> compile_shader_file(const StringView& source_path, const StringView& src, const ShaderTarget target_flags, DynamicArray<Shader>* dst, Allocator* code_allocator)
 {
     auto& thread = g_compiler->thread_data[job_worker_id()];
-
-    if (dst != nullptr)
-    {
-        dst->clear();
-    }
 
     // Parse the file into a BscModule
     BscModule asset(&thread.temp_allocator);
@@ -604,7 +638,7 @@ static ShaderCompilerResult compile_shader_file(ShaderCache* cache, const String
     {
         const auto error = thread.parser.get_error().to_string(&thread.temp_allocator);
         log_error("%s", error.c_str());
-        return ShaderCompilerResult::invalid_source;
+        return { ShaderCompilerError::invalid_source };
     }
 
     ShaderFile result(&thread.temp_allocator);
@@ -612,36 +646,37 @@ static ShaderCompilerResult compile_shader_file(ShaderCache* cache, const String
     if (!resolve_error)
     {
         log_error("%s", resolve_error.to_string(&thread.temp_allocator).c_str());
-        return ShaderCompilerResult::invalid_source;
+        return { ShaderCompilerError::invalid_source };
     }
 
     CompilationContext ctx(&thread, &result);
 
     for (int index = 0; index < result.subshaders.size(); ++index)
     {
-        const auto status = compile_subshader(&ctx, index, asset.shaders[index].data.code);
+        const auto res = compile_subshader(&ctx, index, asset.shaders[index].data.code);
 
-        if (status != ShaderCompilerResult::success)
+        if (!res)
         {
-            return status;
+            return res;
         }
 
         ++index;
     }
 
     i32 update_freq_validation[BEE_GPU_MAX_RESOURCE_LAYOUTS] { -1 };
-
-    ShaderPipelineDescriptor desc{};
+    u32 push_constant_hashes[ShaderStageIndex::count] { 0 };
 
     // Setup each pipelines create info
-    for (auto& pipeline : result.pipelines)
+    for (auto& pipeline_src : result.pipelines)
     {
+        memset(push_constant_hashes, 0, sizeof(u32) * static_array_length(push_constant_hashes));
+
         // Assign the reflected vertex description
         const auto vert_index = underlying_t(ShaderStageIndex::vertex);
-        pipeline.desc.vertex_description = ctx.vertex_descriptors[pipeline.shaders[vert_index]];
+        pipeline_src.desc.vertex_description = ctx.vertex_descriptors[pipeline_src.shaders[vert_index]];
 
         // validate the resource layouts from the shaders and assign to the pipeline
-        for (auto& shader_index : pipeline.shaders)
+        for (auto& shader_index : pipeline_src.shaders)
         {
             if (shader_index < 0)
             {
@@ -650,29 +685,46 @@ static ShaderCompilerResult compile_shader_file(ShaderCache* cache, const String
 
             // validate update frequencies
             auto& subshader = result.subshaders[shader_index];
-            for (int i = 0; i < subshader.resource_layout_count; ++i)
+            for (const auto& freq : subshader.update_frequencies)
             {
-                const auto freq = underlying_t(subshader.resource_layout_frequencies[i]);
-                const auto validation_freq = update_freq_validation[i];
-                if (validation_freq >= 0 && validation_freq != freq)
+                const auto validation_freq = update_freq_validation[freq.layout];
+                if (validation_freq >= 0 && validation_freq != underlying_t(freq.frequency))
                 {
                     log_error(
                         "Cannot compile %" BEE_PRIsv ": shaders have incompatible resource layouts at index %d",
-                        BEE_FMT_SV(source_path), i
+                        BEE_FMT_SV(source_path), freq.layout
                     );
-                    return ShaderCompilerResult::incompatible_resource_layouts;
+                    return { ShaderCompilerError::incompatible_resource_layouts };
                 }
+
+                update_freq_validation[freq.layout] = underlying_t(freq.frequency);
             }
 
             auto& shader_resources = ctx.resource_layouts[shader_index];
-            if (!merge_resource_layouts(source_path, &pipeline.desc, shader_resources))
+            if (!merge_resource_layouts(source_path, &pipeline_src.desc, shader_resources))
             {
-                return ShaderCompilerResult::incompatible_resource_layouts;
+                return { ShaderCompilerError::incompatible_resource_layouts };
+            }
+
+            for (u32 pc_index = 0; pc_index < subshader.push_constants.size; ++pc_index)
+            {
+                // if we've seen this push constant range before, skip it
+                int existing_index = find_index(push_constant_hashes, subshader.push_constant_hashes[pc_index]);
+                if (existing_index < 0)
+                {
+                    push_constant_hashes[pc_index] = subshader.push_constant_hashes[pc_index];
+                    existing_index = pipeline_src.desc.push_constant_ranges.size;
+                    ++pipeline_src.desc.push_constant_ranges.size;
+                }
+                auto& pc = pipeline_src.desc.push_constant_ranges[existing_index];
+                pc.shader_stages |= ShaderStageIndex(shader_index).to_flags();
+                pc.size = subshader.push_constants[pc_index].size;
+                pc.offset = subshader.push_constants[pc_index].offset;
             }
         }
 
         // sort the resource layouts so there's no gaps in the bindings
-        for (auto& layout : pipeline.desc.resource_layouts)
+        for (auto& layout : pipeline_src.desc.resource_layouts)
         {
             auto* begin = layout.resources.begin();
             auto* end = layout.resources.end();
@@ -688,162 +740,61 @@ static ShaderCompilerResult compile_shader_file(ShaderCache* cache, const String
 
         /*
          * Success!
-         * Create the shader pipeline object in the cache
+         * Create the shader pipeline asset
          */
-        result.get_shader_pipeline_descriptor(pipeline, &desc);
-        const auto handle = g_shader_cache.add_shader(cache, desc);
-        if (!handle.is_valid())
-        {
-            return ShaderCompilerResult::shader_cache_create_failed;
-        }
-
-        if (dst != nullptr)
-        {
-            dst->push_back(handle);
-        }
+        dst->emplace_back(code_allocator);
+        result.copy_to_asset(pipeline_src, &dst->back());
     }
 
-#if 0
-    if ((target_flags & ShaderTarget::spirv_debug) != ShaderTarget::unknown)
-    {
-        auto* spv_context = spvContextCreate(SPV_ENV_VULKAN_1_1);
-        spv_text spv_text_dest = nullptr;
-        spv_diagnostic spv_diagnostic_dest = nullptr;
-
-        String debug_output(&thread.temp_allocator);
-        io::StringStream debug_stream(&debug_output);
-
-        debug_stream.write_fmt("// original file: %s\n\n", src_path.c_str());
-
-        for (auto& subshader : result.subshaders)
-        {
-            debug_stream.write_fmt("// Subshader %s\n\n", subshader.name.c_str());
-
-            for (int stage = 0; stage < static_array_length(subshader.stage_entries); ++stage)
-            {
-                auto& entry = subshader.stage_entries[stage];
-                if (entry.empty())
-                {
-                    continue;
-                }
-
-                const auto& code_range = subshader.stage_code_ranges[stage];
-                // Translate the SPIR-V to string text format for debugging
-                auto spv_error = spvBinaryToText(
-                    spv_context,
-                    reinterpret_cast<const u32*>(result.code.data() + code_range.offset),
-                    static_cast<size_t>(code_range.size / sizeof(u32)),
-                    SPV_BINARY_TO_TEXT_OPTION_NONE | SPV_BINARY_TO_TEXT_OPTION_INDENT | SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES,
-                    &spv_text_dest,
-                    &spv_diagnostic_dest
-                );
-
-                debug_stream.write("// Stage: ");
-                enum_to_string(&debug_stream, static_cast<ShaderStageIndex>(stage));
-                debug_stream.write("\n\n");
-
-                if (spv_error != SPV_SUCCESS)
-                {
-                    log_error("ShaderCompiler failed to convert spirv IR to text: %s", spv_diagnostic_dest->error);
-                }
-                else
-                {
-                    debug_stream.write(spv_text_dest->str, spv_text_dest->length);
-                    debug_stream.write("\n\n");
-                }
-            }
-        }
-
-        auto& debug_artifact = ctx->add_artifact<String>();
-        serializer.reset(&debug_artifact);
-        serialize(SerializerMode::writing, &serializer, &debug_output);
-    }
-#endif // 0
-
-    return ShaderCompilerResult::success;
+    return {};
 }
 
-ShaderCompilerResult compile_shader(ShaderCache* cache, const StringView& source_path, const StringView& source, const ShaderTarget target, DynamicArray<ShaderPipelineHandle>* dst)
+Result<void, ShaderCompilerError> compile_shader(const StringView& source_path, const StringView& source, const ShaderTarget target, DynamicArray<Shader>* dst, Allocator* code_allocator)
 {
+    BEE_ASSERT(dst != nullptr);
+    dst->clear();
+    const auto result = compile_shader_file(source_path, source, target, dst, code_allocator);
     auto& thread = g_compiler->thread_data[job_worker_id()];
-    const auto result = compile_shader_file(cache, source_path, source, target, dst);
     thread.temp_allocator.reset();
     return result;
 }
 
-
-/*
- **********************************
- *
- * Asset pipeline importer
- *
- **********************************
- */
-static const char* get_shader_importer_name()
+void disassemble_shader(const StringView& source_path, const Shader& shader, String* dst)
 {
-    return "Bee.ShaderImporter";
-}
+    auto* spv_context = spvContextCreate(SPV_ENV_VULKAN_1_1);
+    spv_text spv_text_dest = nullptr;
+    spv_diagnostic spv_diagnostic_dest = nullptr;
 
-static i32 get_shader_importer_file_types(const char** dst)
-{
-    if (dst != nullptr)
+    io::StringStream debug_stream(dst);
+
+    debug_stream.write_fmt("// original file: %" BEE_PRIsv "\n\n", BEE_FMT_SV(source_path));
+
+    for (const auto& stage : shader.stages)
     {
-        dst[0] = ".bsc";
+        // Translate the SPIR-V to string text format for debugging
+        auto spv_error = spvBinaryToText(
+            spv_context,
+            reinterpret_cast<const u32*>(stage.code.data()),
+            static_cast<size_t>(stage.code.size() / sizeof(u32)),
+            SPV_BINARY_TO_TEXT_OPTION_NONE | SPV_BINARY_TO_TEXT_OPTION_INDENT | SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES,
+            &spv_text_dest,
+            &spv_diagnostic_dest
+        );
+
+        debug_stream.write("// Stage: ");
+        enum_to_string(&debug_stream, stage.flags);
+        debug_stream.write("\n\n");
+
+        if (spv_error != SPV_SUCCESS)
+        {
+            log_error("ShaderCompiler failed to convert spirv IR to text: %s", spv_diagnostic_dest->error);
+        }
+        else
+        {
+            debug_stream.write(spv_text_dest->str, spv_text_dest->length);
+            debug_stream.write("\n\n");
+        }
     }
-    return 1;
-}
-
-static Type get_shader_importer_properties_type()
-{
-    return get_type<ShaderImportSettings>();
-}
-
-static ImportErrorStatus import_shader(AssetImportContext* ctx, void* user_data)
-{
-    ShaderCache* cache = static_cast<ShaderCache*>(user_data);
-    DynamicArray<ShaderPipelineHandle> output(ctx->temp_allocator);
-    const auto content = fs::read(ctx->path, ctx->temp_allocator);
-    const auto result = compile_shader(
-        cache,
-        path_get_filename(ctx->path),
-        content.view(),
-        ShaderTarget::spirv,
-        &output
-    );
-
-    if (result != ShaderCompilerResult::success)
-    {
-        return ImportErrorStatus::fatal;
-    }
-
-    FixedArray<u32> asset(output.size(), ctx->temp_allocator);
-
-    for (auto& handle : output)
-    {
-        auto& pipeline = cache->pool[handle];
-        pipeline.guid = ctx->metadata->guid;
-        asset.push_back(pipeline.name_hash);
-    }
-
-    ctx->add_artifact(&asset);
-    return ImportErrorStatus::success;
-}
-
-static void register_importer(AssetPipeline* asset_pipeline, ShaderCache* shader_cache)
-{
-    if (g_asset_pipeline == nullptr)
-    {
-        g_asset_pipeline = static_cast<AssetPipelineModule*>(get_module(BEE_ASSET_PIPELINE_MODULE_NAME));
-        BEE_ASSERT(g_asset_pipeline != nullptr);
-    }
-
-    g_asset_pipeline->register_importer(asset_pipeline, &g_compiler->importer, shader_cache);
-}
-
-static void unregister_importer(AssetPipeline* asset_pipeline)
-{
-    BEE_ASSERT(g_asset_pipeline != nullptr);
-    g_asset_pipeline->unregister_importer(asset_pipeline, &g_compiler->importer);
 }
 
 /*
@@ -853,7 +804,7 @@ static void unregister_importer(AssetPipeline* asset_pipeline)
  *
  **********************************
  */
-static ShaderCompilerModule g_shader_compiler{};
+ShaderCompilerModule g_shader_compiler{};
 
 void load_compiler_module(bee::PluginLoader* loader, const bee::PluginState state)
 {
@@ -862,14 +813,7 @@ void load_compiler_module(bee::PluginLoader* loader, const bee::PluginState stat
     g_shader_compiler.init = init;
     g_shader_compiler.destroy = destroy;
     g_shader_compiler.compile_shader = compile_shader;
-    g_shader_compiler.register_importer = register_importer;
-    g_shader_compiler.unregister_importer = unregister_importer;
-
-    g_compiler->importer.name = get_shader_importer_name;
-    g_compiler->importer.supported_file_types = get_shader_importer_file_types;
-    g_compiler->importer.properties_type = get_shader_importer_properties_type;
-    g_compiler->importer.import = import_shader;
-
+    g_shader_compiler.disassemble_shader = disassemble_shader;
     loader->set_module(BEE_SHADER_COMPILER_MODULE_NAME, &g_shader_compiler, state);
 }
 

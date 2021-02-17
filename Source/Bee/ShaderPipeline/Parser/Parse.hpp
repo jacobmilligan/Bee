@@ -15,7 +15,7 @@
 namespace bee {
 
 
-struct ShaderPipelineDescriptor;
+struct Shader;
 
 /*
  ************************************
@@ -37,6 +37,24 @@ struct ShaderFile
         }
     };
 
+    struct UpdateFrequency
+    {
+        i32                             layout { -1 };
+        ResourceBindingUpdateFrequency  frequency { ResourceBindingUpdateFrequency::persistent };
+    };
+
+    struct SamplerRef
+    {
+        String  shader_resource_name;
+        i32     resource_index { -1 };
+        u32     binding { 0 };
+        u32     layout { 0 };
+
+        SamplerRef(Allocator* allocator)
+            : shader_resource_name(allocator)
+        {}
+    };
+
     struct Pipeline // NOLINT
     {
         String                          name;
@@ -50,14 +68,18 @@ struct ShaderFile
 
     struct SubShader
     {
-        String                          name;
-        String                          stage_entries[ShaderStageIndex::count];
-        Range                           stage_code_ranges[ShaderStageIndex::count];
-        i32                             resource_layout_count { 0 };
-        ResourceBindingUpdateFrequency  resource_layout_frequencies[BEE_GPU_MAX_RESOURCE_LAYOUTS];
+        String                                      name;
+        String                                      stage_entries[ShaderStageIndex::count];
+        Range                                       stage_code_ranges[ShaderStageIndex::count];
+        DynamicArray<UpdateFrequency>               update_frequencies;
+        DynamicArray<SamplerRef>                    samplers;
+        PushConstantRangeArray                      push_constants;
+        StaticArray<u32,  ShaderStageIndex::count>  push_constant_hashes;
 
         SubShader(Allocator* allocator)
-            : name(allocator)
+            : name(allocator),
+              update_frequencies(allocator),
+              samplers(allocator)
         {
             for (auto& entry : stage_entries)
             {
@@ -70,19 +92,32 @@ struct ShaderFile
             BEE_ASSERT(stage < static_array_length(stage_entries));
             stage_entries[stage].assign(entry_name);
         }
+
+        void add_sampler_ref(const StringView& shader_resource_name, const i32 index)
+        {
+            samplers.emplace_back(samplers.allocator());
+            samplers.back().shader_resource_name.assign(shader_resource_name);
+            samplers.back().resource_index = index;
+        }
     };
 
-    Allocator*                              allocator { nullptr };
-    DynamicArray<Pipeline>                  pipelines;
-    DynamicArray<SubShader>                 subshaders;
-    DynamicArray<AttachmentDescriptor>      attachments;
-    DynamicArray<u8>                        code;
+    struct Sampler
+    {
+        i32                 src_index { 0 };
+        SamplerCreateInfo   info;
+    };
+
+    Allocator*              allocator { nullptr };
+    DynamicArray<Pipeline>  pipelines;
+    DynamicArray<SubShader> subshaders;
+    DynamicArray<Sampler>   samplers;
+    DynamicArray<u8>        code;
 
     explicit ShaderFile(Allocator* new_allocator)
         : allocator(new_allocator),
           pipelines(new_allocator),
           subshaders(new_allocator),
-          attachments(new_allocator),
+          samplers(new_allocator),
           code(new_allocator)
     {}
 
@@ -110,7 +145,25 @@ struct ShaderFile
         return range;
     }
 
-    void get_shader_pipeline_descriptor(const Pipeline& pipeline, ShaderPipelineDescriptor* dst);
+    i32 add_sampler(const i32 src_index, const SamplerCreateInfo& info)
+    {
+        const int existing_index = find_index_if(samplers, [&](const Sampler& s)
+        {
+            return s.src_index == src_index;
+        });
+
+        if (existing_index >= 0)
+        {
+            return existing_index;
+        }
+
+        samplers.emplace_back();
+        samplers.back().src_index = src_index;
+        memcpy(&samplers.back().info, &info, sizeof(SamplerCreateInfo));
+        return samplers.size() - 1;
+    }
+
+    void copy_to_asset(const Pipeline& pipeline, Shader* dst);
 };
 
 /*
@@ -140,10 +193,15 @@ using bsc_node_array_t = DynamicArray<BscNode<T>>;
 
 struct BscShaderNode
 {
-    StringView                      code;
-    StringView                      stages[ShaderStageIndex::count];
-    i32                             resource_layout_count { 0 };
-    ResourceBindingUpdateFrequency  resource_layouts[BEE_GPU_MAX_RESOURCE_LAYOUTS];
+    StringView                                  code;
+    StringView                                  stages[ShaderStageIndex::count];
+    bsc_node_array_t<StringView>                samplers;
+    DynamicArray<ShaderFile::UpdateFrequency>   update_frequencies;
+
+    BscShaderNode(Allocator* allocator)
+        : samplers(allocator),
+          update_frequencies(allocator)
+    {}
 };
 
 struct BscPipelineStateNode
@@ -306,8 +364,6 @@ private:
 
     bool parse_sampler_state(BscLexer* lexer, BscNode<SamplerCreateInfo>* node);
 
-    bool parse_attachment(BscLexer* lexer, BscNode<AttachmentDescriptor>* node);
-
     bool parse_blend_state(BscLexer* lexer, BscNode<BlendStateDescriptor>* node);
 
     static bool parse_key(BscLexer* lexer, StringView* identifier);
@@ -316,11 +372,15 @@ private:
 
     bool parse_value(BscLexer* lexer, const Field& field, u8* data);
 
+    bool parse_update_frequencies(BscLexer* lexer, DynamicArray<ShaderFile::UpdateFrequency>* dst);
+
     static bool parse_code(BscLexer* lexer, StringView* dst);
 
     bool parse_number(BscLexer* lexer, const BscTokenKind kind, const StringView& value, const FundamentalType& type, u8* data);
 
     bool parse_array(BscLexer* lexer, DynamicArray<StringView>* array);
+
+    bool parse_array(BscLexer* lexer, bsc_node_array_t<StringView>* array);
 
     bool parse_array(BscLexer* lexer, StringView* array, const i32 capacity, i32* count);
 

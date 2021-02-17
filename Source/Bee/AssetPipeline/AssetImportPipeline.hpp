@@ -98,37 +98,37 @@ struct AssetPipelineInfo
 };
 
 struct AssetCache;
-struct AssetPipeline;
-struct AssetPipelineModule
+struct AssetImportPipeline;
+struct AssetImportPipelineModule
 {
-    AssetPipeline* (*create_pipeline)(const AssetPipelineInfo& info) { nullptr };
+    AssetImportPipeline* (*create_pipeline)(const AssetPipelineInfo& info) { nullptr };
 
-    AssetPipeline* (*load_pipeline)(const StringView path) { nullptr };
+    AssetImportPipeline* (*load_pipeline)(const StringView path) { nullptr };
 
-    void (*destroy_pipeline)(AssetPipeline* pipeline) { nullptr };
+    void (*destroy_pipeline)(AssetImportPipeline* pipeline) { nullptr };
 
-    AssetDatabase* (*get_asset_db)(AssetPipeline* pipeline) { nullptr };
+    AssetDatabase* (*get_asset_db)(AssetImportPipeline* pipeline) { nullptr };
 
-    void (*add_source_folder)(AssetPipeline* pipeline, const Path& path) { nullptr };
+    void (*add_source_folder)(AssetImportPipeline* pipeline, const Path& path) { nullptr };
 
-    void (*remove_source_folder)(AssetPipeline* pipeline, const Path& path) { nullptr };
+    void (*remove_source_folder)(AssetImportPipeline* pipeline, const Path& path) { nullptr };
 
     void (*watch_external_sources)(const Path& folder, const bool watch) { nullptr };
 
-    void (*register_importer)(AssetPipeline* pipeline, AssetImporter* importer, void* user_data) { nullptr };
+    void (*register_importer)(AssetImportPipeline* pipeline, AssetImporter* importer, void* user_data) { nullptr };
 
-    void (*unregister_importer)(AssetPipeline* pipeline, AssetImporter* importer) { nullptr };
+    void (*unregister_importer)(AssetImportPipeline* pipeline, AssetImporter* importer) { nullptr };
 
-    ImportErrorStatus (*import_asset)(AssetPipeline* pipeline, const StringView path, const AssetPlatform platform) { nullptr };
+    ImportErrorStatus (*import_asset)(AssetImportPipeline* pipeline, const StringView path, const AssetPlatform platform) { nullptr };
 
-    void (*refresh)(AssetPipeline* pipeline) { nullptr };
+    void (*refresh)(AssetImportPipeline* pipeline) { nullptr };
 
-    void (*set_runtime_cache)(AssetPipeline* pipeline, AssetCache* cache) { nullptr };
+    void (*set_runtime_cache)(AssetImportPipeline* pipeline, AssetCache* cache) { nullptr };
 };
 
 
 } // namespace bee
 
 #ifdef BEE_ENABLE_REFLECTION
-    #include "Bee.AssetPipeline/AssetPipeline.generated.inl"
+    #include "Bee.AssetPipeline/Import.generated.inl"
 #endif // BEE_ENABLE_REFLECTION

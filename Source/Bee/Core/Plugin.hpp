@@ -19,14 +19,6 @@ namespace bee {
 
 #define BEE_PLUGIN_API extern "C" BEE_EXPORT_SYMBOL
 
-#define BEE_PLUGIN_VERSION(v_major, v_minor, v_patch) \
-    extern "C" BEE_EXPORT_SYMBOL void bee_get_plugin_version(bee::PluginVersion* version)   \
-    {                                                                                       \
-        version->major = v_major;                                                           \
-        version->minor = v_minor;                                                           \
-        version->patch = v_patch;                                                           \
-    }
-
 
 enum class PluginState
 {
@@ -36,7 +28,7 @@ enum class PluginState
     unloaded
 };
 
-struct PluginVersion
+struct BEE_REFLECT(serializable, version = 1, use_builder) PluginVersion
 {
     i32 major { -1 };
     i32 minor { -1 };
@@ -104,6 +96,8 @@ public:
 
     void remove_module_interface(const void* module);
 
+    const Path* get_source_path();
+
     template <typename T, i32 Size, typename... ConstructorArgs>
     inline T* get_static(const char(&name)[Size], ConstructorArgs&&... args)
     {
@@ -147,8 +141,13 @@ BEE_CORE_API void add_plugin_search_path(const Path& path);
 
 BEE_CORE_API void remove_plugin_search_path(const Path& path);
 
+BEE_CORE_API void add_plugin_source_path(const Path& path);
+
+BEE_CORE_API void remove_plugin_source_path(const Path& path);
+
 BEE_CORE_API void* get_module(const StringView& name);
 
+BEE_CORE_API const Path* get_plugin_source_path(const StringView& name);
 
 
 } // namespace bee

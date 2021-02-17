@@ -6,6 +6,8 @@
  */
 
 #include "Bee/Core/Plugin.hpp"
+#include "Bee/Core/Bit.hpp"
+
 #include "Bee/VulkanBackend/VulkanDevice.hpp"
 #include "Bee/VulkanBackend/VulkanConvert.hpp"
 
@@ -42,33 +44,6 @@ CommandBufferState get_state(CommandBuffer* cmd_buf)
     return cmd_buf->state;
 }
 
-bool setup_draw(CommandBuffer* cmd_buf)
-{
-    if (cmd_buf->bound_pipeline == nullptr)
-    {
-        log_error("Cannot execute draw command without first binding a PipelineState");
-        return false;
-    }
-
-    for (int i = 0; i < static_array_length(cmd_buf->descriptors); ++i)
-    {
-        if (cmd_buf->descriptors[i] != VK_NULL_HANDLE)
-        {
-            vkCmdBindDescriptorSets(
-                cmd_buf->handle,
-                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                cmd_buf->bound_pipeline->layout,
-                i,
-                1,
-                cmd_buf->descriptors + i,
-                0,
-                nullptr
-            );
-        }
-    }
-
-    return true;
-}
 
 /*
  ********************
@@ -195,6 +170,53 @@ void copy_buffer(
     vkCmdCopyBuffer(cmd_buf->handle, src.handle, dst.handle, 1, &copy);
 }
 
+static void bind_draw_state(CommandBuffer* cmd_buf, const PipelineStateDescriptor& state)
+{
+    VulkanPipelineKey key{};
+    key.desc = &state;
+    key.render_pass_hash = cmd_buf->current_render_pass->hash;
+    key.render_pass = cmd_buf->current_render_pass->handle;
+    key.shader_hashes[ShaderStageIndex::vertex] = cmd_buf->device->shaders_get(state.vertex_stage).hash;
+    key.shader_hashes[ShaderStageIndex::fragment] = cmd_buf->device->shaders_get(state.fragment_stage).hash;
+
+    auto& pipeline = cmd_buf->device->pipeline_cache.get_or_create(key);
+    auto& push_constant_ranges = state.push_constant_ranges;
+
+    // Bind push constants
+    for (int i = 0; i < static_array_length(cmd_buf->push_constants); ++i)
+    {
+        if (cmd_buf->push_constants[i] != nullptr)
+        {
+            vkCmdPushConstants(
+                cmd_buf->handle,
+                pipeline.layout,
+                decode_shader_stage(push_constant_ranges[i].shader_stages),
+                push_constant_ranges[i].offset,
+                push_constant_ranges[i].size,
+                cmd_buf->push_constants[i]
+            );
+        }
+    }
+
+    // bind descriptor sets
+    for (int i = 0; i < static_array_length(cmd_buf->descriptors); ++i)
+    {
+        if (cmd_buf->descriptors[i] != VK_NULL_HANDLE)
+        {
+            vkCmdBindDescriptorSets(
+                cmd_buf->handle,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipeline.layout,
+                i, 1, cmd_buf->descriptors + i,
+                0, nullptr
+            );
+        }
+    }
+
+    // bind the actual graphics pipeline
+    vkCmdBindPipeline(cmd_buf->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
+}
+
 void draw(
     CommandBuffer*                  cmd_buf,
     const PipelineStateDescriptor&  state,
@@ -204,15 +226,7 @@ void draw(
     const u32                       first_instance
 )
 {
-    VulkanPipelineKey key{};
-    key.desc = &state;
-    key.render_pass_hash = cmd_buf->current_render_pass->hash;
-    key.render_pass = cmd_buf->current_render_pass->handle;
-    key.shader_hashes[ShaderStageIndex::vertex] = cmd_buf->device->shaders_get(state.vertex_stage).hash;
-    key.shader_hashes[ShaderStageIndex::fragment] = cmd_buf->device->shaders_get(state.fragment_stage).hash;
-    auto& pipeline = cmd_buf->device->pipeline_cache.get_or_create(key);
-
-    vkCmdBindPipeline(cmd_buf->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    bind_draw_state(cmd_buf, state);
     vkCmdDraw(cmd_buf->handle, vertex_count, instance_count, first_vertex, first_instance);
 }
 
@@ -226,15 +240,7 @@ void draw_indexed(
     const u32                       first_instance
 )
 {
-    VulkanPipelineKey key{};
-    key.desc = &state;
-    key.render_pass_hash = cmd_buf->current_render_pass->hash;
-    key.render_pass = cmd_buf->current_render_pass->handle;
-    key.shader_hashes[ShaderStageIndex::vertex] = cmd_buf->device->shaders_get(state.vertex_stage).hash;
-    key.shader_hashes[ShaderStageIndex::fragment] = cmd_buf->device->shaders_get(state.fragment_stage).hash;
-    auto& pipeline = cmd_buf->device->pipeline_cache.get_or_create(key);
-
-    vkCmdBindPipeline(cmd_buf->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    bind_draw_state(cmd_buf, state);
     vkCmdDrawIndexed(
         cmd_buf->handle,
         index_count,
@@ -398,6 +404,15 @@ void bind_resources(CommandBuffer* cmd_buf, const u32 layout_index, const Resour
     cmd_buf->descriptors[layout_index] = binding.set;
 }
 
+void push_constants(CommandBuffer* cmd, const u32 block, const void* data)
+{
+    if (cmd->push_constants[block] != nullptr)
+    {
+        log_warning("Push constant for block %u is already set", block);
+    }
+    cmd->push_constants[block] = data;
+}
+
 
 } // namespace bee
 
@@ -422,4 +437,5 @@ void bee_load_command_backend(bee::GpuCommandBackend* api)
     api->set_scissor = bee::set_scissor;
     api->transition_resources = bee::transition_resources;
     api->bind_resources = bee::bind_resources;
+    api->push_constants = bee::push_constants;
 }

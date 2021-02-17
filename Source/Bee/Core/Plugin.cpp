@@ -5,11 +5,11 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Core/Plugin.hpp"
+#include "Bee/Core/PluginDescriptor.inl"
 #include "Bee/Core/Containers/Array.hpp"
 #include "Bee/Core/DynamicLibrary.hpp"
 #include "Bee/Core/Filesystem.hpp"
-#include "Bee/Core/Reflection.hpp"
+#include "Bee/Core/Serialization/JSONSerializer.hpp"
 
 #include <algorithm>
 
@@ -25,11 +25,9 @@ namespace bee {
  *************************
  */
 using load_plugin_t = void (*)(PluginLoader* loader, const PluginState state);
-using get_version_t = void (*)(PluginVersion* version);
 using load_reflection_t = void* (*)();
 
 static constexpr auto g_load_plugin_name = "bee_load_plugin";
-static constexpr auto g_get_version_name = "bee_get_plugin_version";
 static constexpr auto g_load_reflection_name = "bee_load_reflection";
 
 #if BEE_OS_WINDOWS == 1
@@ -42,7 +40,7 @@ static constexpr auto g_plugin_extension = ".dylib";
     #error Unsupported platform
 #endif // BEE_OS_WINDOWS == 1
 
-static constexpr size_t g_max_module_size = 1024;
+static constexpr size_t g_max_module_size = 10000;
 
 struct ModuleHeader
 {
@@ -59,30 +57,31 @@ struct StaticData
 
 struct Plugin
 {
-    String                   name;
-    PluginVersion            version;
-    Path                     library_path;
-    Path                     hot_reload_path;
-    DynamicLibrary           library;
-    PluginState              state { PluginState::unloaded };
-    load_plugin_t            load_function { nullptr };
-    get_version_t            get_version_function { nullptr };
-    ReflectionModule*        reflection_module { nullptr };
-    DynamicArray<StaticData> static_data;
+    String                      name;
+    PluginVersion               version;
+    Path                        library_path;
+    Path                        hot_reload_path;
+    DynamicLibrary              library;
+    PluginState                 state { PluginState::unloaded };
+    load_plugin_t               load_function { nullptr };
+    ReflectionModule*           reflection_module { nullptr };
+    DynamicArray<StaticData>    static_data;
 };
 
 struct PluginRegistry
 {
-    DynamicArray<Plugin>                    plugins;
-    DynamicArray<u32>                       plugin_hashes;
+    DynamicArray<Plugin>                        plugins;
+    DynamicArray<u32>                           plugin_hashes;
 
-    DynamicArray<UniquePtr<ModuleHeader>>   modules;
-    DynamicArray<u32>                       module_hashes;
+    DynamicArray<UniquePtr<ModuleHeader>>       modules;
+    DynamicArray<u32>                           module_hashes;
 
-    fs::DirectoryWatcher                    directory_watcher;
-    DynamicArray<fs::FileNotifyInfo>        file_events;
+    fs::DirectoryWatcher                        directory_watcher;
+    DynamicArray<fs::FileNotifyInfo>            file_events;
+    DynamicArray<Path>                          source_paths;
+    DynamicHashMap<String, PluginDescriptor>    descriptors;
 
-    DynamicArray<Plugin*>                   load_stack;
+    DynamicArray<Plugin*>                       load_stack;
 };
 
 PluginRegistry* g_registry = nullptr;
@@ -181,6 +180,20 @@ void shutdown_plugins()
     BEE_DELETE(system_allocator(), g_registry);
 }
 
+static i32 find_plugin(const StringView& name)
+{
+    const u32 hash = get_hash(name);
+    return find_index(g_registry->plugin_hashes, hash);
+}
+
+static i32 find_module(const StringView& name)
+{
+    const u32 hash = get_hash(name);
+    return find_index(g_registry->module_hashes, hash);
+}
+
+static bool load_plugin_dependency(const StringView& name, const PluginVersion& minimum_version);
+
 static bool reload_plugin(Plugin* plugin)
 {
     static thread_local StaticString<64>    timestamp;
@@ -200,6 +213,21 @@ static bool reload_plugin(Plugin* plugin)
         old_hot_reload_path.append(plugin->hot_reload_path);
     }
 
+    auto* desc = g_registry->descriptors.find(plugin->name);
+    if (BEE_FAIL_F(desc != nullptr, "Failed to read descriptor for plugin %s", plugin->name.c_str()))
+    {
+        return false;
+    }
+
+    plugin->version = desc->value.version;
+    for (auto& dependency : desc->value.dependencies)
+    {
+        if (BEE_FAIL_F(load_plugin_dependency(dependency.name.view(), dependency.version), "Failed to load dependency \"%s\" for plugin \"%s\"", dependency.name.c_str(), plugin->name.c_str()))
+        {
+            return false;
+        }
+    }
+
     plugin->hot_reload_path.clear();
     plugin->hot_reload_path.append(plugin->library_path);
     plugin->hot_reload_path.set_extension(timestamp.view());
@@ -215,14 +243,6 @@ static bool reload_plugin(Plugin* plugin)
 
     if (BEE_FAIL_F(new_library.handle != nullptr, "Failed to load plugin at path: %s", plugin->library_path.c_str()))
     {
-        return false;
-    }
-
-    auto* new_version_function = reinterpret_cast<get_version_t>(get_library_symbol(new_library, g_get_version_name));
-
-    if (BEE_FAIL_F(new_version_function != nullptr, "Failed to get load function symbol `%s` for plugin at path: %s", g_get_version_name, plugin->library_path.c_str()))
-    {
-        unload_library(new_library);
         return false;
     }
 
@@ -244,7 +264,6 @@ static bool reload_plugin(Plugin* plugin)
     PluginLoader loader{};
     {
         BEE_PLUGIN_LOAD_SCOPE(plugin);
-        new_version_function(&plugin->version);
         new_load_function(&loader, PluginState::loading);
     }
 
@@ -293,21 +312,8 @@ static bool reload_plugin(Plugin* plugin)
     plugin->state = PluginState::loaded;
     plugin->library = new_library;
     plugin->load_function = new_load_function;
-    plugin->get_version_function = new_version_function;
     log_info("%s plugin: %s", reload ? "Reloaded" : "Loaded", plugin->name.c_str());
     return true;
-}
-
-static i32 find_plugin(const StringView& name)
-{
-    const u32 hash = get_hash(name);
-    return find_index(g_registry->plugin_hashes, hash);
-}
-
-static i32 find_module(const StringView& name)
-{
-    const u32 hash = get_hash(name);
-    return find_index(g_registry->module_hashes, hash);
 }
 
 bool load_plugin(const StringView& name)
@@ -383,6 +389,49 @@ void unload_plugin(const StringView& name)
     unload_plugin(&g_registry->plugins[index]);
 }
 
+static bool load_plugin_dependency(const StringView& name, const PluginVersion& minimum_version)
+{
+    const i32 index = find_plugin(name);
+
+    if (index < 0)
+    {
+        log_error("No plugin registered with name %" BEE_PRIsv, BEE_FMT_SV(name));
+        return false;
+    }
+
+    auto& plugin = g_registry->plugins[index];
+
+    bool unload_if_incompatible = plugin.state == PluginState::unloaded;
+
+    if (plugin.state == PluginState::unloaded)
+    {
+        reload_plugin(&plugin);
+    }
+
+    if (plugin.version >= minimum_version)
+    {
+        return true;
+    }
+
+    log_error(
+        "Registered version for plugin %" BEE_PRIsv " is %d.%d.%d but required version is %d.%d.%d",
+        BEE_FMT_SV(name),
+        plugin.version.major,
+        plugin.version.minor,
+        plugin.version.patch,
+        minimum_version.major,
+        minimum_version.minor,
+        minimum_version.patch
+    );
+
+    if (unload_if_incompatible)
+    {
+        unload_plugin(&plugin);
+    }
+
+    return true;
+}
+
 static void register_plugin(const Path& lib_path)
 {
     /*
@@ -413,6 +462,7 @@ static void register_plugin(const Path& lib_path)
     plugin.name = name;
     plugin.state = PluginState::unloaded;
     plugin.library_path = lib_path;
+
     g_registry->plugins.push_back(plugin);
     g_registry->plugin_hashes.push_back(get_hash(name));
 }
@@ -491,6 +541,78 @@ void remove_plugin_search_path(const Path& path)
     g_registry->directory_watcher.remove_directory(path);
 }
 
+static void read_plugin_descriptors(const Path& root)
+{
+    for (auto& entry : fs::read_dir(root))
+    {
+        if (fs::is_dir(entry))
+        {
+            read_plugin_descriptors(entry);
+            continue;
+        }
+
+        if (entry.extension() == ".plugin")
+        {
+            auto contents = fs::read(entry);
+            PluginDescriptor descriptor;
+            JSONSerializer serializer(contents.data(), JSONSerializeFlags::parse_in_situ);
+            serialize(SerializerMode::reading, SerializerSourceFlags::all, &serializer, &descriptor);
+
+            auto* existing = g_registry->descriptors.find(descriptor.name);
+            if (existing != nullptr)
+            {
+                log_error("Plugin descriptor at %s conflicts with descriptor already loaded at %s", entry.c_str(), existing->value.path.c_str());
+            }
+            else
+            {
+                auto* mapped = g_registry->descriptors.insert(descriptor.name, BEE_MOVE(descriptor));
+                mapped->value.path.append(root);
+            }
+        }
+    }
+}
+
+static void remove_plugin_descriptors(const Path& root)
+{
+    DynamicArray<String> to_remove(temp_allocator());
+
+    for (auto& desc : g_registry->descriptors)
+    {
+        if (desc.value.path.is_relative_to(root))
+        {
+            to_remove.push_back(desc.key);
+        }
+    }
+
+    for (auto& name : to_remove)
+    {
+        g_registry->descriptors.erase(name);
+    }
+}
+
+void add_plugin_source_path(const Path& path)
+{
+    const int index = find_index(g_registry->source_paths, path);
+    if (index >= 0)
+    {
+        return;
+    }
+
+    g_registry->source_paths.push_back(path);
+    read_plugin_descriptors(path);
+}
+
+void remove_plugin_source_path(const Path& path)
+{
+    const int index = find_index(g_registry->source_paths, path);
+    if (index >= 0)
+    {
+        return;
+    }
+    g_registry->source_paths.erase(index);
+    remove_plugin_descriptors(path);
+}
+
 void* get_module(const StringView& name)
 {
     const i32 index = find_module(name);
@@ -501,6 +623,16 @@ void* get_module(const StringView& name)
     }
 
     return reinterpret_cast<u8*>(g_registry->modules[index].get()) + sizeof(ModuleHeader);
+}
+
+const Path* get_plugin_source_path(const StringView& name)
+{
+    auto* desc = g_registry->descriptors.find(name);
+    if (desc == nullptr)
+    {
+        return nullptr;
+    }
+    return &desc->value.path;
 }
 
 void* PluginLoader::get_static(const PluginStaticDataCallbacks& static_callbacks, const u32 hash, const size_t size, const size_t alignment)
@@ -542,45 +674,7 @@ bool PluginLoader::require_plugin(const StringView& name, const PluginVersion& m
         return true;
     }
 
-    const i32 index = find_plugin(name);
-
-    if (index < 0)
-    {
-        log_error("No plugin registered with name %" BEE_PRIsv, BEE_FMT_SV(name));
-        return false;
-    }
-
-    auto& plugin = g_registry->plugins[index];
-
-    bool unload_if_incompatible = plugin.state == PluginState::unloaded;
-
-    if (plugin.state == PluginState::unloaded)
-    {
-        reload_plugin(&plugin);
-    }
-
-    if (plugin.version >= minimum_version)
-    {
-        return true;
-    }
-
-    log_error(
-        "Registered version for plugin %" BEE_PRIsv " is %d.%d.%d but required version is %d.%d.%d",
-        BEE_FMT_SV(name),
-        plugin.version.major,
-        plugin.version.minor,
-        plugin.version.patch,
-        minimum_version.major,
-        minimum_version.minor,
-        minimum_version.patch
-    );
-
-    if (unload_if_incompatible)
-    {
-        unload_plugin(&plugin);
-    }
-
-    return false;
+    return load_plugin_dependency(name, minimum_version);
 }
 
 bool PluginLoader::is_plugin_loaded(const StringView& name, const PluginVersion& minimum_version) const
@@ -603,9 +697,9 @@ void PluginLoader::add_module_interface(const StringView& name, const void* modu
 {
     i32 index = find_module(name);
 
-    if (sizeof(ModuleHeader) + module_size >= g_max_module_size)
+    const size_t stored_module_size = sizeof(ModuleHeader) + module_size;
+    if (BEE_FAIL_F(stored_module_size <= g_max_module_size, "Module %" BEE_PRIsv " exceeds max module size (%zu > %zu)", BEE_FMT_SV(name), stored_module_size, g_max_module_size))
     {
-        log_error("Module %" BEE_PRIsv " exceeds the maximum size allowed for moudles (%zu)", BEE_FMT_SV(name), g_max_module_size);
         return;
     }
 
@@ -644,6 +738,11 @@ void PluginLoader::remove_module_interface(const void* module)
     {
         g_registry->modules.erase(index);
     }
+}
+
+const Path* PluginLoader::get_source_path()
+{
+    return get_plugin_source_path(g_registry->load_stack.back()->name.view());
 }
 
 

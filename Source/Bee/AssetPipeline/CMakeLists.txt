@@ -1,6 +1,6 @@
 bee_new_source_root()
 bee_add_sources(
-    AssetPipeline.hpp AssetPipeline.cpp AssetPipeline.inl
+        AssetImportPipeline.hpp AssetImportPipeline.cpp AssetImportPipeline.inl
 )
 bee_plugin(Bee.AssetPipeline LINK_LIBRARIES Bee.Core lmdb)
 bee_reflect(Bee.AssetPipeline)

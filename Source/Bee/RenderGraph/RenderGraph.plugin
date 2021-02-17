@@ -1,0 +1,10 @@
+{
+    "name": "Bee.RenderGraph",
+    "version": "0.0.0",
+    "dependencies": [
+        {
+            "name": "Bee.Gpu",
+            "version": "0.0.0"
+        }
+    ]
+}

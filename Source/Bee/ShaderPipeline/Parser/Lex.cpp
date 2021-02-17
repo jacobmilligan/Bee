@@ -165,6 +165,11 @@ String BscError::to_string(Allocator* allocator) const
             io::write_fmt(&result, "invalid number format");
             break;
         }
+        case BscErrorCode::invalid_layout_name:
+        {
+            io::write_fmt(&result, "invalid layout name");
+            break;
+        }
         default:
         {
             BEE_UNREACHABLE("Error code not translated");

@@ -22,7 +22,7 @@ bee_add_sources(
         Main.hpp
         Move.hpp
         TypeTraits.hpp
-        Plugin.hpp          Plugin.cpp
+        Plugin.hpp          Plugin.cpp  PluginDescriptor.inl
         New.hpp
         Noncopyable.hpp
         NumericTypes.hpp

@@ -49,7 +49,7 @@ struct GpuResourceTable
 
     ValueType& operator[](const HandleType handle)
     {
-        BEE_ASSERT(handle.thread() == thread);
+        BEE_ASSERT_F(handle.thread() == thread, "%" PRIu64 " != %" PRIu32, handle.thread(), thread);
         return pool[GpuTableHandle { static_cast<u32>(handle.value()) }];
     }
 

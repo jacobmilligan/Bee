@@ -449,5 +449,3 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     loader->require_plugin("Bee.Input", { 0, 0, 0 });
     loader->set_module(BEE_PLATFORM_MODULE_NAME, &g_module, state);
 }
-
-BEE_PLUGIN_VERSION(0, 0, 0)

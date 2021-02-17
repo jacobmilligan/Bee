@@ -1,0 +1,18 @@
+{
+    "name": "Bee.ImGui",
+    "version": "0.0.0",
+    "dependencies": [
+        {
+            "name": "Bee.ShaderPipeline",
+            "version": "0.0.0"
+        },
+        {
+            "name": "Bee.Platform",
+            "version": "0.0.0"
+        },
+        {
+            "name": "Bee.AssetPipeline",
+            "version": "0.0.0"
+        }
+    ]
+}

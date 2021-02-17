@@ -10,44 +10,62 @@ BlendState ImGuiBlendState
     color_write_mask: all
 }
 
-Shader ImGui
+SamplerState ImGuiSamplerState
+{
+    min_filter: linear
+    mag_filter: linear
+    mip_mode: linear
+    u_address: repeat
+    v_address: repeat
+    w_address: repeat
+    lod_min: -1000.0
+    lod_max: 1000.0
+    anisotropy_max: 1.0
+}
+
+Shader ImGuiShader
 {
     vertex: vert
     fragment: frag
+    update_frequencies: { layout_0: persistent }
+    samplers: { main_sampler: ImGuiSamplerState }
     code:
     {
-        BEE_BINDING(0, 0) cbuffer Params
+        BEE_PUSH_CONSTANT struct PushConstant
         {
-            float4x4 view_proj;
-        };
+            float2 scale;
+            float2 translate;
+        } push_constant;
 
-        BEE_BINDING(1, 0) Texture2D<float4> main_tex;
-        
-        BEE_BINDING(2, 0) sampler main_sampler;
+        BEE_BINDING(0, 0) Texture2D main_tex;
+        BEE_BINDING(1, 0) SamplerState main_sampler;
 
-        struct AppData 
+        struct AppData
         {
-            float4 position: POSITION;
-            float4 color: COLOR;
+            float2 position: POSITION0;
+            float2 uv: TEXCOORD0;
+            float4 color: COLOR0;
         };
 
         struct FragIn
         {
-            float4 position: POSITION;
-            float4 color: COLOR;
+            float4 position: SV_POSITION;
+            float2 uv: TEXCOORD0;
+            float4 color: COLOR0;
         };
 
         FragIn vert(AppData IN)
         {
             FragIn OUT;
-            OUT.position = IN.position;
+            OUT.position = float4(IN.position * push_constant.scale + push_constant.translate, 0.0, 1.0);
             OUT.color = IN.color;
+            OUT.uv = IN.uv;
             return OUT;
         }
 
         float4 frag(FragIn IN): SV_TARGET
         {
-            return IN.color;
+            return IN.color * main_tex.Sample(main_sampler, IN.uv);
         }
     }
 }
@@ -56,7 +74,7 @@ PipelineState ImGuiPipeline
 {
     primitive_type: triangle
     raster_state: ImGuiRasterState
-    vertex_stage: TriangleShader
-    fragment_stage: TriangleShader
+    vertex_stage: ImGuiShader
+    fragment_stage: ImGuiShader
     color_blend_states: [ ImGuiBlendState ]
 }

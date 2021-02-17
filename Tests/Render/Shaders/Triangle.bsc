@@ -1,0 +1,51 @@
+BlendState TriangleBlendState
+{
+    blend_enabled: false
+    color_write_mask: all
+}
+
+Shader TriangleShader
+{
+    vertex: vert
+    fragment: frag
+    code:
+    {
+        BEE_PUSH_CONSTANT struct PushConstant
+        {
+            float time;
+        } push_constant;
+
+        struct AppData
+        {
+            float4 position: POSITION0;
+            float4 color: COLOR0;
+        };
+
+        struct FragIn
+        {
+            float4 position: SV_POSITION;
+            float4 color: COLOR0;
+        };
+
+        FragIn vert(AppData IN)
+        {
+            FragIn OUT;
+            OUT.position = IN.position + float4(cos(push_constant.time) * 0.5, sin(push_constant.time) * 0.5 + cos(push_constant.time) * 0.1, 0.0, 0.0);
+            OUT.color = IN.color;
+            return OUT;
+        }
+
+        float4 frag(FragIn IN) : SV_TARGET
+        {
+            return IN.color;
+        }
+    }
+}
+
+PipelineState TrianglePipeline 
+{
+    primitive_type: triangle
+    vertex_stage: TriangleShader
+    fragment_stage: TriangleShader
+    color_blend_states: [ TriangleBlendState ]
+}

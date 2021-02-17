@@ -85,7 +85,7 @@ struct VulkanQueueSubmit
 
     void add(CommandBuffer* cmd);
 
-    void submit(VulkanDevice* device, VkFence fence);
+    void submit(VulkanDevice* device);
 };
 
 struct VulkanSwapchain
@@ -102,6 +102,7 @@ struct VulkanSwapchain
     FixedArray<TextureHandle>       images;
     FixedArray<TextureViewHandle>   image_views;
     SwapchainCreateInfo             create_info;
+    PixelFormat                     selected_format;
 
     StaticString<16>                id_string;
 };
@@ -132,6 +133,7 @@ struct CommandBuffer
     VulkanPipelineState*    bound_pipeline { nullptr };
     VulkanRenderPass*       current_render_pass { nullptr };
     VkDescriptorSet         descriptors[BEE_GPU_MAX_RESOURCE_LAYOUTS];
+    const void*             push_constants[ShaderStageIndex::count];
 
     void reset(VulkanDevice* new_device);
 };
@@ -184,6 +186,7 @@ struct VulkanBuffer
     VmaAllocationInfo   allocation_info{};
     VkBuffer            handle { VK_NULL_HANDLE };
     VkAccessFlags       access { 0 };
+    const char*         debug_name { nullptr };
 
     VulkanBuffer() = default;
 
@@ -191,6 +194,24 @@ struct VulkanBuffer
         : type(new_type),
           usage(new_usage),
           size(new_size)
+    {}
+
+    inline bool is_dynamic() const
+    {
+        return (type & BufferType::dynamic_buffer) != BufferType::unknown;
+    }
+};
+
+struct VulkanBufferAllocation
+{
+    VkBuffer        handle { VK_NULL_HANDLE };
+    VmaAllocation   allocation { VK_NULL_HANDLE };
+
+    VulkanBufferAllocation() = default;
+
+    VulkanBufferAllocation(VkBuffer new_handle, VmaAllocation new_allocation)
+        : handle(new_handle),
+          allocation(new_allocation)
     {}
 };
 
@@ -243,46 +264,61 @@ struct VulkanStagingChunk
 {
     u8*                 data { nullptr };
     size_t              offset { 0 };
-    VkCommandBuffer     cmd { VK_NULL_HANDLE };
+    VkCommandBuffer     cmd[2] { VK_NULL_HANDLE }; // 0: transfer, 1: graphics
     VkBuffer            buffer { VK_NULL_HANDLE };
 };
 
 struct VulkanStaging
 {
+    enum Enum
+    {
+        transfer_index,
+        graphics_index
+    };
+
+    BEE_ENUM_STRUCT(VulkanStaging)
+
     struct StagingBuffer
     {
-        bool                is_submitted { false };
+        CommandBufferState  cmd_state { CommandBufferState::invalid };
         size_t              offset { 0 };
         void*               data { nullptr };
         VmaAllocation       allocation { VK_NULL_HANDLE };
         VmaAllocationInfo   allocation_info{};
         VkBuffer            handle { VK_NULL_HANDLE };
-        VkCommandBuffer     cmd { VK_NULL_HANDLE };
-        VkFence             submit_fence { VK_NULL_HANDLE };
-        VkSemaphore         transfer_semaphore { VK_NULL_HANDLE };
+        VkCommandBuffer     cmd[2] { VK_NULL_HANDLE };
+        VkFence             submit_fence[2] { VK_NULL_HANDLE };
+        VkSemaphore         semaphores[2] { VK_NULL_HANDLE };
+
+        void begin_commands();
+
+        void end_commands();
+
+        void submit_commands(VulkanDevice* device_ptr, VulkanQueue** queue_ptrs);
+
+        void wait_commands(VulkanDevice* device_ptr);
     };
 
     StagingBuffer       buffers[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
-    VkCommandPool       command_pool { VK_NULL_HANDLE };
+    VkCommandPool       command_pool[2] { VK_NULL_HANDLE };
     size_t              buffer_capacity { 0 };
-    i32                 current_frame { 0 };
-    VulkanQueue*        transfer_queue { nullptr };
+    i32                 current_buffer_index {0 };
+    VulkanQueue*        queues[2] { nullptr };
     VulkanDevice*       device { nullptr };
     VmaAllocator        vma_allocator { VK_NULL_HANDLE };
 
-    void init(VulkanDevice* new_device, VulkanQueue* new_transfer_queue, VmaAllocator new_vma_allocator);
+    void init(VulkanDevice* new_device, VmaAllocator new_vma_allocator);
 
     void destroy();
 
     void allocate(const size_t size, const size_t alignment, VulkanStagingChunk* chunk);
+
+    void submit();
+
+    bool is_pending();
 private:
-    void wait_on_frame(const i32 frame);
-
     void ensure_capacity(const size_t capacity);
-
-    i32 submit_frame(const i32 frame);
 };
-
 
 /*
  ******************************************
@@ -299,10 +335,13 @@ struct VulkanThreadData
     u32                                     index { limits::max<u32>() };
     VulkanStaging                           staging;
     VulkanCommandPool                       command_pool[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
-    VulkanQueueSubmit                       queue_submissions[vk_max_queues];
     VulkanDescriptorPoolCache               dynamic_descriptor_pools[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
     VulkanDescriptorPoolCache               static_descriptor_pools;
     VulkanResourceBinding*                  static_resource_binding_pending_deletes { nullptr };
+    DynamicArray<VulkanBufferAllocation>    dynamic_buffer_deletes[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
+
+    // Device commands and updates
+    CommandBuffer*                          device_cmd[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
 
     GpuResourceTable<TextureHandle, VulkanTexture>                  textures;
     GpuResourceTable<TextureViewHandle, VulkanTextureView>          texture_views;
@@ -339,6 +378,8 @@ struct VulkanThreadData
         resource_bindings.flush_deallocations();
         samplers.flush_deallocations();
     }
+
+    CommandBuffer* get_device_cmd(const DeviceHandle device_handle);
 };
 
 
@@ -373,6 +414,8 @@ struct VulkanDevice
         };
     };
 
+    VulkanQueueSubmit               submissions[vk_max_queues];
+
     RecursiveMutex                  per_queue_mutex[vk_max_queues];
     RecursiveMutex                  device_mutex;
 
@@ -386,7 +429,7 @@ struct VulkanDevice
     VulkanPendingCache<VulkanPipelineLayoutKey, VkPipelineLayout>       pipeline_layout_cache;
     VulkanPendingCache<ResourceLayoutDescriptor, VkDescriptorSetLayout> descriptor_set_layout_cache;
     VulkanPendingCache<VulkanFramebufferKey, VkFramebuffer>             framebuffer_cache;
-    VulkanPendingCache<VulkanPipelineKey, VkPipeline>             pipeline_cache;
+    VulkanPendingCache<VulkanPipelineKey, VulkanPipelineState>          pipeline_cache;
     // TODO(Jacob): VkPipelineCache
 
     // Fence pool

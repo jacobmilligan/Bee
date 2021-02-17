@@ -37,7 +37,7 @@ struct ShaderPipelineDescriptor
 
 #define BEE_SHADER_CACHE_MODULE_NAME "BEE_SHADER_CACHE"
 
-struct AssetCache;
+struct AssetPipeline;
 struct ShaderPipeline;
 struct ShaderCache;
 struct ShaderCacheModule
@@ -60,9 +60,9 @@ struct ShaderCacheModule
 
     u32 (*get_shader_name_hash)(const StringView& name) { nullptr };
 
-    void (*register_asset_loader)(ShaderCache* shader_cache, AssetCache* asset_cache, const GpuBackend* gpu, const DeviceHandle device) { nullptr };
+    void (*register_asset_loader)(ShaderCache* shader_cache, AssetPipeline* asset_cache, const GpuBackend* gpu, const DeviceHandle device) { nullptr };
 
-    void (*unregister_asset_loader)(ShaderCache* shader_cache, AssetCache* asset_cache) { nullptr };
+    void (*unregister_asset_loader)(ShaderCache* shader_cache, AssetPipeline* asset_cache) { nullptr };
 
     bool (*load_shader)(ShaderCache* cache, const ShaderPipelineHandle handle) { nullptr };
 

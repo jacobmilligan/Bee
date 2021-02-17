@@ -77,7 +77,6 @@ void DirectoryWatcher::start(const char* name)
 void DirectoryWatcher::suspend()
 {
     is_suspended_.store(true, std::memory_order_relaxed);
-
 }
 
 void DirectoryWatcher::resume()
@@ -88,12 +87,6 @@ void DirectoryWatcher::resume()
 void DirectoryWatcher::add_event(const FileAction action, const StringView& relative_path, const i32 entry)
 {
     BEE_ASSERT(entry < watched_paths_.size());
-
-    // Need to re-init the array if it was moved previously via `pop_events`
-    if (events_.allocator() == nullptr)
-    {
-        new (&events_) DynamicArray<FileNotifyInfo>{};
-    }
 
     auto full_path = watched_paths_[entry].join(relative_path);
     const auto hash = get_hash(full_path);
@@ -108,8 +101,14 @@ void DirectoryWatcher::add_event(const FileAction action, const StringView& rela
     {
         events_.emplace_back();
         events_.back().hash = hash;
+        events_.back().event_time = time::now();
+        events_.back().modified_time = last_modified(full_path);
         events_.back().action = action;
         events_.back().file = BEE_MOVE(full_path);
+    }
+    else
+    {
+        events_[existing_index].event_time = time::now();
     }
 }
 
@@ -129,8 +128,19 @@ void DirectoryWatcher::pop_events(DynamicArray<FileNotifyInfo>* dst)
     }
 
     dst->clear();
-    dst->append(events_.const_span());
-    events_.clear();
+
+    const u64 now = time::now();
+
+    for (int i = events_.size() - 1; i >= 0; --i)
+    {
+        // file events aren't considered 'completed' until at least one 16ms frame has passed without any OS notify
+        // events occurring
+        if (now - events_[i].event_time > time::milliseconds(16))
+        {
+            dst->emplace_back(BEE_MOVE(events_[i]));
+            events_.erase(i);
+        }
+    }
 
     mutex_.unlock();
 }

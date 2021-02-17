@@ -455,5 +455,3 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     g_module.get_received_data = bee::get_received_data;
     loader->set_module(BEE_DATA_CONNECTION_MODULE_NAME, &g_module, state);
 }
-
-BEE_PLUGIN_VERSION(0, 0, 0)

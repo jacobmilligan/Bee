@@ -87,7 +87,7 @@ void destroy_framebuffer(VulkanDevice* device, VkFramebuffer* framebuffer)
     vkDestroyFramebuffer(device->handle, *framebuffer, nullptr);
 }
 
-void create_pipeline(VulkanDevice* device, const VulkanPipelineKey& key, VkPipeline* pipeline)
+void create_pipeline(VulkanDevice* device, const VulkanPipelineKey& key, VulkanPipelineState* pipeline)
 {
     auto* desc = key.desc;
 
@@ -298,7 +298,7 @@ void create_pipeline(VulkanDevice* device, const VulkanPipelineKey& key, VkPipel
     pipeline_layout_key.resource_layouts = desc->resource_layouts.data;
     pipeline_layout_key.push_constant_range_count = desc->push_constant_ranges.size;
     pipeline_layout_key.push_constant_ranges = desc->push_constant_ranges.data;
-    auto& pipeline_layout = device->pipeline_layout_cache.get_or_create(pipeline_layout_key);
+    pipeline->layout = device->pipeline_layout_cache.get_or_create(pipeline_layout_key);
 
     /*
      * TODO(Jacob): Pipeline cache
@@ -321,19 +321,19 @@ void create_pipeline(VulkanDevice* device, const VulkanPipelineKey& key, VkPipel
     info.pDepthStencilState = &depth_stencil_info;
     info.pColorBlendState = &color_blend_info;
     info.pDynamicState = &dynamic_state_info;
-    info.layout = pipeline_layout;
+    info.layout = pipeline->layout;
     info.renderPass = key.render_pass;
     info.subpass = key.subpass_index;
     info.basePipelineHandle = VK_NULL_HANDLE;
     info.basePipelineIndex = -1;
 
     // phew, that was a lot of typing - I think we earned ourselves a nice graphics pipeline object
-    BEE_VK_CHECK(vkCreateGraphicsPipelines(device->handle, VK_NULL_HANDLE, 1, &info, nullptr, pipeline));
+    BEE_VK_CHECK(vkCreateGraphicsPipelines(device->handle, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->handle));
 }
 
-void destroy_pipeline(VulkanDevice* device, VkPipeline* pipeline)
+void destroy_pipeline(VulkanDevice* device, VulkanPipelineState* pipeline)
 {
-    vkDestroyPipeline(device->handle, *pipeline, nullptr);
+    vkDestroyPipeline(device->handle, pipeline->handle, nullptr);
 }
 
 

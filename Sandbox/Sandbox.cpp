@@ -24,7 +24,7 @@
 
 #include "Bee/ShaderPipeline/Compiler.hpp"
 
-#include "Bee/AssetPipeline/AssetPipeline.hpp"
+#include "Bee/AssetPipeline/AssetImportPipeline.hpp"
 
 #include "Bee/AssetCache/AssetCache.hpp"
 
@@ -47,7 +47,7 @@ struct SandboxApp
     SwapchainHandle                     swapchain;
 
     // Asset loading
-    AssetPipeline*                      asset_pipeline {nullptr };
+    AssetImportPipeline*                asset_pipeline {nullptr };
     AssetCache*                         asset_cache { nullptr };
 };
 
@@ -66,7 +66,7 @@ static RenderGraphModule*       g_render_graph { nullptr };
 static ShaderCompilerModule*    g_shader_compiler { nullptr };
 static ShaderCacheModule*       g_shader_cache { nullptr };
 static AssetDatabaseModule*     g_asset_db { nullptr };
-static AssetPipelineModule*     g_asset_pipeline { nullptr };
+static AssetImportPipelineModule*     g_asset_pipeline {nullptr };
 static AssetCacheModule*        g_asset_cache { nullptr };
 
 static SandboxApp*              g_app = nullptr;
@@ -437,7 +437,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
         bee::g_shader_compiler = static_cast<bee::ShaderCompilerModule*>(loader->get_module(BEE_SHADER_COMPILER_MODULE_NAME));
         bee::g_shader_cache = static_cast<bee::ShaderCacheModule*>(loader->get_module(BEE_SHADER_CACHE_MODULE_NAME));
         bee::g_asset_db = static_cast<bee::AssetDatabaseModule*>(loader->get_module(BEE_ASSET_DATABASE_MODULE_NAME));
-        bee::g_asset_pipeline = static_cast<bee::AssetPipelineModule*>(loader->get_module(BEE_ASSET_PIPELINE_MODULE_NAME));
+        bee::g_asset_pipeline = static_cast<bee::AssetImportPipelineModule*>(loader->get_module(BEE_ASSET_PIPELINE_MODULE_NAME));
         bee::g_asset_cache = static_cast<bee::AssetCacheModule*>(loader->get_module(BEE_ASSET_CACHE_MODULE_NAME));
     }
 }

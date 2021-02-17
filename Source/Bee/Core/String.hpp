@@ -934,19 +934,19 @@ inline void to_static_string(const u128& value, StaticString<Size>* str)
     to_string_buffer(value, str->data(), str->size());
 }
 
-BEE_CORE_API i32 to_i32(const StringView& src);
+BEE_CORE_API bool to_i32(const StringView& src, i32* result);
 
-BEE_CORE_API u32 to_u32(const StringView& src);
+BEE_CORE_API bool to_u32(const StringView& src, u32* result);
 
-BEE_CORE_API i64 to_i64(const StringView& src);
+BEE_CORE_API bool to_i64(const StringView& src, i64* result);
 
-BEE_CORE_API u64 to_u64(const StringView& src);
+BEE_CORE_API bool to_u64(const StringView& src, u64* result);
 
-BEE_CORE_API u128 to_u128(const StringView& src);
+BEE_CORE_API bool to_u128(const StringView& src, u128* result);
 
-BEE_CORE_API float to_float(const StringView& src);
+BEE_CORE_API bool to_float(const StringView& src, float* result);
 
-BEE_CORE_API double to_double(const StringView& src);
+BEE_CORE_API bool to_double(const StringView& src, double* result);
 
 
 /**
@@ -962,6 +962,8 @@ BEE_CORE_API String& trim(String* src, char character);
  * `split` - split a StringView using the delimiter character into an array of substrings
  */
 BEE_CORE_API void split(const StringView& src, DynamicArray<StringView>* dst, const char* delimiter);
+
+BEE_CORE_API i32 split(const StringView& src, StringView* dst_array, const i32 dst_array_capacity, const char* delimiter);
 
 BEE_CORE_API bool is_ascii(const char c);
 

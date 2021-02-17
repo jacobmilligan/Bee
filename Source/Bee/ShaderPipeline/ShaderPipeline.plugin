@@ -1,0 +1,10 @@
+{
+    "name": "Bee.ShaderPipeline",
+    "version": "0.0.0",
+    "dependencies": [
+        {
+            "name": "Bee.AssetPipeline",
+            "version": "0.0.0"
+        }
+    ]
+}

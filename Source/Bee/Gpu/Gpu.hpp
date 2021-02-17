@@ -467,6 +467,7 @@ BEE_FLAGS(BufferType, u32)
     uniform_buffer  = 1u << 2u,
     transfer_dst    = 1u << 3u,
     transfer_src    = 1u << 4u,
+    dynamic_buffer  = 1u << 5u,
     any             = vertex_buffer | index_buffer | uniform_buffer,
 };
 
@@ -678,6 +679,8 @@ enum class BEE_REFLECT(serializable) ResourceBindingUpdateFrequency
     per_frame,
     persistent
 };
+
+using ResourceBindingUpdateFrequencyArray = StaticArray<ResourceBindingUpdateFrequency, BEE_GPU_MAX_RESOURCE_LAYOUTS>;
 
 
 BEE_FLAGS(TextureBlitOptions, u32)
@@ -969,6 +972,20 @@ struct BEE_REFLECT(serializable) SamplerCreateInfo
     bool            normalized_coordinates { true };
 };
 
+inline bool operator==(const SamplerCreateInfo& lhs, const SamplerCreateInfo& rhs)
+{
+    return memcmp(&lhs, &rhs, sizeof(SamplerCreateInfo)) == 0;
+}
+
+template <>
+struct Hash<SamplerCreateInfo>
+{
+    inline u32 operator()(const SamplerCreateInfo& key) const
+    {
+        return get_hash(&key, sizeof(SamplerCreateInfo), 0x456238);
+    }
+};
+
 
 struct BEE_REFLECT(serializable) AttachmentDescriptor
 {
@@ -1193,6 +1210,8 @@ struct TextureBindingUpdate
     TextureViewHandle   texture;
     SamplerHandle       sampler;
 
+    TextureBindingUpdate() = default;
+
     TextureBindingUpdate(const TextureViewHandle new_texture, const SamplerHandle new_sampler)
         : texture(new_texture),
           sampler(new_sampler)
@@ -1212,6 +1231,8 @@ struct BufferBindingUpdate
     BufferHandle    buffer;
     size_t          offset { 0 };
     size_t          size { limits::max<u32>() };
+
+    BufferBindingUpdate() = default;
 
     BufferBindingUpdate(const BufferHandle new_buffer)
         : buffer(new_buffer)
@@ -1478,6 +1499,8 @@ struct GpuCommandBackend
     void (*transition_resources)(CommandBuffer* cmd, const u32 count, const GpuTransition* transitions) {nullptr };
 
     void (*bind_resources)(CommandBuffer* cmd, const u32 layout_index, const ResourceBindingHandle& resource_binding) {nullptr };
+
+    void (*push_constants)(CommandBuffer* cmd, const u32 block, const void* data) { nullptr };
 };
 
 

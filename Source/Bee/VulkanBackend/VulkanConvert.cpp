@@ -112,11 +112,14 @@ VkPipelineStageFlags select_pipeline_stage_from_access(const VkAccessFlags acces
             case VK_ACCESS_SHADER_WRITE_BIT:
             {
                 result |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT
-                    | VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT
                     | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-                    | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                    | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+#if 0
+                // TODO(Jacob): geometry shaders?
+                result |= VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT
                     | VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT
                     | VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT;
+#endif // 0
                 break;
             }
             case VK_ACCESS_COLOR_ATTACHMENT_READ_BIT:

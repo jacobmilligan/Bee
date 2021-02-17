@@ -230,10 +230,6 @@ private:
     String data_;
 
     bool is_absolute(const StringView& path) const;
-
-    i32 get_last_slash() const;
-
-    i32 get_first_slash() const;
 };
 
 
@@ -251,6 +247,14 @@ BEE_CORE_API StringView path_get_extension(const StringView& path);
 BEE_CORE_API StringView path_get_filename(const char* c_string);
 
 BEE_CORE_API StringView path_get_filename(const StringView& path);
+
+BEE_CORE_API StringView path_get_stem(const char* c_string);
+
+BEE_CORE_API StringView path_get_stem(const StringView& path);
+
+BEE_CORE_API bool path_exists(const StringView& path);
+
+BEE_CORE_API StringView path_get_parent(const StringView& path);
 
 
 inline bool operator==(const Path& lhs, const Path& rhs)

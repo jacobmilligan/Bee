@@ -74,7 +74,8 @@
 
 #define IM_VEC2_CLASS_EXTRA                                         \
         ImVec2(const bee::float2& f) { x = f.x; y = f.y; }          \
-        operator bee::float2() const { return bee::float2(x,y); }
+        operator bee::float2() const { return bee::float2(x,y); }   \
+        int v;
 
 #define IM_VEC4_CLASS_EXTRA                                                     \
         ImVec4(const bee::float4& f) { x = f.x; y = f.y; z = f.z; w = f.w; }    \
