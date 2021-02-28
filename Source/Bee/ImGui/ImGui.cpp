@@ -12,8 +12,11 @@
 #include "Bee/Core/Filesystem.hpp"
 
 #include "Bee/RenderGraph/RenderGraph.hpp"
-#include "Bee/AssetPipelineV2/AssetPipeline.hpp"
+#include "Bee/AssetPipeline/AssetPipeline.hpp"
 #include "Bee/ShaderPipeline/ShaderPipeline.hpp"
+#include "Bee/Input/Input.hpp"
+#include "Bee/Input/Mouse.hpp"
+#include "Bee/Input/Keyboard.hpp"
 
 #include <imgui/imgui.h>
 
@@ -24,6 +27,7 @@ namespace bee {
 struct ImGuiBackend
 {
     Allocator*              allocator { nullptr };
+    Path                    assets_path;
     ImGuiContext*           ctx { nullptr };
     DeviceHandle            device;
     Asset<Shader>           shader;
@@ -40,6 +44,7 @@ struct ImGuiBackend
 static ShaderPipelineModule*    g_shader_pipeline = nullptr;
 static PlatformModule*          g_platform = nullptr;
 static AssetPipelineModule*     g_asset_pipeline = nullptr;
+static InputModule*             g_input = nullptr;
 
 /*
  ***************************************************************************
@@ -51,10 +56,11 @@ static AssetPipelineModule*     g_asset_pipeline = nullptr;
  */
 Result<ImGuiBackend*, ImGuiError> create_backend(const DeviceHandle device, GpuBackend* gpu, AssetPipeline* asset_pipeline, Allocator* allocator)
 {
-    auto* plugin_path = get_plugin_source_path("Bee.ImGui");
-    if (plugin_path != nullptr)
+    Path assets_path(get_plugin_source_path("Bee.ImGui"));
+    if (!assets_path.empty())
     {
-        g_asset_pipeline->add_import_root(asset_pipeline, plugin_path->join("Assets"));
+        assets_path.append("Assets");
+        g_asset_pipeline->add_import_root(asset_pipeline, assets_path.view());
     }
 
     auto res = g_asset_pipeline->load_asset<Shader>(asset_pipeline, "ImGui.ImGuiPipeline");
@@ -69,21 +75,25 @@ Result<ImGuiBackend*, ImGuiError> create_backend(const DeviceHandle device, GpuB
     }
 
     auto shader = BEE_MOVE(res.unwrap());
+    shader->pipeline_desc.vertex_description.attributes[2].format = VertexFormat::unormbyte4;
+    shader->pipeline_desc.vertex_description.layouts[0].stride = sizeof(ImDrawVert);
 
     auto* ctx = ImGui::CreateContext();
     auto& io = ImGui::GetIO();
     io.BackendPlatformName = "Bee.ImGui." BEE_OS_NAME_STRING;
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
 
     unsigned char* font_pixels = nullptr;
     int font_width = -1;
     int font_height = -1;
     int font_bpp = -1;
-    io.Fonts->GetTexDataAsAlpha8(&font_pixels, &font_width, &font_height, &font_bpp);
+    io.Fonts->GetTexDataAsRGBA32(&font_pixels, &font_width, &font_height, &font_bpp);
 
     TextureCreateInfo font_info{};
     font_info.type = TextureType::tex2d;
     font_info.usage = TextureUsage::transfer_dst | TextureUsage::sampled;
-    font_info.format = PixelFormat::a8;
+    font_info.format = PixelFormat::rgba8;
+    font_info.sample_count = 1;
     font_info.memory_usage = DeviceMemoryUsage::gpu_only;
     font_info.width = sign_cast<u32>(font_width);
     font_info.height = sign_cast<u32>(font_height);
@@ -109,6 +119,7 @@ Result<ImGuiBackend*, ImGuiError> create_backend(const DeviceHandle device, GpuB
     backend->shader = BEE_MOVE(shader);
     backend->font_texture = font_texture;
     backend->font_texture_view = gpu->create_texture_view_from(device, font_texture);
+    backend->assets_path = BEE_MOVE(assets_path);
 
     TextureBindingUpdate texture_update(backend->font_texture_view);
     ResourceBindingUpdate update(0, 0, 1, &texture_update);
@@ -119,10 +130,9 @@ Result<ImGuiBackend*, ImGuiError> create_backend(const DeviceHandle device, GpuB
 
 Result<void, ImGuiError> destroy_backend(ImGuiBackend* backend)
 {
-    auto* plugin_path = get_plugin_source_path("Bee.ImGui");
-    if (plugin_path != nullptr)
+    if (!backend->assets_path.empty())
     {
-        g_asset_pipeline->remove_import_root(backend->asset_pipeline, plugin_path->join("Assets"));
+        g_asset_pipeline->remove_import_root(backend->asset_pipeline, backend->assets_path.view());
     }
 
     if (!backend->shader.unload())
@@ -167,20 +177,24 @@ void draw(ImGuiBackend* backend, CommandBuffer* cmd_buf)
     if (new_vertex_buffer_size > 0 && !backend->vertex_buffer.is_valid())
     {
         info.size = new_vertex_buffer_size;
-        info.type = BufferType::vertex_buffer | BufferType::dynamic_buffer | BufferType::transfer_dst;
+        info.type = BufferType::vertex_buffer | BufferType::dynamic_buffer;
         info.debug_name = "Bee.ImGui.VertexBuffer";
-        info.memory_usage = DeviceMemoryUsage::gpu_only;
+        info.memory_usage = DeviceMemoryUsage::cpu_to_gpu;
         backend->vertex_buffer = backend->gpu->create_buffer(backend->device, info);
     }
 
     if (new_index_buffer_size > 0 && !backend->index_buffer.is_valid())
     {
         info.size = new_index_buffer_size;
-        info.type = BufferType::index_buffer | BufferType::dynamic_buffer | BufferType::transfer_dst;
+        info.type = BufferType::index_buffer | BufferType::dynamic_buffer;
         info.debug_name = "Bee.ImGui.VertexBuffer";
-        info.memory_usage = DeviceMemoryUsage::gpu_only;
+        info.memory_usage = DeviceMemoryUsage::cpu_to_gpu;
         backend->index_buffer = backend->gpu->create_buffer(backend->device, info);
     }
+
+    const auto off = IM_OFFSETOF(ImDrawVert, uv);
+    BEE_UNUSED(off);
+
 
     // Upload buffer draw data
     int vtx_offset = 0;
@@ -204,7 +218,7 @@ void draw(ImGuiBackend* backend, CommandBuffer* cmd_buf)
     }
     if (draw_data->TotalIdxCount > 0)
     {
-        cmd->bind_index_buffer(cmd_buf, backend->index_buffer, 0, IndexFormat::uint16);
+        cmd->bind_index_buffer(cmd_buf, backend->index_buffer, 0, sizeof(ImDrawIdx) == 2 ? IndexFormat::uint16 : IndexFormat::uint32);
     }
 
     g_shader_pipeline->bind_resources(backend->shader, cmd_buf);
@@ -215,9 +229,10 @@ void draw(ImGuiBackend* backend, CommandBuffer* cmd_buf)
         float2 translate;
     } push_constant;
 
-    push_constant.scale = float2(2.0f / draw_data->DisplaySize.x, 2.0f / draw_data->DisplaySize.y);
-    push_constant.translate.x = -1.0f - draw_data->DisplayPos.x * push_constant.scale.x;
-    push_constant.translate.y = -1.0f - draw_data->DisplayPos.y * push_constant.scale.y;
+    push_constant.scale.x = 2.0f / draw_data->DisplaySize.x;
+    push_constant.scale.y = 2.0f / draw_data->DisplaySize.y;
+    push_constant.translate.x = -1.0f - draw_data->DisplayPos.x * push_constant.scale[0];
+    push_constant.translate.y = -1.0f - draw_data->DisplayPos.y * push_constant.scale[1];
 
     cmd->push_constants(cmd_buf, 0, &push_constant);
 
@@ -232,6 +247,17 @@ void draw(ImGuiBackend* backend, CommandBuffer* cmd_buf)
         for (int c = 0; c < cmd_list->CmdBuffer.Size; ++c)
         {
             auto& imgui_cmd = cmd_list->CmdBuffer.Data[c];
+
+            RenderRect scissor(
+                sign_cast<i32>((imgui_cmd.ClipRect.x - draw_data->DisplayPos.x) * draw_data->FramebufferScale.x),
+                sign_cast<i32>((imgui_cmd.ClipRect.y - draw_data->DisplayPos.y) * draw_data->FramebufferScale.y),
+                sign_cast<u32>((imgui_cmd.ClipRect.z - draw_data->DisplayPos.x) * draw_data->FramebufferScale.x),
+                sign_cast<u32>((imgui_cmd.ClipRect.w - draw_data->DisplayPos.y) * draw_data->FramebufferScale.y)
+            );
+            scissor.width = scissor.width - sign_cast<u32>(scissor.x_offset);
+            scissor.height = scissor.height - sign_cast<u32>(scissor.y_offset);
+
+            cmd->set_scissor(cmd_buf, scissor);
             cmd->draw_indexed(
                 cmd_buf,
                 backend->shader->pipeline_desc,
@@ -254,14 +280,26 @@ void new_frame(ImGuiBackend* backend, const WindowHandle window_handle)
 
     auto& io = ImGui::GetIO();
     // Set display size
-    io.DisplaySize = g_platform->get_framebuffer_size(window_handle).to_float2();
+    io.DisplaySize = g_platform->get_window_size(window_handle).to_float2();
+    if (io.DisplaySize.x > 0 && io.DisplaySize.y > 0)
+    {
+        const auto framebuffer_size = g_platform->get_framebuffer_size(window_handle).to_float2();
+        io.DisplayFramebufferScale = framebuffer_size / float2(io.DisplaySize);
+    }
     // TODO(Jacob): dpi/monitor info
 //    auto& platform_io = ImGui::GetPlatformIO();
 
     // Update DT
     const u64 now = time::now();
-    io.DeltaTime = static_cast<float>(now - backend->time) / static_cast<float>(time::ticks_per_second());
+    io.DeltaTime = static_cast<float>(time::total_seconds(now - backend->time));
     backend->time = now;
+
+    // Update input
+    auto* mouse = g_input->default_device(InputDeviceType::mouse);
+    io.MouseDown[0] = mouse->get_state(MouseButton::left)->values[0].flag;
+    io.MouseDown[1] = mouse->get_state(MouseButton::right)->values[0].flag;
+    io.MouseDown[2] = mouse->get_state(MouseButton::middle)->values[0].flag;
+    io.MousePos = g_platform->get_cursor_position(window_handle).to_float2();
 
     ImGui::NewFrame();
 }
@@ -287,4 +325,5 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     bee::g_shader_pipeline = static_cast<bee::ShaderPipelineModule*>(loader->get_module(BEE_SHADER_PIPELINE_MODULE_NAME));
     bee::g_platform = static_cast<bee::PlatformModule*>(loader->get_module(BEE_PLATFORM_MODULE_NAME));
     bee::g_asset_pipeline = static_cast<bee::AssetPipelineModule*>(loader->get_module(BEE_ASSET_PIPELINE_MODULE_NAME));
+    bee::g_input = static_cast<bee::InputModule*>(loader->get_module(BEE_INPUT_MODULE_NAME));
 }

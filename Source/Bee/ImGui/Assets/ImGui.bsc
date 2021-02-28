@@ -1,13 +1,19 @@
 RasterState ImGuiRasterState
 {
     front_face_ccw: true
-    cull_mode: back
+    cull_mode: none
 }
 
 BlendState ImGuiBlendState
 {
-    blend_enabled: false
+    blend_enabled: true
     color_write_mask: all
+    src_blend_color: src_alpha
+    dst_blend_color: one_minus_src_alpha
+    color_blend_op: add
+    src_blend_alpha: one_minus_src_alpha
+    dst_blend_alpha: zero
+    alpha_blend_op: add
 }
 
 SamplerState ImGuiSamplerState
@@ -18,8 +24,8 @@ SamplerState ImGuiSamplerState
     u_address: repeat
     v_address: repeat
     w_address: repeat
-    lod_min: -1000.0
-    lod_max: 1000.0
+    lod_min: 0.0
+    lod_max: 1.0
     anisotropy_max: 1.0
 }
 
@@ -29,6 +35,7 @@ Shader ImGuiShader
     fragment: frag
     update_frequencies: { layout_0: persistent }
     samplers: { main_sampler: ImGuiSamplerState }
+    vertex_formats: { COLOR0: unormbyte4 }
     code:
     {
         BEE_PUSH_CONSTANT struct PushConstant
@@ -42,7 +49,7 @@ Shader ImGuiShader
 
         struct AppData
         {
-            float2 position: POSITION0;
+            float2 position: POSITION;
             float2 uv: TEXCOORD0;
             float4 color: COLOR0;
         };
@@ -65,7 +72,7 @@ Shader ImGuiShader
 
         float4 frag(FragIn IN): SV_TARGET
         {
-            return IN.color * main_tex.Sample(main_sampler, IN.uv);
+            return main_tex.Sample(main_sampler, IN.uv) * IN.color;
         }
     }
 }
