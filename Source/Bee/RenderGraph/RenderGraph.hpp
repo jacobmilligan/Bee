@@ -59,9 +59,9 @@ struct RenderGraphStorage
 
     RenderPassHandle (*get_gpu_pass)(RenderGraphPass* pass) { nullptr };
 
-    Extent (*get_backbuffer_size)(RenderGraphPass* pass, const RenderGraphResource& handle) { nullptr };
+    Extent (*get_backbuffer_size)(RenderGraphPass* pass) { nullptr };
 
-    RenderRect (*get_backbuffer_rect)(RenderGraphPass* pass, const RenderGraphResource& handle) { nullptr };
+    RenderRect (*get_backbuffer_rect)(RenderGraphPass* pass) { nullptr };
 
     DeviceHandle (*get_device)(RenderGraphPass* pass) { nullptr };
 };
@@ -106,6 +106,8 @@ struct RenderGraphBuilderModule
     void (*write_color)(RenderGraphPass* pass, const RenderGraphResource& texture, const LoadOp load, const StoreOp store, const u32 samples) { nullptr };
 
     void (*write_depth)(RenderGraphPass* pass, const RenderGraphResource& texture, const PixelFormat depth_format, const LoadOp load, const StoreOp store) { nullptr };
+
+    void (*write_resolve)(RenderGraphPass* pass, const RenderGraphResource& dst_texture, const LoadOp load, const StoreOp store, const u32 samples) { nullptr };
 };
 
 #define BEE_RENDER_GRAPH_MODULE_NAME "BEE_RENDER_GRAPH"
@@ -165,6 +167,26 @@ struct RenderGraphModule
         desc.external_data_size = 0;
         desc.external_data = nullptr;
         desc.pass_data_size = sizeof(PassDataType);
+        desc.init = init_pass;
+        desc.destroy = destroy_pass;
+        desc.setup = setup_pass;
+        desc.execute = execute_pass;
+        return add_static_pass(graph, desc);
+    }
+
+    inline RenderGraphPass* add_pass(
+        RenderGraph* graph,
+        const char* name,
+        render_graph_setup_pass_t setup_pass,
+        render_graph_execute_pass_t execute_pass,
+        render_graph_init_pass_t init_pass = nullptr,
+        render_graph_init_pass_t destroy_pass = nullptr
+    )
+    {
+        RenderGraphPassDesc desc{};
+        desc.external_data_size = 0;
+        desc.external_data = nullptr;
+        desc.pass_data_size = 0;
         desc.init = init_pass;
         desc.destroy = destroy_pass;
         desc.setup = setup_pass;

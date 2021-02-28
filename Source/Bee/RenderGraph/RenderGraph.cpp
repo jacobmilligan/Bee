@@ -96,6 +96,23 @@ struct PooledResource
     };
 };
 
+enum class SubPassAttachmentType
+{
+    input,
+    color,
+    resolve,
+    preserve,
+    depth_stencil,
+    unknown,
+};
+
+BEE_TRANSLATION_TABLE_FUNC(convert_subpass_attachment_type, AttachmentType, SubPassAttachmentType, static_cast<int>(AttachmentType::present) + 1,
+    SubPassAttachmentType::color,           // undefined
+    SubPassAttachmentType::color,           // color
+    SubPassAttachmentType::depth_stencil,   // depth_stencil
+    SubPassAttachmentType::color,           // present
+);
+
 struct RenderGraphPass // NOLINT
 {
     RenderGraph*                        graph { nullptr };
@@ -107,14 +124,15 @@ struct RenderGraphPass // NOLINT
 
     i32                                 attachment_count { 0 };
     AttachmentDescriptor                attachments[BEE_GPU_MAX_ATTACHMENTS];
+    SubPassAttachmentType               subpass_attachment_types[BEE_GPU_MAX_ATTACHMENTS];
     RenderGraphResource                 attachment_rg_resources[BEE_GPU_MAX_ATTACHMENTS];
     TextureViewHandle                   attachment_textures[BEE_GPU_MAX_ATTACHMENTS];
 
     RenderGraphPassDesc                 desc;
     u8                                  external_data[rg_pass_data_capacity];
     u8                                  data[rg_pass_data_capacity];
-    bool                                has_transitioned_resources { false };
     bool                                enabled { true };
+    RenderGraphResource                 backbuffer;
 };
 
 struct RenderGraph
@@ -209,9 +227,15 @@ RenderPassHandle get_gpu_pass(RenderGraphPass* pass)
     return pass->handle;
 }
 
-Extent get_backbuffer_size(RenderGraphPass* pass, const RenderGraphResource& handle)
+Extent get_backbuffer_size(RenderGraphPass* pass)
 {
-    const auto index = sign_cast<i32>(handle.index());
+    if (!pass->backbuffer.is_valid())
+    {
+        log_error("Pass %s has not imported a backbuffer resource", pass->desc.name);
+        return Extent{};
+    }
+
+    const auto index = sign_cast<i32>(pass->backbuffer.index());
     if (BEE_FAIL_F(index < pass->graph->virtual_resources.size(), "Invalid resource handle"))
     {
         return Extent{};
@@ -226,9 +250,15 @@ Extent get_backbuffer_size(RenderGraphPass* pass, const RenderGraphResource& han
     return backend->get_swapchain_extent(pass->graph->device, pass->graph->virtual_resources[index].backbuffer.swapchain);
 }
 
-RenderRect get_backbuffer_rect(RenderGraphPass* pass, const RenderGraphResource& handle)
+RenderRect get_backbuffer_rect(RenderGraphPass* pass)
 {
-    const auto index = sign_cast<i32>(handle.index());
+    if (!pass->backbuffer.is_valid())
+    {
+        log_error("Pass %s has not imported a backbuffer resource", pass->desc.name);
+        return RenderRect{};
+    }
+
+    const auto index = sign_cast<i32>(pass->backbuffer.index());
     if (BEE_FAIL_F(index < pass->graph->virtual_resources.size(), "Invalid resource handle"))
     {
         return RenderRect{};
@@ -284,7 +314,7 @@ inline RenderGraphResource add_resource(RenderGraph* graph, const char* name, co
     auto& resource = graph->virtual_resources.back();
     resource.hash = get_hash(create_info_or_handle);
     resource.name = name;
-    resource.handle = RenderGraphResource(index, underlying_t(type));
+    resource.handle = RenderGraphResource(index, static_cast<u32>(type));
     resource.writer_passes.clear();
 
     switch(type)
@@ -345,7 +375,16 @@ RenderGraphResource import_texture(RenderGraphPass* pass, const char* name, cons
 
 RenderGraphResource import_backbuffer(RenderGraphPass* pass, const char* name, const SwapchainHandle& swapchain)
 {
-    return add_resource(pass->graph, name, RenderGraphResourceType::backbuffer, swapchain);
+    if (pass->backbuffer.is_valid())
+    {
+        auto& resource = pass->graph->virtual_resources[static_cast<int>(pass->backbuffer.index())];
+        log_error("A single RenderGraphPass cannot import multiple backbuffer resources: overwriting existing backbuffer %s with imported backbuffer %s", resource.name, name);
+        resource.backbuffer.swapchain = swapchain;
+        return pass->backbuffer;
+    }
+
+    pass->backbuffer = add_resource(pass->graph, name, RenderGraphResourceType::backbuffer, swapchain);
+    return pass->backbuffer;
 }
 
 void write_resource(RenderGraphPass* pass, const RenderGraphResource& resource)
@@ -367,7 +406,7 @@ void rg_read_resource(RenderGraphPass* pass, const RenderGraphResource& resource
     pass->reads.push_back(resource);
 }
 
-bool add_attachment(RenderGraphPass* pass, const RenderGraphResource& texture, const AttachmentDescriptor& desc)
+bool add_attachment(RenderGraphPass* pass, const RenderGraphResource& texture, const AttachmentDescriptor& desc, const SubPassAttachmentType subpass_type)
 {
     BEE_ASSERT(pass != nullptr);
 
@@ -389,6 +428,7 @@ bool add_attachment(RenderGraphPass* pass, const RenderGraphResource& texture, c
     }
 
     pass->attachments[pass->attachment_count] = desc;
+    pass->subpass_attachment_types[pass->attachment_count] = subpass_type;
     pass->attachment_rg_resources[pass->attachment_count] = texture;
     ++pass->attachment_count;
     return true;
@@ -405,7 +445,7 @@ void write_color(RenderGraphPass* pass, const RenderGraphResource& texture, cons
     desc.store_op = store;
     desc.samples = samples;
 
-    if (add_attachment(pass, texture, desc))
+    if (add_attachment(pass, texture, desc, SubPassAttachmentType::color))
     {
         write_resource(pass, texture);
     }
@@ -423,9 +463,26 @@ void write_depth(RenderGraphPass* pass, const RenderGraphResource& texture, cons
     desc.store_op = store;
     desc.samples = 1;
 
-    if (add_attachment(pass, texture, desc))
+    if (add_attachment(pass, texture, desc, SubPassAttachmentType::depth_stencil))
     {
         write_resource(pass, texture);
+    }
+}
+
+void write_resolve(RenderGraphPass* pass, const RenderGraphResource& dst_texture, const LoadOp load, const StoreOp store, const u32 samples)
+{
+    BEE_ASSERT(dst_texture != RenderGraphResourceType::buffer && dst_texture != RenderGraphResourceType::imported_buffer);
+
+    AttachmentDescriptor desc{};
+    desc.type = dst_texture == RenderGraphResourceType::backbuffer ? AttachmentType::present : AttachmentType::color;
+    desc.format = PixelFormat::unknown;
+    desc.load_op = load;
+    desc.store_op = store;
+    desc.samples = samples;
+
+    if (add_attachment(pass, dst_texture, desc, SubPassAttachmentType::resolve))
+    {
+        write_resource(pass, dst_texture);
     }
 }
 
@@ -447,7 +504,6 @@ RenderGraphPass* add_static_pass(RenderGraph* graph, const RenderGraphPassDesc& 
     auto* pass = BEE_NEW(g_data->pass_allocator, RenderGraphPass);
     graph->virtual_passes.push_back(pass);
 
-    pass->has_transitioned_resources = false;
     pass->attachment_count = 0;
     pass->reads.clear();
     pass->write_count = 0;
@@ -511,7 +567,7 @@ void import_render_pass(RenderGraphPass* pass, const RenderPassHandle& handle, c
         BEE_ASSERT_F(!has_depth_stencil || !is_depth_stencil_format(attachments[i].format), "Multiple depth stencil attachments specified in RenderPass");
         BEE_ASSERT(resources[i] != RenderGraphResourceType::imported_buffer && resources[i] != RenderGraphResourceType::buffer);
 
-        if (add_attachment(pass, resources[i], attachments[i]))
+        if (add_attachment(pass, resources[i], attachments[i], SubPassAttachmentType::unknown))
         {
             write_resource(pass, resources[i]);
             if (is_depth_stencil_format(attachments[i].format))
@@ -649,15 +705,18 @@ static void resolve_resource(RenderGraph* graph, VirtualResource* src)
     if (index >= 0)
     {
         resource = &graph->resource_pool[index];
+        src->pool_index = index;
     }
     else
     {
         // create a new pooled resource
+        src->pool_index = graph->resource_pool.size();
         graph->resource_pool.push_back_no_construct();
 
         resource = &graph->resource_pool.back();
         resource->hash = src->hash;
         resource->type = static_cast<RenderGraphResourceType>(src->handle.type());
+        resource->state = GpuResourceState::undefined;
 
         if (resource->type == RenderGraphResourceType::buffer)
         {
@@ -692,16 +751,14 @@ static void resolve_resource(RenderGraph* graph, VirtualResource* src)
         src->texture.handle = resource->texture.handle;
         src->texture.view_handle = resource->texture.view_handle;
     }
-
-    src->pool_index = index;
 }
 
 static void resolve_pass(RenderGraph* graph, RenderGraphPass* pass)
 {
-    if (pass->handle.is_valid())
-    {
-        return;
-    }
+//    if (pass->handle.is_valid())
+//    {
+//        return;
+//    }
 
     auto* backend = graph->backend;
 
@@ -727,37 +784,60 @@ static void resolve_pass(RenderGraph* graph, RenderGraphPass* pass)
 
         BEE_ASSERT(pass->attachment_textures[i].is_valid());
 
-        switch (pass->attachments[i].type)
+        auto subpass_type = pass->subpass_attachment_types[i];
+        if (subpass_type == SubPassAttachmentType::unknown)
         {
-            case AttachmentType::present:
-            case AttachmentType::color:
+            subpass_type = convert_subpass_attachment_type(pass->attachments[i].type);
+        }
+
+        if (subpass_type == SubPassAttachmentType::depth_stencil)
+        {
+            subpass.depth_stencil = sign_cast<u32>(i);
+        }
+        else
+        {
+            // Resolve the pixel format for the color attachment from the texture
+            auto& resource = graph->virtual_resources[sign_cast<i32>(pass->attachment_rg_resources[i].index())];
+
+            // use the GPU backend to get the format instead of the create_info because this may be an imported texture
+            if (resource.handle == RenderGraphResourceType::backbuffer)
+            {
+                pass_info.attachments[i].format = backend->get_swapchain_texture_format(graph->device, resource.backbuffer.swapchain);
+            }
+            else
+            {
+                pass_info.attachments[i].format = backend->get_texture_format(graph->device, resource.texture.handle);
+            }
+        }
+
+        switch (subpass_type)
+        {
+            case SubPassAttachmentType::input:
+            {
+                ++subpass.input_attachments.size;
+                subpass.input_attachments[subpass.input_attachments.size - 1] = sign_cast<u32>(i);
+                break;
+            }
+
+            case SubPassAttachmentType::color:
             {
                 ++subpass.color_attachments.size;
                 subpass.color_attachments[subpass.color_attachments.size - 1] = sign_cast<u32>(i);
-
-                // Resolve the pixel format for the color attachment from the texture
-                auto& resource = graph->virtual_resources[sign_cast<i32>(pass->attachment_rg_resources[i].index())];
-
-                // use the GPU backend to get the format instead of the create_info because this may be an imported texture
-                if (resource.handle == RenderGraphResourceType::backbuffer)
-                {
-                    pass_info.attachments[i].format = backend->get_swapchain_texture_format(graph->device, resource.backbuffer.swapchain);
-                }
-                else
-                {
-                    pass_info.attachments[i].format = backend->get_texture_format(graph->device, resource.texture.handle);
-                }
                 break;
             }
-            case AttachmentType::depth_stencil:
+            case SubPassAttachmentType::resolve:
             {
-                subpass.depth_stencil = sign_cast<u32>(i);
+                ++subpass.resolve_attachments.size;
+                subpass.resolve_attachments[subpass.resolve_attachments.size - 1] = sign_cast<u32>(i);
                 break;
             }
-            default:
+            case SubPassAttachmentType::preserve:
             {
-                BEE_UNREACHABLE("Invalid attachment type");
+                ++subpass.preserve_attachments.size;
+                subpass.preserve_attachments[subpass.preserve_attachments.size - 1] = sign_cast<u32>(i);
+                break;
             }
+            default: break;
         }
     }
 
@@ -786,6 +866,7 @@ void setup(RenderGraph* graph)
 {
     for (auto* pass : graph->virtual_passes)
     {
+        pass->backbuffer = RenderGraphResource{};
         pass->desc.setup(pass, &g_builder_module, pass->external_data, pass->data);
     }
 }
@@ -810,8 +891,8 @@ static void execute_pass_job(RenderGraphPass* pass)
         if (type != RenderGraphResourceType::backbuffer)
         {
             BEE_ASSERT(pass->graph->virtual_resources[index].pool_index >= 0);
-            transition.old_state = resource->state;
             resource = &pass->graph->resource_pool[pass->graph->virtual_resources[index].pool_index];
+            transition.old_state = resource->state;
             BEE_ASSERT(resource->type == type);
         }
 
@@ -1047,6 +1128,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     bee::g_builder_module.import_backbuffer = bee::import_backbuffer;
     bee::g_builder_module.write_color = bee::write_color;
     bee::g_builder_module.write_depth = bee::write_depth;
+    bee::g_builder_module.write_resolve = bee::write_resolve;
 
     // RenderGraphModule
     bee::g_module.create_graph = bee::create_graph;
