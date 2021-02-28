@@ -155,13 +155,13 @@ using AssetDatabaseResult = Result<T, AssetDatabaseError>;
 
 struct AssetDatabaseModule
 {
-    AssetDatabase* (*open)(const Path& location) { nullptr };
+    AssetDatabase* (*open)(const PathView& location) { nullptr };
 
     void (*close)(AssetDatabase* db) { nullptr };
 
     bool (*is_open)(AssetDatabase* db) { nullptr };
 
-    const Path& (*location)(AssetDatabase* db) { nullptr };
+    PathView (*location)(AssetDatabase* db) { nullptr };
 
     // Call at regular intervals to garbage-collect old transaction memory
     void (*gc)(AssetDatabase* db) { nullptr };

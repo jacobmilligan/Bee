@@ -19,19 +19,19 @@ TEST(ArrayTests, array_constructors_work)
     arr[0] = 23;
     auto arr2 = arr;
     // Check copy assignment
-    ASSERT_TRUE(arr2[0] == 23);
+    ASSERT_EQ(arr2[0], 23);
     auto arr3 = std::move(arr2);
     // Check move assignment
-    ASSERT_TRUE(arr3[0] == 23);
-    ASSERT_TRUE(arr2.data() == nullptr);
-    ASSERT_TRUE(arr2.capacity() == 0);
+    ASSERT_EQ(arr3[0], 23);
+    ASSERT_EQ(arr2.data(), nullptr);
+    ASSERT_EQ(arr2.capacity(), 0);
 
     bee::DynamicArray<int> arr4(arr3);
-    ASSERT_TRUE(arr4[0] == 23); // check copy constructor
+    ASSERT_EQ(arr4[0], 23); // check copy constructor
     bee::DynamicArray<int> arr5(std::move(arr4));
-    ASSERT_TRUE(arr5[0] == 23); // check move constructor
-    ASSERT_TRUE(arr4.data() == nullptr);
-    ASSERT_TRUE(arr4.capacity() == 0);
+    ASSERT_EQ(arr5[0], 23); // check move constructor
+    ASSERT_EQ(arr4.data(), nullptr);
+    ASSERT_EQ(arr4.capacity(), 0);
 }
 
 TEST(ArrayTests, array_resizes_correctly)
@@ -39,11 +39,11 @@ TEST(ArrayTests, array_resizes_correctly)
     bee::MallocAllocator allocator;
     bee::DynamicArray<int> arr(5, 0, &allocator);
     arr[4] = 23;
-    ASSERT_TRUE(arr.capacity() == 5);
+    ASSERT_EQ(arr.capacity(), 5);
 
     arr.resize(10);
-    ASSERT_TRUE(arr[4] == 23);
-    ASSERT_TRUE(arr.capacity() == 10);
+    ASSERT_EQ(arr[4], 23);
+    ASSERT_EQ(arr.capacity(), 10);
 }
 
 TEST(ArrayTests, array_pushes_and_pops_correctly)
@@ -53,18 +53,18 @@ TEST(ArrayTests, array_pushes_and_pops_correctly)
     for (int i = 0; i < 50; i++) {
         arr.push_back(i);
     }
-    ASSERT_TRUE(arr.size() == 50);
-    ASSERT_TRUE(arr.capacity() == 64);
+    ASSERT_EQ(arr.size(), 50);
+    ASSERT_EQ(arr.capacity(), 63);
     for (int i = 0; i < 50; i++) {
-        ASSERT_TRUE(arr[i] == i);
+        ASSERT_EQ(arr[i], i);
     }
 
     for (int i = 0; i < 50; i++) {
         arr.pop_back();
     }
 
-    ASSERT_TRUE(arr.size() == 0);
-    ASSERT_TRUE(arr.capacity() == 64);
+    ASSERT_EQ(arr.size(), 0);
+    ASSERT_EQ(arr.capacity(), 63);
 }
 
 TEST(ArrayTests, array_emplaces_correctly)
@@ -75,10 +75,10 @@ TEST(ArrayTests, array_emplaces_correctly)
         auto val = i;
         arr.emplace_back(val);
     }
-    ASSERT_TRUE(arr.size() == 50);
-    ASSERT_TRUE(arr.capacity() == 64);
+    ASSERT_EQ(arr.size(), 50);
+    ASSERT_EQ(arr.capacity(), 63);
     for (int i = 0; i < 50; i++) {
-        ASSERT_TRUE(arr[i] == i);
+        ASSERT_EQ(arr[i], i);
     }
 }
 
@@ -92,9 +92,9 @@ TEST(ArrayTests, array_range_based_for_works)
 
     int count = 0;
     for (auto& i : arr) {
-        ASSERT_TRUE(i == count++);
+        ASSERT_EQ(i, count++);
     }
-    ASSERT_TRUE(count = 50);
+    ASSERT_EQ(count, 50);
 }
 
 struct TestDestruct {

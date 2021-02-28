@@ -5,7 +5,7 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/AssetPipelineV2/AssetDatabase.inl"
+#include "Bee/AssetPipeline/AssetDatabase.inl"
 
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Serialization/BinarySerializer.hpp"
@@ -271,7 +271,7 @@ static AssetDatabase::ThreadData& db_get_thread(AssetDatabase* db)
 
 static unsigned int db_get_dbi(AssetDatabase* db, const DbMapId id)
 {
-    return db->db_maps[underlying_t(id)];
+    return db->db_maps[static_cast<int>(id)];
 }
 
 static void db_txn_list_append(AssetTxnData** list, AssetTxnData* item)
@@ -391,18 +391,18 @@ bool ScopedTxn::put(const DbMapId id, MDB_val* key, MDB_val* val, const unsigned
  */
 void close(AssetDatabase* db);
 
-AssetDatabase* open(const Path& location)
+AssetDatabase* open(const PathView& location)
 {
-    const auto dir = location.parent_path();
+    const auto dir = location.parent();
 
-    if (BEE_FAIL_F(dir.exists(), "Cannot open AssetDB: directory \"%s\" does not exist", dir.c_str()))
+    if (BEE_FAIL_F(dir.exists(), "Cannot open AssetDB: directory \"%" BEE_PRIsv "\" does not exist", BEE_FMT_SV(dir)))
     {
         return nullptr;
     }
 
     auto* db = BEE_NEW(system_allocator(), AssetDatabase);
     db->location.append(location);
-    db->artifacts_root.append(location.parent_view()).append("Artifacts");
+    db->artifacts_root.append(location.parent()).append("Artifacts");
     db->thread_data.resize(job_system_worker_count());
 
     for (auto& thread : db->thread_data)
@@ -420,7 +420,7 @@ AssetDatabase* open(const Path& location)
     const auto result = mdb_env_set_assert(db->env, &lmdb_assert_callback);
     BEE_LMDB_ASSERT(result);
 
-    if (BEE_LMDB_FAIL(mdb_env_set_maxdbs(db->env, underlying_t(DbMapId::count))))
+    if (BEE_LMDB_FAIL(mdb_env_set_maxdbs(db->env, static_cast<int>(DbMapId::count))))
     {
         close(db);
         return nullptr;
@@ -507,9 +507,9 @@ bool is_open(AssetDatabase* db)
     return db->env != nullptr;
 }
 
-const Path& location(AssetDatabase* db)
+PathView location(AssetDatabase* db)
 {
-    return db->location;
+    return db->location.view();
 }
 
 void gc(AssetDatabase* db)
@@ -916,13 +916,14 @@ Result<u128, AssetDatabaseError> add_artifact_with_key(AssetTxn* txn, const GUID
 
     if (!artifact_path.exists())
     {
-        auto artifact_dir = artifact_path.parent_path(tmp_alloc);
+        auto artifact_dir = artifact_path.parent();
         if (!artifact_dir.exists())
         {
             fs::mkdir(artifact_dir, true);
         }
 
-        if (!fs::write(artifact_path, buffer, buffer_size))
+        auto file = fs::open_file(artifact_path.view(), fs::OpenMode::write);
+        if (!fs::write(file, buffer, buffer_size))
         {
             return { AssetDatabaseError::failed_to_write_artifact_to_disk };
         }
@@ -966,7 +967,7 @@ Result<void, AssetDatabaseError> remove_artifact(AssetTxn* txn, const GUID guid,
         return { AssetDatabaseError::lmdb_error };
     }
 
-    if (remaining_artifacts <= 0)
+    if (remaining_artifacts > 0)
     {
         return {};
     }
@@ -975,9 +976,25 @@ Result<void, AssetDatabaseError> remove_artifact(AssetTxn* txn, const GUID guid,
     TempAllocScope tmp_alloc(txn_data->db);
     Path artifact_path(tmp_alloc);
     get_artifact_path(txn, hash, &artifact_path);
-    if (!fs::remove(artifact_path))
+    if (!fs::remove(artifact_path.view()))
     {
         return { AssetDatabaseError::failed_to_write_artifact_to_disk };
+    }
+
+    // Remove the directory if this is the last artifact file remaining
+    bool is_empty_artifact_dir = true;
+    for (const auto path : fs::read_dir(artifact_path.parent()))
+    {
+        if (fs::is_file(path))
+        {
+            is_empty_artifact_dir = false;
+            break;
+        }
+    }
+
+    if (is_empty_artifact_dir)
+    {
+        fs::rmdir(artifact_path.parent(), true);
     }
 
     return {};

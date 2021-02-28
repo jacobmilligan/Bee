@@ -223,8 +223,8 @@ TEST(AllocatorTests, ChunkAllocator)
 
     bee::DynamicArray<TestData> array(&allocator);
 
-    for (int i = 0; i < bee::megabytes(4) / sizeof(TestData); ++i)
+    while (array.growth_rate() * sizeof(TestData) <= bee::megabytes(4))
     {
-        array.push_back(TestData{});
+        ASSERT_NO_FATAL_FAILURE(array.push_back(TestData{}));
     }
 }

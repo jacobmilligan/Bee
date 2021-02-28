@@ -160,27 +160,27 @@ String Document::get_error_string() const
     switch (parse_error_.code) {
         case ErrorCode::unexpected_character:
         {
-            io::write_fmt(&error, "unexpected character '%c'", parse_error_.current);
+            str::format(&error, "unexpected character '%c'", parse_error_.current);
             break;
         }
         case ErrorCode::expected_character:
         {
-            io::write_fmt(&error, "unexpected character '%c'. Expected '%c' instead", parse_error_.current, parse_error_.arg);
+            str::format(&error, "unexpected character '%c'. Expected '%c' instead", parse_error_.current, parse_error_.arg);
             break;
         }
         case ErrorCode::out_of_memory:
         {
-            io::write_fmt(&error, "unable to allocate memory for JSON value - out of memory");
+            str::format(&error, "unable to allocate memory for JSON value - out of memory");
             break;
         }
         case ErrorCode::expected_multiline_end:
         {
-            io::write_fmt(&error, "expected to see a multiline end sequence (''')");
+            str::format(&error, "expected to see a multiline end sequence (''')");
             break;
         }
         case ErrorCode::invalid_escape_sequence:
         {
-            io::write_fmt(
+            str::format(
                 &error,
                 "invalid escape sequence. expected one of '\\', '/', '\\n', '\\b', '\\f', '\\r', '\\t', '\\u' "
                 "but found '\\%c' instead",
@@ -190,22 +190,22 @@ String Document::get_error_string() const
         }
         case ErrorCode::number_missing_decimal:
         {
-            io::write_fmt(&error, "found '.' but number was missing a decimal part");
+            str::format(&error, "found '.' but number was missing a decimal part");
             break;
         }
         case ErrorCode::numer_invalid_exponent:
         {
-            io::write_fmt(&error, "found 'e' or 'E' but number was missing an exponent part");
+            str::format(&error, "found 'e' or 'E' but number was missing an exponent part");
             break;
         }
         case ErrorCode::invalid_allocation_data:
         {
-            io::write_fmt(&error, "value allocation data was corrupt or invalid");
+            str::format(&error, "value allocation data was corrupt or invalid");
             break;
         }
         case ErrorCode::expected_whitespace_separator:
         {
-            io::write_fmt(
+            str::format(
                 &error,
                 "expected whitespace character for member or element separator (`require_commas` == false) "
                 "but found '%c' instead",
@@ -215,7 +215,7 @@ String Document::get_error_string() const
         }
         default:
         {
-            io::write_fmt(&error, "unknown error");
+            str::format(&error, "unknown error");
         }
     }
 
@@ -1094,7 +1094,7 @@ void write_to_string(String* dst, const Document& src_doc, const i32 indent)
 
 void write_indent(String* dst, const i32 indent_size, const i32 indent_count)
 {
-    io::write_fmt(dst, "%*s", indent_size * indent_count, "");
+    str::format(dst, "%*s", indent_size * indent_count, "");
 }
 
 void visit(const ValueHandle& handle, String* dst, const Document& src_doc, const i32 indent, const i32 depth)
@@ -1104,13 +1104,13 @@ void visit(const ValueHandle& handle, String* dst, const Document& src_doc, cons
     {
         case ValueType::object:
         {
-            io::write_fmt(dst, "{\n");
+            str::format(dst, "{\n");
             for (auto& member : src_doc.get_members_range(handle))
             {
                 // Key
                 write_indent(dst, indent, depth);
-                io::write_fmt(dst, "\"%s\"", member.key);
-                io::write_fmt(dst, ": ");
+                str::format(dst, "\"%s\"", member.key);
+                str::format(dst, ": ");
                 // Value
                 visit(member.value, dst, src_doc, indent, depth + 1);
                 dst->append(",\n");
@@ -1118,14 +1118,14 @@ void visit(const ValueHandle& handle, String* dst, const Document& src_doc, cons
             // remove the last comma
             dst->remove(dst->size() - 2);
 
-            io::write_fmt(dst, "\n");
+            str::format(dst, "\n");
             write_indent(dst, indent, depth - 1);
-            io::write_fmt(dst, "}");
+            str::format(dst, "}");
             break;
         }
         case ValueType::array:
         {
-            io::write_fmt(dst, "[\n");
+            str::format(dst, "[\n");
             for (auto elem : src_doc.get_elements_range(handle))
             {
                 write_indent(dst, indent, depth);
@@ -1135,31 +1135,31 @@ void visit(const ValueHandle& handle, String* dst, const Document& src_doc, cons
             // remove the last comma
             dst->remove(dst->size() - 2);
 
-            io::write_fmt(dst, "\n");
+            str::format(dst, "\n");
             write_indent(dst, indent, depth - 1);
-            io::write_fmt(dst, "]");
+            str::format(dst, "]");
             break;
         }
         case ValueType::string:
         {
             auto escaped = String(value.as_string());
             str::replace(&escaped, "\n", "\\n");
-            io::write_fmt(dst, "\"%s\"", escaped.c_str());
+            str::format(dst, "\"%s\"", escaped.c_str());
             break;
         }
         case ValueType::number:
         {
-            io::write_fmt(dst, "%.*g", DBL_DECIMAL_DIG, value.as_number());
+            str::format(dst, "%.*g", DBL_DECIMAL_DIG, value.as_number());
             break;
         }
         case ValueType::boolean:
         {
-            io::write_fmt(dst, value.as_boolean() ? "true" : "false");
+            str::format(dst, value.as_boolean() ? "true" : "false");
             break;
         }
         case ValueType::null:
         {
-            io::write_fmt(dst, "null");
+            str::format(dst, "null");
             break;
         }
         case ValueType::unknown:

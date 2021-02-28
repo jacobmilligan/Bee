@@ -25,7 +25,12 @@
 namespace bee {
 
 
-bool create_process(const CreateProcessInfo& info, const Path& working_directory)
+bool create_process(const CreateProcessInfo& info)
+{
+    return create_process(info, current_working_directory());
+}
+
+bool create_process(const CreateProcessInfo& info, const PathView& working_directory)
 {
     BEE_ASSERT(info.handle != nullptr);
 
@@ -72,7 +77,7 @@ bool create_process(const CreateProcessInfo& info, const Path& working_directory
         creation_flags |= DETACHED_PROCESS;
     }
 
-    STARTUPINFO startup_info{};
+    STARTUPINFOW startup_info{};
     startup_info.cb = sizeof(STARTUPINFO);
     startup_info.lpReserved = nullptr;
     startup_info.lpDesktop = nullptr;
@@ -102,15 +107,19 @@ bool create_process(const CreateProcessInfo& info, const Path& working_directory
     String temp_args(info.command_line == nullptr ? "" : info.command_line, temp_allocator());
 
     PROCESS_INFORMATION proc_info{};
-    const auto result = CreateProcess(
-        info.program,
-        temp_args.data(),
+    auto cwd_u16s = str::to_wchar<1024>(working_directory.string_view());
+    auto prog_u16s = str::to_wchar<1024>(info.program);
+    auto args_u16s = str::to_wchar(info.command_line == nullptr ? "" : info.command_line, temp_allocator());
+
+    const auto result = ::CreateProcessW(
+        prog_u16s.data,
+        args_u16s.data(),
         &attributes,
         &attributes,
         TRUE,
         creation_flags,
         nullptr,
-        working_directory.c_str(),
+        cwd_u16s.data,
         &startup_info,
         &proc_info
     );
@@ -175,7 +184,7 @@ String read_process(const ProcessHandle& process)
     BEE_ASSERT(process.read_pipe != nullptr);
 
     DWORD bytes_available{};
-    auto success = PeekNamedPipe(process.read_pipe, nullptr, 0, nullptr, &bytes_available, nullptr);
+    auto success = ::PeekNamedPipe(process.read_pipe, nullptr, 0, nullptr, &bytes_available, nullptr);
     if (success == 0 || bytes_available <= 0)
     {
         return "";
@@ -184,7 +193,7 @@ String read_process(const ProcessHandle& process)
     String result(sign_cast<i32>(bytes_available), '\0');
 
     DWORD bytes_read = 0;
-    success = ReadFile(process.read_pipe, result.data(), bytes_available, &bytes_read, nullptr);
+    success = ::ReadFile(process.read_pipe, result.data(), bytes_available, &bytes_read, nullptr);
     if (BEE_FAIL_F(success != 0, "Failed to read from process: %s", win32_get_last_error_string()))
     {
         return "";
@@ -199,7 +208,7 @@ i32 write_process(const ProcessHandle& process, const StringView& data)
     BEE_ASSERT(process.write_pipe != nullptr);
 
     DWORD bytes_written = 0;
-    const auto success = WriteFile(process.write_pipe, data.data(), sign_cast<u32>(data.size()), &bytes_written, nullptr);
+    const auto success = ::WriteFile(process.write_pipe, data.data(), sign_cast<u32>(data.size()), &bytes_written, nullptr);
     if (BEE_FAIL_F(success != 0, "Failed to write to process: %s", win32_get_last_error_string()))
     {
         return -1;
@@ -210,22 +219,35 @@ i32 write_process(const ProcessHandle& process, const StringView& data)
 
 bool get_environment_variable(const char* variable, String* dst)
 {
-    const auto size = GetEnvironmentVariable(variable, nullptr, 0);
+    auto u16s = str::to_wchar<256>(variable);
+    const auto size = ::GetEnvironmentVariableW(u16s.data, nullptr, 0);
 
     if (size == 0)
     {
         return false;
     }
 
-    dst->resize(size);
-    GetEnvironmentVariable(variable, dst->data(), dst->size());
+    auto u16_var = FixedArray<wchar_t>::with_size(size, temp_allocator());
+    ::GetEnvironmentVariableW(u16s.data, u16_var.data(), size);
+
+    str::from_wchar(dst, u16_var.data(), u16_var.size());
     return true;
 }
 
 i32 get_environment_variable(const char* variable, char* buffer, const i32 buffer_length)
 {
-    const auto size = GetEnvironmentVariable(variable, buffer, buffer_length);
-    return size == 0 ? -1 : size;
+    auto u16s = str::to_wchar<256>(variable);
+    const auto size = ::GetEnvironmentVariableW(u16s.data, nullptr, 0);
+
+    if (size == 0)
+    {
+        return false;
+    }
+
+    auto u16_var = FixedArray<wchar_t>::with_size(size, temp_allocator());
+    ::GetEnvironmentVariableW(u16s.data, u16_var.data(), size);
+
+    return str::from_wchar(buffer, buffer_length, u16_var.data(), u16_var.size());
 }
 
 

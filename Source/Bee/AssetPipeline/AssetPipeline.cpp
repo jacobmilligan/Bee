@@ -5,7 +5,7 @@
  *  Copyright (c) 2021 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/AssetPipelineV2/AssetPipeline.inl"
+#include "Bee/AssetPipeline/AssetPipeline.inl"
 
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"

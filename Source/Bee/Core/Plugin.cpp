@@ -126,7 +126,7 @@ static Plugin* get_loading_plugin()
     return g_registry->load_stack.back();
 }
 
-static bool is_temp_hot_reload_file(const Path& path)
+static bool is_temp_hot_reload_file(const PathView& path)
 {
     const auto ext = path.extension();
     if (ext != g_plugin_extension && ext != ".pdb")
@@ -210,7 +210,7 @@ static bool reload_plugin(Plugin* plugin)
     if (reload)
     {
         old_hot_reload_path.clear();
-        old_hot_reload_path.append(plugin->hot_reload_path);
+        old_hot_reload_path.append(plugin->hot_reload_path.view());
     }
 
     auto* desc = g_registry->descriptors.find(plugin->name);
@@ -229,12 +229,12 @@ static bool reload_plugin(Plugin* plugin)
     }
 
     plugin->hot_reload_path.clear();
-    plugin->hot_reload_path.append(plugin->library_path);
+    plugin->hot_reload_path.append(plugin->library_path.view());
     plugin->hot_reload_path.set_extension(timestamp.view());
     plugin->hot_reload_path.append_extension(plugin->library_path.extension());
 
     g_registry->directory_watcher.suspend();
-    const auto copy_success = fs::copy(plugin->library_path, plugin->hot_reload_path);
+    const auto copy_success = fs::copy(plugin->library_path.view(), plugin->hot_reload_path.view());
     g_registry->directory_watcher.resume();
 
     BEE_ASSERT_F(copy_success, "Failed to copy plugin to hot reload path at %s", plugin->hot_reload_path.c_str());
@@ -289,7 +289,7 @@ static bool reload_plugin(Plugin* plugin)
         if (old_hot_reload_path.exists())
         {
             g_registry->directory_watcher.suspend();
-            fs::remove(old_hot_reload_path);
+            fs::remove(old_hot_reload_path.view());
             g_registry->directory_watcher.resume();
         }
     }
@@ -354,7 +354,7 @@ static void unload_plugin(Plugin* plugin)
 
     if (plugin->hot_reload_path.exists())
     {
-        fs::remove(plugin->hot_reload_path);
+        fs::remove(plugin->hot_reload_path.view());
     }
 
     // Free the static data now the plugin is unloaded
@@ -432,7 +432,7 @@ static bool load_plugin_dependency(const StringView& name, const PluginVersion& 
     return true;
 }
 
-static void register_plugin(const Path& lib_path)
+static void register_plugin(const PathView& lib_path)
 {
     /*
      * skip registering any .dll or .pdb with the pattern <Name>.<timestamp>.<dll/pdb>
@@ -467,7 +467,7 @@ static void register_plugin(const Path& lib_path)
     g_registry->plugin_hashes.push_back(get_hash(name));
 }
 
-static void unregister_plugin(const Path& lib_path)
+static void unregister_plugin(const PathView& lib_path)
 {
     const i32 index = find_plugin(lib_path.stem());
     if (index < 0)
@@ -505,12 +505,12 @@ void refresh_plugins()
         {
             case fs::FileAction::added:
             {
-                register_plugin(event.file);
+                register_plugin(event.file.view());
                 break;
             }
             case fs::FileAction::removed:
             {
-                unregister_plugin(event.file);
+                unregister_plugin(event.file.view());
                 break;
             }
             case fs::FileAction::modified:
@@ -527,7 +527,7 @@ void refresh_plugins()
     }
 }
 
-void add_plugin_search_path(const Path& path)
+void add_plugin_search_path(const PathView& path)
 {
     for (const auto& file : fs::read_dir(path))
     {
@@ -536,12 +536,12 @@ void add_plugin_search_path(const Path& path)
     g_registry->directory_watcher.add_directory(path);
 }
 
-void remove_plugin_search_path(const Path& path)
+void remove_plugin_search_path(const PathView& path)
 {
     g_registry->directory_watcher.remove_directory(path);
 }
 
-static void read_plugin_descriptors(const Path& root)
+static void read_plugin_descriptors(const PathView& root)
 {
     for (auto& entry : fs::read_dir(root))
     {
@@ -553,7 +553,8 @@ static void read_plugin_descriptors(const Path& root)
 
         if (entry.extension() == ".plugin")
         {
-            auto contents = fs::read(entry);
+            auto file = fs::open_file(entry, fs::OpenMode::read);
+            auto contents = fs::read(file);
             PluginDescriptor descriptor;
             JSONSerializer serializer(contents.data(), JSONSerializeFlags::parse_in_situ);
             serialize(SerializerMode::reading, SerializerSourceFlags::all, &serializer, &descriptor);
@@ -561,7 +562,7 @@ static void read_plugin_descriptors(const Path& root)
             auto* existing = g_registry->descriptors.find(descriptor.name);
             if (existing != nullptr)
             {
-                log_error("Plugin descriptor at %s conflicts with descriptor already loaded at %s", entry.c_str(), existing->value.path.c_str());
+                log_error("Plugin descriptor at %" BEE_PRIsv " conflicts with descriptor already loaded at %s", BEE_FMT_SV(entry), existing->value.path.c_str());
             }
             else
             {
@@ -572,7 +573,7 @@ static void read_plugin_descriptors(const Path& root)
     }
 }
 
-static void remove_plugin_descriptors(const Path& root)
+static void remove_plugin_descriptors(const PathView& root)
 {
     DynamicArray<String> to_remove(temp_allocator());
 
@@ -590,9 +591,9 @@ static void remove_plugin_descriptors(const Path& root)
     }
 }
 
-void add_plugin_source_path(const Path& path)
+void add_plugin_source_path(const PathView& path)
 {
-    const int index = find_index(g_registry->source_paths, path);
+    const int index = find_index_if(g_registry->source_paths, [&](const Path& p) { return p == path; });
     if (index >= 0)
     {
         return;
@@ -602,9 +603,9 @@ void add_plugin_source_path(const Path& path)
     read_plugin_descriptors(path);
 }
 
-void remove_plugin_source_path(const Path& path)
+void remove_plugin_source_path(const PathView& path)
 {
-    const int index = find_index(g_registry->source_paths, path);
+    const int index = find_index_if(g_registry->source_paths, [&](const Path& p) { return p == path; });
     if (index >= 0)
     {
         return;
@@ -625,14 +626,14 @@ void* get_module(const StringView& name)
     return reinterpret_cast<u8*>(g_registry->modules[index].get()) + sizeof(ModuleHeader);
 }
 
-const Path* get_plugin_source_path(const StringView& name)
+PathView get_plugin_source_path(const StringView& name)
 {
     auto* desc = g_registry->descriptors.find(name);
     if (desc == nullptr)
     {
         return nullptr;
     }
-    return &desc->value.path;
+    return desc->value.path.view();
 }
 
 void* PluginLoader::get_static(const PluginStaticDataCallbacks& static_callbacks, const u32 hash, const size_t size, const size_t alignment)
@@ -740,7 +741,7 @@ void PluginLoader::remove_module_interface(const void* module)
     }
 }
 
-const Path* PluginLoader::get_source_path()
+PathView PluginLoader::get_source_path() const
 {
     return get_plugin_source_path(g_registry->load_stack.back()->name.view());
 }

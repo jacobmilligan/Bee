@@ -10,7 +10,7 @@
 #include "Bee/Core/Containers/StaticArray.hpp"
 #include "Bee/Core/Serialization/BinarySerializer.hpp"
 
-#include "Bee/AssetPipelineV2/AssetDatabase.hpp"
+#include "Bee/AssetPipeline/AssetDatabase.hpp"
 
 
 namespace bee {
@@ -127,8 +127,8 @@ struct AssetImportContext
     AssetDatabaseModule*    db { nullptr };
     AssetTxn*               txn { nullptr };
     DynamicArray<u8>*       artifact_buffer { nullptr };
-    StringView              path;
-    StringView              cache_root;
+    PathView                path;
+    PathView                cache_root;
     u32                     importer_hash { 0 };
     TypeInstance*           settings;
 
@@ -177,7 +177,7 @@ struct AssetImportContext
         AssetImportContext ctx{};
         memcpy(&ctx, this, sizeof(AssetImportContext));
         ctx.guid = sub_asset;
-        ctx.path = StringView{};
+        ctx.path = PathView{};
         return BEE_MOVE(ctx);
     }
 };
@@ -389,8 +389,8 @@ BEE_FLAGS(AssetPipelineFlags, u8)
 struct AssetPipelineImportInfo
 {
     StringView  name;
-    StringView  cache_root;
-    StringView* source_roots { nullptr };
+    PathView    cache_root;
+    PathView*   source_roots { nullptr };
     i32         source_root_count { 0 };
 };
 
@@ -429,13 +429,13 @@ struct AssetPipelineModule
      * Import API
      ***************
      */
-    Result<void, AssetPipelineError> (*import_asset)(AssetPipeline* pipeline, const StringView path, const AssetPlatform platform) { nullptr };
+    Result<void, AssetPipelineError> (*import_asset)(AssetPipeline* pipeline, const PathView& path, const AssetPlatform platform) { nullptr };
 
     Result<AssetDatabase*, AssetPipelineError> (*get_asset_database)(AssetPipeline* pipeline) { nullptr };
 
-    void (*add_import_root)(AssetPipeline* pipeline, const Path& path) { nullptr };
+    void (*add_import_root)(AssetPipeline* pipeline, const PathView& path) { nullptr };
 
-    void (*remove_import_root)(AssetPipeline* pipeline, const Path& path) { nullptr };
+    void (*remove_import_root)(AssetPipeline* pipeline, const PathView& path) { nullptr };
 
     /*
      ***************

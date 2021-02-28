@@ -64,9 +64,9 @@ struct ShaderCompilerModule
 
     void (*destroy)() { nullptr };
 
-    Result<void, ShaderCompilerError> (*compile_shader)(const StringView& source_path, const StringView& source, const ShaderTarget target, DynamicArray<Shader>* dst, Allocator* code_allocator) { nullptr };
+    Result<void, ShaderCompilerError> (*compile_shader)(const PathView& source_path, const StringView& source, const ShaderTarget target, DynamicArray<Shader>* dst, Allocator* code_allocator) { nullptr };
 
-    void (*disassemble_shader)(const StringView& source_path, const Shader& shader, String* dst) { nullptr };
+    void (*disassemble_shader)(const PathView& source_path, const Shader& shader, String* dst) { nullptr };
 };
 
 

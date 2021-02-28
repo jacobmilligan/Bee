@@ -17,7 +17,7 @@ bee_add_sources(
         GUID.hpp            GUID.cpp
         Handle.hpp
         Hash.hpp            Hash.cpp
-        IO.hpp              IO.cpp      IO.inl
+        IO.hpp              IO.cpp
         Logger.hpp          Logger.cpp
         Main.hpp
         Move.hpp

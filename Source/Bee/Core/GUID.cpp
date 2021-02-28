@@ -136,21 +136,21 @@ String guid_to_string(const GUID& guid, const GUIDFormat format, Allocator* allo
         default: break;
     }
 
-    io::write_fmt(&result, "%08x", *reinterpret_cast<const u32*>(guid.data));
+    str::format(&result, "%08x", *reinterpret_cast<const u32*>(guid.data));
     write_dash_if_needed(&result, format);
 
-    io::write_fmt(&result, "%04x", *reinterpret_cast<const u16*>(guid.data + 4));
+    str::format(&result, "%04x", *reinterpret_cast<const u16*>(guid.data + 4));
     write_dash_if_needed(&result, format);
 
-    io::write_fmt(&result, "%04x", *reinterpret_cast<const u16*>(guid.data + 6));
+    str::format(&result, "%04x", *reinterpret_cast<const u16*>(guid.data + 6));
     write_dash_if_needed(&result, format);
 
-    io::write_fmt(&result, "%04x", *reinterpret_cast<const u16*>(guid.data + 8));
+    str::format(&result, "%04x", *reinterpret_cast<const u16*>(guid.data + 8));
     write_dash_if_needed(&result, format);
 
     u64 last_group = 0;
     memcpy(&last_group, guid.data + 10, 6);
-    io::write_fmt(&result, "%012zx", last_group);
+    str::format(&result, "%012zx", last_group);
 
     switch (format)
     {

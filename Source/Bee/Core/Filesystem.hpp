@@ -11,6 +11,7 @@
 #include "Bee/Core/Handle.hpp"
 #include "Bee/Core/Atomic.hpp"
 #include "Bee/Core/Thread.hpp"
+#include "Bee/Core/IO.hpp"
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/Memory/SmartPointers.hpp"
 
@@ -27,11 +28,12 @@ enum class FileAction
     modified
 };
 
-BEE_FLAGS(FileAccess, u32)
+BEE_FLAGS(OpenMode, u32)
 {
     none    = 0u,
     read    = 1u << 0u,
-    write   = 1u << 1u
+    write   = 1u << 1u,
+    append  = 1u << 2u
 };
 
 
@@ -40,13 +42,13 @@ BEE_VERSIONED_HANDLE_32(DirectoryEntryHandle);
 class BEE_CORE_API DirectoryIterator
 {
 public:
-    using value_type        = Path;
-    using reference         = const Path&;
-    using pointer           = const Path*;
+    using value_type        = PathView;
+    using reference         = const PathView&;
+    using pointer           = const PathView*;
 
     DirectoryIterator() = default;
 
-    explicit DirectoryIterator(const Path& directory_path);
+    explicit DirectoryIterator(const PathView& directory_path);
 
     DirectoryIterator(const DirectoryIterator& other);
 
@@ -67,12 +69,10 @@ public:
         return !(*this == other);
     }
 private:
-    Path                    dir_;
+    PathView                path_;
     DirectoryEntryHandle    current_handle_;
 
     void copy_construct(const DirectoryIterator& other);
-
-    void init();
 
     void next();
 
@@ -108,9 +108,9 @@ public:
 
     void resume();
 
-    bool add_directory(const Path& path);
+    bool add_directory(const PathView& path);
 
-    void remove_directory(const Path& path);
+    void remove_directory(const PathView& path);
 
     void pop_events(DynamicArray<FileNotifyInfo>* dst);
 
@@ -140,9 +140,9 @@ private:
 
     void init(const ThreadCreateInfo& thread_info);
 
-    void add_event(const FileAction action, const StringView& relative_path, const i32 entry);
+    void add_event(const FileAction action, const PathView& relative_path, const i32 entry);
 
-    i32 find_entry(const Path& path);
+    i32 find_entry(const PathView& path);
 
     void finalize_removal(const i32 index);
 };
@@ -158,39 +158,76 @@ struct BeeRootDirs
     Path    installation;
 };
 
+struct BEE_CORE_API File final : public Noncopyable
+{
+    void*       handle { nullptr };
+    OpenMode    mode { OpenMode::none };
+
+    File() = default;
+
+    File(void* handle, const OpenMode open_mode)
+        : handle(handle),
+          mode(open_mode)
+    {}
+
+    File(File&& other) noexcept;
+
+    File& operator=(File&& other) noexcept;
+
+    ~File();
+
+    inline bool is_valid() const
+    {
+        return handle != nullptr && mode != OpenMode::none;
+    }
+
+    inline operator bool() const
+    {
+        return is_valid();
+    }
+};
+
 BEE_CORE_API void init_filesystem();
 
 BEE_CORE_API void shutdown_filesystem();
 
-BEE_CORE_API bool is_dir(const Path& path);
+BEE_CORE_API bool is_dir(const PathView& path);
 
-BEE_CORE_API bool is_file(const Path& path);
+BEE_CORE_API bool is_file(const PathView& path);
 
-BEE_CORE_API u64 last_modified(const Path& path);
+BEE_CORE_API u64 last_modified(const PathView& path);
 
-BEE_CORE_API String read(const Path& filepath, Allocator* allocator = system_allocator());
+BEE_CORE_API File open_file(const PathView& path, const OpenMode mode);
 
-BEE_CORE_API FixedArray<u8> read_bytes(const Path& filepath, Allocator* allocator = system_allocator());
+BEE_CORE_API void close_file(File* file);
 
-BEE_CORE_API bool write(const Path& filepath, const StringView& string_to_write);
+BEE_CORE_API i64 get_size(const File& file);
 
-BEE_CORE_API bool write(const Path& filepath, const void* buffer, const size_t buffer_size);
+BEE_CORE_API i64 tell(const File& file);
 
-BEE_CORE_API bool write_v(const Path& filepath, const char* fmt_string, va_list fmt_args);
+BEE_CORE_API i64 seek(const File& file, const i64 offset, const io::SeekOrigin origin);
 
-BEE_CORE_API bool remove(const Path& filepath);
+BEE_CORE_API i64 read(const File& file, const i64 size, void* buffer);
 
-BEE_CORE_API bool move(const Path& current_path, const Path& new_path);
+BEE_CORE_API String read(const File& file, Allocator* allocator = system_allocator());
 
-BEE_CORE_API bool copy(const Path& src_filepath, const Path& dst_filepath, bool overwrite = false);
+BEE_CORE_API FixedArray<u8> read_bytes(const File& file, Allocator* allocator = system_allocator());
 
-BEE_CORE_API bool mkdir(const StringView& directory_path, const bool recursive = false);
+BEE_CORE_API i64 write(const File& file, const StringView& string_to_write);
 
-BEE_CORE_API bool mkdir(const Path& directory_path, const bool recursive = false);
+BEE_CORE_API i64 write(const File& file, const void* buffer, const i64 buffer_size);
 
-BEE_CORE_API bool rmdir(const Path& directory_path, bool recursive = false);
+BEE_CORE_API bool remove(const PathView& filepath);
 
-BEE_CORE_API DirectoryIterator read_dir(const Path& directory);
+BEE_CORE_API bool move(const PathView& current_path, const PathView& new_path);
+
+BEE_CORE_API bool copy(const PathView& src_filepath, const PathView& dst_filepath, bool overwrite = false);
+
+BEE_CORE_API bool mkdir(const PathView& directory_path, const bool recursive = false);
+
+BEE_CORE_API bool rmdir(const PathView& path, const bool recursive = false);
+
+BEE_CORE_API DirectoryIterator read_dir(const PathView& directory);
 
 BEE_CORE_API DirectoryIterator begin(const DirectoryIterator& iterator);
 
@@ -217,12 +254,12 @@ BEE_CORE_API Path user_local_appdata_path();
  */
 struct MemoryMappedFile
 {
-    FileAccess  access { FileAccess::none };
+    OpenMode    mode { OpenMode::none };
     void*       data { nullptr };
     void*       handles[2] { nullptr };
 };
 
-BEE_CORE_API bool mmap_file_map(MemoryMappedFile* file, const Path& path, const FileAccess access);
+BEE_CORE_API bool mmap_file_map(MemoryMappedFile* file, const PathView& path, const OpenMode open_mode);
 
 BEE_CORE_API bool mmap_file_unmap(MemoryMappedFile* file);
 

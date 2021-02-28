@@ -96,7 +96,7 @@ public:
 
     void remove_module_interface(const void* module);
 
-    const Path* get_source_path();
+    PathView get_source_path() const;
 
     template <typename T, i32 Size, typename... ConstructorArgs>
     inline T* get_static(const char(&name)[Size], ConstructorArgs&&... args)
@@ -137,17 +137,17 @@ BEE_CORE_API void unload_plugin(const StringView& name);
 
 BEE_CORE_API void refresh_plugins();
 
-BEE_CORE_API void add_plugin_search_path(const Path& path);
+BEE_CORE_API void add_plugin_search_path(const PathView& path);
 
-BEE_CORE_API void remove_plugin_search_path(const Path& path);
+BEE_CORE_API void remove_plugin_search_path(const PathView& path);
 
-BEE_CORE_API void add_plugin_source_path(const Path& path);
+BEE_CORE_API void add_plugin_source_path(const PathView& path);
 
-BEE_CORE_API void remove_plugin_source_path(const Path& path);
+BEE_CORE_API void remove_plugin_source_path(const PathView& path);
 
 BEE_CORE_API void* get_module(const StringView& name);
 
-BEE_CORE_API const Path* get_plugin_source_path(const StringView& name);
+BEE_CORE_API PathView get_plugin_source_path(const StringView& name);
 
 
 } // namespace bee

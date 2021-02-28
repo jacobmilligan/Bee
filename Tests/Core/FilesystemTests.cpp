@@ -11,16 +11,16 @@
 
 TEST(FilesystemTests, appdata)
 {
-    const auto& engine_appdata = bee::fs::get_root_dirs();
-    ASSERT_STREQ(engine_appdata.data_root.filename().c_str(), "DevData");
-    ASSERT_TRUE(engine_appdata.binaries_root.filename() == "Debug" || engine_appdata.binaries_root.filename() == "Release");
-    ASSERT_STREQ(engine_appdata.logs_root.filename().c_str(), "Logs");
-    ASSERT_STREQ(engine_appdata.config_root.filename().c_str(), "Config");
+    const auto& engine_appdata = bee::fs::roots();
+    ASSERT_EQ(engine_appdata.data.filename(), "DevData");
+    ASSERT_TRUE(engine_appdata.binaries.filename() == "Debug" || engine_appdata.binaries.filename() == "Release");
+    ASSERT_EQ(engine_appdata.logs.filename(), "Logs");
+    ASSERT_EQ(engine_appdata.configs.filename(), "Config");
 
     const auto local_appdata = bee::fs::user_local_appdata_path();
 #if BEE_OS_WINDOWS == 1
-    ASSERT_STREQ(local_appdata.filename().c_str(), "Local");
-    ASSERT_STREQ(local_appdata.parent_path().filename().c_str(), "AppData");
+    ASSERT_EQ(local_appdata.filename(), "Local");
+    ASSERT_EQ(local_appdata.parent().filename(), "AppData");
 #endif // BEE_OS_WINDOWS == 1
 }
 
@@ -29,86 +29,106 @@ TEST(FilesystemTests, read_write_file)
     static constexpr auto test_string = "This is a test string";
     static constexpr bee::u8 test_bytes[] = { 1, 2, 3, 4, 5, 6 };
 
-    const auto filepath = bee::fs::get_root_dirs().data_root.join("TestFile.txt");
+    const auto filepath = bee::fs::roots().data.join("TestFile.txt");
 
     ASSERT_FALSE(filepath.exists());
-    ASSERT_TRUE(bee::fs::write(filepath, test_string));
-    ASSERT_TRUE(filepath.exists());
-
-    const auto read_string = bee::fs::read(filepath);
-    ASSERT_STREQ(read_string.c_str(), test_string);
-
-    ASSERT_TRUE(bee::fs::remove(filepath));
-
-    // Test writing bytes
-    ASSERT_TRUE(bee::fs::write(filepath, bee::Span<const bee::u8>(test_bytes)));
-    ASSERT_TRUE(filepath.exists());
-
-    const auto read_bytes = bee::fs::read_bytes(filepath);
-    ASSERT_EQ(read_bytes.size(), bee::static_array_length(test_bytes));
-    for (int b = 0; b < read_bytes.size(); ++b)
     {
-        ASSERT_EQ(read_bytes[b], test_bytes[b]);
+        auto file = bee::fs::open_file(filepath.view(), bee::fs::OpenMode::write);
+        ASSERT_TRUE(bee::fs::write(file, test_string));
+    }
+    ASSERT_TRUE(filepath.exists());
+
+    {
+        auto file = bee::fs::open_file(filepath.view(), bee::fs::OpenMode::read);
+        const auto read_string = bee::fs::read(file);
+        ASSERT_EQ(read_string, test_string);
     }
 
-    ASSERT_TRUE(bee::fs::remove(filepath));
+    ASSERT_TRUE(bee::fs::remove(filepath.view()));
+
+    // Test writing bytes
+    {
+        auto file = bee::fs::open_file(filepath.view(), bee::fs::OpenMode::write);
+        ASSERT_EQ(bee::fs::write(file, test_bytes, bee::static_array_length(test_bytes)), bee::static_array_length(test_bytes));
+        ASSERT_TRUE(filepath.exists());
+    }
+
+    {
+        auto file = bee::fs::open_file(filepath.view(), bee::fs::OpenMode::read);
+        const auto read_bytes = bee::fs::read_bytes(file);
+        ASSERT_EQ(read_bytes.size(), bee::static_array_length(test_bytes));
+        for (int b = 0; b < read_bytes.size(); ++b)
+        {
+            ASSERT_EQ(read_bytes[b], test_bytes[b]);
+        }
+    }
+
+    ASSERT_TRUE(bee::fs::remove(filepath.view()));
 }
 
 TEST(FilesystemTests, copy_file)
 {
     static constexpr auto test_string = "This is a test string";
-    const auto src_filepath = bee::fs::get_root_dirs().data_root.join("TestFile.txt");
-    const auto dst_filepath = bee::fs::get_root_dirs().data_root.join("TestFile2.txt");
+    const auto src_filepath = bee::fs::roots().data.join("TestFile.txt");
+    const auto dst_filepath = bee::fs::roots().data.join("TestFile2.txt");
 
     ASSERT_FALSE(src_filepath.exists());
-    ASSERT_TRUE(bee::fs::write(src_filepath, test_string));
+    {
+        auto file = bee::fs::open_file(src_filepath.view(), bee::fs::OpenMode::write);
+        ASSERT_TRUE(bee::fs::write(file, test_string));
+    }
     ASSERT_TRUE(src_filepath.exists());
-    ASSERT_TRUE(bee::fs::copy(src_filepath, dst_filepath));
+    ASSERT_TRUE(bee::fs::copy(src_filepath.view(), dst_filepath.view()));
 
-    const auto dst_string = bee::fs::read(dst_filepath);
-
-    ASSERT_STREQ(dst_string.c_str(), test_string);
-    ASSERT_TRUE(bee::fs::remove(src_filepath));
-    ASSERT_TRUE(bee::fs::remove(dst_filepath));
+    {
+        auto file = bee::fs::open_file(dst_filepath.view(), bee::fs::OpenMode::read);
+        const auto dst_string = bee::fs::read(file);
+        ASSERT_EQ(dst_string, test_string);
+    }
+    ASSERT_TRUE(bee::fs::remove(src_filepath.view()));
+    ASSERT_TRUE(bee::fs::remove(dst_filepath.view()));
 }
 
 TEST(FilesystemTests, make_and_remove_directory)
 {
-    const auto dirpath = bee::fs::get_root_dirs().data_root.join("NonRecursiveTestDir");
+    const auto dirpath = bee::fs::roots().data.join("NonRecursiveTestDir");
     if (!dirpath.exists())
     {
-        ASSERT_TRUE(bee::fs::mkdir(dirpath));
+        ASSERT_TRUE(bee::fs::mkdir(dirpath.view()));
     }
     ASSERT_TRUE(dirpath.exists());
-    ASSERT_TRUE(bee::fs::rmdir(dirpath));
+    ASSERT_TRUE(bee::fs::rmdir(dirpath.view()));
 }
 
 TEST(FilesystemTests, make_and_remove_directory_recursive)
 {
-    const auto dirpath = bee::fs::get_root_dirs().data_root.join("RecursiveTestDir");
+    const auto dirpath = bee::fs::roots().data.join("RecursiveTestDir");
     const bee::Path test_paths[] = {
         dirpath,
         dirpath.join("Nested"),
-        dirpath.join("Nested").join("Nested2"),
         dirpath.join("Nested").join("Text.txt"),
+        dirpath.join("Nested").join("Nested2"),
         dirpath.join("Nested").join("Nested2").join("Text.txt")
     };
 
     for (const auto& path : test_paths)
     {
-        if (bee::fs::is_dir(path) && !path.exists())
+        if (path.extension().empty())
         {
-            ASSERT_TRUE(bee::fs::mkdir(path));
-            continue;
+            if (!path.exists())
+            {
+                ASSERT_TRUE(bee::fs::mkdir(path.view()));
+            }
         }
         else
         {
-            ASSERT_TRUE(bee::fs::write(path, "Test text"));
+            auto file = bee::fs::open_file(path.view(), bee::fs::OpenMode::write);
+            ASSERT_TRUE(bee::fs::write(file, "Test text"));
         }
     }
 
     ASSERT_TRUE(dirpath.exists());
-    ASSERT_TRUE(bee::fs::rmdir(dirpath, true));
+    ASSERT_TRUE(bee::fs::rmdir(dirpath.view(), true));
 
     for (const auto& path : test_paths)
     {
@@ -116,7 +136,7 @@ TEST(FilesystemTests, make_and_remove_directory_recursive)
     }
 }
 
-void read_dir_recursive(const bee::Path& root, const bee::Span<bee::Path>& test_data, int* recursive_calls)
+void read_dir_recursive(const bee::PathView& root, const bee::Span<bee::Path>& test_data, int* recursive_calls)
 {
     ++(*recursive_calls);
     
@@ -152,7 +172,7 @@ TEST(FilesystemTests, read_directory)
 {
     static constexpr int max_nested_dir_level = 4;
     static constexpr auto test_string = "This is a test string";
-    const auto dirpath = bee::fs::get_root_dirs().data_root.join("TestDir\\");
+    const auto dirpath = bee::fs::roots().data.join("TestDir\\");
 
     // Make a bunch of test folders and files
     bee::Path test_data[] = {
@@ -168,7 +188,7 @@ TEST(FilesystemTests, read_directory)
 
     if (!dirpath.exists())
     {
-        bee::fs::mkdir(dirpath);
+        bee::fs::mkdir(dirpath.view());
     }
     ASSERT_TRUE(dirpath.exists());
 
@@ -181,16 +201,17 @@ TEST(FilesystemTests, read_directory)
 
         if (path.extension().empty())
         {
-            bee::fs::mkdir(path);
+            bee::fs::mkdir(path.view());
         }
         else
         {
-            bee::fs::write(path, test_string);
+            auto file = bee::fs::open_file(path.view(), bee::fs::OpenMode::write);
+            bee::fs::write(file, test_string);
         }
     }
 
     int recursive_calls = 0;
-    read_dir_recursive(dirpath, bee::Span<bee::Path>(test_data), &recursive_calls);
+    read_dir_recursive(dirpath.view(), bee::Span<bee::Path>(test_data), &recursive_calls);
 
     int empty_count = 0;
     for (const auto& path : test_data)
@@ -203,5 +224,5 @@ TEST(FilesystemTests, read_directory)
     ASSERT_EQ(empty_count, bee::static_array_length(test_data));
     ASSERT_EQ(recursive_calls, max_nested_dir_level);
 
-    ASSERT_TRUE(bee::fs::rmdir(dirpath, true));
+    ASSERT_TRUE(bee::fs::rmdir(dirpath.view(), true));
 }

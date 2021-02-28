@@ -9,6 +9,7 @@
 
 
 #include "Bee/Core/Containers/Array.hpp"
+#include "Bee/Core/Containers/StaticArray.hpp"
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Span.hpp"
 
@@ -134,7 +135,7 @@ private:
 
 #define BEE_PRIsv ".*s"
 
-#define BEE_FMT_SV(string_view) static_cast<int>(string_view.size()), string_view.data()
+#define BEE_FMT_SV(VIEW) static_cast<int>(VIEW.size()), VIEW.data()
 
 
 /**
@@ -455,11 +456,11 @@ public:
         if (new_size >= Capacity)
         {
             new_size = Capacity;
-            memcpy(buffer_, string_view.c_str(), Capacity - size_);
+            memcpy(buffer_ + size_, string_view.c_str(), Capacity - size_);
         }
         else
         {
-            memcpy(buffer_, string_view.c_str(), string_view.size());
+            memcpy(buffer_ + size_, string_view.c_str(), string_view.size());
         }
 
         set_size(new_size);
@@ -697,6 +698,8 @@ BEE_CORE_API String format(Allocator* allocator, const char* format, ...) BEE_PR
 
 BEE_CORE_API String format(const char* format, ...) BEE_PRINTFLIKE(1, 2);
 
+BEE_CORE_API i32 format(String* string, const char* format, ...) BEE_PRINTFLIKE(2, 3);
+
 BEE_CORE_API i32 format_buffer(char* buffer, i32 buffer_size, const char* format, ...) BEE_PRINTFLIKE(3, 4);
 
 template <i32 Capacity>
@@ -834,9 +837,20 @@ BEE_CORE_API String from_wchar(const wchar_t* wchar_str, const i32 byte_size, Al
 
 BEE_CORE_API void from_wchar(String* dst, const wchar_t* wchar_str, const i32 byte_size);
 
+BEE_CORE_API i32 from_wchar(char* dst, const i32 dst_size, const wchar_t* wchar_str, const i32 wchar_size);
+
 BEE_CORE_API wchar_array_t to_wchar(const StringView& src, Allocator* allocator = system_allocator());
 
 BEE_CORE_API i32 to_wchar(const StringView& src, wchar_t* buffer, const i32 buffer_size);
+
+template <i32 Size>
+inline StaticArray<wchar_t, Size> to_wchar(const StringView& src)
+{
+    StaticArray<wchar_t, Size> dst;
+    dst.size = to_wchar(src, dst.data, dst.capacity);
+    return BEE_MOVE(dst);
+}
+
 
 /**
  * String inspection utilities

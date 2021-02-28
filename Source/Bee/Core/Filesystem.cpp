@@ -23,15 +23,14 @@ namespace fs {
  *
  *****************************************
  */
-DirectoryIterator::DirectoryIterator(const Path& directory_path)
-    : dir_(directory_path)
-{
-    init();
-}
-
 DirectoryIterator::DirectoryIterator(const DirectoryIterator& other)
 {
     copy_construct(other);
+}
+
+DirectoryIterator::~DirectoryIterator()
+{
+    destroy();
 }
 
 DirectoryIterator& DirectoryIterator::operator=(const DirectoryIterator& other)
@@ -42,7 +41,7 @@ DirectoryIterator& DirectoryIterator::operator=(const DirectoryIterator& other)
 
 void DirectoryIterator::copy_construct(const DirectoryIterator& other)
 {
-    dir_ = other.dir_;
+    path_ = other.path_;
     current_handle_ = other.current_handle_;
 }
 
@@ -50,6 +49,21 @@ DirectoryIterator& DirectoryIterator::operator++()
 {
     next();
     return *this;
+}
+
+DirectoryIterator::reference DirectoryIterator::operator*() const
+{
+    return path_;
+}
+
+DirectoryIterator::pointer DirectoryIterator::operator->() const
+{
+    return &path_;
+}
+
+bool DirectoryIterator::operator==(const bee::fs::DirectoryIterator& other) const
+{
+    return current_handle_ == other.current_handle_;
 }
 
 /*
@@ -84,7 +98,7 @@ void DirectoryWatcher::resume()
     is_suspended_.store(false, std::memory_order_relaxed);
 }
 
-void DirectoryWatcher::add_event(const FileAction action, const StringView& relative_path, const i32 entry)
+void DirectoryWatcher::add_event(const FileAction action, const PathView& relative_path, const i32 entry)
 {
     BEE_ASSERT(entry < watched_paths_.size());
 
@@ -102,7 +116,7 @@ void DirectoryWatcher::add_event(const FileAction action, const StringView& rela
         events_.emplace_back();
         events_.back().hash = hash;
         events_.back().event_time = time::now();
-        events_.back().modified_time = last_modified(full_path);
+        events_.back().modified_time = last_modified(full_path.view());
         events_.back().action = action;
         events_.back().file = BEE_MOVE(full_path);
     }
@@ -112,7 +126,7 @@ void DirectoryWatcher::add_event(const FileAction action, const StringView& rela
     }
 }
 
-i32 DirectoryWatcher::find_entry(const Path &path)
+i32 DirectoryWatcher::find_entry(const PathView& path)
 {
     return find_index_if(watched_paths_, [&](const Path& p)
     {
@@ -152,95 +166,9 @@ void DirectoryWatcher::pop_events(DynamicArray<FileNotifyInfo>* dst)
  *
  *****************************************
  */
-String read(const Path& filepath, Allocator* allocator)
-{
-    auto* file = fopen(filepath.c_str(), "rb");
-    if (BEE_FAIL_F(file != nullptr, "No such file found with the specified name %s", filepath.c_str()))
-    {
-        return "";
-    }
+bool native_rmdir_non_recursive(const PathView& directory_path);
 
-    fseek(file, 0, SEEK_END);
-    const auto file_length = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    String result(file_length, ' ', allocator);
-    const auto chars_read = fread(result.data(), 1, file_length, file);
-    BEE_ASSERT_F(static_cast<long>(chars_read) == file_length, "Failed to read entire file");
-
-    fclose(file);
-
-    return result;
-}
-
-FixedArray<u8> read_bytes(const Path& filepath, Allocator* allocator)
-{
-    auto* file = fopen(filepath.c_str(), "rb");
-    if (BEE_FAIL_F(file != nullptr, "No such file found with the specified name %s", filepath.c_str()))
-    {
-        return {};
-    }
-
-    fseek(file, 0, SEEK_END);
-    const auto file_length = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    FixedArray<u8> result = FixedArray<u8>::with_size(file_length, allocator);
-
-    const auto chars_read = fread(result.data(), 1, file_length, file);
-    BEE_ASSERT_F(static_cast<long>(chars_read) == file_length, "Failed to read entire file");
-    fclose(file);
-
-    return result;
-}
-
-bool write(const Path& filepath, const String& string_to_write)
-{
-    return write(filepath, string_to_write.view());
-}
-
-bool write(const Path& filepath, const StringView& string_to_write)
-{
-    auto* file = fopen(filepath.c_str(), "wb");
-    if (BEE_FAIL_F(file != nullptr, "Unable to open or write to file: %s", filepath.c_str()))
-    {
-        return false;
-    }
-
-    fwrite(string_to_write.c_str(), 1, string_to_write.size(), file);
-    fclose(file);
-    return true;
-}
-
-bool write(const Path& filepath, const void* buffer, const size_t buffer_size)
-{
-    auto* file = fopen(filepath.c_str(), "wb");
-    if (BEE_FAIL_F(file != nullptr, "Unable to open or write to file: %s", filepath.c_str()))
-    {
-        return false;
-    }
-
-    fwrite(buffer, 1, buffer_size, file);
-    fclose(file);
-    return true;
-}
-
-bool write_v(const Path& filepath, const char* fmt_string, va_list fmt_args)
-{
-    auto* file = fopen(filepath.c_str(), "wb");
-    if (BEE_FAIL_F(file != nullptr, "Unable to open or write to file: %s", filepath.c_str()))
-    {
-        return false;
-    }
-
-    vfprintf(file, fmt_string, fmt_args);
-    fclose(file);
-    return true;
-}
-
-bool native_rmdir_non_recursive(const Path& directory_path);
-
-bool rmdir(const Path& directory_path, const bool recursive)
+bool rmdir(const PathView& directory_path, const bool recursive)
 {
     if (!recursive)
     {
@@ -268,7 +196,7 @@ bool rmdir(const Path& directory_path, const bool recursive)
     return native_rmdir_non_recursive(directory_path);
 }
 
-DirectoryIterator read_dir(const Path& directory)
+DirectoryIterator read_dir(const PathView& directory)
 {
     return DirectoryIterator(directory);
 }
@@ -294,33 +222,41 @@ static BeeRootDirs g_roots;
 
 void init_filesystem()
 {
+    auto& roots = g_roots;
+    BEE_UNUSED(roots);
+
     // Determine if we're running from an installed build or a dev build
-    const auto editor_exe_path = Path(Path::executable_path().parent_path());
+    const auto editor_exe_path = executable_path().parent();
+    g_roots.binaries = editor_exe_path;
+
+    // Assume that the install directory is the directory the editor .exe is running in
+    g_roots.installation = editor_exe_path.parent();
 
     // the .exe for installed builds lives in <install root>/<version>/Binaries - dev builds live in Bee/Build/<Config>
-    bool is_installed_build = editor_exe_path.parent_path().filename() == "Binaries";
+    bool is_installed_build = editor_exe_path.parent().filename() == "Binaries";
 
-    g_roots.data = is_installed_build
-                      ? fs::user_local_appdata_path().join("Bee").join(BEE_VERSION)
-                      : editor_exe_path.parent_path().join("DevData");
+    if (is_installed_build)
+    {
+        g_roots.data = fs::user_local_appdata_path();
+        g_roots.data.append("Bee").append(BEE_VERSION);
+    }
+    else
+    {
+        g_roots.data.append(editor_exe_path.parent()).append("DevData");
+        g_roots.installation = g_roots.installation.parent();
+    }
 
     if (!g_roots.data.exists())
     {
-        fs::mkdir(g_roots.data);
+        fs::mkdir(g_roots.data.view());
     }
 
     g_roots.logs = g_roots.data.join("Logs");
 
     if (!g_roots.logs.exists())
     {
-        fs::mkdir(g_roots.logs);
+        fs::mkdir(g_roots.logs.view());
     }
-
-    // Assume that the install directory is the directory the editor .exe is running in
-    g_roots.binaries = editor_exe_path;
-    g_roots.installation = is_installed_build
-                         ? g_roots.binaries.parent_path()
-                         : g_roots.binaries.parent_path().parent_path();
 
     /*
      * In a dev build, the assets root is located in <binaries>/../../Assets - i.e. at

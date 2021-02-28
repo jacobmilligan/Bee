@@ -105,6 +105,154 @@ static i32 get_first_slash(const StringView& path)
     return -1;
 }
 
+
+/*
+ ***************************************
+ *
+ * PathView - implementation
+ *
+ ***************************************
+ */
+PathView::PathView(const Path& path)
+    : data_(path.c_str(), path.size())
+{}
+
+PathView::PathView(const StringView& path)
+    : data_(path)
+{}
+
+PathView::PathView(const char* path)
+    : data_(path)
+{}
+
+PathView& PathView::operator=(const char* other) noexcept
+{
+    data_ = other;
+    return *this;
+}
+
+StringView PathView::string_view() const
+{
+    return data_;
+}
+
+StringView PathView::extension() const
+{
+    const auto last_dot = str::last_index_of(data_, '.');
+    if (last_dot == -1)
+    {
+        return {};
+    }
+
+    return str::substring(data_, last_dot);
+}
+
+StringView PathView::filename() const
+{
+    return str::substring(data_, get_filename_index(data_));
+}
+
+bool PathView::has_root_directory() const
+{
+    return !root_directory().empty();
+}
+
+bool PathView::has_root_path() const
+{
+    return has_root_name() && has_root_directory();
+}
+
+PathView PathView::root_directory() const
+{
+    const auto root_name_size = root_name().size();
+
+    if (root_name_size >= data_.size() || !is_slash(data_.begin() + root_name_size))
+    {
+        return StringView{};
+    }
+
+    int root_dir_size = 0;
+    const auto* root_dir_begin = data_.begin() + root_name_size;
+
+    while (is_slash(root_dir_begin + root_dir_size))
+    {
+        ++root_dir_size;
+    }
+
+    return StringView(root_dir_begin, root_dir_size);
+}
+
+PathView PathView::root_path() const
+{
+    const auto root_path_size = root_name().size() + root_directory().size();
+
+    if (root_path_size <= 0)
+    {
+        return StringView{};
+    }
+
+    return StringView(data_.begin(), root_path_size);
+}
+
+PathView PathView::parent() const
+{
+    auto last_slash = get_last_slash(data_);
+    if (last_slash == -1)
+    {
+        return data_;
+    }
+
+    return str::substring(data_, 0, last_slash);
+}
+
+StringView PathView::stem() const
+{
+    const auto last_dot = str::last_index_of(data_, '.');
+    if (last_dot == -1)
+    {
+        return data_;
+    }
+
+    const auto last_slash = get_last_slash(data_) + 1; // ensures index is 0 if there is no slash
+    return str::substring(data_, last_slash, last_dot - last_slash);
+}
+
+PathView PathView::relative_path() const
+{
+    const auto first_slash = get_first_slash(data_);
+
+    if (first_slash < 0)
+    {
+        return *this;
+    }
+
+    return str::substring(data_, first_slash + 1);
+}
+
+bool PathView::is_relative_to(const PathView& other) const
+{
+    // in-place definition of std::mismatch to avoid including <algorithm>
+    auto this_iter = begin();
+    auto other_iter = other.begin();
+    for (; this_iter != end() && other_iter != other.end() && *this_iter == *other_iter;)
+    {
+        ++this_iter;
+        ++other_iter;
+    }
+
+    return other_iter == other.end() && this_iter != end();
+}
+
+PathIterator PathView::begin() const
+{
+    return PathIterator(*this);
+}
+
+PathIterator PathView::end() const
+{
+    return PathIterator(StringView(data_.c_str() + data_.size(), 0));
+}
+
 /*
  ***************************************
  *
@@ -122,8 +270,8 @@ Path::Path(Allocator* allocator) noexcept
     : data_(allocator)
 {}
 
-Path::Path(const StringView& src, Allocator* allocator) noexcept
-    : data_(src, allocator)
+Path::Path(const PathView& src, Allocator* allocator) noexcept
+    : data_(StringView(src.data(), src.size()), allocator)
 {}
 
 Path::Path(const Path& other) noexcept
@@ -135,18 +283,47 @@ Path::Path(Path&& other) noexcept
     : data_(BEE_MOVE(other.data_))
 {}
 
+Path& Path::operator=(const PathView& path) noexcept
+{
+    if (path.data() >= data_.data() && path.data() <= data_.data() + data_.size())
+    {
+        memmove(data_.data(), path.data(), path.size());
+        data_.resize(path.size());
+    }
+    else
+    {
+        data_.assign(path.string_view());
+    }
+    return *this;
+}
+
+Path& Path::operator=(const char* path) noexcept
+{
+    if (path >= data_.data() && path <= data_.data() + data_.size())
+    {
+        const int size = str::length(path);
+        memmove(data_.data(), path, size);
+        data_.resize(size);
+    }
+    else
+    {
+        data_.assign(path);
+    }
+    return *this;
+}
+
 Path& Path::operator=(Path&& other) noexcept
 {
     data_ = BEE_MOVE(other.data_);
     return *this;
 }
 
-Path Path::join(const StringView& src, Allocator* allocator) const
+Path Path::join(const PathView& src, Allocator* allocator) const
 {
     return Path(data_.view(), allocator).append(src);
 }
 
-Path& Path::append(const StringView& src)
+Path& Path::append(const PathView& src)
 {
     if (src.empty())
     {
@@ -154,9 +331,9 @@ Path& Path::append(const StringView& src)
     }
 
     // Replace the current path with the entirety of str if it's absolute
-    if (is_absolute(src))
+    if (src.is_absolute())
     {
-        data_ = src;
+        data_ = src.string_view();
     }
     else
     {
@@ -165,13 +342,13 @@ Path& Path::append(const StringView& src)
             data_ += preferred_slash;
         }
 
-        data_ += src;
+        data_ += src.string_view();
     }
 
     return *this;
 }
 
-Path& Path::prepend(const StringView& src)
+Path& Path::prepend(const PathView& src)
 {
     if (src.empty())
     {
@@ -191,19 +368,13 @@ Path& Path::prepend(const StringView& src)
     }
 
     // Always prepend the src even if its absolute
-    data_.insert(0, src);
+    data_.insert(0, src.string_view());
     return *this;
 }
 
 StringView Path::extension() const
 {
-    const auto last_dot = str::last_index_of(data_, '.');
-    if (last_dot == -1)
-    {
-        return {};
-    }
-
-    return str::substring(data_, last_dot);
+    return view().extension();
 }
 
 Path& Path::append_extension(const StringView& ext)
@@ -281,12 +452,12 @@ Path& Path::set_extension(const StringView& ext)
 
 bool Path::exists() const
 {
-    return path_exists(data_.view());
+    return view().exists();
 }
 
 StringView Path::filename() const
 {
-    return path_get_filename(data_.view());
+    return view().filename();
 }
 
 Path& Path::remove_filename()
@@ -310,67 +481,45 @@ Path& Path::replace_filename(const StringView& replacement)
 
 bool Path::has_root_name() const
 {
-    return !root_name().empty();
+    return view().has_root_name();
 }
 
 bool Path::has_root_directory() const
 {
-    return !root_directory().empty();
+    return view().has_root_directory();
 }
 
 bool Path::has_root_path() const
 {
-    return has_root_name() && has_root_directory();
+    return view().has_root_path();
 }
 
-StringView Path::root_directory() const
+PathView Path::root_name() const
 {
-    const auto root_name_size = root_name().size();
-
-    if (root_name_size >= data_.size() || !is_slash(data_.begin() + root_name_size))
-    {
-        return StringView{};
-    }
-
-    int root_dir_size = 0;
-    const auto* root_dir_begin = data_.begin() + root_name_size;
-
-    while (is_slash(root_dir_begin + root_dir_size))
-    {
-        ++root_dir_size;
-    }
-
-    return StringView(root_dir_begin, root_dir_size);
+    return view().root_name();
 }
 
-StringView Path::root_path() const
+PathView Path::root_directory() const
 {
-    const auto root_path_size = root_name().size() + root_directory().size();
+    return view().root_directory();
+}
 
-    if (root_path_size <= 0)
-    {
-        return StringView{};
-    }
-
-    return StringView(data_.begin(), root_path_size);
+PathView Path::root_path() const
+{
+    return view().root_path();
 }
 
 StringView Path::stem() const
 {
-    return path_get_stem(data_.view());
+    return view().stem();
 }
 
-StringView Path::parent_view() const
+PathView Path::parent() const
 {
-    return path_get_parent(data_.view());
+    return view().parent();
 }
 
-Path Path::parent_path(Allocator* allocator) const
-{
-    return Path(path_get_parent(data_.view()), allocator);
-}
-
-StringView Path::view() const
+PathView Path::view() const
 {
     return data_.view();
 }
@@ -442,24 +591,12 @@ Path& Path::make_preferred()
     return *this;
 }
 
-Path Path::relative_path(Allocator* allocator) const
+PathView Path::relative_path() const
 {
-    return Path(relative_view(), allocator);
+    return view().relative_path();
 }
 
-StringView Path::relative_view() const
-{
-    const auto first_slash = get_first_slash(data_.view());
-
-    if (first_slash < 0)
-    {
-        return view();
-    }
-
-    return str::substring(data_, first_slash + 1);
-}
-
-Path Path::relative_to(const Path& other, Allocator* allocator) const
+Path Path::relative_to(const PathView& other, Allocator* allocator) const
 {
     Path result(allocator);
 
@@ -484,36 +621,22 @@ Path Path::relative_to(const Path& other, Allocator* allocator) const
         result.append("..");
     }
 
-    if (result.empty())
-    {
-        result.append(".");
-    }
-
     for (; this_iter != end(); ++this_iter)
     {
         result.append(*this_iter);
     }
 
-    return result;
+    return BEE_MOVE(result);
 }
 
-bool Path::is_relative_to(const Path &other) const
+bool Path::is_relative_to(const PathView& other) const
 {
-    // in-place definition of std::mismatch to avoid including <algorithm>
-    auto this_iter = begin();
-    auto other_iter = other.begin();
-    for (; this_iter != end() && other_iter != other.end() && *this_iter == *other_iter;)
-    {
-        ++this_iter;
-        ++other_iter;
-    }
-
-    return other_iter == other.end() && this_iter != end();
+    return view().is_relative_to(other);
 }
 
 bool Path::is_absolute() const
 {
-    return is_absolute(view());
+    return view().is_absolute();
 }
 
 i32 Path::size() const
@@ -523,12 +646,12 @@ i32 Path::size() const
 
 PathIterator Path::begin() const
 {
-    return PathIterator(*this);
+    return view().begin();
 }
 
 PathIterator Path::end() const
 {
-    return PathIterator(StringView(data_.c_str() + data_.size(), 0));
+    return view().end();
 }
 
 
@@ -539,123 +662,109 @@ PathIterator Path::end() const
  *
  ***************************************
  */
-// Internal path_compare function
-i32 path_compare_impl(const StringView& lhs, const StringView& rhs)
+static i32 skip_slash(const PathView& path, const i32 offset)
 {
+    for (int i = offset; i < path.size(); ++i)
+    {
+        if (!is_slash(path.data() + i))
+        {
+            return i;
+        }
+    }
+
+    return path.size();
+}
+
+i32 path_compare(const PathView& lhs, const PathView& rhs)
+{
+    if (lhs.empty() || rhs.empty())
+    {
+        return lhs.size() - rhs.size();
+    }
+
     int lhs_index = 0;
     int rhs_index = 0;
-    while (true)
+    int lhs_components = 1;
+    int rhs_components = 1;
+
+    while (lhs_index < lhs.size() && rhs_index < rhs.size())
     {
-        const auto lhs_empty = lhs_index >= lhs.size();
-        const auto rhs_empty = rhs_index >= rhs.size();
-        if (lhs_empty || rhs_empty)
+        if (lhs.data()[lhs_index] != rhs.data()[rhs_index])
         {
-            return static_cast<i32>(lhs_empty - rhs_empty);
+            return lhs.data()[lhs_index] - rhs.data()[rhs_index];
         }
 
-        const auto lhs_is_slash = is_slash(lhs.data() + lhs_index);
-        const auto rhs_is_slash = is_slash(rhs.data() + rhs_index);
+        const int lhs_prev_index = lhs_index;
+        const int rhs_prev_index = rhs_index;
+        lhs_index = skip_slash(lhs, lhs_index + 1);
+        rhs_index = skip_slash(rhs, rhs_index + 1);
 
-        if (lhs_is_slash != rhs_is_slash)
+        if (lhs_index > lhs_prev_index + 1)
         {
-            return next_slash_pos(lhs, lhs_index) - next_slash_pos(rhs, rhs_index);
+            ++lhs_components;
         }
-
-        // Skip all the slashes
-        while (lhs_index < lhs.size() && is_slash(lhs.data() + lhs_index))
+        if (rhs_index > rhs_prev_index + 1)
         {
-            ++lhs_index;
+            ++rhs_components;
         }
-
-        while (rhs_index < rhs.size() && is_slash(rhs.data() + rhs_index))
-        {
-            ++rhs_index;
-        }
-
-        if (lhs[lhs_index] != rhs[rhs_index])
-        {
-            if (lhs_index == rhs_index)
-            {
-                return lhs[lhs_index] - rhs[rhs_index];
-            }
-
-            break;
-        }
-
-        ++lhs_index;
-        ++rhs_index;
     }
 
-    return lhs_index - rhs_index;
-}
-
-i32 path_compare(const Path& lhs, const Path& rhs)
-{
-    return path_compare_impl(lhs.view(), rhs.view());
-}
-
-i32 path_compare(const Path& lhs, const StringView& rhs)
-{
-    return path_compare_impl(lhs.view(), rhs);
-}
-
-i32 path_compare(const StringView& lhs, const Path& rhs)
-{
-    return path_compare_impl(lhs, rhs.view());
-}
-
-StringView path_get_extension(const char* c_string)
-{
-    return path_get_extension(StringView(c_string));
-}
-
-StringView path_get_extension(const StringView& path)
-{
-    const auto last_dot = str::last_index_of(path, '.');
-    if (last_dot == -1)
+    if (lhs_components != rhs_components)
     {
-        return "";
+        return lhs_components - rhs_components;
     }
 
-    return str::substring(path, last_dot);
-}
+    return (lhs_index - lhs.size()) - (rhs_index - rhs.size());
 
-StringView path_get_filename(const char* c_string)
-{
-    return str::substring(c_string, get_filename_index(c_string));
-}
 
-StringView path_get_filename(const StringView& path)
-{
-    return str::substring(path, get_filename_index(path));
-}
-
-StringView path_get_stem(const char* c_string)
-{
-    return path_get_stem(StringView(c_string));
-}
-
-StringView path_get_stem(const StringView& path)
-{
-    const auto last_dot = str::last_index_of(path, '.');
-    if (last_dot == -1)
-    {
-        return path;
-    }
-
-    const auto last_slash = get_last_slash(path) + 1; // ensures index is 0 if there is no slash
-    return str::substring(path, last_slash, last_dot - last_slash);
-}
-
-StringView path_get_parent(const StringView& path)
-{
-    auto last_slash = get_last_slash(path);
-    if (last_slash == -1)
-    {
-        return path;
-    }
-
-    return str::substring(path, 0, last_slash);
+//    const auto lhs_sv = lhs.string_view();
+//    const auto rhs_sv = rhs.string_view();
+//
+//    int lhs_index = 0;
+//    int rhs_index = 0;
+//    while (true)
+//    {
+//        const auto lhs_empty = lhs_index >= lhs.size();
+//        const auto rhs_empty = rhs_index >= rhs.size();
+//        if (lhs_empty || rhs_empty)
+//        {
+//            return static_cast<i32>(lhs_empty - rhs_empty);
+//        }
+//
+//        const auto lhs_is_slash = is_slash(lhs.data() + lhs_index);
+//        const auto rhs_is_slash = is_slash(rhs.data() + rhs_index);
+//
+//        if (lhs_is_slash != rhs_is_slash)
+//        {
+//            return next_slash_pos(lhs_sv, lhs_index) - next_slash_pos(rhs_sv, rhs_index);
+//        }
+//
+//        // Skip all the slashes
+//        while (lhs_index < lhs.size() && is_slash(lhs.data() + lhs_index))
+//        {
+//            ++lhs_index;
+//        }
+//
+//        while (rhs_index < rhs.size() && is_slash(rhs.data() + rhs_index))
+//        {
+//            ++rhs_index;
+//        }
+//
+//        if (lhs_sv[lhs_index] != rhs_sv[rhs_index])
+//        {
+//            if (lhs_index == rhs_index)
+//            {
+//                return lhs_sv[lhs_index] - rhs_sv[rhs_index];
+//            }
+//
+//            break;
+//        }
+//
+//        ++lhs_index;
+//        ++rhs_index;
+//    }
+//
+//    return lhs_index - rhs_index;
 }
 
 
@@ -666,18 +775,10 @@ StringView path_get_parent(const StringView& path)
  *
  ***************************************
  */
-PathIterator::PathIterator(const Path& path)
-    : path_(path.c_str()),
+PathIterator::PathIterator(const PathView& path)
+    : path_(path.data()),
       path_size_(path.size()),
-      component_(path.c_str())
-{
-    next();
-}
-
-PathIterator::PathIterator(const StringView& path)
-    : path_(path.c_str()),
-      path_size_(path.size()),
-      component_(path.c_str())
+      component_(path.data())
 {
     next();
 }
@@ -693,14 +794,14 @@ PathIterator& PathIterator::operator=(const bee::PathIterator& other)
     return *this;
 }
 
-StringView PathIterator::operator*() const
+PathView PathIterator::operator*() const
 {
     if (path_ == nullptr || component_ - path_ > path_size_)
     {
         return {};
     }
 
-    return { component_, component_size_ };
+    return StringView(component_, component_size_);
 }
 
 PathIterator& PathIterator::operator++()

@@ -27,4 +27,5 @@ if (Vulkan_FOUND)
     endif ()
 
     bee_plugin(Bee.VulkanBackend LINK_LIBRARIES Bee.Core)
+    add_dependencies(Bee.VulkanBackend Bee.Gpu)
 endif ()

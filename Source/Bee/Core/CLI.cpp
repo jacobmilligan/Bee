@@ -258,9 +258,9 @@ i32 parse_option(
         set_result_error(results, "Missing at least one argument for option: ");
         if (options[found_option].short_name != '\0')
         {
-            io::write_fmt(&results->error_message, "-%c/", options[found_option].short_name);
+            str::format(&results->error_message, "-%c/", options[found_option].short_name);
         }
-        io::write_fmt(&results->error_message, "--%s", options[found_option].long_name.c_str());
+        str::format(&results->error_message, "--%s", options[found_option].long_name.c_str());
         return arg_idx;
     }
 
@@ -269,9 +269,9 @@ i32 parse_option(
         set_result_error(results, "Too many arguments supplied to ");
         if (options[found_option].short_name != '\0')
         {
-            io::write_fmt(&results->error_message, "-%c/", options[found_option].short_name);
+            str::format(&results->error_message, "-%c/", options[found_option].short_name);
         }
-        io::write_fmt(&results->error_message, "--%s", options[found_option].long_name.c_str());
+        str::format(&results->error_message, "--%s", options[found_option].long_name.c_str());
         return arg_idx;
     }
 
@@ -297,7 +297,7 @@ String make_help_string(const char* program_name, const ParserDescriptor& desc)
 
     if (desc.command_name != nullptr)
     {
-        io::write_fmt(&result, "%s ", desc.command_name);
+        str::format(&result, "%s ", desc.command_name);
     }
 
     if (desc.subparser_count > 0)
@@ -311,7 +311,7 @@ String make_help_string(const char* program_name, const ParserDescriptor& desc)
         // `program <positional1> <positional2> ...`
         for (int pos_idx = 0; pos_idx < desc.positional_count; ++pos_idx)
         {
-            io::write_fmt(&result, "<%s> ", desc.positionals[pos_idx].name.c_str());
+            str::format(&result, "<%s> ", desc.positionals[pos_idx].name.c_str());
         }
     }
 
@@ -320,13 +320,13 @@ String make_help_string(const char* program_name, const ParserDescriptor& desc)
     {
         if (desc.options[opt_idx].required)
         {
-            io::write_fmt(&result, "-%c ", desc.options[opt_idx].short_name);
+            str::format(&result, "-%c ", desc.options[opt_idx].short_name);
         }
     }
 
     if (desc.option_count > 0)
     {
-        io::write_fmt(&result, "[options...]");
+        str::format(&result, "[options...]");
     }
 
     // figure out the longest positional and use that to pad all the others
@@ -340,17 +340,17 @@ String make_help_string(const char* program_name, const ParserDescriptor& desc)
 
     if (desc.positional_count > 0)
     {
-        io::write_fmt(&result, "\n\nPositional arguments:\n");
+        str::format(&result, "\n\nPositional arguments:\n");
         // print out positionals with specific amount of spacing, i.e `positional1  help string`
         for (int pos_idx = 0; pos_idx < desc.positional_count; ++pos_idx)
         {
-            io::write_fmt(&result, " %s", desc.positionals[pos_idx].name.c_str());
+            str::format(&result, " %s", desc.positionals[pos_idx].name.c_str());
             const auto max_spacing = longest_positional - desc.positionals[pos_idx].name.size();
             for (int space_idx = 0; space_idx < max_spacing; ++space_idx)
             {
-                io::write_fmt(&result, " ");
+                str::format(&result, " ");
             }
-            io::write_fmt(&result, "%s\n", desc.positionals[pos_idx].help.c_str());
+            str::format(&result, "%s\n", desc.positionals[pos_idx].help.c_str());
         }
     }
 
@@ -363,52 +363,52 @@ String make_help_string(const char* program_name, const ParserDescriptor& desc)
 
     longest_opt = math::max(min_line_width, longest_opt + 2);
 
-    io::write_fmt(&result, "\nOptions:\n -h, --help");
+    str::format(&result, "\nOptions:\n -h, --help");
     for (int i = 0; i < longest_opt - 10; ++i)
     {
-        io::write_fmt(&result, " ");
+        str::format(&result, " ");
     }
 
-    io::write_fmt(&result, "Returns this help message\n");
+    str::format(&result, "Returns this help message\n");
 
     if (desc.option_count > 0)
     {
         // print out options, i.e `-o, --option1  help string`
         for (int opt_idx = 0; opt_idx < desc.option_count; ++opt_idx)
         {
-            io::write_fmt(&result, " ");
+            str::format(&result, " ");
 
             // Write out short name
             if (desc.options[opt_idx].short_name != '\0')
             {
-                io::write_fmt(&result, "-%c, ", desc.options[opt_idx].short_name);
+                str::format(&result, "-%c, ", desc.options[opt_idx].short_name);
             }
 
             // Write long name
-            io::write_fmt(&result, "--%s", desc.options[opt_idx].long_name.c_str());
+            str::format(&result, "--%s", desc.options[opt_idx].long_name.c_str());
 
             const auto max_spacing = longest_opt - option_strlen(desc.options[opt_idx]);
             for (int space_idx = 0; space_idx < max_spacing; ++space_idx)
             {
-                io::write_fmt(&result, " ");
+                str::format(&result, " ");
             }
 
             // Write help string
-            io::write_fmt(&result, "%s\n", desc.options[opt_idx].help.c_str());
+            str::format(&result, "%s\n", desc.options[opt_idx].help.c_str());
         }
     }
 
     if (desc.subparser_count > 0)
     {
-        io::write_fmt(&result, "\nCommands:\n");
+        str::format(&result, "\nCommands:\n");
 
         for (int cmd_idx = 0; cmd_idx < desc.subparser_count; ++cmd_idx)
         {
-            io::write_fmt(&result, "%s", desc.subparsers[cmd_idx].command_name);
+            str::format(&result, "%s", desc.subparsers[cmd_idx].command_name);
 
             if (cmd_idx < desc.subparser_count - 1)
             {
-                io::write_fmt(&result, ", ");
+                str::format(&result, ", ");
             }
         }
     }

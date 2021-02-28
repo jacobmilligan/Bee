@@ -5,7 +5,7 @@
  *  Copyright (c) 2021 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/AssetPipelineV2/AssetPipeline.inl"
+#include "Bee/AssetPipeline/AssetPipeline.inl"
 
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Serialization/JSONSerializer.hpp"
@@ -25,11 +25,11 @@ Result<void, AssetPipelineError> init_import_pipeline(AssetPipeline* pipeline, c
 
     if (!import_pipeline.cache_path.exists())
     {
-        fs::mkdir(import_pipeline.cache_path, true);
+        fs::mkdir(import_pipeline.cache_path.view(), true);
     }
 
     // Open the asset database instance
-    import_pipeline.db = g_assetdb.open(import_pipeline.db_path);
+    import_pipeline.db = g_assetdb.open(import_pipeline.db_path.view());
     if (import_pipeline.db == nullptr)
     {
         return { AssetPipelineError::asset_database };
@@ -188,7 +188,7 @@ static i32 get_default_importer_for_file_type(const ImportPipeline& pipeline, co
     return -1;
 }
 
-Result<void, AssetPipelineError> import_asset(AssetPipeline* pipeline, const StringView path, const AssetPlatform platform)
+Result<void, AssetPipelineError> import_asset(AssetPipeline* pipeline, const PathView& path, const AssetPlatform platform)
 {
     if (!pipeline->can_import())
     {
@@ -198,10 +198,15 @@ Result<void, AssetPipelineError> import_asset(AssetPipeline* pipeline, const Str
     auto& thread = pipeline->get_thread();
     thread.meta_path.clear();
     thread.source_path.clear();
-    if (path_get_extension(path) == ".meta")
+    if (path.extension() == ".meta")
     {
         thread.meta_path.append(path);
-        thread.source_path.append(str::substring(path, 0, str::first_index_of(path, ".meta")));
+        // the path with extensions except for the .meta part
+        thread.source_path.append(str::substring(
+            path.string_view(),
+            0,
+            str::first_index_of(path.string_view(), ".meta")
+        ));
     }
     else
     {
@@ -223,9 +228,10 @@ Result<void, AssetPipelineError> import_asset(AssetPipeline* pipeline, const Str
     bool is_new_file = true;
 
     // If the file exists on disk - use it as source metadata info
-    if (fs::is_file(thread.meta_path))
+    if (fs::is_file(thread.meta_path.view()))
     {
-        auto json = fs::read(thread.meta_path, temp_allocator());
+        auto file = fs::open_file(thread.meta_path.view(), fs::OpenMode::read);
+        auto json = fs::read(file, temp_allocator());
         JSONSerializer serializer(json.data(), JSONSerializeFlags::parse_in_situ, temp_allocator());
         serialize(SerializerMode::reading, &serializer, &meta, temp_allocator());
         is_new_file = !g_assetdb.asset_exists(&txn, meta.guid);
@@ -267,8 +273,8 @@ Result<void, AssetPipelineError> import_asset(AssetPipeline* pipeline, const Str
         info = res.unwrap();
     }
 
-    const u64 new_timestamp = fs::last_modified(thread.source_path);
-    const u64 new_meta_timestamp = fs::last_modified(thread.meta_path);
+    const u64 new_timestamp = fs::last_modified(thread.source_path.view());
+    const u64 new_meta_timestamp = fs::last_modified(thread.meta_path.view());
 
     // if the timestamps are up to date and the meta file exists (i.e. hasn't been deleted for whatever reason)
     // then there's no need to re-import the asset as it hasn't been modified
@@ -342,13 +348,16 @@ Result<void, AssetPipelineError> import_asset(AssetPipeline* pipeline, const Str
 
     JSONSerializer serializer(temp_allocator());
     serialize(SerializerMode::writing, &serializer, &meta, temp_allocator());
-    if (!fs::write(thread.meta_path, serializer.c_str()))
     {
-        return { AssetPipelineError::failed_to_write_metadata };
+        auto file = fs::open_file(thread.meta_path.view(), fs::OpenMode::write);
+        if (!fs::write(file, serializer.c_str()))
+        {
+            return { AssetPipelineError::failed_to_write_metadata };
+        }
     }
 
     // Set the metadata timestamp after writing the file to disk
-    info.meta_timestamp = fs::last_modified(thread.meta_path);
+    info.meta_timestamp = fs::last_modified(thread.meta_path.view());
     res = g_assetdb.set_asset_info(&txn, info);
     if (!res)
     {
@@ -372,7 +381,7 @@ Result<AssetDatabase*, AssetPipelineError> get_asset_database(AssetPipeline* pip
     return pipeline->import.db;
 }
 
-static void import_assets_at_path(AssetPipeline* pipeline, const Path& root)
+static void import_assets_at_path(AssetPipeline* pipeline, const PathView& root)
 {
     for (auto& entry : fs::read_dir(root))
     {
@@ -382,15 +391,15 @@ static void import_assets_at_path(AssetPipeline* pipeline, const Path& root)
             continue;
         }
 
-        auto res = import_asset(pipeline, entry.view(), AssetPlatform::unknown);
+        auto res = import_asset(pipeline, entry, AssetPlatform::unknown);
         if (!res)
         {
-            log_error("%s: %s", entry.c_str(), res.unwrap_error().to_string());
+            log_error("%" BEE_PRIsv ": %s", BEE_FMT_SV(entry), res.unwrap_error().to_string());
         }
     }
 }
 
-void add_import_root(AssetPipeline* pipeline, const Path& path)
+void add_import_root(AssetPipeline* pipeline, const PathView& path)
 {
     if (!pipeline->can_import())
     {
@@ -404,7 +413,7 @@ void add_import_root(AssetPipeline* pipeline, const Path& path)
     pipeline->import.source_watcher.resume();
 }
 
-void remove_import_root(AssetPipeline* pipeline, const Path& path)
+void remove_import_root(AssetPipeline* pipeline, const PathView& path)
 {
     if (!pipeline->can_import())
     {

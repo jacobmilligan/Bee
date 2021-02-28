@@ -7,7 +7,7 @@
 
 #include "Bee/ShaderPipeline/Compiler.hpp"
 
-#include "Bee/AssetPipelineV2/AssetPipeline.hpp"
+#include "Bee/AssetPipeline/AssetPipeline.hpp"
 
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Filesystem.hpp"
@@ -186,7 +186,8 @@ static Type get_importer_settings_type()
 static Result<void, AssetPipelineError> import_shader(AssetImportContext* ctx, void* user_data)
 {
     auto& thread = g_shader_pipeline->importer_threads[job_worker_id()];
-    const auto content = fs::read(ctx->path, ctx->temp_allocator);
+    auto file = fs::open_file(ctx->path, fs::OpenMode::read);
+    const auto content = fs::read(file, ctx->temp_allocator);
     const auto res = g_shader_compiler.compile_shader(
         ctx->path,
         content.view(),
@@ -201,7 +202,7 @@ static Result<void, AssetPipelineError> import_shader(AssetImportContext* ctx, v
         return { AssetPipelineError::failed_to_import };
     }
 
-    const auto module_name = path_get_stem(ctx->path);
+    const auto module_name = ctx->path.stem();
     auto* settings = ctx->settings->get<ShaderImportSettings>();
 
     for (auto& shader : thread.shaders)
@@ -227,16 +228,17 @@ static Result<void, AssetPipelineError> import_shader(AssetImportContext* ctx, v
                 .append(ctx->target_platform_string)
                 .append(thread.shader_name.view());
 
-            if (!path_exists(debug_path.parent_view()))
+            if (!debug_path.parent().exists())
             {
-                if (!fs::mkdir(debug_path.parent_view(), true))
+                if (!fs::mkdir(debug_path.parent(), true))
                 {
-                    log_error("Failed to create shader disassembly directory %" BEE_PRIsv, BEE_FMT_SV(debug_path.parent_view()));
+                    log_error("Failed to create shader disassembly directory %" BEE_PRIsv, BEE_FMT_SV(debug_path.parent()));
                     continue;
                 }
             }
 
-            fs::write(debug_path, disassembly.view());
+            auto debug_file = fs::open_file(debug_path.view(), fs::OpenMode::write);
+            fs::write(debug_file, disassembly.view());
         }
     }
 
@@ -383,7 +385,8 @@ Result<void, AssetPipelineError> shader_loader_load(const GUID guid, const Asset
     {
         if (stream_info.kind == AssetStreamInfo::Kind::file)
         {
-            io::FileStream stream(stream_info.path, "rb");
+            auto file = fs::open_file(stream_info.path.view(), fs::OpenMode::read);
+            io::FileStream stream(&file);
             stream.seek(stream_info.offset, io::SeekOrigin::begin);
             StreamSerializer serializer(&stream);
             serialize(SerializerMode::reading, &serializer, shader, temp_allocator());

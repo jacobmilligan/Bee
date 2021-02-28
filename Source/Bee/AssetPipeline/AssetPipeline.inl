@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "Bee/AssetPipelineV2/AssetPipeline.hpp"
+#include "Bee/AssetPipeline/AssetPipeline.hpp"
 
 #include "Bee/Core/Path.hpp"
 #include "Bee/Core/Filesystem.hpp"

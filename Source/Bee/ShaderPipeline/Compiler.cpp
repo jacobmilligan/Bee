@@ -16,6 +16,7 @@
 #include "Bee/Core/Jobs/JobSystem.hpp"
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/Bit.hpp"
+#include "Bee/Core/TypeTraits.hpp"
 
 #include <dxc/dxcapi.h>
 #include <spirv_reflect.h>
@@ -246,6 +247,8 @@ bool reflect_vertex_description(CompilationContext* ctx, SpvReflectShaderModule*
 //        return semantic_to_mesh_attribute(lhs->semantic) < semantic_to_mesh_attribute(rhs->semantic);
 //    });
 
+    auto& subshader = ctx->shader->subshaders[index];
+
     // Get input variables
     vertex_desc.layouts.size = vertex_inputs.empty() ? 0 : 1;
     vertex_desc.layouts[0].stride = 0;
@@ -271,9 +274,14 @@ bool reflect_vertex_description(CompilationContext* ctx, SpvReflectShaderModule*
             "Vertex input has mismatched location after being remapped"
         );
 
+        int format_override = find_index_if(subshader.vertex_formats, [&](const ShaderFile::VertexFormatOverride& override)
+        {
+            return override.semantic == vertex_inputs[location]->semantic;
+        });
+
         attr.layout = 0;
         attr.location = location;
-        attr.format = translate_vertex_format(vertex_inputs[location]->format);
+        attr.format = format_override >= 0 ? subshader.vertex_formats[format_override].format : translate_vertex_format(vertex_inputs[location]->format);
         attr.offset = vertex_desc.layouts[0].stride;
         if (attr.format == VertexFormat::invalid)
         {
@@ -456,7 +464,7 @@ ShaderFile::Range reflect_subshader(CompilationContext* ctx, const i32 subshader
     return range;
 }
 
-static bool merge_resource_layouts(const StringView& source_path, PipelineStateDescriptor* info, const CompilationContext::resource_layouts_t& layouts)
+static bool merge_resource_layouts(const PathView& source_path, PipelineStateDescriptor* info, const CompilationContext::resource_layouts_t& layouts)
 {
     const u32 layout_max = sign_cast<u32>(math::min(sign_cast<i32>(info->resource_layouts.capacity), static_array_length(layouts)));
     for (u32 layout = 0; layout < layout_max; ++layout)
@@ -526,8 +534,6 @@ static bool merge_resource_layouts(const StringView& source_path, PipelineStateD
  */
 Result<void, ShaderCompilerError> compile_subshader(CompilationContext* ctx, const i32 subshader_index, const StringView& code)
 {
-    auto& subshader = ctx->shader->subshaders[subshader_index];
-
     CComPtr<IDxcBlobEncoding> source_blob = nullptr;
     ctx->thread->library->CreateBlobWithEncodingOnHeapCopy(
         code.c_str(),
@@ -535,7 +541,10 @@ Result<void, ShaderCompilerError> compile_subshader(CompilationContext* ctx, con
         CP_UTF8,
         &source_blob
     );
+    auto* ptr = source_blob->GetBufferPointer();
+    BEE_UNUSED(ptr);
 
+    auto& subshader = ctx->shader->subshaders[subshader_index];
     auto module_name = str::to_wchar(subshader.name.view(), ctx->temp_allocator());
 
     for (int stage_index = 0; stage_index < ShaderStageIndex::count; ++stage_index)
@@ -569,6 +578,7 @@ Result<void, ShaderCompilerError> compile_subshader(CompilationContext* ctx, con
         };
 
         CComPtr<IDxcOperationResult> compilation_result = nullptr;
+
 
         // Compile the HLSL to SPIRV
         ctx->thread->compiler->Compile(
@@ -628,7 +638,7 @@ Result<void, ShaderCompilerError> compile_subshader(CompilationContext* ctx, con
     return {};
 }
 
-static Result<void, ShaderCompilerError> compile_shader_file(const StringView& source_path, const StringView& src, const ShaderTarget target_flags, DynamicArray<Shader>* dst, Allocator* code_allocator)
+static Result<void, ShaderCompilerError> compile_shader_file(const PathView& source_path, const StringView& src, const ShaderTarget target_flags, DynamicArray<Shader>* dst, Allocator* code_allocator)
 {
     auto& thread = g_compiler->thread_data[job_worker_id()];
 
@@ -749,7 +759,7 @@ static Result<void, ShaderCompilerError> compile_shader_file(const StringView& s
     return {};
 }
 
-Result<void, ShaderCompilerError> compile_shader(const StringView& source_path, const StringView& source, const ShaderTarget target, DynamicArray<Shader>* dst, Allocator* code_allocator)
+Result<void, ShaderCompilerError> compile_shader(const PathView& source_path, const StringView& source, const ShaderTarget target, DynamicArray<Shader>* dst, Allocator* code_allocator)
 {
     BEE_ASSERT(dst != nullptr);
     dst->clear();
@@ -759,7 +769,7 @@ Result<void, ShaderCompilerError> compile_shader(const StringView& source_path, 
     return result;
 }
 
-void disassemble_shader(const StringView& source_path, const Shader& shader, String* dst)
+void disassemble_shader(const PathView& source_path, const Shader& shader, String* dst)
 {
     auto* spv_context = spvContextCreate(SPV_ENV_VULKAN_1_1);
     spv_text spv_text_dest = nullptr;

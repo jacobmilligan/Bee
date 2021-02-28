@@ -7,11 +7,12 @@
 
 #pragma once
 
-#include "Bee/Core/Path.hpp"
-#include "Bee/Core/TypeTraits.hpp"
 
-#include <type_traits>
-#include <stdio.h>
+#include "Bee/Core/String.hpp"
+
+
+namespace bee { namespace fs { struct File; } }
+
 
 namespace bee {
 namespace io {
@@ -23,117 +24,6 @@ enum class SeekOrigin
     current,
     end
 };
-
-/*
- *************************
- *
- * Read API
- *
- *************************
- */
-
-/**
- * `read` - reads data from the reader into the Span given, reading up to `source.size()` bytes and returning
- * the total amount of bytes read
- */
-template <typename ReaderType>
-inline i32 read(ReaderType* reader, Span<u8> dst)
-{
-    BEE_ASSERT(reader != nullptr);
-
-    if (dst.empty() || dst.data() == nullptr)
-    {
-        return 0;
-    }
-
-    return reader->read(dst);
-}
-
-template <typename ReaderType>
-inline i32 read(ReaderType* reader, String* dst)
-{
-    BEE_ASSERT(dst != nullptr);
-    const auto old_size = dst->size();
-    dst->append(reinterpret_cast<const char*>(reader->data()));
-
-    auto read_count = dst->size() - old_size;
-    reader->seek(read_count, SeekOrigin::current);
-    if (*reinterpret_cast<const char*>(reader->data()) == '\0')
-    {
-        reader->seek(1, SeekOrigin::current);
-    }
-    return read_count;
-}
-
-template <typename ReaderType, typename DstType>
-inline i32 read(ReaderType* reader, Span<DstType>& dst)
-{
-    return read(reader, dst.to_bytes());
-}
-
-template <typename ReaderType, typename DstType>
-inline i32 read(ReaderType* reader, DstType* dst)
-{
-    return read(reader, make_span<u8>(reinterpret_cast<u8*>(dst), sizeof(DstType)));
-}
-
-/*
- *************************
- *
- * Write API
- *
- *************************
- */
-
-/**
- * Base write function for writing bytes to a destination writer - used by other `write` functions
- */
-template <typename WriterType>
-inline i32 write(WriterType* dst, const Span<const u8>& data);
-
-/**
- * Specialization for string types
- */
-template <typename WriterType>
-inline i32 write(WriterType* dst, const String& src)
-{
-    // Add 1 to get the null-terminated part of the string as well
-    const auto size_with_null_term = src.empty() ? 0 : src.size() + 1;
-    return write(dst, make_span<const u8>(reinterpret_cast<const u8*>(src.data()), size_with_null_term));
-}
-
-/**
- * Casts the source to bytes and writes them to the `dst` writer. Will static_assert if the type doesn't conform to
- * std::is_trivially_copyable
- */
-template <typename WriterType, typename SrcType>
-inline i32 write(WriterType* dst, const SrcType& src)
-{
-    static_assert(
-        std::is_trivially_copyable<SrcType>::value,
-        "write: `SrcType` must be trivially copyable. Consider implementing a specialization of `write` for that type."
-    );
-
-    return write(dst, make_span<u8>(reinterpret_cast<const u8*>(&src), sizeof(SrcType)));
-}
-
-/**
- * `write_fmt` - writes a printf-like formatted string to the end of the `dst` string
- */
-template <typename T>
-inline i32 write_fmt(T* dst, const char* format, ...) BEE_PRINTFLIKE(2, 3);
-
-/*
- ****************************************************************************************************
- *
- * # Readers
- *
- * Readers are classes that read from a source stream, i.e. a file or some memory buffer.
- *
- *
- *
- ****************************************************************************************************
- */
 
 /**
  * Manages the reading/writing of data into files, buffers, strings etc.
@@ -293,17 +183,9 @@ public:
         : Stream(Mode::invalid)
     {}
 
-    FileStream(FILE* src_file, const char* src_file_mode, bool close_on_destruct = false);
-
-    FileStream(const Path& path, const char* file_mode);
-
-    FileStream(const char* path, const char* file_mode);
+    FileStream(fs::File* file);
 
     ~FileStream() override;
-
-    void reopen(const Path& path, const char* file_mode);
-
-    void reopen(const char* path, const char* file_mode);
 
     void close();
 
@@ -313,16 +195,9 @@ public:
 
     i32 write(const StringView& string);
 
-    i32 write_v(const char* src_fmt_str, va_list src_fmt_args);
-
-    i32 write_fmt(const char* format, ...) BEE_PRINTFLIKE(2, 3);
-
     i32 seek(i32 offset, SeekOrigin origin) override;
 
-    inline i32 offset() const override
-    {
-        return static_cast<i32>(ftell(file_));
-    }
+    i32 offset() const override;
 
     inline i32 size() const override
     {
@@ -333,13 +208,10 @@ public:
     {
         return mode() == Mode::read_only ? size_ : limits::max<i32>();
     }
-
-    Mode file_mode_to_stream_mode(const char* file_mode);
 private:
-    FILE*           file_ { nullptr };
-    const char*     file_mode_ { nullptr };
+    fs::File*       file_ { nullptr };
     i32             size_ { 0 };
-    bool            close_on_destruct_ { false };
+    i32             offset_ { 0 };
 };
 
 
@@ -422,6 +294,3 @@ private:
 
 } // namespace io
 } // namespace bee
-
-
-#include "Bee/Core/IO.inl"

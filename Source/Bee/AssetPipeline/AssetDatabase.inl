@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "Bee/AssetPipelineV2/AssetDatabase.hpp"
+#include "Bee/AssetPipeline/AssetDatabase.hpp"
 
 #include "Bee/Core/Reflection.hpp"
 #include "Bee/Core/Memory/LinearAllocator.hpp"
@@ -79,7 +79,7 @@ struct AssetDatabase
     Path                    location;
     Path                    artifacts_root;
     MDB_env*                env { nullptr };
-    unsigned int            db_maps[underlying_t(DbMapId::count)];
+    unsigned int            db_maps[static_cast<int>(DbMapId::count)];
     RecursiveMutex          gc_mutex;
     FixedArray<ThreadData>  thread_data;
 };

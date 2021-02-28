@@ -11,6 +11,11 @@
 #include "Bee/Core/Noncopyable.hpp"
 #include "Bee/Core/Enum.hpp"
 
+#if BEE_OS_WINDOWS == 1
+    #include <malloc.h>
+#endif // BEE_OS_WINDOWS == 1
+
+
 namespace bee {
 
 

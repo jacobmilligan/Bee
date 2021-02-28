@@ -99,7 +99,9 @@ struct BEE_CORE_API CreateProcessInfo
     #error "Platform not supported"
 #endif // BEE_OS_WINDOWS == 1
 
-BEE_CORE_API bool create_process(const CreateProcessInfo& info, const Path& working_directory = Path::current_working_directory());
+BEE_CORE_API bool create_process(const CreateProcessInfo& info, const PathView& working_directory);
+
+BEE_CORE_API bool create_process(const CreateProcessInfo& info);
 
 BEE_CORE_API void destroy_process(const ProcessHandle& process);
 

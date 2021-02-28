@@ -8,7 +8,6 @@
 #include <Bee/Core/String.hpp>
 #include <Bee/Core/Memory/MallocAllocator.hpp>
 #include <Bee/Core/Memory/LinearAllocator.hpp>
-#include <Bee/Core/IO.hpp>
 
 #include <gtest/gtest.h>
 
@@ -171,8 +170,9 @@ TEST(StringTests, append)
 
 TEST(StringTests, assign)
 {
-    bee::String str;
-    str.assign("")
+    bee::String str("asdasflglsiosk2902k349");
+    str.assign("");
+    ASSERT_STREQ(str.c_str(), "");
 }
 
 TEST(StringTests, insert)
@@ -297,7 +297,7 @@ TEST(StringTests, format_and_write)
     ASSERT_STREQ(string.c_str(), "1, 2, 3, 4, 0x05");
 
     string.clear();
-    bee::io::write_fmt(&string, "%s, %d, %#04x, %c", "Test", 1, 2, 'x');
+    bee::str::format(&string, "%s, %d, %#04x, %c", "Test", 1, 2, 'x');
     ASSERT_STREQ(string.c_str(), "Test, 1, 0x02, x");
 
 
@@ -305,7 +305,7 @@ TEST(StringTests, format_and_write)
     int cur_byte_idx = 0;
     bee::u8 bytes[] = { 2, 5, 7, 1, 0 };
     for (auto& byte : bytes) {
-        bee::io::write_fmt(&byte_string, "%#04x", byte);
+        bee::str::format(&byte_string, "%#04x", byte);
         if (cur_byte_idx < bee::static_array_length(bytes) - 1) {
             byte_string += bee::String(", ");
         }

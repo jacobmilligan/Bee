@@ -7,9 +7,9 @@
 
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Math/Math.hpp"
+#include "Bee/Core/Filesystem.hpp"
 
 #include <string.h>
-#include <errno.h>
 
 
 namespace bee {
@@ -133,72 +133,41 @@ i32 MemoryStream::seek(const i32 offset, const SeekOrigin origin)
  *
  *****************************************
  */
-FileStream::FileStream(FILE* src_file, const char* src_file_mode, const bool close_on_destruct)
-    : Stream(file_mode_to_stream_mode(src_file_mode)),
-      file_(src_file),
-      file_mode_(src_file_mode),
-      close_on_destruct_(close_on_destruct)
+static Stream::Mode open_mode_to_stream_mode(const fs::OpenMode access)
 {
-    BEE_ASSERT(file_ != nullptr);
-
-    // Get the filesize
-    fseek(file_, 0, SEEK_END);
-    size_ = ftell(file_);
-    fseek(file_, 0, SEEK_SET);
+    const bool read = (access & fs::OpenMode::read) != fs::OpenMode::none;
+    const bool write = (access & fs::OpenMode::write) != fs::OpenMode::none;
+    if (read && write)
+    {
+        return Stream::Mode::read_write;
+    }
+    if (read)
+    {
+        return Stream::Mode::read_only;
+    }
+    if (read)
+    {
+        return Stream::Mode::write_only;
+    }
+    return Stream::Mode::invalid;
 }
 
-FileStream::FileStream(const Path& path, const char* file_mode)
-    : FileStream(path.c_str(), file_mode)
+FileStream::FileStream(fs::File* file)
+    : Stream(open_mode_to_stream_mode(file->mode)),
+      file_(file),
+      size_(sign_cast<i32>(fs::get_size(*file)))
 {}
-
-FileStream::FileStream(const char* path, const char* file_mode)
-    : Stream(Mode::invalid),
-      file_(nullptr),
-      close_on_destruct_(true)
-{
-    reopen(path, file_mode);
-}
 
 FileStream::~FileStream()
 {
-    if (close_on_destruct_)
-    {
-        BEE_ASSERT(file_ != nullptr);
-        fclose(file_);
-    }
-}
-
-void FileStream::reopen(const Path& path, const char* file_mode)
-{
-    reopen(path.c_str(), file_mode);
-}
-
-void FileStream::reopen(const char* path, const char* file_mode)
-{
-    if (file_ != nullptr && close_on_destruct_)
-    {
-        fclose(file_);
-    }
-
-    file_mode_ = file_mode;
-    file_ = fopen(path, file_mode);
-    BEE_ASSERT(file_ != nullptr);
-
-    // Get the filesize
-    fseek(file_, 0, SEEK_END);
-    size_ = ftell(file_);
-    fseek(file_, 0, SEEK_SET);
-
-    BEE_ASSERT(ftell(file_) == 0);
-
-    stream_mode = file_mode_to_stream_mode(file_mode);
+    file_ = nullptr;
 }
 
 void FileStream::close()
 {
     if (file_ != nullptr)
     {
-        fclose(file_);
+        fs::close_file(file_);
     }
 }
 
@@ -209,13 +178,11 @@ i32 FileStream::read(void* dst_buffer, i32 dst_buffer_size)
         return 0;
     }
 
-    const auto size_read = sign_cast<i32>(fread(dst_buffer, 1, dst_buffer_size, file_));
-    const auto read_error = ferror(file_) != 0;
-    const auto bytes_read = ftell(file_);
+    const auto size_read = sign_cast<i32>(fs::read(*file_, dst_buffer_size, dst_buffer));
+    offset_ += size_read;
 
-
-    BEE_ASSERT(bytes_read <= size_);
-    BEE_ASSERT_F(!read_error, "Failed to bytes_read from file with error %s", strerror(errno));
+    BEE_ASSERT(size_read <= size_);
+    BEE_ASSERT(size_read != 0);
 
     return size_read;
 }
@@ -227,10 +194,8 @@ i32 FileStream::write(const void* src_buffer, i32 src_buffer_size)
         return 0;
     }
 
-    const auto size_written = sign_cast<i32>(fwrite(src_buffer, 1, src_buffer_size, file_));
-    const auto write_error = size_written != src_buffer_size && ferror(file_) != 0;
-
-    BEE_ASSERT_F(!write_error, "Failed to write to file with error code: %d", errno);
+    const i32 size_written = sign_cast<i32>(fs::write(*file_, src_buffer, src_buffer_size));
+    BEE_ASSERT(size_written == src_buffer_size);
 
     size_ += size_written;
     return size_written;
@@ -243,107 +208,21 @@ i32 FileStream::write(const StringView& string)
         return 0;
     }
 
-    const auto size_written = sign_cast<i32>(fwrite(string.c_str(), 1, string.size(), file_));
-    const auto write_error = size_written != string.size() && ferror(file_) != 0;
-
-    BEE_ASSERT_F(!write_error, "Failed to write to file with error code: %d", errno);
+    const auto size_written = sign_cast<i32>(fs::write(*file_, string.data(), string.size()));
+    BEE_ASSERT(size_written == string.size());
 
     size_ += size_written;
     return size_written;
 }
 
-i32 FileStream::write_v(const char* src_fmt_str, va_list src_fmt_args)
+i32 FileStream::seek(const i32 offset, const SeekOrigin origin)
 {
-    if (BEE_FAIL(can_write()))
-    {
-        return 0;
-    }
-
-    const auto size_written = sign_cast<i32>(vfprintf(file_, src_fmt_str, src_fmt_args));
-    const auto write_error = ferror(file_) != 0;
-
-    BEE_ASSERT_F(!write_error, "Failed to write to file with error code: %d", errno);
-
-    size_ += size_written;
-    return size_written;
+    return sign_cast<i32>(fs::seek(*file_, offset, origin));
 }
 
-i32 FileStream::write_fmt(const char* format, ...)
+i32 FileStream::offset() const
 {
-    va_list args;
-    va_start(args, format);
-
-    const auto write_size = write_v(format, args);
-
-    va_end(args);
-
-    return write_size;
-}
-
-i32 FileStream::seek(i32 offset, SeekOrigin origin)
-{
-    auto fseek_offset = offset;
-    int fseek_origin = -1;
-
-    switch (origin)
-    {
-        case SeekOrigin::begin:
-        {
-            fseek_origin = SEEK_SET;
-            break;
-        }
-
-        case SeekOrigin::current:
-        {
-            fseek_origin = SEEK_CUR;
-            break;
-        }
-
-        case SeekOrigin::end:
-        {
-            fseek_origin = SEEK_END;
-            break;
-        }
-    }
-
-    const auto seek_success = fseek(file_, static_cast<long>(fseek_offset), fseek_origin) == 0;
-    BEE_ASSERT_F(seek_success, "Failed to seek file");
-    return fseek_offset;
-}
-
-Stream::Mode FileStream::file_mode_to_stream_mode(const char* file_mode)
-{
-    struct ModeMapping { Mode mode; const char* file_mode; };
-    static constexpr ModeMapping mode_mappings[]
-    {
-        { Mode::read_only, "r" },
-        { Mode::read_only, "rb" },
-        { Mode::write_only, "w" },
-        { Mode::write_only, "wb" },
-        { Mode::write_only, "w+" },
-        { Mode::write_only, "wb+" },
-        { Mode::write_only, "w+b" },
-        { Mode::write_only, "a" },
-        { Mode::write_only, "ab" },
-        { Mode::write_only, "a+" },
-        { Mode::write_only, "ab+" },
-        { Mode::write_only, "a+b" },
-        { Mode::read_write, "r+" },
-        { Mode::read_write, "rb+" },
-        { Mode::read_write, "r+b" },
-    };
-
-    StringView mode_str(file_mode);
-
-    for (auto& mapping : mode_mappings)
-    {
-        if (mode_str == mapping.file_mode)
-        {
-            return mapping.mode;
-        }
-    }
-
-    return Mode::invalid;
+    return sign_cast<i32>(fs::tell(*file_));
 }
 
 /*

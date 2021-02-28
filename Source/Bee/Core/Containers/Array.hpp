@@ -148,6 +148,12 @@ public:
 
     void shrink_to_fit();
 
+    inline constexpr i32 growth_rate()
+    {
+        constexpr auto container_mode = container_mode_constant<Mode>{};
+        return growth_rate(container_mode);
+    }
+
 private:
     i32         size_ { 0 };
     i32         capacity_ { 0 };

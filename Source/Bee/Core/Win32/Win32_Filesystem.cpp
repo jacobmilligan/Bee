@@ -19,18 +19,16 @@
 
 
 namespace bee {
-
-
-extern const char* get_null_terminated_path(const StringView& path);
-
-
 namespace fs {
 
 
 struct DirectoryEntry
 {
-    WIN32_FIND_DATA find_data;
-    HANDLE          handle { nullptr };
+    WIN32_FIND_DATAW    find_data;
+    HANDLE              handle { nullptr };
+    char                u8s_filename[MAX_PATH];
+    StaticString<4096>  buffer;
+    PathView            root;
 };
 
 // TODO(Jacob): add a BEE_CONFIG #define for the size of the table?
@@ -44,42 +42,42 @@ thread_local static HandleTable<32, DirectoryEntryHandle, DirectoryEntry> thread
  *
  *****************************************
  */
-DirectoryIterator::~DirectoryIterator()
+DirectoryIterator::DirectoryIterator(const PathView& directory_path)
 {
-    destroy();
-}
-
-void DirectoryIterator::destroy()
-{
-    if (thread_local_entries.contains(current_handle_))
-    {
-        FindClose(thread_local_entries[current_handle_]->handle);
-        thread_local_entries.destroy(current_handle_);
-    }
-
-    current_handle_ = DirectoryEntryHandle{};
-}
-
-void DirectoryIterator::init()
-{
-    if (dir_.empty())
+    if (directory_path.empty())
     {
         return;
     }
 
     BEE_ASSERT(!current_handle_.is_valid());
 
-    dir_.append("*");
-    DirectoryEntry entry{};
-    entry.handle = FindFirstFile(dir_.c_str(), &entry.find_data);
-    current_handle_ = thread_local_entries.create(entry);
+    DirectoryEntry* entry = nullptr;
+    current_handle_ = thread_local_entries.create_uninitialized(&entry);
 
-    if (BEE_FAIL_F(current_handle_.is_valid(), "Failed to find file in directory: %s: %s", dir_.c_str(), win32_get_last_error_string()))
+    if (BEE_FAIL_F(current_handle_.is_valid(), "Failed to find file in directory: %" BEE_PRIsv ": %s", BEE_FMT_SV(directory_path), win32_get_last_error_string()))
     {
         return;
     }
 
+    entry->buffer.append(directory_path.string_view()).append(Path::preferred_slash).append('*');
+
+    auto u16s = str::to_wchar<MAX_PATH>(entry->buffer.view());
+    entry->buffer.resize(entry->buffer.size() - 2); // remove the '\\*'
+    entry->handle = ::FindFirstFileW(u16s.data, &entry->find_data);
+    entry->root = directory_path;
+
     next();
+}
+
+void DirectoryIterator::destroy()
+{
+    if (thread_local_entries.contains(current_handle_))
+    {
+        ::FindClose(thread_local_entries[current_handle_]->handle);
+        thread_local_entries.destroy(current_handle_);
+    }
+
+    current_handle_ = DirectoryEntryHandle{};
 }
 
 void DirectoryIterator::next()
@@ -93,31 +91,32 @@ void DirectoryIterator::next()
     StringView next_filename{};
     do
     {
-        if (FindNextFile(entry->handle, &entry->find_data) == 0)
+        if (::FindNextFileW(entry->handle, &entry->find_data) == 0)
         {
             destroy();
             return;
         }
 
-        next_filename = StringView(entry->find_data.cFileName, str::length(entry->find_data.cFileName));
+        i32 size = str::from_wchar(
+            entry->u8s_filename,
+            static_array_length(entry->u8s_filename),
+            entry->find_data.cFileName,
+            ::wcslen(entry->find_data.cFileName)
+        );
+        next_filename = StringView(entry->u8s_filename, size);
     } while (next_filename == "." || next_filename == "..");
 
-    dir_.replace_filename(next_filename);
-}
+    entry->buffer = entry->root.string_view();
 
-DirectoryIterator::reference DirectoryIterator::operator*() const
-{
-    return dir_;
-}
+    const char last_char = entry->buffer[entry->buffer.size() - 1];
+    if (last_char != Path::preferred_slash && last_char != Path::generic_slash)
+    {
+        entry->buffer.append(Path::preferred_slash);
+    }
 
-DirectoryIterator::pointer DirectoryIterator::operator->() const
-{
-    return &dir_;
-}
+    entry->buffer.append(next_filename);
 
-bool DirectoryIterator::operator==(const bee::fs::DirectoryIterator& other) const
-{
-    return current_handle_ == other.current_handle_;
+    path_ = entry->buffer.view();
 }
 
 /*
@@ -175,7 +174,7 @@ void DirectoryWatcher::init(const ThreadCreateInfo &thread_info)
     thread_ = Thread(thread_info, watch_loop, this);
 }
 
-void DirectoryWatcher::remove_directory(const Path &path)
+void DirectoryWatcher::remove_directory(const PathView& path)
 {
     scoped_lock_t lock(mutex_);
 
@@ -183,7 +182,7 @@ void DirectoryWatcher::remove_directory(const Path &path)
 
     if (index < 0)
     {
-        log_error("Directory at path %s is not being watched", path.c_str());
+        log_error("Directory at path %" BEE_PRIsv " is not being watched", BEE_FMT_SV(path));
         return;
     }
 
@@ -223,11 +222,11 @@ void DirectoryWatcher::stop()
     CloseHandle(completion_port);
 }
 
-bool DirectoryWatcher::add_directory(const Path& path)
+bool DirectoryWatcher::add_directory(const PathView& path)
 {
     if (!is_dir(path))
     {
-        log_error("%s is not a directory", path.c_str());
+        log_error("%" BEE_PRIsv " is not a directory", BEE_FMT_SV(path));
         return false;
     }
 
@@ -244,8 +243,10 @@ bool DirectoryWatcher::add_directory(const Path& path)
     auto entry = make_unique<WatchedDirectory>(system_allocator());
     memset(&entry->overlapped, 0, sizeof(OVERLAPPED));
 
+    Path pathbuf(path);
+
     entry->directory = ::CreateFile(
-        path.c_str(),
+        pathbuf.c_str(),
         FILE_LIST_DIRECTORY,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nullptr,
@@ -289,13 +290,13 @@ bool DirectoryWatcher::add_directory(const Path& path)
 
     if (find_entry(path) >= 0)
     {
-        log_error("Directory %s is already being watched", path.c_str());
+        log_error("Directory %s is already being watched", pathbuf.c_str());
         return false;
     }
 
     entry->index = entries_.size();
     entries_.emplace_back(BEE_MOVE(entry));
-    watched_paths_.push_back(path);
+    watched_paths_.emplace_back(BEE_MOVE(pathbuf));
     start_thread_cv_.notify_all();
 
     return true;
@@ -437,21 +438,229 @@ void DirectoryWatcher::watch_loop(DirectoryWatcher* watcher)
  *
  *****************************************
  */
-bool is_dir(const Path& path)
+File::File(File&& other) noexcept
 {
-    const auto file_attributes = GetFileAttributes(path.c_str());
+    if (is_valid())
+    {
+        close_file(this);
+    }
+
+    handle = other.handle;
+    other.handle = nullptr;
+
+    mode = other.mode;
+    other.mode = OpenMode::none;
+}
+
+File& File::operator=(File&& other) noexcept
+{
+    if (is_valid())
+    {
+        close_file(this);
+    }
+
+    handle = other.handle;
+    other.handle = nullptr;
+
+    mode = other.mode;
+    other.mode = OpenMode::none;
+
+    return *this;
+}
+
+File::~File()
+{
+    if (is_valid())
+    {
+        close_file(this);
+    }
+}
+
+File open_file(const PathView& path, const OpenMode mode)
+{
+    DWORD dwDesiredAccess = 0
+        | decode_flag(mode, OpenMode::read, GENERIC_READ)
+        | decode_flag(mode, OpenMode::write, GENERIC_WRITE)
+        | decode_flag(mode, OpenMode::append, GENERIC_READ | GENERIC_WRITE);
+    DWORD dwShareMode = FILE_SHARE_READ;
+    DWORD dwCreationDisposition = 0
+        | decode_flag(mode, OpenMode::read, OPEN_EXISTING)
+        | decode_flag(mode, OpenMode::write, CREATE_ALWAYS);
+
+    if ((mode & OpenMode::read) != OpenMode::none)
+    {
+        dwCreationDisposition = OPEN_EXISTING;
+    }
+
+    if ((mode & OpenMode::append) != OpenMode::none)
+    {
+        dwCreationDisposition = CREATE_NEW;
+    }
+    else if ((mode & OpenMode::write) != OpenMode::none)
+    {
+        dwCreationDisposition = CREATE_ALWAYS;
+    }
+
+    const auto u16s = str::to_wchar<1024>(path.string_view());
+    auto* file = ::CreateFileW(
+        u16s.data,
+        dwDesiredAccess,
+        dwShareMode,
+        nullptr,
+        dwCreationDisposition,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr
+    );
+
+    if (BEE_FAIL_F(file != INVALID_HANDLE_VALUE, "Failed to open file %" BEE_PRIsv " for read: %s", BEE_FMT_SV(path), win32_get_last_error_string()))
+    {
+        return File{};
+    }
+
+    return { file, mode };
+}
+
+void close_file(File* file)
+{
+    BEE_ASSERT(file->is_valid());
+
+    ::CloseHandle(file->handle);
+    file->handle = nullptr;
+    file->mode = OpenMode::none;
+}
+
+i64 get_size(const File& file)
+{
+    BEE_ASSERT(file.is_valid());
+
+    LARGE_INTEGER file_size;
+    if (BEE_FAIL_F(FALSE != ::GetFileSizeEx(file.handle, &file_size), "Failed to get file size: %s", win32_get_last_error_string()))
+    {
+        return 0;
+    }
+
+    return file_size.QuadPart;
+}
+
+i64 tell(const File& file)
+{
+    LARGE_INTEGER li{};
+    li.QuadPart = 0;
+
+    LARGE_INTEGER offset{};
+    if (BEE_FAIL_F(FALSE != ::SetFilePointerEx(static_cast<HANDLE>(file.handle), li, &offset, FILE_CURRENT), "Failed to tell file: %s", win32_get_last_error_string()))
+    {
+        return 0;
+    }
+
+    return offset.QuadPart;
+}
+
+BEE_TRANSLATION_TABLE_FUNC(seek_origin_to_move_method, io::SeekOrigin, DWORD, 3,
+    FILE_BEGIN,     // begin
+    FILE_CURRENT,   // current
+    FILE_END        // end
+);
+
+i64 seek(const File& file, const i64 offset, const io::SeekOrigin origin)
+{
+    LARGE_INTEGER distance{};
+    distance.QuadPart = offset;
+
+    LARGE_INTEGER new_pos{};
+    DWORD move = seek_origin_to_move_method(origin);
+
+    if (BEE_FAIL_F(FALSE != ::SetFilePointerEx(static_cast<HANDLE>(file.handle), distance, &new_pos, move), "Failed to seek file: %s", win32_get_last_error_string()))
+    {
+        return 0;
+    }
+
+    return new_pos.QuadPart;
+}
+
+
+i64 read(const File& file, const i64 size, void* buffer)
+{
+    DWORD bytes_read = 0;
+    const auto read_res = ::ReadFile(file.handle, buffer, static_cast<DWORD>(size), &bytes_read, nullptr);
+    if (BEE_FAIL_F(read_res == TRUE, "Failed to read file: %s", win32_get_last_error_string()))
+    {
+        return 0;
+    }
+
+    return bytes_read;
+}
+
+String read(const File& file, Allocator* allocator)
+{
+    const size_t size = get_size(file);
+    String result(sign_cast<i32>(size), '\0', allocator);
+
+    if (!result.empty())
+    {
+        const size_t bytes_read = read(file, size, result.data());
+        BEE_ASSERT_F(bytes_read == result.size(), "Failed to read entire file");
+    }
+
+    return BEE_MOVE(result);
+}
+
+FixedArray<u8> read_bytes(const File& file, Allocator* allocator)
+{
+    const size_t size = get_size(file);
+    auto result = FixedArray<u8>(sign_cast<i32>(size), 0, allocator);
+
+    if (!result.empty())
+    {
+        const size_t bytes_read = read(file, size, result.data());
+        BEE_ASSERT_F(bytes_read == result.size(), "Failed to read entire file");
+    }
+
+    return BEE_MOVE(result);
+}
+
+i64 write(const File& file, const StringView& string_to_write)
+{
+    return write(file, string_to_write.data(), string_to_write.size());
+}
+
+i64 write(const File& file, const void* buffer, const i64 buffer_size)
+{
+    DWORD bytes_written = 0;
+    const auto err = ::WriteFile(
+        static_cast<HANDLE>(file.handle),
+        buffer,
+        static_cast<DWORD>(buffer_size),
+        &bytes_written,
+        nullptr
+    );
+
+    if (BEE_FAIL_F(err == TRUE, "Error writing to file: %s", win32_get_last_error_string()))
+    {
+        return 0;
+    }
+
+    return sign_cast<i64>(bytes_written);
+}
+
+bool is_dir(const PathView& path)
+{
+    const auto u16s = str::to_wchar<1024>(path.string_view());
+    const auto file_attributes = ::GetFileAttributesW(u16s.data);
     return (file_attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 }
 
-bool is_file(const Path& path)
+bool is_file(const PathView& path)
 {
     return !is_dir(path);
 }
 
-u64 last_modified(const Path& path)
+u64 last_modified(const PathView& path)
 {
+
     WIN32_FILE_ATTRIBUTE_DATA data{};
-    const auto success = GetFileAttributesEx(path.c_str(), GetFileExInfoStandard, &data);
+    const auto u16s = str::to_wchar<1024>(path.string_view());
+    const auto success = ::GetFileAttributesExW(u16s.data, GetFileExInfoStandard, &data);
     if (success == 0)
     {
         log_error("Failed to get last modified time: %s", win32_get_last_error_string());
@@ -462,18 +671,19 @@ u64 last_modified(const Path& path)
     return (static_cast<u64>(filetime.dwHighDateTime) << 32) + static_cast<u64>(filetime.dwLowDateTime);
 }
 
-bool mkdir(const StringView& directory_path, const bool recursive)
+bool mkdir(const PathView& directory_path, const bool recursive)
 {
     if (recursive)
     {
-        const auto parent = path_get_parent(directory_path);
-        if (!path_exists(parent))
+        const auto parent = directory_path.parent();
+        if (!parent.exists())
         {
             mkdir(parent, recursive);
         }
     }
 
-    const auto result = CreateDirectory(get_null_terminated_path(directory_path), nullptr);
+    const auto u16s = str::to_wchar<1024>(directory_path.string_view());
+    const auto result = ::CreateDirectoryW(u16s.data, nullptr);
 
     if (result != FALSE)
     {
@@ -484,60 +694,61 @@ bool mkdir(const StringView& directory_path, const bool recursive)
     return false;
 }
 
-bool mkdir(const Path& directory_path, const bool recursive)
+bool native_rmdir_non_recursive(const PathView& directory_path)
 {
-    return mkdir(directory_path.view(), recursive);
-}
-
-bool native_rmdir_non_recursive(const Path& directory_path)
-{
-    const auto result = RemoveDirectory(directory_path.c_str());
+    const auto u16s = str::to_wchar<1024>(directory_path.string_view());
+    const auto result = ::RemoveDirectoryW(u16s.data);
 
     if (result != FALSE)
     {
         return true;
     }
 
-    log_error("Unable to remove directory at path: %s: %s", directory_path.c_str(), win32_get_last_error_string());
+    log_error("Unable to remove directory at path: %" BEE_PRIsv ": %s", BEE_FMT_SV(directory_path), win32_get_last_error_string());
     return false;
 }
 
-bool remove(const Path& filepath)
+bool remove(const PathView& filepath)
 {
-    const auto result = DeleteFile(filepath.c_str());
+    const auto u16s = str::to_wchar<1024>(filepath.string_view());
+    const auto result = ::DeleteFileW(u16s.data);
 
     if (result != FALSE)
     {
         return true;
     }
 
-    log_error("Unable to remove file at path: %s: %s", filepath.c_str(), win32_get_last_error_string());
+    log_error("Unable to remove file at path: %" BEE_PRIsv ": %s", BEE_FMT_SV(filepath), win32_get_last_error_string());
     return false;
 }
 
-bool move(const Path& current_path, const Path& new_path)
+bool move(const PathView& current_path, const PathView& new_path)
 {
-    const auto result = MoveFile(current_path.c_str(), new_path.c_str());
+    const auto current_u16s = str::to_wchar<1024>(current_path.string_view());
+    const auto new_u16s = str::to_wchar<1024>(new_path.string_view());
+    const auto result = ::MoveFileW(current_u16s.data, new_u16s.data);
 
     if (result != FALSE)
     {
         return true;
     }
 
-    log_error("Unable to move file from %s to %s: %s", current_path.c_str(), new_path.c_str(), win32_get_last_error_string());
+    log_error("Unable to move file from %" BEE_PRIsv " to %" BEE_PRIsv ": %s", BEE_FMT_SV(current_path), BEE_FMT_SV(new_path), win32_get_last_error_string());
     return false;
 }
 
-bool copy(const Path& src_filepath, const Path& dst_filepath, bool overwrite)
+bool copy(const PathView& src_filepath, const PathView& dst_filepath, bool overwrite)
 {
-    const auto result = CopyFile(src_filepath.c_str(), dst_filepath.c_str(), !overwrite);
+    const auto src_u16s = str::to_wchar<1024>(src_filepath.string_view());
+    const auto dst_u16s = str::to_wchar<1024>(dst_filepath.string_view());
+    const auto result = ::CopyFileW(src_u16s.data, dst_u16s.data, !overwrite);
 
     if (result != FALSE)
     {
         return true;
     }
 
-    log_error("Unable to copy file from %s to %s: %s", src_filepath.c_str(), dst_filepath.c_str(), win32_get_last_error_string());
+    log_error("Unable to copy file from %" BEE_PRIsv " to %" BEE_PRIsv ": %s", BEE_FMT_SV(src_filepath), BEE_FMT_SV(dst_filepath), win32_get_last_error_string());
     return false;
 }
 
@@ -551,16 +762,16 @@ bool copy(const Path& src_filepath, const Path& dst_filepath, bool overwrite)
 Path user_local_appdata_path()
 {
     LPWSTR path_str = nullptr;
-    const auto result = SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &path_str);
+    const auto result = ::SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &path_str);
     if (BEE_FAIL_F(result == S_OK, "Couldn't retrieve local app data folder"))
     {
         return Path();
     }
 
-    Path appdata = str::from_wchar(path_str).view();
-    CoTaskMemFree(path_str);
+    Path appdata(str::from_wchar(path_str).view());
+    ::CoTaskMemFree(path_str);
 
-    return appdata;
+    return BEE_MOVE(appdata);
 }
 
 /*
@@ -570,16 +781,17 @@ Path user_local_appdata_path()
  *
  ******************************************
  */
-bool mmap_file_map(MemoryMappedFile* file, const Path& path, const FileAccess access)
+bool mmap_file_map(MemoryMappedFile* file, const PathView& path, const OpenMode open_mode)
 {
-    const DWORD desired_access = decode_flag(access, FileAccess::read, GENERIC_READ)
-                               | decode_flag(access, FileAccess::write, GENERIC_WRITE);
+    const DWORD desired_access = decode_flag(open_mode, OpenMode::read, GENERIC_READ)
+                               | decode_flag(open_mode, OpenMode::write, GENERIC_WRITE);
 
-    const DWORD create_disposition = decode_flag(access, FileAccess::read, OPEN_EXISTING)
-                                   | decode_flag(access, FileAccess::write, CREATE_NEW);
+    const DWORD create_disposition = decode_flag(open_mode, OpenMode::read, OPEN_EXISTING)
+                                   | decode_flag(open_mode, OpenMode::write, CREATE_NEW);
 
-    file->handles[0] = CreateFile(
-        path.c_str(),
+    const auto u16s = str::to_wchar<1024>(path.string_view());
+    file->handles[0] = ::CreateFileW(
+        u16s.data,
         desired_access,
         FILE_SHARE_READ,
         nullptr,
@@ -590,15 +802,15 @@ bool mmap_file_map(MemoryMappedFile* file, const Path& path, const FileAccess ac
 
     if (file->handles[0] == INVALID_HANDLE_VALUE)
     {
-        log_error("Failed to create memory mapped file %s: %s", path.c_str(), win32_get_last_error_string());
+        log_error("Failed to create memory mapped file %" BEE_PRIsv ": %s", BEE_FMT_SV(path), win32_get_last_error_string());
         file->handles[0] = nullptr;
         return false;
     }
 
-    const DWORD protect = decode_flag(access, FileAccess::read, PAGE_READONLY)
-                        | decode_flag(access, FileAccess::write, PAGE_READWRITE);
+    const DWORD protect = decode_flag(open_mode, OpenMode::read, PAGE_READONLY)
+                        | decode_flag(open_mode, OpenMode::write, PAGE_READWRITE);
 
-    file->handles[1] = CreateFileMapping(
+    file->handles[1] = ::CreateFileMappingW(
         file->handles[0],
         nullptr,
         protect,
@@ -608,19 +820,19 @@ bool mmap_file_map(MemoryMappedFile* file, const Path& path, const FileAccess ac
 
     if (file->handles[1] == nullptr)
     {
-        log_error("Failed to memory map file %s: %s", path.c_str(), win32_get_last_error_string());
-        CloseHandle(file->handles[0]);
+        log_error("Failed to memory map file %" BEE_PRIsv ": %s", BEE_FMT_SV(path), win32_get_last_error_string());
+        ::CloseHandle(file->handles[0]);
         return false;
     }
 
-    const DWORD view_access = decode_flag(access, FileAccess::read, FILE_MAP_READ)
-                            | decode_flag(access, FileAccess::write, FILE_MAP_WRITE);
-    file->data = MapViewOfFile(file->handles[1], view_access, 0, 0, 0);
+    const DWORD view_access = decode_flag(open_mode, OpenMode::read, FILE_MAP_READ)
+                            | decode_flag(open_mode, OpenMode::write, FILE_MAP_WRITE);
+    file->data = ::MapViewOfFile(file->handles[1], view_access, 0, 0, 0);
     if (file->data == nullptr)
     {
-        log_error("Failed to map file view %s: %s", path.c_str(), win32_get_last_error_string());
-        CloseHandle(file->handles[0]);
-        CloseHandle(file->handles[1]);
+        log_error("Failed to map file view %" BEE_PRIsv ": %s", BEE_FMT_SV(path), win32_get_last_error_string());
+        ::CloseHandle(file->handles[0]);
+        ::CloseHandle(file->handles[1]);
         return false;
     }
 
@@ -629,14 +841,14 @@ bool mmap_file_map(MemoryMappedFile* file, const Path& path, const FileAccess ac
 
 bool mmap_file_unmap(MemoryMappedFile* file)
 {
-    if (UnmapViewOfFile(file->data) == FALSE)
+    if (::UnmapViewOfFile(file->data) == FALSE)
     {
         log_error("Failed to unmap file view: %s", win32_get_last_error_string());
         return false;
     }
 
-    CloseHandle(file->handles[0]);
-    CloseHandle(file->handles[1]);
+    ::CloseHandle(file->handles[0]);
+    ::CloseHandle(file->handles[1]);
     new (file) MemoryMappedFile{};
     return true;
 }

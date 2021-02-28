@@ -12,23 +12,39 @@
 namespace bee {
 
 
-Path Path::executable_path(Allocator* allocator)
+PathView executable_path()
 {
-    TCHAR file_name[4096];
-    GetModuleFileNameA(nullptr, file_name, 4096);
-    return Path(StringView(file_name), allocator);
-}
+    static thread_local StaticArray<char, 4096> exe_path;
 
-Path Path::current_working_directory(Allocator* allocator)
-{
-    char buf[limits::max<u16>()];
-    const auto num_chars_written = GetCurrentDirectoryA(limits::max<u16>(), buf);
-    if (!BEE_CHECK(num_chars_written != 0))
+    if (exe_path.empty())
     {
-        return Path();
+        StaticArray<wchar_t, 4096> u16s;
+        u16s.size = ::GetModuleFileNameW(nullptr, u16s.data, u16s.capacity);
+        BEE_ASSERT_F(!u16s.empty(), "Failed to get executable path: %s", win32_get_last_error_string());
+
+        exe_path.size = str::from_wchar(exe_path.data, exe_path.capacity, u16s.data, u16s.size);
+        BEE_ASSERT(!exe_path.empty());
     }
 
-    return Path(StringView(buf), allocator);
+    return StringView(exe_path.data, exe_path.size);
+}
+
+PathView current_working_directory()
+{
+    static thread_local StaticArray<wchar_t, 4096> u16s;
+    static thread_local StaticArray<char, 4096> path;
+
+    u16s.size = ::GetCurrentDirectoryW(u16s.capacity, u16s.data);
+
+    if (BEE_FAIL_F(!u16s.empty(), "Failed to get current working directory: %s", win32_get_last_error_string()))
+    {
+        return PathView{};
+    }
+
+    path.size = str::from_wchar(path.data, path.capacity, u16s.data, u16s.size);
+    BEE_ASSERT(!path.empty());
+
+    return StringView(path.data, path.size);
 }
 
 Path& Path::normalize()
@@ -50,22 +66,10 @@ Path Path::get_normalized(Allocator* allocator) const
     return BEE_MOVE(normalized_path);
 }
 
-const char* get_null_terminated_path(const StringView& path)
+bool PathView::exists() const
 {
-    static thread_local StaticString<MAX_PATH> null_terminated;
-
-    if (path.data()[path.size()] == '\0')
-    {
-        return path.data();
-    }
-
-    null_terminated = path;
-    return null_terminated.data();
-}
-
-bool path_exists(const StringView& path)
-{
-    auto attrs = GetFileAttributesA(get_null_terminated_path(path));
+    auto buf = str::to_wchar<MAX_PATH>(data_);
+    auto attrs = GetFileAttributesW(buf.data);
     if (attrs == INVALID_FILE_ATTRIBUTES)
     {
         const auto error = GetLastError();
@@ -86,35 +90,30 @@ bool path_exists(const StringView& path)
 
         return BEE_CHECK_F(
             attrs != INVALID_FILE_ATTRIBUTES,
-            "Path::exists failed for path at '%" BEE_PRIsv "` with error: %s", BEE_FMT_SV(path), win32_get_last_error_string()
+            "Path::exists failed for path at '%" BEE_PRIsv "` with error: %s", BEE_FMT_SV(data_), win32_get_last_error_string()
         );
     }
 
     return true;
 }
 
-bool path_has_root_name(const StringView& path)
+bool PathView::has_root_name() const
 {
     // see: https://docs.microsoft.com/en-us/dotnet/standard/io/file-path-formats
     // TODO(Jacob): Ignore UNC paths for now
-    return path.size() >= 3 && isalpha(path[0]) && path[1] == ':';
+    return data_.size() >= 3 && isalpha(data_[0]) && data_[1] == ':';
 }
 
-StringView get_root_name(const StringView& path)
+PathView PathView::root_name() const
 {
-    if (!path_has_root_name(path))
+    if (!has_root_name())
     {
         return StringView{};
     }
-    return StringView(path.data(), 3);
+    return str::substring(data_, 0, 3);
 }
 
-StringView Path::root_name() const
-{
-    return get_root_name(data_.view());
-}
-
-bool Path::is_absolute(const StringView& path) const
+bool PathView::is_absolute() const
 {
     // see: https://docs.microsoft.com/en-us/dotnet/standard/io/file-path-formats
     // if the path has a drive and a directory name

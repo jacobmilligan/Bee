@@ -9,6 +9,7 @@
 
 #include "Bee/Core/Enum.hpp"
 #include "Bee/Core/IO.hpp"
+#include "Bee/Core/Hash.hpp"
 
 #include <inttypes.h>
 

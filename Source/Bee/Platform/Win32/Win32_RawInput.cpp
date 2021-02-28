@@ -106,7 +106,6 @@ static void process_mouse(const RAWMOUSE& state, RawInputMouse* mouse)
     if (state.usFlags == MOUSE_MOVE_RELATIVE)
     {
         auto& delta = mouse->current_state[MouseButton::delta].values;
-
         delta[0].float32 = static_cast<float>(state.lLastX);
         delta[1].float32 = static_cast<float>(-state.lLastY);
 

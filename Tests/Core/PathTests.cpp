@@ -13,56 +13,57 @@ TEST(PathTests, path_returns_correct_executable_path)
 {
     // "../Build/Debug/Tests/"
     bee::Path exe("C:/A/Path/To/Build/DebugOrRelease");
-    auto parent = bee::Path(exe.parent_path());
-    ASSERT_STREQ(parent.filename().c_str(), "Build");
-    ASSERT_STREQ(parent.parent_path().filename().c_str(), "To");
-    ASSERT_STREQ(parent.parent_path().parent_path().filename().c_str(), "Path");
+    const auto parent = exe.parent();
+    ASSERT_EQ(parent.filename(), "Build");
+    ASSERT_EQ(parent.parent().filename(), "To");
+    ASSERT_EQ(parent.parent().parent().filename(), "Path");
 }
 
 TEST(PathTests, appending_one_path_to_another_returns_correct_string)
 {
     bee::Path path("/This/Is/A/Test/Path");
     bee::Path path2("So/Good");
-    path.append(path2);
-    ASSERT_STREQ(path.to_generic_string().c_str(), "/This/Is/A/Test/Path/So/Good");
+    path.append(path2.view());
+    ASSERT_EQ(path.to_generic_string(), "/This/Is/A/Test/Path/So/Good");
 }
 
 TEST(PathTests, appending_a_string_to_another_returns_correct_string)
 {
     bee::Path path("/This/Is/A/Test/Path");
     path.append("So/Good");
-    ASSERT_STREQ(path.to_generic_string().c_str(), "/This/Is/A/Test/Path/So/Good");
+    ASSERT_EQ(path.to_generic_string(), "/This/Is/A/Test/Path/So/Good");
 }
 
 TEST(PathTests, Setting_extension_for_path_without_extension_returns_correct_string)
 {
     bee::Path path("/This/Is/A/Test/Path");
     path.set_extension("txt");
-    ASSERT_STREQ(path.to_generic_string().c_str(), "/This/Is/A/Test/Path.txt");
+    ASSERT_EQ(path.to_generic_string(), "/This/Is/A/Test/Path.txt");
 }
 
 TEST(PathTests, Setting_extension_for_path_with_an_extension_returns_correct_string)
 {
     bee::Path path("/This/Is/A/Test/Path.txt");
     path.set_extension("jpg");
-    ASSERT_STREQ(path.to_generic_string().c_str(), "/This/Is/A/Test/Path.jpg");
+    ASSERT_EQ(path.to_generic_string(), "/This/Is/A/Test/Path.jpg");
 }
 
 TEST(PathTests, make_real_removes_symlinks)
 {
-    auto exe_path_str = bee::Path::executable_path().to_string();
-    const auto last_slash_pos = bee::str::last_index_of(exe_path_str, bee::Path::preferred_slash);
-    auto exe_path = bee::Path(bee::StringView(exe_path_str.c_str(), last_slash_pos));
-    auto test_path = exe_path.join("..").join("..");
-    test_path.normalize();
-    auto expected_path = bee::Path(exe_path.parent_path()).parent_path();
+    auto exe_path = bee::executable_path();
+    const auto last_slash_pos = bee::str::last_index_of(exe_path.string_view(), bee::Path::preferred_slash);
+    auto test_path = bee::Path(bee::str::substring(exe_path.string_view(), 0, last_slash_pos))
+        .append("..")
+        .append("..")
+        .normalize();
 
-    ASSERT_STREQ(test_path.c_str(), expected_path.c_str());
+    auto expected_path = exe_path.parent().parent().parent();
+    ASSERT_EQ(test_path, expected_path);
 }
 
 TEST(PathTests, exists_returns_true_for_paths_that_exist)
 {
-    auto exe_path = bee::Path::executable_path();
+    auto exe_path = bee::executable_path();
     ASSERT_TRUE(exe_path.exists());
 }
 
@@ -75,52 +76,46 @@ TEST(PathTests, exists_returns_false_for_paths_that_dont_exist)
 TEST(PathTests, path_returns_filename_for_paths_with_extensions)
 {
     bee::Path path("/This/Is/A/Test/Path.txt");
-    auto filename = path.filename();
-    ASSERT_STREQ(filename.c_str(), "Path.txt");
+    ASSERT_EQ(path.filename(), "Path.txt");
 }
 
 TEST(PathTests, path_returns_filename_for_paths_without_extensions)
 {
     bee::Path path("/This/Is/A/Test/Path");
-    auto filename = path.filename();
-    ASSERT_STREQ(filename.c_str(), "Path");
+    ASSERT_EQ(path.filename(), "Path");
 }
 
 TEST(PathTests, path_returns_filename_for_dots)
 {
     bee::Path path("/This/Is/A/Test/Path\\.\\..");
-    auto filename = path.filename();
-    ASSERT_STREQ(filename.c_str(), "..");
+    ASSERT_EQ(path.filename(), "..");
 }
 
 TEST(PathTests, path_returns_correct_parent_directory)
 {
     bee::Path path("/This/Is/A/Test/Path");
-    auto parent = path.parent_path();
-    ASSERT_STREQ(parent.c_str(), "/This/Is/A/Test");
+    ASSERT_EQ(path.parent(), "/This/Is/A/Test");
 
     bee::Path path2("/Users/Jacob/Dev/Repos/Bee/Build/Debug/Tests/Static/Platform/PlatformTests");
-    auto parent2 = path2.parent_path();
-    ASSERT_STREQ(parent2.c_str(), "/Users/Jacob/Dev/Repos/Bee/Build/Debug/Tests/Static/Platform");
+    ASSERT_EQ(path2.parent(), "/Users/Jacob/Dev/Repos/Bee/Build/Debug/Tests/Static/Platform");
 }
 
 TEST(PathTests, stem_returns_just_the_filename_component_without_extension)
 {
     bee::Path path("/This/Is/A/Test/Path.txt");
-    auto stem = bee::String(path.stem());
-    ASSERT_STREQ(stem.c_str(), "Path");
+    ASSERT_EQ(path.stem(), "Path");
 }
 
 TEST(PathTests, relative_path_returns_correct_string)
 {
     bee::Path path("/This/Is/A/Test/Path");
-    ASSERT_STREQ(path.relative_path().c_str(), "This/Is/A/Test/Path");
-    ASSERT_STREQ(path.relative_path().relative_path().c_str(), "Is/A/Test/Path");
+    ASSERT_EQ(path.relative_path(), "This/Is/A/Test/Path");
+    ASSERT_EQ(path.relative_path().relative_path(), "Is/A/Test/Path");
 
     // Test windows drive letters
     auto win_path = bee::Path("C:\\This\\Is\\A\\Test\\Path");
-    ASSERT_STREQ(path.relative_path().c_str(), "This/Is/A/Test/Path");
-    ASSERT_STREQ(path.relative_path().relative_path().c_str(), "Is/A/Test/Path");
+    ASSERT_EQ(path.relative_path(), "This/Is/A/Test/Path");
+    ASSERT_EQ(path.relative_path().relative_path(), "Is/A/Test/Path");
 }
 
 TEST(PathTests, paths_report_correct_size)
@@ -163,8 +158,7 @@ TEST(PathTests, path_iterator)
     const auto end = win_path.end();
     for (; iter != end; ++iter)
     {
-        bee::String to_string(*iter);
-        ASSERT_STREQ(to_string.c_str(), parts[part_idx]);
+        ASSERT_EQ(*iter, parts[part_idx]);
         ++part_idx;
     }
 }
@@ -179,23 +173,23 @@ TEST(PathTests, relative_to)
      */
     bee::Path path("D:\\Root");
     auto relative = path.relative_to("D:\\Root\\Another\\Path");
-    ASSERT_STREQ(relative.c_str(), "..\\..");
+    ASSERT_EQ(relative.view(), "..\\..");
 
     path = "D:\\Root\\Another\\Path";
     relative = path.relative_to("D:\\Root");
-    ASSERT_STREQ(relative.c_str(), "Another\\Path");
+    ASSERT_EQ(relative.view(), "Another\\Path");
 
     path = "D:\\Root";
     relative = path.relative_to("C:\\Root");
-    ASSERT_STREQ(relative.c_str(), "..\\..\\D:\\Root");
+    ASSERT_EQ(relative.view(), "..\\..\\D:\\Root");
 
     path = "/a/d";
     auto generic_str = path.relative_to("/b/c").to_generic_string();
-    ASSERT_STREQ(generic_str.c_str(), "../../a/d");
+    ASSERT_EQ(generic_str, "../../a/d");
 
     path = "D:\\Root\\test.txt";
     relative = path.relative_to("D:\\Root\\Another\\Path");
-    ASSERT_STREQ(relative.c_str(), "..\\..\\test.txt");
+    ASSERT_EQ(relative.view(), "..\\..\\test.txt");
 }
 
 TEST(PathTests, string_view_comparison)

@@ -20,8 +20,8 @@ int bee_main(int argc, char** argv)
 
     bee::init_plugins();
 
-    add_plugin_search_path(bee::fs::roots().binaries.join("Plugins"));
-    add_plugin_source_path(bee::fs::roots().sources);
+    add_plugin_search_path(bee::fs::roots().binaries.join("Plugins").view());
+    add_plugin_source_path(bee::fs::roots().sources.view());
 
     bee::refresh_plugins();
     bee::load_plugin("Bee.Editor");
@@ -36,6 +36,7 @@ int bee_main(int argc, char** argv)
 
     while (!editor->quit_requested())
     {
+        bee::temp_allocator_reset();
         bee::refresh_plugins();
         editor->tick();
     }
