@@ -45,7 +45,7 @@ struct MonitorInfo
     Point           position;
 };
 
-struct BEE_REFLECT() WindowCreateInfo
+struct WindowCreateInfo
 {
     const char*     title { "Bee Application" };
     MonitorHandle   monitor;
@@ -87,12 +87,10 @@ struct PlatformModule
 
     void* (*get_os_window)(const WindowHandle handle) { nullptr };
 
+    Point (*get_cursor_position)(const WindowHandle handle) { nullptr };
+
     void (*poll_input)() { nullptr };
 };
 
 
 } // namespace bee
-
-#ifdef BEE_ENABLE_REFLECTION
-    #include "Bee.Platform/Platform.generated.inl"
-#endif // BEE_ENABLE_REFLECTION
