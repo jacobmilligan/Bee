@@ -52,7 +52,8 @@ private:
         Chunk*          next { nullptr };
         Chunk*          prev { nullptr };
         void*           data { nullptr };
-        size_t          size { sizeof(Chunk) };
+        size_t          size { 0 };
+        size_t          offset { sizeof(Chunk) };
     };
 
     struct Allocation

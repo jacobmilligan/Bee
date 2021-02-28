@@ -36,17 +36,17 @@ ChunkAllocator::ChunkAllocator(ChunkAllocator&& other) noexcept
 
 ChunkAllocator::~ChunkAllocator()
 {
-    BEE_ASSERT_F(!validate_on_destruct_ || last_ == nullptr, "Chunk allocator still has active allocations - this indicates a possible memory leak");
-
-    // free all the nodes from the free stack
-    while (free_ != nullptr)
-    {
-        auto* next = free_->next;
-        BEE_FREE(system_allocator(), free_);
-        free_ = next;
-    }
-
-    free_ = nullptr;
+//    BEE_ASSERT_F(!validate_on_destruct_ || last_ == nullptr, "Chunk allocator still has active allocations - this indicates a possible memory leak");
+//
+//    // free all the nodes from the free stack
+//    while (free_ != nullptr)
+//    {
+//        auto* next = free_->next;
+//        BEE_FREE(system_allocator(), free_);
+//        free_ = next;
+//    }
+//
+//    free_ = nullptr;
 }
 
 ChunkAllocator& ChunkAllocator::operator=(ChunkAllocator&& other) noexcept
@@ -159,6 +159,10 @@ ChunkAllocator::Chunk* ChunkAllocator::pop_free()
 
     auto* free = free_;
     free_ = free_->next;
+
+    new (free) Chunk{};
+    free->data = static_cast<void*>(free);
+
     return free;
 }
 
@@ -167,10 +171,10 @@ void* ChunkAllocator::allocate(const size_t size, const size_t alignment)
     BEE_ASSERT(chunk_size_ > 0);
     BEE_ASSERT(size <= chunk_size_ - sizeof(Allocation) - sizeof(Chunk));
 
-    const auto last_size = last_ == nullptr ? 0 : last_->size;
-    auto offset = round_up(last_size + sizeof(Allocation), alignment);
+    const auto last_offset = last_ == nullptr ? 0 : last_->offset;
+    auto offset = round_up(last_offset + sizeof(Allocation), alignment);
 
-    if (last_ == nullptr || offset >= chunk_size_ - sizeof(Chunk))
+    if (last_ == nullptr || offset + size > chunk_size_ - sizeof(Chunk))
     {
         Chunk* new_chunk = pop_free();
 
@@ -190,7 +194,7 @@ void* ChunkAllocator::allocate(const size_t size, const size_t alignment)
             last_ = new_chunk;
         }
 
-        offset = round_up(new_chunk->size + sizeof(Allocation), alignment);
+        offset = round_up(new_chunk->offset + sizeof(Allocation), alignment);
     }
 
     auto* ptr = static_cast<u8*>(last_->data) + offset;
@@ -198,9 +202,10 @@ void* ChunkAllocator::allocate(const size_t size, const size_t alignment)
     header->next = nullptr;
     header->chunk = last_;
     header->size = size;
-    last_->size = offset + size;
+    last_->size += size;
+    last_->offset = offset + size;
 
-    if (BEE_FAIL_F(last_->size <= chunk_size_, "Cannot allocate more than %zu bytes", chunk_size_))
+    if (BEE_FAIL_F(last_->offset <= chunk_size_, "Cannot allocate more than %zu bytes", chunk_size_))
     {
         return nullptr;
     }
@@ -231,7 +236,7 @@ void ChunkAllocator::deallocate(void* ptr)
     auto* chunk = allocation->chunk;
 
     BEE_ASSERT(chunk->signature == header_signature_);
-    BEE_ASSERT(chunk->size >= sizeof(Chunk) + allocation->size);
+    BEE_ASSERT(chunk->size >= allocation->size);
 
     chunk->size -= allocation->size;
 
