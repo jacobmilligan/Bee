@@ -52,12 +52,30 @@ CommandBufferState get_state(CommandBuffer* cmd_buf)
  *
  ********************
  */
+void set_viewport(CommandBuffer* cmd_buf, const Viewport& viewport)
+{
+    if (memcmp(&cmd_buf->viewport, &viewport, sizeof(Viewport)) != 0)
+    {
+        cmd_buf->viewport = viewport;
+        cmd_buf->viewport_dirty = true;
+    }
+}
+
+void set_scissor(CommandBuffer* cmd_buf, const RenderRect& scissor)
+{
+    if (memcmp(&cmd_buf->scissor, &scissor, sizeof(RenderRect)) != 0)
+    {
+        cmd_buf->scissor = scissor;
+        cmd_buf->scissor_dirty = true;
+    }
+}
+
 void begin_render_pass(
     CommandBuffer*              cmd_buf,
     const RenderPassHandle&     pass_handle,
+    const RenderRect            render_area,
     const u32                   attachment_count,
     const TextureViewHandle*    attachments,
-    const RenderRect&           render_area,
     const u32                   clear_value_count,
     const ClearValue*           clear_values
 )
@@ -70,14 +88,9 @@ void begin_render_pass(
     auto& pass = cmd_buf->device->render_passes_get(pass_handle);
     cmd_buf->current_render_pass = &pass;
 
-    auto begin_info = VkRenderPassBeginInfo { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr };
-    begin_info.renderPass = pass.handle;
-    begin_info.renderArea = vkrect2d_cast(render_area);
-    begin_info.clearValueCount = clear_value_count;
-
     VulkanFramebufferKey fb_key{};
-    fb_key.width = render_area.width;
-    fb_key.height = render_area.height;
+    fb_key.width = limits::max<u32>();
+    fb_key.height = limits::max<u32>();
     fb_key.layers = 1;
     fb_key.attachment_count = attachment_count;
     fb_key.compatible_render_pass = pass.handle;
@@ -88,8 +101,28 @@ void begin_render_pass(
         fb_key.attachments[i] = view.handle;
         fb_key.format_keys[i].format = view.format;
         fb_key.format_keys[i].sample_count = view.samples;
+        fb_key.width = math::min(view.width, fb_key.width);
+        fb_key.height = math::min(view.height, fb_key.height);
     }
 
+    // Set dynamic state in case the viewport/scissor needs to change
+    set_scissor(cmd_buf, RenderRect(
+        render_area.x_offset,
+        render_area.y_offset,
+        math::min(fb_key.width, render_area.width),
+        math::min(fb_key.height, render_area.height)
+    ));
+    set_viewport(cmd_buf, Viewport(
+        static_cast<float>(render_area.x_offset),
+        static_cast<float>(render_area.y_offset),
+        static_cast<float>(render_area.width),
+        static_cast<float>(render_area.height)
+    ));
+
+    auto begin_info = VkRenderPassBeginInfo { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr };
+    begin_info.renderPass = pass.handle;
+    begin_info.renderArea = vkrect2d_cast(cmd_buf->scissor);
+    begin_info.clearValueCount = clear_value_count;
     begin_info.framebuffer = cmd_buf->device->framebuffer_cache.get_or_create(fb_key);
 
     VkClearValue vk_clear_values[BEE_GPU_MAX_ATTACHMENTS];
@@ -112,6 +145,7 @@ void begin_render_pass(
 
     // TODO(Jacob): if we switch to secondary command buffers, this flag should change
     vkCmdBeginRenderPass(cmd_buf->handle, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
 }
 
 void end_render_pass(CommandBuffer* cmd_buf)
@@ -187,6 +221,15 @@ static void bind_draw_state(CommandBuffer* cmd_buf, const PipelineStateDescripto
     {
         if (cmd_buf->push_constants[i] != nullptr)
         {
+            if (static_cast<u32>(i) >= push_constant_ranges.size)
+            {
+                log_warning(
+                    "Failed to push constants for block %d [state.push_constant_ranges.size == %u]",
+                    i, push_constant_ranges.size
+                );
+                continue;
+            }
+
             vkCmdPushConstants(
                 cmd_buf->handle,
                 pipeline.layout,
@@ -211,6 +254,33 @@ static void bind_draw_state(CommandBuffer* cmd_buf, const PipelineStateDescripto
                 0, nullptr
             );
         }
+    }
+
+    // bind dynamic state if dirty
+    if (cmd_buf->viewport_dirty)
+    {
+        cmd_buf->viewport_dirty = false;
+
+        VkViewport viewport{};
+        viewport.x = cmd_buf->viewport.x;
+        viewport.y = cmd_buf->viewport.y;
+        viewport.width = cmd_buf->viewport.width;
+        viewport.height = cmd_buf->viewport.height;
+        viewport.minDepth = cmd_buf->viewport.min_depth;
+        viewport.maxDepth = cmd_buf->viewport.max_depth;
+        vkCmdSetViewport(cmd_buf->handle, 0, 1, &viewport);
+    }
+
+    if (cmd_buf->scissor_dirty)
+    {
+        cmd_buf->scissor_dirty = false;
+
+        VkRect2D rect{};
+        rect.offset.x = cmd_buf->scissor.x_offset;
+        rect.offset.y = cmd_buf->scissor.y_offset;
+        rect.extent.width = cmd_buf->scissor.width;
+        rect.extent.height = cmd_buf->scissor.height;
+        vkCmdSetScissor(cmd_buf->handle, 0, 1, &rect);
     }
 
     // bind the actual graphics pipeline
@@ -249,30 +319,6 @@ void draw_indexed(
         vertex_offset,
         first_instance
     );
-}
-
-void set_viewport(CommandBuffer* cmd_buf, const Viewport& viewport)
-{
-    VkViewport vk_viewport{};
-    vk_viewport.x = viewport.x;
-    vk_viewport.y = viewport.y;
-    vk_viewport.width = viewport.width;
-    vk_viewport.height = viewport.height;
-    vk_viewport.minDepth = viewport.min_depth;
-    vk_viewport.maxDepth = viewport.max_depth;
-
-    vkCmdSetViewport(cmd_buf->handle, 0, 1, &vk_viewport);
-}
-
-void set_scissor(CommandBuffer* cmd_buf, const RenderRect& scissor)
-{
-    VkRect2D rect{};
-    rect.offset.x = scissor.x_offset;
-    rect.offset.y = scissor.y_offset;
-    rect.extent.width = scissor.width;
-    rect.extent.height = scissor.height;
-
-    vkCmdSetScissor(cmd_buf->handle, 0, 1, &rect);
 }
 
 void transition_resources(CommandBuffer* cmd_buf, const u32 count, const GpuTransition* transitions)

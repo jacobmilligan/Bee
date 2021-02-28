@@ -214,7 +214,7 @@ void create_pipeline(VulkanDevice* device, const VulkanPipelineKey& key, VulkanP
     multisample_info.rasterizationSamples = static_cast<VkSampleCountFlagBits>(desc->multisample_state.sample_count);
     multisample_info.sampleShadingEnable = static_cast<VkBool32>(desc->multisample_state.sample_shading_enabled);
     multisample_info.minSampleShading = desc->multisample_state.sample_shading;
-    multisample_info.pSampleMask = &desc->multisample_state.sample_mask;
+    multisample_info.pSampleMask = desc->multisample_state.sample_mask == 0 ? nullptr : &desc->multisample_state.sample_mask;
     multisample_info.alphaToCoverageEnable = static_cast<VkBool32>(desc->multisample_state.alpha_to_coverage_enabled);
     multisample_info.alphaToOneEnable = static_cast<VkBool32>(desc->multisample_state.alpha_to_one_enabled);
 

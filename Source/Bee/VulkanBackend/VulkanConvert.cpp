@@ -7,6 +7,7 @@
 
 #include "Bee/VulkanBackend/VulkanConvert.hpp"
 #include "Bee/Core/Bit.hpp"
+#include "Bee/Core/TypeTraits.hpp"
 
 
 namespace bee {
@@ -215,7 +216,8 @@ VkImageUsageFlags decode_image_usage(const TextureUsage& usage)
         | decode_flag(usage, TextureUsage::depth_stencil_attachment, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
         | decode_flag(usage, TextureUsage::sampled, VK_IMAGE_USAGE_SAMPLED_BIT)
         | decode_flag(usage, TextureUsage::storage, VK_IMAGE_USAGE_STORAGE_BIT)
-        | decode_flag(usage, TextureUsage::input_attachment, VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
+        | decode_flag(usage, TextureUsage::input_attachment, VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
+        | decode_flag(usage, TextureUsage::transient, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT);
 }
 
 VkSampleCountFlagBits decode_sample_count(const u32 samples)
@@ -392,6 +394,10 @@ BEE_TRANSLATION_TABLE_FUNC(convert_vertex_format, VertexFormat, VkFormat, Vertex
     VK_FORMAT_R8G8_UINT,              // ubyte2
     VK_FORMAT_R8G8B8_UINT,            // ubyte3
     VK_FORMAT_R8G8B8A8_UINT,          // ubyte4
+    VK_FORMAT_R8_UNORM,               // unormbyte1
+    VK_FORMAT_R8G8_UNORM,             // unormbyte2
+    VK_FORMAT_R8G8B8_UNORM,           // unormbyte3
+    VK_FORMAT_R8G8B8A8_UNORM,         // unormbyte4
     VK_FORMAT_R16_SINT,               // short1
     VK_FORMAT_R16G16_SINT,            // short2
     VK_FORMAT_R16G16B16_SINT,         // short3

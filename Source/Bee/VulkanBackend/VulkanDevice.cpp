@@ -550,6 +550,12 @@ DeviceHandle create_device(const DeviceCreateInfo& create_info)
     BEE_ENABLE_FEATURE(sampleRateShading, enable_sample_rate_shading);
     BEE_ENABLE_FEATURE(samplerAnisotropy, enable_sampler_anisotropy);
 
+    if (supported_features.independentBlend == VK_TRUE)
+    {
+        enabled_features.independentBlend = VK_TRUE;
+        log_info("VulkanBackend: Enabling device feature independentBlend");
+    }
+
 #undef BEE_ENABLE_FEATURE
 
     VkDeviceCreateInfo device_info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
@@ -599,6 +605,7 @@ DeviceHandle create_device(const DeviceCreateInfo& create_info)
     vma_info.device = device.handle;
     vma_info.physicalDevice = physical_device;
     vma_info.pVulkanFunctions = &vma_functions;
+    vma_info.instance = g_backend->instance;
 
     BEE_VK_CHECK(vmaCreateAllocator(&vma_info, &device.vma_allocator));
 
@@ -1508,8 +1515,12 @@ void CommandBuffer::reset(VulkanDevice* new_device)
     device = new_device;
     target_swapchain = -1;
     bound_pipeline = nullptr;
+    viewport_dirty = false;
+    scissor_dirty = false;
     memset(descriptors, VK_NULL_HANDLE, static_array_length(descriptors) * sizeof(VkDescriptorSet));
     memset(push_constants, 0, static_array_length(push_constants) * sizeof(const void*));
+    memset(&viewport, 0, sizeof(Viewport));
+    memset(&scissor, 0, sizeof(RenderRect));
 }
 
 RenderPassHandle create_render_pass(const DeviceHandle& device_handle, const RenderPassCreateInfo& create_info)
@@ -1549,13 +1560,11 @@ RenderPassHandle create_render_pass(const DeviceHandle& device_handle, const Ren
         {
             case AttachmentType::color:
             {
-                attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                 attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                 break;
             }
             case AttachmentType::depth_stencil:
             {
-                attachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
                 attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
                 break;
             }
@@ -1781,7 +1790,7 @@ static void ensure_buffer_size(CommandBuffer* cmd_buf, VulkanBuffer* buffer)
     auto& thread = device->get_thread();
 
     // no need to resize the buffer if its size hasn't changed
-    if (buffer->allocation_info.size <= buffer->size && buffer->handle != VK_NULL_HANDLE)
+    if (buffer->size <= buffer->allocation_info.size && buffer->handle != VK_NULL_HANDLE)
     {
         return;
     }
@@ -1789,7 +1798,7 @@ static void ensure_buffer_size(CommandBuffer* cmd_buf, VulkanBuffer* buffer)
     // Destroy the old buffer in this frame if one exists
     if (buffer->handle != VK_NULL_HANDLE)
     {
-        thread.dynamic_buffer_deletes->emplace_back(buffer->handle, buffer->allocation);
+        thread.dynamic_buffer_deletes[device->current_frame].emplace_back(buffer->handle, buffer->allocation);
     }
 
     VkBufferCreateInfo vk_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr };
@@ -1822,16 +1831,6 @@ static void ensure_buffer_size(CommandBuffer* cmd_buf, VulkanBuffer* buffer)
     if (buffer->debug_name != nullptr)
     {
         set_vk_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT, new_buffer.handle, buffer->debug_name);
-    }
-
-    if (buffer->handle != VK_NULL_HANDLE)
-    {
-        VkBufferCopy copy{};
-        copy.srcOffset = 0;
-        copy.dstOffset = 0;
-        copy.size = buffer->size;
-
-        vkCmdCopyBuffer(cmd_buf->handle, buffer->handle, new_buffer.handle, 1, &copy);
     }
 
     buffer->handle = new_buffer.handle;
@@ -1871,6 +1870,7 @@ void update_buffer(const DeviceHandle& device_handle, const BufferHandle& buffer
 
     if (offset + size > buffer.size && BEE_CHECK_F(buffer.is_dynamic(), "Cannot grow buffer: not created with flag BufferType::dynamic_buffer"))
     {
+        buffer.size = offset + size;
         ensure_buffer_size(thread.get_device_cmd(device_handle), &buffer);
     }
 
@@ -1895,20 +1895,19 @@ void update_buffer(const DeviceHandle& device_handle, const BufferHandle& buffer
         memcpy(static_cast<u8*>(mapped) + offset, data, size);
         vmaUnmapMemory(device.vma_allocator, buffer.allocation);
 
-//        // If the handle is host-coherent we need to flush the range manually
-//        VkMemoryPropertyFlags mem_type_flags = 0;
-//        vmaGetMemoryTypeProperties(device.vma_allocator, buffer.allocation_info.memoryType, &mem_type_flags);
-//
-//        if ((mem_type_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0)
-//        {
-//            VkMappedMemoryRange
-//            auto memory_range = vk_make_struct<>(VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE);
-//            memory_range.memory = buffer->allocation_info.deviceMemory;
-//            memory_range.offset = buffer->allocation_info.offset;
-//            memory_range.size = buffer->allocation_info.size;
-//
-//            SKY_VK_CHECK(vkFlushMappedMemoryRanges(device_, 1, &memory_range));
-//        }
+        // If the handle is host-coherent we need to flush the range manually
+        VkMemoryPropertyFlags mem_type_flags = 0;
+        vmaGetMemoryTypeProperties(device.vma_allocator, buffer.allocation_info.memoryType, &mem_type_flags);
+
+        if ((mem_type_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0)
+        {
+            VkMappedMemoryRange memory_range { VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE };
+            memory_range.memory = buffer.allocation_info.deviceMemory;
+            memory_range.offset = buffer.allocation_info.offset;
+            memory_range.size = buffer.allocation_info.size;
+
+            BEE_VK_CHECK(vkFlushMappedMemoryRanges(device.handle, 1, &memory_range));
+        }
     }
 }
 
@@ -1999,10 +1998,10 @@ void update_texture(const DeviceHandle& device_handle, const TextureHandle& text
     auto& thread = device.get_thread();
     auto& texture = device.textures_get(texture_handle);
 
-    VulkanStagingChunk chunk{};
-    thread.staging.allocate(texture.create_info.width * texture.create_info.height * texture.create_info.depth, 1, &chunk);
+    const auto size = extent.width * extent.height * extent.depth * 4;
 
-    const auto size = extent.width * extent.height * extent.depth;
+    VulkanStagingChunk chunk{};
+    thread.staging.allocate(size, 1, &chunk);
     memcpy(chunk.data, data, size);
 
     VkBufferImageCopy copy{};
@@ -2115,6 +2114,9 @@ void create_texture_view_internal(VulkanDevice* device, const TextureViewCreateI
     dst->viewed_texture = create_info.texture;
     dst->format = texture.create_info.format;
     dst->samples = texture.create_info.sample_count;
+    dst->width = texture.create_info.width;
+    dst->height = texture.create_info.height;
+    dst->depth = texture.create_info.depth;
 }
 
 TextureViewHandle create_texture_view(const DeviceHandle& device_handle, const TextureViewCreateInfo& create_info)

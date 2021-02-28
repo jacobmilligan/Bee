@@ -130,6 +130,10 @@ struct CommandBuffer
     i32                     target_swapchain { -1 };
 
     // Draw state
+    bool                    viewport_dirty { false };
+    bool                    scissor_dirty { false };
+    Viewport                viewport;
+    RenderRect              scissor;
     VulkanPipelineState*    bound_pipeline { nullptr };
     VulkanRenderPass*       current_render_pass { nullptr };
     VkDescriptorSet         descriptors[BEE_GPU_MAX_RESOURCE_LAYOUTS];
@@ -161,6 +165,9 @@ struct VulkanTextureView
     TextureHandle   viewed_texture;
     PixelFormat     format { PixelFormat::unknown };
     u32             samples { 0 };
+    u32             width { 0 };
+    u32             height { 0 };
+    u32             depth { 0 };
     i32             swapchain { -1 };
 };
 
@@ -225,7 +232,7 @@ struct VulkanDescriptorPool // NOLINT
     u32                             allocated_sets { 0 };
     u32                             max_sets { 0 };
     u32                             size_count { 0 };
-    VkDescriptorPoolSize            sizes[underlying_t(ResourceBindingType::unknown)];
+    VkDescriptorPoolSize            sizes[static_cast<i32>(ResourceBindingType::unknown)];
 };
 
 struct VulkanResourceBinding
