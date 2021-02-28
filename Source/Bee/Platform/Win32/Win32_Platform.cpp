@@ -398,6 +398,23 @@ void* get_os_window(const WindowHandle handle)
     return g_platform->windows[handle.id].hwnd;
 }
 
+Point get_cursor_position(const WindowHandle handle)
+{
+    auto* hwnd = g_platform->windows[handle.id].hwnd;
+    POINT pt;
+    if (::GetCursorPos(&pt) == FALSE)
+    {
+        return Point{};
+    }
+
+    if (::ScreenToClient(hwnd, &pt) == FALSE)
+    {
+        return Point{};
+    }
+
+    return Point { pt.x, pt.y };
+}
+
 void poll_input()
 {
     reset_raw_input();
@@ -444,6 +461,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     g_module.get_framebuffer_size = bee::get_framebuffer_size;
     g_module.window_close_requested = bee::is_window_close_requested;
     g_module.get_os_window = bee::get_os_window;
+    g_module.get_cursor_position = bee::get_cursor_position;
     g_module.poll_input = bee::poll_input;
 
     loader->require_plugin("Bee.Input", { 0, 0, 0 });
