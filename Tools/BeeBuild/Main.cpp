@@ -115,9 +115,9 @@ bool configure(const ConfigureInfo& config_info)
         if (config_info.reset_cache)
         {
             const auto cache_path = output_directory.join("CMakeCache.txt");
-            if (fs::is_file(cache_path))
+            if (fs::is_file(cache_path.view()))
             {
-                fs::remove(cache_path);
+                fs::remove(cache_path.view());
             }
         }
 
@@ -218,8 +218,8 @@ int prepare_plugin(const BuildEnvironment& env, const Path& lib_path)
         random_pdb_path.set_extension(str::to_string(timestamp, temp_allocator()).view())
                        .append_extension(".pdb");
 
-        fs::move(pdb_path, random_pdb_path);
-        fs::copy(random_pdb_path, pdb_path);
+        fs::move(pdb_path.view(), random_pdb_path.view());
+        fs::copy(random_pdb_path.view(), pdb_path.view());
 
         log_info("Prepared plugin %s for hot reloading", lib_path.c_str());
     }
@@ -236,7 +236,8 @@ void parse_settings_json(const Path& location, DynamicArray<String>* cmake_optio
         return;
     }
 
-    auto json_src = fs::read(location);
+    auto file = fs::open_file(location.view(), fs::OpenMode::read);
+    auto json_src = fs::read(file);
 
     json::Document doc(json::ParseOptions{});
     doc.parse(json_src.data());
@@ -365,7 +366,7 @@ int bb_entry(int argc, char** argv)
         if (cli::has_option(configure_cmd->value, "settings"))
         {
             const auto* settings_file = cli::get_option(configure_cmd->value, "settings");
-            parse_settings_json(Path::current_working_directory().join(settings_file), &config_info.cmake_options);
+            parse_settings_json(Path(current_working_directory()).append(settings_file), &config_info.cmake_options);
         }
 
         // Collect cmake arguments from the remainder after the '--' at the command line

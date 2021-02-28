@@ -57,7 +57,7 @@ bool init_build_environment(BuildEnvironment* env)
         return false;
     }
 
-    env->project_root = Path::executable_path().parent_path().parent_path().parent_path();
+    env->project_root = executable_path().parent().parent().parent();
     env->build_dir = env->project_root.join("Build");
 
     const auto bin_root = env->project_root.join("ThirdParty/Binaries");
@@ -133,7 +133,8 @@ bool init_build_environment(BuildEnvironment* env)
                 return false;
             }
 
-            auto version = fs::read(version_path, temp_allocator());
+            auto file = fs::open_file(version_path.view(), fs::OpenMode::read);
+            auto version = fs::read(file, temp_allocator());
             str::trim(&version, '\r');
             str::trim(&version, '\n');
 
