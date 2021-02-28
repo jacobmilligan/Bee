@@ -16,7 +16,7 @@
 #include "Bee/Platform/Platform.hpp"
 #include "Bee/RenderGraph/RenderGraph.hpp"
 #include "Bee/ImGui/ImGui.hpp"
-#include "Bee/AssetPipelineV2/AssetPipeline.hpp"
+#include "Bee/AssetPipeline/AssetPipeline.hpp"
 #include "Bee/ShaderPipeline/ShaderPipeline.hpp"
 
 
@@ -67,38 +67,26 @@ static ShaderPipelineModule*    g_shader_pipeline { nullptr };
  *
  ******************************************************
  */
-struct ImGuiPassData
-{
-    RenderGraphResource backbuffer;
-};
-
 static void init_pass(GpuBackend* gpu, const DeviceHandle device, const void* external_data, void* pass_data)
 {
-    if (g_app->imgui_backend == nullptr)
+    auto res = g_imgui_backend->create_backend(device, gpu, g_app->asset_pipeline, system_allocator());
+    if (!res)
     {
-        auto res = g_imgui_backend->create_backend(device, gpu, g_app->asset_pipeline, system_allocator());
-        if (!res)
-        {
-            log_error("%s", res.unwrap_error().to_string());
-            return;
-        }
-        g_app->imgui_backend = res.unwrap();
+        log_error("%s", res.unwrap_error().to_string());
+        return;
     }
+    g_app->imgui_backend = res.unwrap();
 }
 
 static void destroy_pass(GpuBackend* gpu, const DeviceHandle device, const void* external_data, void* pass_data)
 {
-    if (g_app->imgui_backend != nullptr)
-    {
-        g_imgui_backend->destroy_backend(g_app->imgui_backend);
-    }
+    g_imgui_backend->destroy_backend(g_app->imgui_backend);
 }
 
 static void setup_pass(RenderGraphPass* pass, RenderGraphBuilderModule* builder, const void* external_data, void* pass_data)
 {
-    auto* imgui_pass = static_cast<ImGuiPassData*>(pass_data);
-    imgui_pass->backbuffer = builder->import_backbuffer(pass, "Swapchain", g_app->swapchain);
-    builder->write_color(pass, imgui_pass->backbuffer, LoadOp::clear, StoreOp::store, 1);
+    const auto backbuffer = builder->import_backbuffer(pass, "Backbuffer", g_app->swapchain);
+    builder->write_color(pass, backbuffer, LoadOp::clear, StoreOp::store, 1);
 }
 
 static void execute_pass(
@@ -110,26 +98,20 @@ static void execute_pass(
     void* pass_data
 )
 {
-    auto* sandbox_pass = static_cast<ImGuiPassData*>(pass_data);
-
     // Get the concrete GPU resources from the virtual RenderGraphPass object
     const TextureViewHandle* attachments = nullptr;
-    const int attachment_count = storage->get_attachments(pass, &attachments);
-    const auto backbuffer_rect = storage->get_backbuffer_rect(pass, sandbox_pass->backbuffer);
-    ClearValue clear_value(0.3f, 0.3f, 0.3f, 1.0f);
+    const u32 attachment_count = storage->get_attachments(pass, &attachments);
 
     // All draw calls etc. must take place within a render pass and because we're using the render graph we can
     // just use the automatically-created one for this pass
+    ClearValue clear_value(0.3f, 0.3f, 0.3f, 1.0f);
     cmd->begin_render_pass(
         cmdbuf,
         storage->get_gpu_pass(pass),
+        storage->get_backbuffer_rect(pass),
         attachment_count, attachments,
-        backbuffer_rect,
         attachment_count, &clear_value
     );
-    // scissor and viewport are dynamic states by default so need to be set each frame
-    cmd->set_scissor(cmdbuf, backbuffer_rect);
-    cmd->set_viewport(cmdbuf, Viewport(0, 0, static_cast<float>(backbuffer_rect.width), static_cast<float>(backbuffer_rect.height)));
     g_imgui_backend->draw(g_app->imgui_backend, cmdbuf);
     cmd->end_render_pass(cmdbuf);
 }
@@ -279,6 +261,7 @@ void shutdown()
         }
     }
 
+    // Destroy rendergraph and then GPU
     if (g_app->gpu != nullptr && g_app->gpu->is_initialized())
     {
         if (g_app->render_graph != nullptr)
@@ -314,35 +297,27 @@ void shutdown()
     }
 }
 
-static void reload_plugin()
+static void show_tree(const PathView& root)
 {
-    if (!g_app->reloaded)
+    StaticString<1024> buf(root.string_view());
+    if (!g_imgui->TreeNodeStr(buf.data()))
     {
         return;
     }
 
-    g_app->reloaded = false;
-
-    if (g_app->imgui_pass != nullptr)
+    for (const auto& file : fs::read_dir(root))
     {
-        g_render_graph->remove_pass(g_app->imgui_pass);
-        g_app->imgui_pass = nullptr;
+        if (fs::is_dir(file))
+        {
+            show_tree(file);
+        }
     }
 
-    g_app->imgui_pass = g_render_graph->add_pass<ImGuiPassData>(
-        g_app->render_graph,
-        "ImGuiPass",
-        setup_pass,
-        execute_pass,
-        init_pass,
-        destroy_pass
-    );
+    g_imgui->TreePop();
 }
 
 void tick()
 {
-    reload_plugin();
-
     // Close the app if either the window is closed or the apps quit event fired
     if (g_platform->quit_requested() || g_platform->window_close_requested(g_app->main_window))
     {
@@ -350,11 +325,21 @@ void tick()
         return;
     }
 
-    // Reset the global per-frame threadsafe temp allocator used by the runtime
-    temp_allocator_reset();
-
-    // Poll input for the app and show some info logs for when the keyboard/mouse was triggered
+    // Poll input before doing any other processing in case we want to close app
     g_platform->poll_input();
+
+    // Add the imgui render graph pass here instead of init() in case the plugin was reloaded
+    if (g_app->imgui_pass == nullptr)
+    {
+        g_app->imgui_pass = g_render_graph->add_pass(
+            g_app->render_graph,
+            "ImGuiPass",
+            setup_pass,
+            execute_pass,
+            init_pass,
+            destroy_pass
+        );
+    }
 
     auto ap_res = g_asset_pipeline->refresh(g_app->asset_pipeline);
     if (!ap_res)
@@ -362,16 +347,17 @@ void tick()
         log_error("Asset pipeline error: %s", ap_res.unwrap_error().to_string());
     }
 
-    auto res = g_data_connection->flush(g_app->connection, 1);
-    if (!res)
-    {
-        log_error("Editor data connection error: %s", res.unwrap_error().to_string());
-    }
-
     if (g_app->imgui_backend != nullptr)
     {
         g_imgui_backend->new_frame(g_app->imgui_backend, g_app->main_window);
-        g_imgui->Text("Hello World!");
+        g_imgui->Begin("A window frame", nullptr, 0);
+#if 1
+        g_imgui->Button("Button", ImVec2 { 60, 40 });
+        g_imgui->Text("Some text too?");
+        g_imgui->Button("Also another button", ImVec2 { 100, 40 });
+        show_tree(get_plugin_source_path("Bee.ImGui"));
+#endif // 0
+        g_imgui->End();
         g_imgui->Render();
     }
 
@@ -394,7 +380,6 @@ static bee::EditorAppModule g_module{};
 BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::PluginState state)
 {
     bee::g_app = loader->get_static<bee::EditorApp>("Bee.EditorApp");
-    bee::g_app->reloaded = state == bee::PluginState::loading;
 
     g_module.startup = bee::startup;
     g_module.shutdown = bee::shutdown;
@@ -412,5 +397,11 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
         bee::g_imgui_backend = static_cast<bee::ImGuiBackendModule*>(loader->get_module(BEE_IMGUI_BACKEND_MODULE_NAME));
         bee::g_asset_pipeline = static_cast<bee::AssetPipelineModule*>(loader->get_module(BEE_ASSET_PIPELINE_MODULE_NAME));
         bee::g_shader_pipeline = static_cast<bee::ShaderPipelineModule*>(loader->get_module(BEE_SHADER_PIPELINE_MODULE_NAME));
+
+        if (bee::g_app->imgui_pass != nullptr)
+        {
+            bee::g_render_graph->remove_pass(bee::g_app->imgui_pass);
+            bee::g_app->imgui_pass = nullptr;
+        }
     }
 }
