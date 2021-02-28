@@ -311,6 +311,10 @@ enum class BEE_REFLECT(serializable) VertexFormat : u32
     ubyte2,
     ubyte3,
     ubyte4,
+    unormbyte1,
+    unormbyte2,
+    unormbyte3,
+    unormbyte4,
     short1,
     short2,
     short3,
@@ -348,6 +352,10 @@ inline BEE_TRANSLATION_TABLE_FUNC(vertex_format_component_count, VertexFormat, u
     2,  // ubyte2
     3,  // ubyte3
     4,  // ubyte4
+    1,  // unormbyte1
+    2,  // unormbyte2
+    3,  // unormbyte3
+    4,  // unormbyte4
     1,  // short1
     2,  // short2
     3,  // short3
@@ -384,6 +392,10 @@ inline BEE_TRANSLATION_TABLE_FUNC(vertex_format_size, VertexFormat, u32, VertexF
     sizeof(u8) * 2,     // ubyte2
     sizeof(u8) * 3,     // ubyte3
     sizeof(u8) * 4,     // ubyte4
+    sizeof(u8) * 1,     // unormbyte1
+    sizeof(u8) * 2,     // unormbyte2
+    sizeof(u8) * 3,     // unormbyte3
+    sizeof(u8) * 4,     // unormbyte4
     sizeof(i16) * 1,    // short1
     sizeof(i16) * 2,    // short2
     sizeof(i16) * 3,    // short3
@@ -408,39 +420,43 @@ inline BEE_TRANSLATION_TABLE_FUNC(vertex_format_size, VertexFormat, u32, VertexF
 )
 
 inline BEE_TRANSLATION_TABLE_FUNC(vertex_format_string, VertexFormat, const char*, VertexFormat::unknown,
-    "float1",   // float1
-    "float2",   // float2
-    "float3",   // float3
-    "float4",   // float4
-    "byte1",    // byte1
-    "byte2",    // byte2
-    "byte3",    // byte3
-    "byte4",    // byte4
-    "ubyte1",   // ubyte1
-    "ubyte2",   // ubyte2
-    "ubyte3",   // ubyte3
-    "ubyte4",   // ubyte4
-    "short1",   // short1
-    "short2",   // short2
-    "short3",   // short3
-    "short4",   // short4
-    "ushort1",  // ushort1
-    "ushort2",  // ushort2
-    "ushort3",  // ushort3
-    "ushort4",  // ushort4
-    "half1",    // half1
-    "half2",    // half2
-    "half3",    // half3
-    "half4",    // half4
-    "int1",     // int1
-    "int2",     // int2
-    "int3",     // int3
-    "int4",     // int4
-    "uint1",    // uint1
-    "uint2",    // uint2
-    "uint3",    // uint3
-    "uint4",    // uint4
-    "invalid"   // invalid
+    "float1",       // float1
+    "float2",       // float2
+    "float3",       // float3
+    "float4",       // float4
+    "byte1",        // byte1
+    "byte2",        // byte2
+    "byte3",        // byte3
+    "byte4",        // byte4
+    "ubyte1",       // ubyte1
+    "ubyte2",       // ubyte2
+    "ubyte3",       // ubyte3
+    "ubyte4",       // ubyte4
+    "unormbyte1",   // unormbyte1
+    "unormbyte2",   // unormbyte2
+    "unormbyte3",   // unormbyte3
+    "unormbyte4",   // unormbyte4
+    "short1",       // short1
+    "short2",       // short2
+    "short3",       // short3
+    "short4",       // short4
+    "ushort1",      // ushort1
+    "ushort2",      // ushort2
+    "ushort3",      // ushort3
+    "ushort4",      // ushort4
+    "half1",        // half1
+    "half2",        // half2
+    "half3",        // half3
+    "half4",        // half4
+    "int1",         // int1
+    "int2",         // int2
+    "int3",         // int3
+    "int4",         // int4
+    "uint1",        // uint1
+    "uint2",        // uint2
+    "uint3",        // uint3
+    "uint4",        // uint4
+    "invalid"       // invalid
 )
 
 enum class BEE_REFLECT(serializable) StepFunction : u32
@@ -539,7 +555,8 @@ BEE_FLAGS(TextureUsage, u32)
     depth_stencil_attachment    = 1u << 3u,
     sampled                     = 1u << 4u,
     storage                     = 1u << 5u,
-    input_attachment            = 1u << 6u
+    input_attachment            = 1u << 6u,
+    transient                   = 1u << 7u
 };
 
 enum class PhysicalDeviceVendor
@@ -1155,7 +1172,7 @@ struct BEE_REFLECT(serializable) DepthStencilStateDescriptor
     float                   max_depth_bounds { 0.0f };
 };
 
-struct BEE_REFLECT(serializable) MultisampleStateDescriptor
+struct BEE_REFLECT(serializable) MultiSampleStateDescriptor
 {
     u32     sample_count { 1 };
     bool    sample_shading_enabled { false }; // enables sample shading only if the platform supports it
@@ -1317,7 +1334,7 @@ struct BEE_REFLECT(serializable, version = 1) PipelineStateDescriptor
     RasterStateDescriptor           raster_state;
 
     BEE_REFLECT(id = 3, added = 1)
-    MultisampleStateDescriptor      multisample_state;
+    MultiSampleStateDescriptor      multisample_state;
 
     BEE_REFLECT(id = 4, added = 1)
     DepthStencilStateDescriptor     depth_stencil_state;
@@ -1443,9 +1460,9 @@ struct GpuCommandBackend
     void (*begin_render_pass)(
         CommandBuffer*              cmd,
         const RenderPassHandle&     pass_handle,
+        const RenderRect            render_area,
         const u32                   attachment_count,
         const TextureViewHandle*    attachments,
-        const RenderRect&           render_area,
         const u32                   clear_value_count,
         const ClearValue*           clear_values
     ) { nullptr };
