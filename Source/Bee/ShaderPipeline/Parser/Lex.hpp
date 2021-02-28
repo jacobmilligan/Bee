@@ -15,7 +15,7 @@ namespace bee {
 
 #define BSC_KEYWORDS                \
     BSC_KEYWORD(RasterState)        \
-    BSC_KEYWORD(MultisampleState)   \
+    BSC_KEYWORD(MultiSampleState)   \
     BSC_KEYWORD(DepthStencilState)  \
     BSC_KEYWORD(PipelineState)      \
     BSC_KEYWORD(SamplerState)       \
@@ -43,7 +43,8 @@ namespace bee {
     BSC_TOK(string_literal)     \
     BSC_TOK(code)               \
     BSC_TOK(samplers)           \
-    BSC_TOK(update_frequencies)
+    BSC_TOK(update_frequencies) \
+    BSC_TOK(vertex_formats)
 
 #define BSC_ALL_TOKENS  \
     BSC_KEYWORDS        \

@@ -9,6 +9,7 @@
 #include "Bee/ShaderPipeline/Compiler.hpp"
 
 #include "Bee/Core/Containers/HashMap.hpp"
+#include "Bee/Core/TypeTraits.hpp"
 
 
 namespace bee {
@@ -189,9 +190,26 @@ BscResolveError bsc_resolve_module(const BscModule& module, ShaderFile* output)
 
                 auto& subshader = output->add_subshader(shader.identifier);
 
+                // Set the entry strings for each stage
                 for (int entry_index = 0; entry_index < static_array_length(shader.data.stages); ++entry_index)
                 {
                     subshader.set_entry(entry_index, shader.data.stages[entry_index]);
+                }
+
+                // Add vertex format overrides
+                for (const auto& fmt : shader.data.vertex_formats)
+                {
+                    const int existing = find_index_if(subshader.vertex_formats, [&](const ShaderFile::VertexFormatOverride& override)
+                    {
+                        return override.semantic == fmt.identifier;
+                    });
+
+                    if (existing >= 0)
+                    {
+                        return { BscResolveErrorCode::duplicate_vertex_format_override, fmt.identifier, subshader.name.view() };
+                    }
+
+                    subshader.add_vertex_format_override(fmt.identifier, fmt.data);
                 }
 
                 // resource update frequencies
@@ -247,6 +265,10 @@ String BscResolveError::to_string(Allocator* allocator) const
         case BscResolveErrorCode::incompatible_color_blend_states:
         {
             return str::format(allocator, "BSC: color_blend_states.size in pipeline '%" BEE_PRIsv "' must be the same as color_attachments.size in subpass '%" BEE_PRIsv "'", BEE_FMT_SV(param), BEE_FMT_SV(param2));
+        }
+        case BscResolveErrorCode::duplicate_vertex_format_override:
+        {
+            return str::format(allocator, "BSC: vertex format for semantic '%" BEE_PRIsv "' in shader '%" BEE_PRIsv "' is defined multiple times", BEE_FMT_SV(param), BEE_FMT_SV(param2));
         }
         case BscResolveErrorCode::none:
         {
@@ -337,7 +359,7 @@ bool BscParser::parse_top_level_structure(BscLexer* lexer, BscModule* ast)
             success = parse_raster_state(lexer, &ast->raster_states.back());
             break;
         }
-        case BscTokenKind::MultisampleState:
+        case BscTokenKind::MultiSampleState:
         {
             ast->multisample_states.emplace_back(ident);
             success = parse_multisample_state(lexer, &ast->multisample_states.back());
@@ -393,9 +415,9 @@ bool BscParser::parse_raster_state(BscLexer* lexer, BscNode<RasterStateDescripto
     return parse_fields(lexer, get_type_as<RasterStateDescriptor, RecordTypeInfo>(), &node->data);
 }
 
-bool BscParser::parse_multisample_state(BscLexer* lexer, BscNode<MultisampleStateDescriptor>* node)
+bool BscParser::parse_multisample_state(BscLexer* lexer, BscNode<MultiSampleStateDescriptor>* node)
 {
-    return parse_fields(lexer, get_type_as<MultisampleStateDescriptor, RecordTypeInfo>(), &node->data);
+    return parse_fields(lexer, get_type_as<MultiSampleStateDescriptor, RecordTypeInfo>(), &node->data);
 }
 
 bool BscParser::parse_depth_stencil_state(BscLexer* lexer, BscNode<DepthStencilStateDescriptor>* node)
@@ -443,51 +465,58 @@ bool BscParser::parse_pipeline_state(BscLexer* lexer, BscNode<BscPipelineStateNo
             continue;
         }
 
-        if (!lexer->consume_as(BscTokenKind::identifier, &tok))
+        if (!lexer->consume(&tok))
         {
             return false;
         }
 
         value = StringView(tok.begin, tok.end);
 
-        if (key == "primitive_type")
+        switch (tok.kind)
         {
-            auto constant = enum_from_string(get_type_as<PrimitiveType, EnumTypeInfo>(), value);
+            case BscTokenKind::identifier:
+            {
+                if (key == "primitive_type")
+                {
+                    auto constant = enum_from_string(get_type_as<PrimitiveType, EnumTypeInfo>(), value);
 
-            if (constant < 0)
+                    if (constant < 0)
+                    {
+                        return report_error(BscErrorCode::invalid_field_value, lexer);
+                    }
+
+                    node->data.primitive_type = static_cast<PrimitiveType>(constant);
+                }
+                else if (key == "raster_state")
+                {
+                    node->data.raster_state = value;
+                }
+                else if (key == "multisample_state")
+                {
+                    node->data.multisample_state = value;
+                }
+                else if (key == "depth_stencil_state")
+                {
+                    node->data.depth_stencil_state = value;
+                }
+                else if (key == "vertex_stage")
+                {
+                    node->data.vertex_stage = value;
+                }
+                else if (key == "fragment_stage")
+                {
+                    node->data.fragment_stage = value;
+                }
+                else
+                {
+                    return report_error(BscErrorCode::invalid_field_value, lexer);
+                }
+                break;
+            }
+            default:
             {
                 return report_error(BscErrorCode::invalid_field_value, lexer);
             }
-
-            node->data.primitive_type = static_cast<PrimitiveType>(constant);
-        }
-        else if (key == "raster_state")
-        {
-            node->data.raster_state = value;
-        }
-        else if (key == "multisample_state")
-        {
-            node->data.multisample_state = value;
-        }
-        else if (key == "depth_stencil_state")
-        {
-            node->data.depth_stencil_state = value;
-        }
-        else if (key == "vertex_stage")
-        {
-            node->data.vertex_stage = value;
-        }
-        else if (key == "fragment_stage")
-        {
-            node->data.fragment_stage = value;
-        }
-        else if (key == "color_blend_states")
-        {
-            node->data.color_blend_states.size = 0;
-        }
-        else
-        {
-            return report_error(BscErrorCode::invalid_field_value, lexer);
         }
     }
 
@@ -539,6 +568,13 @@ bool BscParser::parse_shader(BscLexer* lexer, BscNode<BscShaderNode>* node)
         else if (key == "update_frequencies")
         {
             if (!parse_update_frequencies(lexer, &node->data.update_frequencies))
+            {
+                return false;
+            }
+        }
+        else if (key == "vertex_formats")
+        {
+            if (!parse_array(lexer, &node->data.vertex_formats))
             {
                 return false;
             }
@@ -915,6 +951,46 @@ bool BscParser::parse_array(BscLexer* lexer, bsc_node_array_t<StringView>* array
 
         array->emplace_back(key);
         array->back().data = StringView(tok.begin, tok.end);
+
+        if (!lexer->peek(&tok))
+        {
+            return false;
+        }
+
+        if (tok.kind == BscTokenKind::close_bracket)
+        {
+            break;
+        }
+    }
+
+    return lexer->consume_as(BscTokenKind::close_bracket, &tok);
+}
+
+bool BscParser::parse_array(BscLexer* lexer, bsc_node_array_t<VertexFormat>* array)
+{
+    BscToken tok{};
+
+    if (!lexer->consume_as(BscTokenKind::open_bracket, &tok))
+    {
+        return false;
+    }
+
+    StringView key{};
+    while (parse_key(lexer, &key))
+    {
+        if (!lexer->consume_as(BscTokenKind::identifier, &tok))
+        {
+            return false;
+        }
+
+        const VertexFormat format = enum_from_string<VertexFormat>(StringView(tok.begin, tok.end));
+        if (static_cast<int>(format) < 0)
+        {
+            return report_error(BscErrorCode::invalid_field_value, lexer);
+        }
+
+        array->emplace_back(key);
+        array->back().data = format;
 
         if (!lexer->peek(&tok))
         {

@@ -64,7 +64,7 @@ const char* get_token_name(const BscTokenKind kind)
 {
     BEE_ASSERT(static_cast<i32>(kind) < static_array_length(g_token_names));
 
-    return g_token_names[underlying_t(kind)];
+    return g_token_names[static_cast<i32>(kind)];
 }
 
 bool is_keyword(const char* text, const i32 text_length, BscTokenKind* dst)
@@ -92,82 +92,82 @@ bool is_keyword(const char* text_begin, const char* text_end, BscTokenKind* dst)
 String BscError::to_string(Allocator* allocator) const
 {
     String result(allocator);
-    io::write_fmt(&result, "BSC error at: %d:%d: ", line, column);
+    str::format(&result, "BSC error at: %d:%d: ", line, column);
 
     switch (code)
     {
         case BscErrorCode::unexpected_character:
         {
-            io::write_fmt(&result, "unexpected character '%c'", text[0]);
+            str::format(&result, "unexpected character '%c'", text[0]);
             break;
         }
         case BscErrorCode::expected_character:
         {
-            io::write_fmt(&result, "unexpected character '%c'. Expected '%c' instead", error_char, char_param);
+            str::format(&result, "unexpected character '%c'. Expected '%c' instead", error_char, char_param);
             break;
         }
         case BscErrorCode::expected_end_of_multiline_comment:
         {
-            io::write_fmt(&result, "expected end of multiline comment");
+            str::format(&result, "expected end of multiline comment");
             break;
         }
         case BscErrorCode::invalid_object_type:
         {
-            io::write_fmt(&result, "invalid object type");
+            str::format(&result, "invalid object type");
             break;
         }
         case BscErrorCode::unexpected_eof:
         {
-            io::write_fmt(&result, "unexpected end of file");
+            str::format(&result, "unexpected end of file");
             break;
         }
         case BscErrorCode::invalid_object_field:
         {
-            io::write_fmt(&result, "invalid field");
+            str::format(&result, "invalid field");
             break;
         }
         case BscErrorCode::expected_boolean:
         {
-            io::write_fmt(&result, "expected boolean");
+            str::format(&result, "expected boolean");
             break;
         }
         case BscErrorCode::expected_digit:
         {
-            io::write_fmt(&result, "expected digit (0-9)");
+            str::format(&result, "expected digit (0-9)");
             break;
         }
         case BscErrorCode::expected_decimal:
         {
-            io::write_fmt(&result, "floating point number was missing a decimal part after the '.'");
+            str::format(&result, "floating point number was missing a decimal part after the '.'");
             break;
         }
         case BscErrorCode::invalid_field_value:
         {
-            io::write_fmt(&result, "invalid field value");
+            str::format(&result, "invalid field value");
             break;
         }
         case BscErrorCode::unexpected_token_kind:
         {
-            io::write_fmt(&result, "unexpected %s token", get_token_name(token_param));
+            str::format(&result, "unexpected %s token", get_token_name(token_param));
         }
         case BscErrorCode::none:
         {
-            io::write_fmt(&result, "no error");
+            str::format(&result, "no error");
             break;
         }
         case BscErrorCode::number_too_long:
         {
-            io::write_fmt(&result, "number is too long to be represented in the supported integer or floating point formats");
+            str::format(&result, "number is too long to be represented in the supported integer or floating point formats");
             break;
         }
         case BscErrorCode::invalid_number_format:
         {
-            io::write_fmt(&result, "invalid number format");
+            str::format(&result, "invalid number format");
             break;
         }
         case BscErrorCode::invalid_layout_name:
         {
-            io::write_fmt(&result, "invalid layout name");
+            str::format(&result, "invalid layout name");
             break;
         }
         default:
@@ -176,7 +176,7 @@ String BscError::to_string(Allocator* allocator) const
         }
     }
 
-    io::write_fmt(&result, "\n\t`%" BEE_PRIsv "`", BEE_FMT_SV(text));
+    str::format(&result, "\n\t`%" BEE_PRIsv "`", BEE_FMT_SV(text));
 
     return BEE_MOVE(result);
 }

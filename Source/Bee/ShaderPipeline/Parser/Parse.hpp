@@ -66,6 +66,16 @@ struct ShaderFile
         {}
     };
 
+    struct VertexFormatOverride
+    {
+        String          semantic;
+        VertexFormat    format { VertexFormat::invalid };
+
+        VertexFormatOverride(Allocator* allocator)
+            : semantic(allocator)
+        {}
+    };
+
     struct SubShader
     {
         String                                      name;
@@ -75,11 +85,13 @@ struct ShaderFile
         DynamicArray<SamplerRef>                    samplers;
         PushConstantRangeArray                      push_constants;
         StaticArray<u32,  ShaderStageIndex::count>  push_constant_hashes;
+        DynamicArray<VertexFormatOverride>          vertex_formats;
 
         SubShader(Allocator* allocator)
             : name(allocator),
               update_frequencies(allocator),
-              samplers(allocator)
+              samplers(allocator),
+              vertex_formats(allocator)
         {
             for (auto& entry : stage_entries)
             {
@@ -98,6 +110,13 @@ struct ShaderFile
             samplers.emplace_back(samplers.allocator());
             samplers.back().shader_resource_name.assign(shader_resource_name);
             samplers.back().resource_index = index;
+        }
+
+        void add_vertex_format_override(const StringView& semantic, const VertexFormat format)
+        {
+            vertex_formats.emplace_back(vertex_formats.allocator());
+            vertex_formats.back().semantic.assign(semantic);
+            vertex_formats.back().format = format;
         }
     };
 
@@ -197,10 +216,12 @@ struct BscShaderNode
     StringView                                  stages[ShaderStageIndex::count];
     bsc_node_array_t<StringView>                samplers;
     DynamicArray<ShaderFile::UpdateFrequency>   update_frequencies;
+    bsc_node_array_t<VertexFormat>              vertex_formats;
 
     BscShaderNode(Allocator* allocator)
         : samplers(allocator),
-          update_frequencies(allocator)
+          update_frequencies(allocator),
+          vertex_formats(allocator)
     {}
 };
 
@@ -221,7 +242,7 @@ struct BscModule
     Allocator*                                      allocator { nullptr };
     bsc_node_array_t<BscPipelineStateNode>          pipeline_states;
     bsc_node_array_t<RasterStateDescriptor>         raster_states;
-    bsc_node_array_t<MultisampleStateDescriptor>    multisample_states;
+    bsc_node_array_t<MultiSampleStateDescriptor>    multisample_states;
     bsc_node_array_t<DepthStencilStateDescriptor>   depth_stencil_states;
     bsc_node_array_t<SamplerCreateInfo>             sampler_states;
     bsc_node_array_t<BscShaderNode>                 shaders;
@@ -247,6 +268,7 @@ enum class BscResolveErrorCode
     too_many_shaders,
     incompatible_resource_layouts,
     incompatible_color_blend_states,
+    duplicate_vertex_format_override,
     none
 };
 
@@ -354,7 +376,7 @@ private:
 
     bool parse_raster_state(BscLexer* lexer, BscNode<RasterStateDescriptor>* node);
 
-    bool parse_multisample_state(BscLexer* lexer, BscNode<MultisampleStateDescriptor>* node);
+    bool parse_multisample_state(BscLexer* lexer, BscNode<MultiSampleStateDescriptor>* node);
 
     bool parse_depth_stencil_state(BscLexer* lexer, BscNode<DepthStencilStateDescriptor>* node);
 
@@ -381,6 +403,8 @@ private:
     bool parse_array(BscLexer* lexer, DynamicArray<StringView>* array);
 
     bool parse_array(BscLexer* lexer, bsc_node_array_t<StringView>* array);
+
+    bool parse_array(BscLexer* lexer, bsc_node_array_t<VertexFormat>* array);
 
     bool parse_array(BscLexer* lexer, StringView* array, const i32 capacity, i32* count);
 
