@@ -40,5 +40,24 @@ float4x4::float4x4(const quaternion& quat)
     m33 = 0.0f;
 }
 
+float4x4 ortho(const float left, const float right, const float bottom,
+                                const float top, const float near, const float far)
+{
+    float4x4 result;
+    const float size_x = right - left;
+    const float size_y = top - bottom;
+    const float zoom = far - near;
+
+    result.m00 = 2.0f / size_x;
+    result.m11 = 2.0f / size_y;
+    result.m22 = -2.0f / zoom;
+    result.m30 = -(right + left) / size_x;
+    result.m31 = -(top + bottom) / size_y;
+    result.m32 = -(far + near) / zoom;
+    result.m33 = 1.0f;
+
+    return result;
+}
+
 
 } // namespace bee

@@ -219,24 +219,8 @@ BEE_FORCE_INLINE float4x4 transpose(const float4x4& mat)
     return result;
 }
 
-BEE_FORCE_INLINE float4x4 ortho(const float left, const float right, const float bottom,
-                                         const float top, const float near, const float far)
-{
-    float4x4 result;
-    const auto size_x = right - left;
-    const auto size_y = top - bottom;
-    const auto zoom = far - near;
-
-    result.m00 = 2.0f / size_x;
-    result.m11 = 2.0f / size_y;
-    result.m22 = -2.0f / zoom;
-    result.m30 = -(right + left) / size_x;
-    result.m31 = -(top + bottom) / size_y;
-    result.m32 = -(far + near) / zoom;
-    result.m33 = 1.0f;
-
-    return result;
-}
+BEE_CORE_API float4x4 ortho(const float left, const float right, const float bottom,
+                                const float top, const float near, const float far);
 
 BEE_FORCE_INLINE float4x4 perspective(const float fov_y, const float aspect,
                                                const float z_near, const float z_far)
