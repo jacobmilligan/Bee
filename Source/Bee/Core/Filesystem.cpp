@@ -211,6 +211,117 @@ DirectoryIterator end(const DirectoryIterator&)
     return DirectoryIterator();
 }
 
+File::File(File&& other) noexcept
+{
+    if (is_valid())
+    {
+        close_file(this);
+    }
+
+    handle = other.handle;
+    other.handle = nullptr;
+
+    mode = other.mode;
+    other.mode = OpenMode::none;
+}
+
+File& File::operator=(File&& other) noexcept
+{
+    if (is_valid())
+    {
+        close_file(this);
+    }
+
+    handle = other.handle;
+    other.handle = nullptr;
+
+    mode = other.mode;
+    other.mode = OpenMode::none;
+
+    return *this;
+}
+
+File::~File()
+{
+    if (is_valid())
+    {
+        close_file(this);
+    }
+}
+
+String read_all_text(const File& file, Allocator* allocator)
+{
+    const size_t size = get_size(file);
+    String result(sign_cast<i32>(size), '\0', allocator);
+
+    if (!result.empty())
+    {
+        const size_t bytes_read = read(file, size, result.data());
+        BEE_ASSERT_F(bytes_read == result.size(), "Failed to read entire file");
+    }
+
+    return BEE_MOVE(result);
+}
+
+FixedArray<u8> read_all_bytes(const File& file, Allocator* allocator)
+{
+    const size_t size = get_size(file);
+    auto result = FixedArray<u8>(sign_cast<i32>(size), 0, allocator);
+
+    if (!result.empty())
+    {
+        const size_t bytes_read = read(file, size, result.data());
+        BEE_ASSERT_F(bytes_read == result.size(), "Failed to read entire file");
+    }
+
+    return BEE_MOVE(result);
+}
+
+String read_all_text(const PathView& path, Allocator* allocator)
+{
+    auto file = open_file(path, OpenMode::read);
+    return read_all_text(file, allocator);
+}
+
+FixedArray<u8> read_all_bytes(const PathView& path, Allocator* allocator)
+{
+    auto file = open_file(path, OpenMode::read);
+    return read_all_bytes(file, allocator);
+}
+
+i64 write(const File& file, const StringView& string_to_write)
+{
+    return write(file, string_to_write.data(), string_to_write.size());
+}
+
+i64 write_all(const PathView& path, const StringView& string_to_write)
+{
+    auto file = open_file(path, OpenMode::write);
+    const i64 size = write(file, string_to_write);
+    return size;
+}
+
+i64 write_all(const PathView& path, const void* buffer, const i64 buffer_size)
+{
+    auto file = open_file(path, OpenMode::write);
+    const i64 size = write(file, buffer, buffer_size);
+    return size;
+}
+
+i64 append_all(const PathView& path, const StringView& string_to_write)
+{
+    auto file = open_file(path, OpenMode::write);
+    const i64 size = write(file, string_to_write);
+    return size;
+}
+
+i64 append_all(const PathView& path, const void* buffer, const i64 buffer_size)
+{
+    auto file = open_file(path, OpenMode::append);
+    const i64 size = write(file, buffer, buffer_size);
+    return size;
+}
+
 /*
  ******************************************
  *

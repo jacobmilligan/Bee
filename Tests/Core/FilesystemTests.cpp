@@ -40,7 +40,7 @@ TEST(FilesystemTests, read_write_file)
 
     {
         auto file = bee::fs::open_file(filepath.view(), bee::fs::OpenMode::read);
-        const auto read_string = bee::fs::read(file);
+        const auto read_string = bee::fs::read_all_text(file);
         ASSERT_EQ(read_string, test_string);
     }
 
@@ -55,7 +55,7 @@ TEST(FilesystemTests, read_write_file)
 
     {
         auto file = bee::fs::open_file(filepath.view(), bee::fs::OpenMode::read);
-        const auto read_bytes = bee::fs::read_bytes(file);
+        const auto read_bytes = bee::fs::read_all_bytes(file);
         ASSERT_EQ(read_bytes.size(), bee::static_array_length(test_bytes));
         for (int b = 0; b < read_bytes.size(); ++b)
         {
@@ -82,7 +82,7 @@ TEST(FilesystemTests, copy_file)
 
     {
         auto file = bee::fs::open_file(dst_filepath.view(), bee::fs::OpenMode::read);
-        const auto dst_string = bee::fs::read(file);
+        const auto dst_string = bee::fs::read_all_text(file);
         ASSERT_EQ(dst_string, test_string);
     }
     ASSERT_TRUE(bee::fs::remove(src_filepath.view()));

@@ -438,44 +438,6 @@ void DirectoryWatcher::watch_loop(DirectoryWatcher* watcher)
  *
  *****************************************
  */
-File::File(File&& other) noexcept
-{
-    if (is_valid())
-    {
-        close_file(this);
-    }
-
-    handle = other.handle;
-    other.handle = nullptr;
-
-    mode = other.mode;
-    other.mode = OpenMode::none;
-}
-
-File& File::operator=(File&& other) noexcept
-{
-    if (is_valid())
-    {
-        close_file(this);
-    }
-
-    handle = other.handle;
-    other.handle = nullptr;
-
-    mode = other.mode;
-    other.mode = OpenMode::none;
-
-    return *this;
-}
-
-File::~File()
-{
-    if (is_valid())
-    {
-        close_file(this);
-    }
-}
-
 File open_file(const PathView& path, const OpenMode mode)
 {
     DWORD dwDesiredAccess = 0
@@ -589,39 +551,6 @@ i64 read(const File& file, const i64 size, void* buffer)
     }
 
     return bytes_read;
-}
-
-String read(const File& file, Allocator* allocator)
-{
-    const size_t size = get_size(file);
-    String result(sign_cast<i32>(size), '\0', allocator);
-
-    if (!result.empty())
-    {
-        const size_t bytes_read = read(file, size, result.data());
-        BEE_ASSERT_F(bytes_read == result.size(), "Failed to read entire file");
-    }
-
-    return BEE_MOVE(result);
-}
-
-FixedArray<u8> read_bytes(const File& file, Allocator* allocator)
-{
-    const size_t size = get_size(file);
-    auto result = FixedArray<u8>(sign_cast<i32>(size), 0, allocator);
-
-    if (!result.empty())
-    {
-        const size_t bytes_read = read(file, size, result.data());
-        BEE_ASSERT_F(bytes_read == result.size(), "Failed to read entire file");
-    }
-
-    return BEE_MOVE(result);
-}
-
-i64 write(const File& file, const StringView& string_to_write)
-{
-    return write(file, string_to_write.data(), string_to_write.size());
 }
 
 i64 write(const File& file, const void* buffer, const i64 buffer_size)

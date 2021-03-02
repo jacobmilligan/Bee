@@ -190,6 +190,15 @@ TEST(PathTests, relative_to)
     path = "D:\\Root\\test.txt";
     relative = path.relative_to("D:\\Root\\Another\\Path");
     ASSERT_EQ(relative.view(), "..\\..\\test.txt");
+
+    path = "D:/Code/Bee/Tools/ImGuiGenerator/Generator.inl";
+    auto output_dir = bee::PathView("D:/Code/Bee/Build/Generated/ReflectTest");
+    auto other = bee::Path(output_dir)
+        .append(path.filename())
+        .set_extension("generated")
+        .append_extension(".cpp");
+    relative = path.relative_to(other.view().parent()).make_generic();
+    ASSERT_EQ(relative.view(), "../../../Tools/ImGuiGenerator/Generator.inl");
 }
 
 TEST(PathTests, string_view_comparison)

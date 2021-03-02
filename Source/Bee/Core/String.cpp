@@ -493,6 +493,7 @@ i32 compare(const StringView& lhs, const char* rhs)
  */
 i32 length(const char* string)
 {
+    BEE_ASSERT(string != nullptr);
     /*
      * Rather than implementing a naive strlen - use the platforms implementation. Especially under libc and glibc
      * the platform-specific strlen is the optimal algorithm to use, often employing SIMD optimizations I can't be

@@ -209,13 +209,25 @@ BEE_CORE_API i64 seek(const File& file, const i64 offset, const io::SeekOrigin o
 
 BEE_CORE_API i64 read(const File& file, const i64 size, void* buffer);
 
-BEE_CORE_API String read(const File& file, Allocator* allocator = system_allocator());
+BEE_CORE_API String read_all_text(const File& file, Allocator* allocator = system_allocator());
 
-BEE_CORE_API FixedArray<u8> read_bytes(const File& file, Allocator* allocator = system_allocator());
+BEE_CORE_API FixedArray<u8> read_all_bytes(const File& file, Allocator* allocator = system_allocator());
+
+BEE_CORE_API String read_all_text(const PathView& path, Allocator* allocator = system_allocator());
+
+BEE_CORE_API FixedArray<u8> read_all_bytes(const PathView& path, Allocator* allocator = system_allocator());
 
 BEE_CORE_API i64 write(const File& file, const StringView& string_to_write);
 
 BEE_CORE_API i64 write(const File& file, const void* buffer, const i64 buffer_size);
+
+BEE_CORE_API i64 write_all(const PathView& path, const StringView& string_to_write);
+
+BEE_CORE_API i64 write_all(const PathView& path, const void* buffer, const i64 buffer_size);
+
+BEE_CORE_API i64 append_all(const PathView& path, const StringView& string_to_write);
+
+BEE_CORE_API i64 append_all(const PathView& path, const void* buffer, const i64 buffer_size);
 
 BEE_CORE_API bool remove(const PathView& filepath);
 
