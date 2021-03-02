@@ -94,7 +94,7 @@ bool TypeMap::try_add_type(const TypeInfo* type, const clang::Decl& decl, Reflec
     for (const auto& include_dir : include_dirs)
     {
         // Make the filepath relative to the discovered include dir if available
-        if (str::first_index_of(filepath.view(), include_dir.view()) == 0)
+        if (str::first_index_of(filepath.view(), include_dir.string_view()) == 0)
         {
             auto length = include_dir.size();
             if (filepath[include_dir.size()] == Path::preferred_slash || filepath[include_dir.size()] == Path::generic_slash)

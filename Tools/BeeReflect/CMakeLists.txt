@@ -6,7 +6,7 @@ bee_add_sources(
     Storage.hpp         Storage.cpp
     Main.cpp
 )
-bee_exe(bee-reflect LINK_LIBRARIES Bee.Core clangTooling)
+bee_exe(bee-reflect LINK_LIBRARIES Bee.Core.StaticLib clangTooling)
 
 target_compile_options(bee-reflect PRIVATE ${bee_clang_tool_compile_options})
 

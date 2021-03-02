@@ -236,8 +236,7 @@ void parse_settings_json(const Path& location, DynamicArray<String>* cmake_optio
         return;
     }
 
-    auto file = fs::open_file(location.view(), fs::OpenMode::read);
-    auto json_src = fs::read(file);
+    auto json_src = fs::read_all_text(location.view());
 
     json::Document doc(json::ParseOptions{});
     doc.parse(json_src.data());

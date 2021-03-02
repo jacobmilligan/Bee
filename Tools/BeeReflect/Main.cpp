@@ -53,8 +53,8 @@ int bee_main(int argc, char** argv)
 
     clang::tooling::ClangTool tool(options_parser.getCompilations(), options_parser.getSourcePathList());
 
-    const auto output_dir = bee::Path(output_dir_opt.c_str());
-    const auto generated_inl_dir = output_dir.join("ReflectedTemplates");
+    const auto output_dir = bee::PathView(output_dir_opt.c_str());
+    const auto generated_inl_dir = bee::Path(output_dir).append("ReflectedTemplates");
 
     if (!output_dir.exists())
     {
@@ -63,13 +63,15 @@ int bee_main(int argc, char** argv)
 
     if (!generated_inl_dir.exists())
     {
-        bee::fs::mkdir(generated_inl_dir, true);
+        bee::fs::mkdir(generated_inl_dir.view(), true);
     }
 
     // dump command line if requested before doing anything else in case of assert
     if (dump_opt)
     {
-        bee::io::FileStream filestream(output_dir.join("command.txt"), "wb");
+        auto command_out = bee::Path(output_dir).append("command.txt");
+        auto file = bee::fs::open_file(command_out.view(), bee::fs::OpenMode::write);
+        bee::io::FileStream filestream(&file);
         for (int i = 1; i < unudjusted_argc; ++i)
         {
             filestream.write(argv[i]);
@@ -88,7 +90,7 @@ int bee_main(int argc, char** argv)
     }
 
     // Keep track of all the reflected files absolute paths for later so we can delete old, nonreflected files
-    bee::DynamicArray<bee::Path> reflected_abs_paths;
+    bee::DynamicArray<bee::PathView> reflected_abs_paths;
     bee::DynamicArray<bee::reflect::TypeListEntry> reflected_types;
 
     const auto src_path_list = options_parser.getSourcePathList();
@@ -113,19 +115,20 @@ int bee_main(int argc, char** argv)
             src_codegen_mode = bee::reflect::CodegenMode::inl;
         }
 
-        auto output_path = output_dir.join(file.value.location.filename(), bee::temp_allocator())
-                                     .set_extension("generated")
-                                     .append_extension(".cpp");
+        auto output_path = bee::Path(output_dir, bee::temp_allocator())
+            .append(file.value.location.filename())
+            .set_extension("generated")
+            .append_extension(".cpp");
 
         // Generate all non-templated types into a generated.cpp file
         bee::String output;
-        if (bee::reflect::generate_reflection(output_path, file.value, &output, src_codegen_mode) <= 0)
+        if (bee::reflect::generate_reflection(output_path.view(), file.value, &output, src_codegen_mode) <= 0)
         {
             // If there's only template types in a generated file, this should be re-written as a empty file
             output.clear();
-            bee::reflect::generate_empty_reflection(output_path, file.value.location.c_str(), &output);
+            bee::reflect::generate_empty_reflection(output_path.view(), file.value.location.c_str(), &output);
         }
-        bee::fs::write(output_path, output.view());
+        bee::fs::write_all(output_path.view(), output.view());
 
         // Generate a matching .inl file with just the get_type(module, index) portion if inline mode and the file has
         // non-template types
@@ -135,27 +138,28 @@ int bee_main(int argc, char** argv)
             output.clear();
 
             type_count_for_inl += bee::reflect::generate_reflection_header(
-                output_path,
+                output_path.view(),
                 file.value,
                 type_count_for_inl,
                 &output,
                 src_codegen_mode
             );
 
-            bee::fs::write(output_path, output.view());
+            bee::fs::write_all(output_path.view(), output.view());
         }
 
         // Output a generated.inl file if required - a type in the file is templated and requires a `get_type` specialization
-        const auto inl_path = generated_inl_dir.join(file.value.location.filename(), bee::temp_allocator())
-                                               .set_extension("generated")
-                                               .append_extension("inl");
+        const auto inl_path = bee::Path(generated_inl_dir.view(), bee::temp_allocator())
+            .append(file.value.location.filename())
+            .set_extension("generated")
+            .append_extension("inl");
         output.clear();
-        if (bee::reflect::generate_reflection(inl_path, file.value, &output, bee::reflect::CodegenMode::templates_only) > 0)
+        if (bee::reflect::generate_reflection(inl_path.view(), file.value, &output, bee::reflect::CodegenMode::templates_only) > 0)
         {
-            bee::fs::write(inl_path, output.view());
+            bee::fs::write_all(inl_path.view(), output.view());
         }
 
-        reflected_abs_paths.push_back(file.value.location);
+        reflected_abs_paths.push_back(file.value.location.view());
         reflected_types.append(file.value.all_types.const_span()); // keep track of these for generating typelists
     }
 
@@ -163,17 +167,21 @@ int bee_main(int argc, char** argv)
 
     for (const std::string& compilation : options_parser.getSourcePathList())
     {
-        const auto was_reflected = bee::find_index_if(reflected_abs_paths, [&](const bee::Path& reflected)
+        const auto was_reflected = bee::find_index_if(reflected_abs_paths, [&](const bee::PathView& reflected)
         {
-            return compilation.c_str() == reflected.view();
+            return compilation.c_str() == reflected;
         }) >= 0;
 
         if (!was_reflected)
         {
             const auto filename = bee::Path(compilation.c_str(), bee::temp_allocator()).filename();
-            auto output_path = output_dir.join(filename).set_extension("generated").append_extension("cpp");
-            bee::reflect::generate_empty_reflection(output_path, compilation.c_str(), &header_comment);
-            bee::fs::write(output_path, header_comment.view());
+            auto output_path = bee::Path(output_dir, bee::temp_allocator())
+                .append(filename)
+                .set_extension("generated")
+                .append_extension("cpp");
+            bee::reflect::generate_empty_reflection(output_path.view(), compilation.c_str(), &header_comment);
+
+            bee::fs::write_all(output_path.view(), header_comment.view());
             header_comment.clear();
         }
     }

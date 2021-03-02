@@ -32,11 +32,11 @@ struct ImGuiConfig
 
 static int generate_imgui(const ImGuiConfig& config)
 {
-    const auto full_output_path = Path::current_working_directory().append(config.output_path).normalize();
-    const auto full_output_dir = full_output_path.parent_path(temp_allocator());
-    if (!full_output_dir.parent_path().exists())
+    const auto full_output_path = Path(current_working_directory()).append(config.output_path).normalize();
+    const auto full_output_dir = full_output_path.parent();
+    if (!full_output_dir.parent().exists())
     {
-        log_error("Folder does not exist: %" BEE_PRIsv, BEE_FMT_SV(full_output_dir.parent_view()));
+        log_error("Folder does not exist: %" BEE_PRIsv, BEE_FMT_SV(full_output_dir.parent()));
         return EXIT_FAILURE;
     }
 
@@ -88,7 +88,7 @@ static int generate_imgui(const ImGuiConfig& config)
     proc_info.flags = CreateProcessFlags::priority_high;
     proc_info.command_line = command_line.c_str();
 
-    if (!create_process(proc_info, tool_root))
+    if (!create_process(proc_info, tool_root.view()))
     {
         log_error("Failed to execute cimgui generator");
         return EXIT_FAILURE;
@@ -106,7 +106,7 @@ static int generate_imgui(const ImGuiConfig& config)
     }
 
     const auto cimgui_generator_root = env.project_root.join("ThirdParty/cimgui/generator");
-    auto definitions_contents = fs::read(cimgui_generator_root.join("output/definitions.json"), temp_allocator());
+    auto definitions_contents = fs::read_all_text(cimgui_generator_root.join("output/definitions.json").view(), temp_allocator());
 
     JSONSerializer serializer(definitions_contents.data(), JSONSerializeFlags::parse_in_situ, temp_allocator());
     DynamicHashMap<String, DynamicArray<Definition>> definitions;
@@ -139,10 +139,11 @@ static int generate_imgui(const ImGuiConfig& config)
     }
 
     // Output the header/impl as a single split header file
-    io::FileStream stream(full_output_path, "w");
+    String generated_contents;
+    io::StringStream stream(&generated_contents);
 
     // Copy over the struct and enum definitions straight from the generated cimgui header
-    auto cimgui_header = fs::read(cimgui_generator_root.join("../cimgui.h"));
+    auto cimgui_header = fs::read_all_text(cimgui_generator_root.join("../cimgui.h").view());
     // replace windows line breaks
     str::replace(&cimgui_header, "\r\n", "\n");
     // ensure the formatting of the endif comments are consistent
@@ -232,6 +233,8 @@ static int generate_imgui(const ImGuiConfig& config)
     }
     stream.write("} // bee_load_imgui_api\n");
     stream.write("#endif // BEE_IMGUI_GENERATOR_IMPLEMENTATION\n");
+
+    fs::write_all(full_output_path.view(), generated_contents.view());
 
     return EXIT_SUCCESS;
 }

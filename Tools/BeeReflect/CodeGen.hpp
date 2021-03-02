@@ -16,6 +16,9 @@
 #include <llvm/ADT/ArrayRef.h>
 
 namespace bee {
+
+class PathView;
+
 namespace reflect {
 
 
@@ -58,9 +61,7 @@ public:
 
     bool should_generate(const TypeInfo& type);
 
-    void write_header_comment(const char* source_location);
-
-    void write_header_comment(const Path& source_location);
+    void write_header_comment(const PathView& source_location);
 
     void write_type_signature(const TypeInfo& type, const CodegenMode force_mode = CodegenMode::none);
 
@@ -140,13 +141,13 @@ private:
 
 struct TypeListEntry;
 
-void generate_empty_reflection(const Path& dst_path, const char* location, String* output);
+void generate_empty_reflection(const PathView& dst_path, const char* location, String* output);
 
-i32 generate_reflection(const Path& dst_path, const ReflectedFile& file, String* output, CodegenMode mode);
+i32 generate_reflection(const PathView& dst_path, const ReflectedFile& file, String* output, CodegenMode mode);
 
-i32 generate_reflection_header(const Path& dst_path, const ReflectedFile& file, const i32 first_type_index, String* output, CodegenMode mode);
+i32 generate_reflection_header(const PathView& dst_path, const ReflectedFile& file, const i32 first_type_index, String* output, CodegenMode mode);
 
-void generate_typelist(const Path& target_dir, const Span<const TypeListEntry>& all_types, CodegenMode mode, const Span<const Path>& written_files);
+void generate_typelist(const PathView& target_dir, const Span<const TypeListEntry>& all_types, CodegenMode mode, const Span<const PathView>& written_files);
 
 
 } // namespace reflect
