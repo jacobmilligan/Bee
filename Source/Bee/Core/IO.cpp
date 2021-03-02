@@ -145,7 +145,7 @@ static Stream::Mode open_mode_to_stream_mode(const fs::OpenMode access)
     {
         return Stream::Mode::read_only;
     }
-    if (read)
+    if (write)
     {
         return Stream::Mode::write_only;
     }
