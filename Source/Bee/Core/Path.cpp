@@ -250,7 +250,7 @@ PathIterator PathView::begin() const
 
 PathIterator PathView::end() const
 {
-    return PathIterator(StringView(data_.c_str() + data_.size(), 0));
+    return PathIterator(*this, size());
 }
 
 /*
@@ -524,6 +524,11 @@ PathView Path::view() const
     return data_.view();
 }
 
+StringView Path::string_view() const
+{
+    return data_.view();
+}
+
 String Path::to_string(Allocator* allocator) const
 {
     return String(data_.view(), allocator);
@@ -767,7 +772,6 @@ i32 path_compare(const PathView& lhs, const PathView& rhs)
 //    return lhs_index - rhs_index;
 }
 
-
 /*
  ***************************************
  *
@@ -776,9 +780,15 @@ i32 path_compare(const PathView& lhs, const PathView& rhs)
  ***************************************
  */
 PathIterator::PathIterator(const PathView& path)
-    : path_(path.data()),
-      path_size_(path.size()),
-      component_(path.data())
+    : path_(path),
+      component_(StringView(path.data(), 0))
+{
+    next();
+}
+
+PathIterator::PathIterator(const PathView& path, const i32 offset)
+    : path_(path),
+      component_(StringView(path.data() + offset, 0))
 {
     next();
 }
@@ -796,12 +806,7 @@ PathIterator& PathIterator::operator=(const bee::PathIterator& other)
 
 PathView PathIterator::operator*() const
 {
-    if (path_ == nullptr || component_ - path_ > path_size_)
-    {
-        return {};
-    }
-
-    return StringView(component_, component_size_);
+    return component_;
 }
 
 PathIterator& PathIterator::operator++()
@@ -819,50 +824,39 @@ const PathIterator PathIterator::operator++(int)
 
 bool PathIterator::operator==(const bee::PathIterator& other) const
 {
-    return component_ == other.component_ && component_size_ == other.component_size_;
+    return path_.data() == other.path_.data()
+        && path_.size() == other.path_.size()
+        && component_.data() == other.component_.data()
+        && component_.size() == other.component_.size();
 }
 
 void PathIterator::copy_construct(const bee::PathIterator& other)
 {
     path_ = other.path_;
-    path_size_ = other.path_size_;
     component_ = other.component_;
-    component_size_ = other.component_size_;
 }
 
 void PathIterator::next()
 {
-    if (path_ == nullptr)
+    if (path_.data() == nullptr || path_.empty())
     {
         return;
     }
 
-    component_ += component_size_;
-    while (is_slash(component_))
+    const char* component = component_.data() + component_.size();
+    int component_size = 0;
+
+    while (component < path_.data() + path_.size() && is_slash(component))
     {
-        ++component_;
+        ++component;
     }
 
-    const auto path_end = path_ + path_size_;
-    const char* component_end = component_;
-
-    while (component_end != path_end)
+    while (component + component_size < path_.data() + path_.size() && !is_slash(component + component_size))
     {
-#if BEE_OS_WINDOWS == 1
-        const auto is_separator = is_slash(component_end) || (component_end > path_ && *(component_end - 1) == Path::colon);
-#else
-        const auto is_separator = is_slash(path_ + current);
-#endif // BEE_OS_WINDOWS == 1
-
-        if (is_separator)
-        {
-            break;
-        }
-
-        ++component_end;
+        ++component_size;
     }
 
-    component_size_ = sign_cast<i32>(component_end - component_);
+    component_ = StringView(component, component_size);
 }
 
 

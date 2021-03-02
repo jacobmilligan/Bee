@@ -134,9 +134,9 @@ public:
 
     Path(Path&& other) noexcept;
 
-    inline Path& operator=(const PathView& path) noexcept;
+    Path& operator=(const PathView& path) noexcept;
 
-    inline Path& operator=(const char* path) noexcept;
+    Path& operator=(const char* path) noexcept;
 
     Path& operator=(const Path& other) = default;
 
@@ -216,6 +216,8 @@ public:
     /// @brief Gets the raw string representation of this path
     /// @return
     PathView view() const;
+
+    StringView string_view() const;
 
     String to_string(Allocator* allocator = system_allocator()) const;
 
@@ -527,6 +529,8 @@ public:
 
     explicit PathIterator(const PathView& path);
 
+    PathIterator(const PathView& path, const i32 offset);
+
     PathIterator(const PathIterator& other);
 
     PathIterator& operator=(const PathIterator& other);
@@ -544,10 +548,8 @@ public:
         return !(*this == other);
     }
 private:
-    const char* path_ { nullptr };
-    i32         path_size_ { 0 };
-    const char* component_ { nullptr };
-    i32         component_size_ { 0 };
+    PathView    path_;
+    PathView    component_;
 
     void copy_construct(const PathIterator& other);
 
