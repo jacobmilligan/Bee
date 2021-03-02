@@ -922,8 +922,7 @@ Result<u128, AssetDatabaseError> add_artifact_with_key(AssetTxn* txn, const GUID
             fs::mkdir(artifact_dir, true);
         }
 
-        auto file = fs::open_file(artifact_path.view(), fs::OpenMode::write);
-        if (!fs::write(file, buffer, buffer_size))
+        if (!fs::write_all(artifact_path.view(), buffer, buffer_size))
         {
             return { AssetDatabaseError::failed_to_write_artifact_to_disk };
         }

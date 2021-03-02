@@ -133,8 +133,7 @@ bool init_build_environment(BuildEnvironment* env)
                 return false;
             }
 
-            auto file = fs::open_file(version_path.view(), fs::OpenMode::read);
-            auto version = fs::read(file, temp_allocator());
+            auto version = fs::read_all_text(version_path.view(), temp_allocator());
             str::trim(&version, '\r');
             str::trim(&version, '\n');
 

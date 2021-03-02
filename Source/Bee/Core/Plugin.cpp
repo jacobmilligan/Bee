@@ -553,8 +553,8 @@ static void read_plugin_descriptors(const PathView& root)
 
         if (entry.extension() == ".plugin")
         {
-            auto file = fs::open_file(entry, fs::OpenMode::read);
-            auto contents = fs::read(file);
+#ifdef BEE_ENABLE_REFLECTION
+            auto contents = fs::read_all_text(entry);
             PluginDescriptor descriptor;
             JSONSerializer serializer(contents.data(), JSONSerializeFlags::parse_in_situ);
             serialize(SerializerMode::reading, SerializerSourceFlags::all, &serializer, &descriptor);
@@ -569,6 +569,9 @@ static void read_plugin_descriptors(const PathView& root)
                 auto* mapped = g_registry->descriptors.insert(descriptor.name, BEE_MOVE(descriptor));
                 mapped->value.path.append(root);
             }
+#else
+            log_error("Cannot read plugin descriptor %" BEE_PRIsv " in a NoReflection build", BEE_FMT_SV(entry));
+#endif // BEE_ENABLE_REFLECTION
         }
     }
 }

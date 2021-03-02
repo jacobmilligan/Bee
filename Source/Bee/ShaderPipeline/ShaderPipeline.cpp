@@ -186,8 +186,7 @@ static Type get_importer_settings_type()
 static Result<void, AssetPipelineError> import_shader(AssetImportContext* ctx, void* user_data)
 {
     auto& thread = g_shader_pipeline->importer_threads[job_worker_id()];
-    auto file = fs::open_file(ctx->path, fs::OpenMode::read);
-    const auto content = fs::read(file, ctx->temp_allocator);
+    const auto content = fs::read_all_text(ctx->path, ctx->temp_allocator);
     const auto res = g_shader_compiler.compile_shader(
         ctx->path,
         content.view(),
@@ -237,8 +236,7 @@ static Result<void, AssetPipelineError> import_shader(AssetImportContext* ctx, v
                 }
             }
 
-            auto debug_file = fs::open_file(debug_path.view(), fs::OpenMode::write);
-            fs::write(debug_file, disassembly.view());
+            fs::write_all(debug_path.view(), disassembly.view());
         }
     }
 

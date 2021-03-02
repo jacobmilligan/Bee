@@ -31,6 +31,7 @@ struct BEE_REFLECT(serializable, version = 1) PluginDescriptor
     Path                                        path;
 };
 
+
 BEE_SERIALIZE_TYPE(SerializationBuilder* builder, PluginVersion* version)
 {
     static thread_local StaticString<16> format_buffer;

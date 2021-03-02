@@ -164,6 +164,7 @@ TEST_F(ResourcePoolTests, test_iterator)
     ASSERT_EQ(count, 32);
 }
 
+#ifdef BEE_ENABLE_REFLECTION
 TEST_F(ResourcePoolTests, serialization)
 {
     for (id_t i = 0; i < 128; ++i)
@@ -190,4 +191,5 @@ TEST_F(ResourcePoolTests, serialization)
         ++iter;
     }
 }
+#endif // BEE_ENABLE_REFLECTION
 

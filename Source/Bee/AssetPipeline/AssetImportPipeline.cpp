@@ -230,8 +230,7 @@ Result<void, AssetPipelineError> import_asset(AssetPipeline* pipeline, const Pat
     // If the file exists on disk - use it as source metadata info
     if (fs::is_file(thread.meta_path.view()))
     {
-        auto file = fs::open_file(thread.meta_path.view(), fs::OpenMode::read);
-        auto json = fs::read(file, temp_allocator());
+        auto json = fs::read_all_text(thread.meta_path.view(), temp_allocator());
         JSONSerializer serializer(json.data(), JSONSerializeFlags::parse_in_situ, temp_allocator());
         serialize(SerializerMode::reading, &serializer, &meta, temp_allocator());
         is_new_file = !g_assetdb.asset_exists(&txn, meta.guid);
@@ -349,8 +348,7 @@ Result<void, AssetPipelineError> import_asset(AssetPipeline* pipeline, const Pat
     JSONSerializer serializer(temp_allocator());
     serialize(SerializerMode::writing, &serializer, &meta, temp_allocator());
     {
-        auto file = fs::open_file(thread.meta_path.view(), fs::OpenMode::write);
-        if (!fs::write(file, serializer.c_str()))
+        if (!fs::write_all(thread.meta_path.view(), serializer.c_str()))
         {
             return { AssetPipelineError::failed_to_write_metadata };
         }
