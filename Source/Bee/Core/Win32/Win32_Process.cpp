@@ -108,11 +108,11 @@ bool create_process(const CreateProcessInfo& info, const PathView& working_direc
 
     PROCESS_INFORMATION proc_info{};
     auto cwd_u16s = str::to_wchar<1024>(working_directory.string_view());
-    auto prog_u16s = str::to_wchar<1024>(info.program);
-    auto args_u16s = str::to_wchar(info.command_line == nullptr ? "" : info.command_line, temp_allocator());
+    auto prog_u16s = str::to_wchar<1024>(info.program == nullptr ? "" : info.program);
+    auto args_u16s = str::to_wchar(info.command_line == nullptr ? ""  : info.command_line, temp_allocator());
 
     const auto result = ::CreateProcessW(
-        prog_u16s.data,
+        prog_u16s.empty() ? nullptr : prog_u16s.data,
         args_u16s.data(),
         &attributes,
         &attributes,
