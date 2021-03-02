@@ -199,7 +199,7 @@ static bool load_shader(const bee::Path& path)
         file_to_shader = g_shader_file_to_shader.insert(path, ShaderFile{});
     }
 
-    auto contents = bee::fs::read(path, bee::temp_allocator());
+    auto contents = bee::fs::read_all_text(path.view(), bee::temp_allocator());
     bee::DynamicArray<bee::Shader> results(bee::temp_allocator());
 
     auto res = g_shader_compiler->compile_shader(
@@ -251,10 +251,10 @@ static bool init_shaders()
 
     g_shader_pipeline->init(nullptr, g_gpu, g_device);
     g_shader_root = bee::fs::roots().installation.join("Tests/Render/Shaders");
-    g_shader_watcher.add_directory(g_shader_root);
+    g_shader_watcher.add_directory(g_shader_root.view());
     g_shader_watcher.start("Bee.Test.Render.Watcher");
 
-    for (const auto& file : bee::fs::read_dir(g_shader_root))
+    for (const auto& file : bee::fs::read_dir(g_shader_root.view()))
     {
         if (file.extension() == ".bsc")
         {
@@ -288,8 +288,8 @@ int bee_main(int argc, char** argv)
 
     bee::init_plugins();
 
-    add_plugin_search_path(bee::fs::roots().binaries.join("Plugins"));
-    add_plugin_source_path(bee::fs::roots().sources);
+    add_plugin_search_path(bee::fs::roots().binaries.join("Plugins").view());
+    add_plugin_source_path(bee::fs::roots().sources.view());
 
     bee::refresh_plugins();
     bee::load_plugin("Bee.ShaderPipeline");
@@ -314,6 +314,10 @@ int bee_main(int argc, char** argv)
 
     bee::DynamicArray<bee::fs::FileNotifyInfo> shader_events;
     const bee::u64 start_time = bee::time::now();
+    bee::u64 last_frame = start_time;
+
+    int current_frame = 0;
+    bee::u64 time_frames[8] { start_time };
 
     while (!g_platform->window_close_requested(g_window))
     {
@@ -371,7 +375,21 @@ int bee_main(int argc, char** argv)
         };
         g_gpu->update_buffer(g_device, g_vertex_buffer, vertices, 0, sizeof(Vertex) * 3);
 
+        const bee::u64 now = bee::time::now();
+        const float dt = static_cast<float>(bee::time::total_seconds(now - last_frame));
+        last_frame = now;
+        time_frames[current_frame] = now - start_time;
+        current_frame = (current_frame + 1) % bee::static_array_length(time_frames);
+
+        bee::u64 smooth_time = 0;
+        for (const auto& t : time_frames)
+        {
+            smooth_time += t;
+        }
+        smooth_time /= bee::static_array_length(time_frames);
+
         auto* shader = g_shader_cache.find("Triangle.TrianglePipeline");
+
         if (shader != nullptr)
         {
             auto* cmd = g_gpu->get_command_backend();
@@ -381,8 +399,11 @@ int bee_main(int argc, char** argv)
                 struct PushConstant
                 {
                     float time { 0.0f };
+                    float dt { 0.0f };
                 } push_constant;
-                push_constant.time = bee::sign_cast<float>(bee::time::total_seconds(bee::time::now() - start_time));
+                push_constant.dt = dt;
+                push_constant.time = static_cast<float>(bee::time::total_seconds(smooth_time));
+
                 cmd->push_constants(cmdbuf, 0, &push_constant);
 
                 const auto backbuffer = g_gpu->get_swapchain_texture_view(g_device, g_swapchain);
@@ -396,8 +417,8 @@ int bee_main(int argc, char** argv)
                 cmd->begin_render_pass(
                     cmdbuf,
                     g_pass,
-                    1, &backbuffer,
                     backbuffer_rect,
+                    1, &backbuffer,
                     1, &clear_value
                 );
                 cmd->bind_vertex_buffer(cmdbuf, g_vertex_buffer, 0, 0);

@@ -13,6 +13,7 @@ Shader TriangleShader
         BEE_PUSH_CONSTANT struct PushConstant
         {
             float time;
+            float dt;
         } push_constant;
 
         struct AppData
@@ -29,9 +30,21 @@ Shader TriangleShader
 
         FragIn vert(AppData IN)
         {
+            float cos_time = cos(push_constant.time);
+            float sin_time = sin(push_constant.time);
+
             FragIn OUT;
-            OUT.position = IN.position + float4(cos(push_constant.time) * 0.5, sin(push_constant.time) * 0.5 + cos(push_constant.time) * 0.1, 0.0, 0.0);
             OUT.color = IN.color;
+            OUT.position = float4(
+                (IN.position.x * cos_time) - (IN.position.y * sin_time),
+                (IN.position.x * sin_time) + (IN.position.y * cos_time), 
+                abs(sin_time), 
+                1.0
+            );
+            OUT.position.x += lerp(0.0, 0.3, sin_time);
+            OUT.position.y += lerp(0.0, 0.3, cos_time);
+            // OUT.position.x = max(OUT.position.x + cos_time, 0.1);
+            // OUT.position.y = max(OUT.position.y + sin_time + cos_time, 0.1);
             return OUT;
         }
 
