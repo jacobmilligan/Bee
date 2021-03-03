@@ -124,6 +124,11 @@ struct ParseOptions {
      */
     bool            allow_multiline_strings { false };
 
+    BEE_PAD(3);
+
+    // required to be set if `allocation_mode` is set to fixed
+    i32             initial_capacity { 0 };
+
     /*
      * Determines the allocation mode the parser uses when allocating
      * memory for elements. By default this is set to dynamic - if fixed
@@ -131,9 +136,6 @@ struct ParseOptions {
      * internal buffers maximum memory capacity
      */
     AllocationMode  allocation_mode { AllocationMode::dynamic };
-
-    // required to be set if `allocation_mode` is set to fixed
-    i32             initial_capacity { 0 };
 };
 
 
@@ -233,6 +235,7 @@ private:
         ErrorCode   code { ErrorCode::none };
         char        current { '\0' };
         char        arg { '\0' };
+        BEE_PAD(2);
 
         Error() = default;
         Error(ErrorCode error_code, const Cursor* cursor, char arg_char = '\0');

@@ -7,6 +7,7 @@
 
 #define VMA_ASSERT(expr) BEE_ASSERT(expr)
 #define VMA_IMPLEMENTATION
+#define VOLK_IMPLEMENTATION
 
 #include "Bee/Core/Plugin.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"

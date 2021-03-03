@@ -5,10 +5,10 @@ if "%1"=="" (
     exit /b 0
 )
 
-pushd ..
+pushd %~dp0
 
-git submodule deinit -f -- ThirdParty\%1
-rmdir /s .git\modules\ThirdParty\%1
-git rm -rf ThirdParty\%1
+git submodule deinit -f -- %1
+rmdir /s ..\.git\modules\ThirdParty\%1
+git rm -rf %1
 
 exit /b 0

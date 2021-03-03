@@ -20,6 +20,7 @@ template <typename HandleType, typename ValueType>
 struct GpuResourceTable
 {
     u32                                         thread { limits::max<u32>() };
+    BEE_PAD(4);
     ResourcePool<GpuTableHandle, ValueType>     pool;
     FixedArray<DynamicArray<GpuTableHandle>>    pending_deallocations;
 

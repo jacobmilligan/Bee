@@ -71,6 +71,7 @@ public:
 private:
     PathView                path_;
     DirectoryEntryHandle    current_handle_;
+    BEE_PAD(4);
 
     void copy_construct(const DirectoryIterator& other);
 
@@ -82,9 +83,9 @@ private:
 
 struct FileNotifyInfo
 {
-    u32         hash { 0 };
     u64         modified_time { 0 };
     u64         event_time { 0 };
+    u32         hash { 0 };
     FileAction  action { FileAction::none };
     Path        file;
 };
@@ -125,9 +126,6 @@ public:
     }
 
 private:
-    bool                                        recursive_ { false };
-    std::atomic_bool                            is_running_ { false };
-    std::atomic_bool                            is_suspended_ { false };
     DynamicArray<FileNotifyInfo>                events_;
     DynamicArray<UniquePtr<WatchedDirectory>>   entries_;
     DynamicArray<Path>                          watched_paths_;
@@ -135,6 +133,10 @@ private:
     Thread                                      thread_;
     Mutex                                       mutex_;
     ConditionVariable                           start_thread_cv_;
+    bool                                        recursive_ { false };
+    std::atomic_bool                            is_running_ { false };
+    std::atomic_bool                            is_suspended_ { false };
+    BEE_PAD(5);
 
     static void watch_loop(DirectoryWatcher* watcher);
 
@@ -162,6 +164,7 @@ struct BEE_CORE_API File final : public Noncopyable
 {
     void*       handle { nullptr };
     OpenMode    mode { OpenMode::none };
+    BEE_PAD(4);
 
     File() = default;
 
@@ -266,9 +269,10 @@ BEE_CORE_API Path user_local_appdata_path();
  */
 struct MemoryMappedFile
 {
-    OpenMode    mode { OpenMode::none };
     void*       data { nullptr };
     void*       handles[2] { nullptr };
+    OpenMode    mode { OpenMode::none };
+    BEE_PAD(4);
 };
 
 BEE_CORE_API bool mmap_file_map(MemoryMappedFile* file, const PathView& path, const OpenMode open_mode);

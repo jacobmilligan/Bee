@@ -9,6 +9,7 @@
 
 #include "Bee/Core/Error.hpp"
 #include "Bee/Core/Move.hpp"
+#include "Bee/Core/NumericTypes.hpp"
 
 
 namespace bee {

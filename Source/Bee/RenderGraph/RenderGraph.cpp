@@ -16,7 +16,7 @@
 namespace bee {
 
 
-static constexpr size_t rg_pass_data_capacity = 4096;
+static constexpr size_t rg_pass_data_capacity = 4099;
 
 struct VirtualBuffer
 {
@@ -34,6 +34,7 @@ struct VirtualTexture
 struct VirtualBackBuffer
 {
     SwapchainHandle     swapchain;
+    BEE_PAD(4);
     TextureHandle       drawable;
     TextureViewHandle   drawable_view;
 };
@@ -50,9 +51,10 @@ struct VirtualResource
     };
 
     u32                             hash { 0 };
-    const char*                     name { nullptr };
     i32                             refcount { 0 };
     i32                             pool_index { -1 };
+    BEE_PAD(4);
+    const char*                     name { nullptr };
     DynamicArray<RenderGraphPass*>  writer_passes;
 
     VirtualResource()
@@ -67,8 +69,9 @@ struct VirtualResource
 
 struct PooledPass
 {
-    u32                 hash { 0 };
     RenderPassHandle    handle;
+    u32                 hash { 0 };
+    BEE_PAD(4);
 };
 
 struct PooledResource
@@ -88,6 +91,7 @@ struct PooledResource
     u32                     hash { 0 };
     RenderGraphResourceType type { RenderGraphResourceType::imported_buffer };
     GpuResourceState        state { GpuResourceState::undefined };
+    BEE_PAD(4);
 
     union
     {
@@ -119,8 +123,8 @@ struct RenderGraphPass // NOLINT
     RenderPassHandle                    handle;
     CommandBuffer*                      cmdbuf { nullptr };
 
-    i32                                 write_count { 0 };
     DynamicArray<RenderGraphResource>   reads;
+    i32                                 write_count { 0 };
 
     i32                                 attachment_count { 0 };
     AttachmentDescriptor                attachments[BEE_GPU_MAX_ATTACHMENTS];
@@ -132,6 +136,7 @@ struct RenderGraphPass // NOLINT
     u8                                  external_data[rg_pass_data_capacity];
     u8                                  data[rg_pass_data_capacity];
     bool                                enabled { true };
+    BEE_PAD(1);
     RenderGraphResource                 backbuffer;
 };
 
@@ -142,6 +147,8 @@ struct RenderGraph
 
     GpuBackend*                         backend { nullptr };
     DeviceHandle                        device;
+    BEE_PAD(4);
+    
     JobGroup                            wait_handle;
 
     DynamicArray<VirtualResource>       virtual_resources;

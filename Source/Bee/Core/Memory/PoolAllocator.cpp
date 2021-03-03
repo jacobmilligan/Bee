@@ -183,11 +183,11 @@ const PoolAllocator::Header* PoolAllocator::get_header(const void* ptr) const
     return reinterpret_cast<const Header*>(reinterpret_cast<const u8*>(ptr) - sizeof(Header));
 }
 
-u32 PoolAllocator::get_header_signature(const Header* header) const
+u64 PoolAllocator::get_header_signature(const Header* header) const
 {
-    static constexpr u32 signature_seed = 0x23464829;
+    static constexpr u64 signature_seed = 0x23464829;
     const auto address = reinterpret_cast<size_t>(header);
-    return get_hash(&address, sizeof(size_t), signature_seed);
+    return get_hash64(&address, sizeof(size_t), signature_seed);
 }
 
 

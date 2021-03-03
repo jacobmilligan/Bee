@@ -10,7 +10,7 @@ bee_add_sources(
     xxHash/xxh3.h
 )
 bee_add_include_dirs(xxHash)
-bee_library(xxHash STATIC)
+bee_library(xxHash STATIC DISABLE_PADDING_WARNINGS)
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
     target_compile_options(xxHash PRIVATE /wd4204 /wd4146)
 endif ()
@@ -35,7 +35,7 @@ bee_add_include_dirs(VulkanMemoryAllocator/src)
 bee_new_source_root()
 bee_add_sources(SPIRV-Reflect/spirv_reflect.h SPIRV-Reflect/spirv_reflect.c)
 bee_add_include_dirs(SPIRV-Reflect)
-bee_library(SPIRV-Reflect STATIC)
+bee_library(SPIRV-Reflect STATIC DISABLE_PADDING_WARNINGS)
 
 ##################################
 #
@@ -143,7 +143,7 @@ bee_add_sources(
     ${lmdb_root}/midl.h
     ${lmdb_root}/midl.c
 )
-bee_library(lmdb STATIC)
+bee_library(lmdb STATIC DISABLE_PADDING_WARNINGS)
 bee_add_include_dirs(${lmdb_root})
 lmdb_configure(lmdb)
 

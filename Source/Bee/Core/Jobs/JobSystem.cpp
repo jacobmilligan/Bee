@@ -17,8 +17,6 @@
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/Atomic.hpp"
 
-#include <mutex>
-#include <condition_variable>
 
 
 namespace bee {
@@ -48,10 +46,10 @@ BEE_DISABLE_WARNING_MSVC(4324)
 struct alignas(128) Worker final : public Noncopyable
 {
     Thread                      thread;
-    i32                         thread_local_idx { -1 };
     WorkStealingQueue           job_queue;
     Job*                        current_executing_job { nullptr };
     RandomGenerator<Xorshift>   random;
+    i32                         thread_local_idx { -1 };
 
     Worker() = default;
 
@@ -84,15 +82,16 @@ struct WorkerMainParams
 
 struct JobSystemContext
 {
-    std::atomic_bool            initialized { false };
     thread_id_t                 main_thread_id { 0 };
     FixedArray<Worker>          workers;
 
     // Signal indicating that the system is currently running and active
+    std::atomic_bool            initialized { false };
     std::atomic_bool            is_active { false };
+    BEE_PAD(2);
     std::atomic_int32_t         pending_job_count { 0 };
-    std::mutex                  worker_wait_mutex;
-    std::condition_variable     worker_wait_cv;
+    Mutex                       worker_wait_mutex;
+    ConditionVariable           worker_wait_cv;
 
     // Job pools
     AtomicStack                 free_jobs;
@@ -189,7 +188,7 @@ void worker_main(const WorkerMainParams& params)
         // we don't want to sleep if we're only running jobs while waiting on a counter
         if (g_job_system.pending_job_count.load() <= 0)
         {
-            std::unique_lock<std::mutex> wait_lock(g_job_system.worker_wait_mutex);
+            scoped_lock_t wait_lock(g_job_system.worker_wait_mutex);
 
             g_job_system.worker_wait_cv.wait(wait_lock, [&]()
             {

@@ -20,6 +20,7 @@ struct ThreadData
     LinearAllocator     packet_allocator;
     DynamicArray<u8>    send_buffer;
     i32                 flush_offset { 0 };
+    BEE_PAD(4);
 
     ThreadData()
         : packet_allocator(megabytes(2), system_allocator())
@@ -28,8 +29,9 @@ struct ThreadData
 
 struct Client
 {
-    bool        in_use { false };
     socket_t    socket;
+    bool        in_use { false };
+    BEE_PAD(7);
 };
 
 struct DataConnection
@@ -38,6 +40,7 @@ struct DataConnection
     static constexpr i32 max_clients = 16;
 
     DataConnectionFlags                 flags { DataConnectionFlags::invalid };
+    BEE_PAD(4);
     SocketAddress                       address;
     socket_t                            socket;
     FixedArray<ThreadData>              thread_data;

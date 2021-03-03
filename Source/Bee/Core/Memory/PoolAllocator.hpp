@@ -55,7 +55,7 @@ public:
 private:
     struct Header
     {
-        u32     signature { 0 };
+        u64     signature { 0 };
         Header* next_allocation { nullptr };
         Header* next_free { nullptr };
     };
@@ -78,7 +78,7 @@ private:
 
     const Header* get_header(const void* ptr) const;
 
-    u32 get_header_signature(const Header* header) const;
+    u64 get_header_signature(const Header* header) const;
 };
 
 

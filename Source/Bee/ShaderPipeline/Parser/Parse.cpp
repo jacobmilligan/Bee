@@ -18,13 +18,14 @@ namespace bee {
 template <typename T>
 struct ResolveOrError
 {
-    bool is_error { false };
-
     union
     {
         const T*        ptr;
         BscResolveError error;
     };
+
+    bool is_error { false };
+    BEE_PAD(7);
 
     explicit inline operator bool() const
     {

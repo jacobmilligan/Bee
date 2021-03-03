@@ -7,16 +7,19 @@
 
 #pragma once
 
+#include "Bee/Core/Result.hpp"
+#include "Bee/Core/Enum.hpp"
+
 #ifndef BEE_IMGUI_INTERNAL
-#include "Bee/ImGui/Api.hpp"
+    BEE_PUSH_WARNING
+        BEE_DISABLE_PADDING_WARNINGS
+        #include "Bee/ImGui/Api.hpp"
+    BEE_POP_WARNING
 #endif // BEE_IMGUI_INTERNAL
 
 #include "Bee/Gpu/GpuHandle.hpp"
 
 #include "Bee/Platform/Platform.hpp"
-
-#include "Bee/Core/Result.hpp"
-#include "Bee/Core/Enum.hpp"
 
 
 namespace bee {

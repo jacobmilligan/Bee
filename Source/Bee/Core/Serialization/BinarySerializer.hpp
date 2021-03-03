@@ -14,8 +14,9 @@ namespace bee {
 
 struct BEE_CORE_API BinarySerializer final : public Serializer
 {
-    i32                 read_offset { 0 };
     DynamicArray<u8>*   array;
+    i32                 read_offset { 0 };
+    BEE_PAD(4);
 
     explicit BinarySerializer(DynamicArray<u8>* target_array)
         : Serializer(SerializerFormat::binary),

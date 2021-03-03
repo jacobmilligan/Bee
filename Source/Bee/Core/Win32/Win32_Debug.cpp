@@ -19,7 +19,10 @@
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/GUID.hpp"
 
-#include <DbgHelp.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <DbgHelp.h>
+BEE_POP_WARNING
 
 namespace bee {
 
@@ -105,8 +108,9 @@ struct Win32DbgHelp
 
 
     // Win32DbgHelp data
-    bool                                    initialized { false };
     RecursiveSpinLock                       mutex;
+    bool                                    initialized { false };
+    BEE_PAD(7);
 
     Win32DbgHelp() noexcept
     {

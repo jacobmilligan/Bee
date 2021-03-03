@@ -430,9 +430,11 @@ Type get_type(const ReflectionModule* module, const i32 index)
 BEE_CORE_API void reflection_register_builtin_types()
 {
 #define BEE_BUILTIN_TYPE(builtin_type, function_name) { get_type<builtin_type>()->hash, bee_get_type__##function_name },
-
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
     struct GetTypeParams { u32 hash { 0 }; get_type_callback_t callback { nullptr }; };
     static GetTypeParams builtin_types[] { BEE_BUILTIN_TYPES };
+BEE_POP_WARNING
 
     for (auto& type : builtin_types)
     {

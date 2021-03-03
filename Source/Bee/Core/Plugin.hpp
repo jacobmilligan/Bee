@@ -33,6 +33,7 @@ struct BEE_REFLECT(serializable, version = 1, use_builder) PluginVersion
     i32 major { -1 };
     i32 minor { -1 };
     i32 patch { -1 };
+    BEE_PAD(4);
 };
 
 inline constexpr bool operator==(const PluginVersion& lhs, const PluginVersion& rhs)

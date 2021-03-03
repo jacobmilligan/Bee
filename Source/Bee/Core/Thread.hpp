@@ -96,6 +96,7 @@ struct ThreadCreateInfo
 
     // automatically registers the thread with the global temp allocator and unregisters when done
     bool            use_temp_allocator { false };
+    BEE_PAD(3);
 };
 
 
@@ -210,10 +211,11 @@ private:
         void*   function { nullptr };
         void*   arg { nullptr };
         bool    register_with_temp_allocator { false };
+        BEE_PAD(7);
     };
 
-    StaticString<BEE_THREAD_MAX_NAME>   name_;
     native_thread_t                     native_thread_ { nullptr };
+    StaticString<BEE_THREAD_MAX_NAME>   name_;
 
     void init(const ThreadCreateInfo& create_info, ExecuteParams* params);
 

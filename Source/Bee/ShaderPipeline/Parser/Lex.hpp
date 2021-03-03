@@ -93,10 +93,11 @@ enum class BscErrorCode
 struct BscToken
 {
     BscTokenKind    kind { BscTokenKind::invalid };
-    const char*     begin { nullptr };
-    const char*     end { nullptr };
     i32             line { 0 };
     i32             column { 0 };
+    BEE_PAD(4);
+    const char*     begin { nullptr };
+    const char*     end { nullptr };
 
     BscToken() = default;
 
@@ -117,12 +118,13 @@ struct BscToken
 struct BscError
 {
     BscErrorCode    code { BscErrorCode::none };
-    StringView      text;
-    char            error_char { '\0' };
-    char            char_param { '\0' };
     BscTokenKind    token_param { BscTokenKind::invalid };
+    StringView      text;
     i32             line { 0 };
     i32             column { 0 };
+    char            error_char { '\0' };
+    char            char_param { '\0' };
+    BEE_PAD(6);
 
     String to_string(Allocator* allocator = system_allocator()) const;
 };

@@ -33,22 +33,25 @@ namespace bee {
 
 struct Monitor // NOLINT
 {
-    bool        is_primary_device { false };
     WCHAR       device_name[32];
     MonitorInfo info;
+    bool        is_primary_device { false };
+    BEE_PAD(3);
 };
 
 struct Window // NOLINT
 {
-    bool            close_requested { false };
     HWND            hwnd { nullptr };
     RAWINPUTDEVICE  device_ids[2];
+    bool            close_requested { false };
+    BEE_PAD(7);
 };
 
 struct Platform // NOLINT
 {
     bool        is_running { false };
     bool        quit_requested { false };
+    BEE_PAD(2);
     i32         monitor_count { 0 };
     i32         primary_monitor { -1 };
     i32         window_count { 0 };

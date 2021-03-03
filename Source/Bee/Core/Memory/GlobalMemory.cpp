@@ -32,8 +32,9 @@ struct PerThreadTempAllocator
 
 struct TempAllocator
 {
-    PerThreadTempAllocator  per_thread[BEE_CONFIG_TEMP_ALLOCATOR_MAX_THREADS];
     std::atomic_int32_t     current_frame { 0 };
+    BEE_PAD(4);
+    PerThreadTempAllocator  per_thread[BEE_CONFIG_TEMP_ALLOCATOR_MAX_THREADS];
     PerThreadTempAllocator* next_allocator { nullptr };
     RecursiveSpinLock       mutex;
 

@@ -79,6 +79,7 @@ struct BEE_CORE_API ProcessHandle : public Noncopyable
     }
 
     i32     pid { -1 };
+    BEE_PAD(4);
     void*   process { nullptr };
     void*   write_pipe { nullptr };
     void*   read_pipe { nullptr };
@@ -88,6 +89,7 @@ struct BEE_CORE_API ProcessHandle : public Noncopyable
 struct BEE_CORE_API CreateProcessInfo
 {
     CreateProcessFlags  flags { CreateProcessFlags::none };
+    BEE_PAD(4);
     ProcessHandle*      handle { nullptr };
     const char*         program { nullptr };
     const char*         command_line { nullptr };

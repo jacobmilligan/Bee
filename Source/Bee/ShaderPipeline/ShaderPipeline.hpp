@@ -29,9 +29,11 @@ struct BEE_REFLECT(serializable, version = 1) ShaderSampler
 struct BEE_REFLECT(serializable, version = 1) ShaderStage
 {
     StaticString<256>               entry;
-    ShaderStageFlags                flags;
     BEE_REFLECT(bytes)
     FixedArray<u8>                  code;
+    ShaderStageFlags                flags;
+
+    BEE_PAD(4);
 
     BEE_REFLECT(ignored)
     ShaderHandle                    shader_resource;

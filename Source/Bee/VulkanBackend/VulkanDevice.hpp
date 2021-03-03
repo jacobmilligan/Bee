@@ -14,9 +14,10 @@
 #include "Bee/VulkanBackend/VulkanObjectCache.hpp"
 #include "Bee/Gpu/ResourceTable.hpp"
 
-#include <volk.h>
-
 BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <volk.h>
+
     BEE_DISABLE_WARNING_MSVC(4127) // conditional expression is constant
     BEE_DISABLE_WARNING_MSVC(4189) // local variable is initialized but not referenced
     BEE_DISABLE_WARNING_MSVC(4701) // potentially uninitialized local variable used
@@ -67,8 +68,9 @@ struct VulkanQueue
 {
     static constexpr u32 invalid_queue_index = limits::max<u32>();
 
-    u32             index { invalid_queue_index };
     VkQueue         handle { VK_NULL_HANDLE };
+    u32             index { invalid_queue_index };
+    BEE_PAD(4);
 
     void submit(const VkSubmitInfo& submit_info, VkFence fence, VulkanDevice* device) const;
 
@@ -77,9 +79,10 @@ struct VulkanQueue
 
 struct VulkanQueueSubmit
 {
-    i32                             queue { -1 };
     VkSubmitInfo                    info { VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr };
     DynamicArray<VkCommandBuffer>   cmd_buffers;
+    i32                             queue { -1 };
+    BEE_PAD(4);
 
     void reset();
 
@@ -96,13 +99,14 @@ struct VulkanSwapchain
     VkSemaphore                     render_semaphore[BEE_GPU_MAX_FRAMES_IN_FLIGHT] { VK_NULL_HANDLE };
 
     RecursiveMutex                  mutex;
-    bool                            pending_image_acquire { true };
     i32                             present_index { 0 };
+    bool                            pending_image_acquire { true };
+    BEE_PAD(3);
     u32                             current_image { 0 };
+    PixelFormat                     selected_format;
     FixedArray<TextureHandle>       images;
     FixedArray<TextureViewHandle>   image_views;
     SwapchainCreateInfo             create_info;
-    PixelFormat                     selected_format;
 
     StaticString<16>                id_string;
 };
@@ -113,8 +117,9 @@ struct VulkanResourceBinding;
 
 struct VulkanRenderPass
 {
-    RenderPassHandle        lookup_handle;
     u32                     hash { 0 };
+    BEE_PAD(4);
+    RenderPassHandle        lookup_handle;
     RenderPassCreateInfo    create_info;
     VkRenderPass            handle { VK_NULL_HANDLE };
 };
@@ -123,17 +128,18 @@ struct VulkanRenderPass
 struct CommandBuffer
 {
     CommandBufferState      state { CommandBufferState::invalid };
+    i32                     target_swapchain { -1 };
     VulkanQueue*            queue { nullptr };
     VulkanDevice*           device { nullptr };
     VulkanCommandPool*      pool { nullptr };
     VkCommandBuffer         handle { VK_NULL_HANDLE };
-    i32                     target_swapchain { -1 };
 
     // Draw state
-    bool                    viewport_dirty { false };
-    bool                    scissor_dirty { false };
     Viewport                viewport;
     RenderRect              scissor;
+    bool                    viewport_dirty { false };
+    bool                    scissor_dirty { false };
+    BEE_PAD(6);
     VulkanPipelineState*    bound_pipeline { nullptr };
     VulkanRenderPass*       current_render_pass { nullptr };
     VkDescriptorSet         descriptors[BEE_GPU_MAX_RESOURCE_LAYOUTS];
@@ -147,6 +153,7 @@ struct VulkanCommandPool
     VkCommandPool   handle { VK_NULL_HANDLE };
     CommandBuffer   command_buffers[BEE_GPU_MAX_COMMAND_BUFFERS_PER_THREAD];
     i32             command_buffer_count { 0 };
+    BEE_PAD(4);
 };
 
 struct VulkanTexture // NOLINT
@@ -174,6 +181,7 @@ struct VulkanTextureView
 struct VulkanShader
 {
     u32                 hash { 0 };
+    BEE_PAD(4);
     VkShaderModule      handle { VK_NULL_HANDLE };
     StaticString<256>   entry;
 };
@@ -189,10 +197,10 @@ struct VulkanBuffer
     DeviceMemoryUsage   usage { DeviceMemoryUsage::unknown };
     BufferType          type { BufferType::unknown };
     u32                 size { 0 };
+    VkAccessFlags       access { 0 };
     VmaAllocation       allocation { VK_NULL_HANDLE };
     VmaAllocationInfo   allocation_info{};
     VkBuffer            handle { VK_NULL_HANDLE };
-    VkAccessFlags       access { 0 };
     const char*         debug_name { nullptr };
 
     VulkanBuffer() = default;
@@ -232,14 +240,15 @@ struct VulkanDescriptorPool // NOLINT
     u32                             allocated_sets { 0 };
     u32                             max_sets { 0 };
     u32                             size_count { 0 };
+    BEE_PAD(4);
     VkDescriptorPoolSize            sizes[static_cast<i32>(ResourceBindingType::unknown)];
 };
 
 struct VulkanResourceBinding
 {
     i32                             allocated_frame { -1 };
-    VulkanResourceBinding*          next { nullptr }; // for delete list
     ResourceBindingUpdateFrequency  update_frequency { ResourceBindingUpdateFrequency::persistent };
+    VulkanResourceBinding*          next { nullptr }; // for delete list
     ResourceLayoutDescriptor        layout;
     VkDescriptorSet                 set { VK_NULL_HANDLE };
     VulkanDescriptorPool*           pool { nullptr };
@@ -288,6 +297,7 @@ struct VulkanStaging
     struct StagingBuffer
     {
         CommandBufferState  cmd_state { CommandBufferState::invalid };
+        BEE_PAD(4);
         size_t              offset { 0 };
         void*               data { nullptr };
         VmaAllocation       allocation { VK_NULL_HANDLE };
@@ -306,10 +316,10 @@ struct VulkanStaging
         void wait_commands(VulkanDevice* device_ptr);
     };
 
+    i32                 current_buffer_index { 0 };
     StagingBuffer       buffers[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
     VkCommandPool       command_pool[2] { VK_NULL_HANDLE };
     size_t              buffer_capacity { 0 };
-    i32                 current_buffer_index {0 };
     VulkanQueue*        queues[2] { nullptr };
     VulkanDevice*       device { nullptr };
     VmaAllocator        vma_allocator { VK_NULL_HANDLE };
@@ -340,6 +350,7 @@ struct VulkanThreadData
 {
     // Owned and allocated Vulkan objects
     u32                                     index { limits::max<u32>() };
+    BEE_PAD(4);
     VulkanStaging                           staging;
     VulkanCommandPool                       command_pool[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
     VulkanDescriptorPoolCache               dynamic_descriptor_pools[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
@@ -403,11 +414,12 @@ struct VulkanThreadData
 
 struct VulkanDevice
 {
-    bool                            debug_markers_enabled { false };
     VkPhysicalDevice                physical_device { VK_NULL_HANDLE };
     VkDevice                        handle { VK_NULL_HANDLE };
     VkQueueFamilyProperties         queue_family_properties[vk_max_queues];
     VmaAllocator                    vma_allocator { VK_NULL_HANDLE };
+    bool                            debug_markers_enabled { false };
+    BEE_PAD(7);
 
     union
     {
@@ -493,6 +505,7 @@ struct VulkanBackend // NOLINT
     GpuCommandBackend                   command_backend;
     VkInstance                          instance { nullptr };
 
+    BEE_PAD(4);
     i32                                 physical_device_count { 0 };
     VkPhysicalDevice                    physical_devices[BEE_GPU_MAX_PHYSICAL_DEVICES];
     VkPhysicalDeviceProperties          physical_device_properties[BEE_GPU_MAX_PHYSICAL_DEVICES];

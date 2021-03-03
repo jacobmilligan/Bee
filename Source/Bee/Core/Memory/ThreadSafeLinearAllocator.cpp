@@ -86,7 +86,7 @@ void* ThreadSafeLinearAllocator::allocate(const size_t size, const size_t alignm
     const auto alloc_size = round_up(size + sizeof(Header), alignment);
     const auto old_offset = offset_.fetch_add(alloc_size, std::memory_order_acquire);
     void* ptr = nullptr;
-    bool is_overflow = false;
+    Allocator* overflow_allocator = nullptr;
 
     if (old_offset + alloc_size < capacity_)
     {
@@ -105,13 +105,12 @@ void* ThreadSafeLinearAllocator::allocate(const size_t size, const size_t alignm
         // Go into overflow memory if we've reached capacity on the thread local buffer
         auto* overflow_node = allocate_overflow_node(size, alignment);
         ptr = overflow_node->data;
-
-        is_overflow = true;
+        overflow_allocator = overflow_;
     }
 
     auto* header = get_header(ptr);
     header->size = size;
-    header->is_overflow = is_overflow;
+    header->overflow_allocator = overflow_allocator;
 
     allocated_size_.fetch_add(size, std::memory_order_release);
 
@@ -163,9 +162,10 @@ bool ThreadSafeLinearAllocator::is_valid(const Header* header) const
         return false;
     }
 
-    if (header->is_overflow)
+    if (header->overflow_allocator != nullptr)
     {
-        return overflow_->is_valid(header);
+        BEE_ASSERT(header->overflow_allocator == overflow_);
+        return header->overflow_allocator->is_valid(header);
     }
 
     const auto* ptr = static_cast<const void*>(header);

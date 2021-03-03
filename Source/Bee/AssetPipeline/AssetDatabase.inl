@@ -59,9 +59,9 @@ struct AssetTxnData
     AssetTxnData*           next { nullptr };
 
     i32                     thread { -1 };
+    AssetTxnAccess          access { AssetTxnAccess::read_only };
     AssetDatabase*          db { nullptr };
     Allocator*              allocator { nullptr };
-    AssetTxnAccess          access { AssetTxnAccess::read_only };
     MDB_txn*                handle { nullptr };
 };
 
@@ -80,6 +80,7 @@ struct AssetDatabase
     Path                    artifacts_root;
     MDB_env*                env { nullptr };
     unsigned int            db_maps[static_cast<int>(DbMapId::count)];
+    BEE_PAD(8 - (sizeof(db_maps) % 8));
     RecursiveMutex          gc_mutex;
     FixedArray<ThreadData>  thread_data;
 };

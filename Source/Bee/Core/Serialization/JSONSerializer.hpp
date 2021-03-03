@@ -90,13 +90,14 @@ public:
 private:
     rapidjson::StringBuffer                             string_buffer_;
     rapidjson::PrettyWriter<rapidjson::StringBuffer>    writer_;
-    JSONSerializeFlags                                  parse_flags_;
     rapidjson::Document                                 reader_doc_;
     DynamicArray<rapidjson::Value*>                     stack_;
     DynamicArray<rapidjson::Value::MemberIterator>      member_iter_stack_;
     DynamicArray<i32>                                   element_iter_stack_;
     String                                              base64_encode_buffer_;
     const char*                                         src_ { nullptr };
+    JSONSerializeFlags                                  parse_flags_;
+    BEE_PAD(4);
 
     void next_element_if_array();
 

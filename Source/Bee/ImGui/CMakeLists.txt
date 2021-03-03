@@ -2,12 +2,7 @@ bee_new_source_root()
 bee_add_sources(
     Api.hpp     Api.cpp
     ImGui.hpp   ImGui.cpp
-    ${BEE_THIRD_PARTY}/cimgui/cimgui.cpp
-    ${BEE_THIRD_PARTY}/cimgui/imgui/imgui.cpp
-    ${BEE_THIRD_PARTY}/cimgui/imgui/imgui_draw.cpp
-    ${BEE_THIRD_PARTY}/cimgui/imgui/imgui_demo.cpp
-    ${BEE_THIRD_PARTY}/cimgui/imgui/imgui_widgets.cpp
-    ${BEE_THIRD_PARTY}/cimgui/imgui/imgui_tables.cpp
+    Target.cpp
 )
 bee_add_compile_definitions(IMGUI_DISABLE_OBSOLETE_FUNCTIONS=1)
 bee_add_compile_definitions(IMGUI_USER_CONFIG="ImConfig.hpp")

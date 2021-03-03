@@ -92,8 +92,8 @@ public:
     void unlock();
 private:
     SpinLock                    lock_;
-    std::atomic<thread_id_t>    owner_ { 0 };
     std::atomic_int32_t         lock_count_ { 0 };
+    std::atomic<thread_id_t>    owner_ { 0 };
 
     void unlock_and_reset();
 };

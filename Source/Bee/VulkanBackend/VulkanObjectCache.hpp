@@ -12,7 +12,10 @@
 
 #include "Bee/Gpu/Gpu.hpp"
 
-#include <volk.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <volk.h>
+BEE_POP_WARNING
 
 
 namespace bee {
@@ -30,8 +33,8 @@ struct VulkanDevice;
 struct VulkanPipelineLayoutKey
 {
     u32                             resource_layout_count { 0 };
-    const ResourceLayoutDescriptor* resource_layouts { nullptr };
     u32                             push_constant_range_count { 0 };
+    const ResourceLayoutDescriptor* resource_layouts { nullptr };
     const PushConstantRange*        push_constant_ranges { nullptr };
 };
 
@@ -253,6 +256,7 @@ private:
     DynamicHashMap<u32, ValueType>      shared_cache_;
     DynamicArray<ValueType>             pending_deletes_[BEE_GPU_MAX_FRAMES_IN_FLIGHT];
     i32                                 current_frame_ { 0 };
+    BEE_PAD(4);
 
     VulkanDevice*                       device_ { nullptr };
     create_func_t                       on_create_ { nullptr };

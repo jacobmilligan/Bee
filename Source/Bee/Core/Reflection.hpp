@@ -272,6 +272,7 @@ private:
     const char* current_ { nullptr };
     const char* end_ { nullptr };
     i32         size_ { 0 };
+    BEE_PAD(4);
 
     void next_namespace();
 
@@ -367,6 +368,7 @@ struct Attribute
 struct TemplateParameter
 {
     u32         hash { 0 };
+    BEE_PAD(4);
     const char* name { nullptr };
     const char* type_name { nullptr };
 
@@ -386,6 +388,9 @@ struct Field
     using serialization_function_t = void(*)(SerializationBuilder*, void*);
 
     u32                         hash { 0 };
+    i32                         version_added { 0 };
+    i32                         version_removed { limits::max<i32>() };
+    i32                         template_argument_in_parent { -1 };
     size_t                      offset { 0 };
     Qualifier                   qualifier { Qualifier::none };
     StorageClass                storage_class { StorageClass::none };
@@ -394,10 +399,8 @@ struct Field
     Span<Type>                  template_arguments;
     Span<Attribute>             attributes;
     serialization_function_t    serializer_function { nullptr };
-    i32                         version_added { 0 };
-    i32                         version_removed { limits::max<i32>() };
-    i32                         template_argument_in_parent { -1 };
     SerializationFlags          serialization_flags { SerializationFlags::none };
+    BEE_PAD(4);
 
     Field() = default;
 
@@ -536,12 +539,12 @@ struct TypeInfo
     using create_instance_t = TypeInstance(*)(Allocator*);
 
     u32                     hash { 0 };
+    i32                     serialized_version { 0 };
     size_t                  size { 0 };
     size_t                  alignment { 0 };
     TypeKind                kind { TypeKind::unknown };
-    const char*             name { nullptr };
-    i32                     serialized_version { 0 };
     SerializationFlags      serialization_flags { SerializationFlags::none };
+    const char*             name { nullptr };
     create_instance_t       create_instance { nullptr };
     Span<TemplateParameter> template_parameters;
 
@@ -686,6 +689,7 @@ struct TypeSpec : public TypeInfo
 struct ArrayTypeInfo final : public TypeSpec<TypeKind::array>
 {
     i32                             element_count { 0 };
+    BEE_PAD(4);
     Type                            element_type {nullptr };
     Field::serialization_function_t serializer_function { nullptr };
 
@@ -715,6 +719,7 @@ using ArrayType = SpecializedType<ArrayTypeInfo>;
 struct FundamentalTypeInfo final : public TypeSpec<TypeKind::fundamental>
 {
     FundamentalKind fundamental_kind { FundamentalKind::count };
+    BEE_PAD(4);
 
     FundamentalTypeInfo() noexcept = default;
 
@@ -736,11 +741,12 @@ using FundamentalType = SpecializedType<FundamentalTypeInfo>;
 
 struct EnumConstant
 {
-    const char* name { nullptr };
     u32         hash { 0 };
+    bool        is_flag { false };
+    BEE_PAD(3);
+    const char* name { nullptr };
     isize       value { 0 };
     Type        underlying_type {nullptr };
-    bool        is_flag { false };
 
     EnumConstant() noexcept = default;
 
@@ -755,11 +761,12 @@ struct EnumConstant
 
 struct EnumTypeInfo final : public TypeSpec<TypeKind::enum_decl>
 {
-    bool                is_scoped { false };
-    bool                is_flags { false };
     Span<EnumConstant>  constants;
     Span<Attribute>     attributes;
     Type                underlying_type {nullptr };
+    bool                is_scoped { false };
+    bool                is_flags { false };
+    BEE_PAD(6);
 
     EnumTypeInfo() noexcept = default;
 
@@ -885,12 +892,12 @@ inline T enum_from_string(const StringView& string)
 
 struct FunctionTypeInvoker
 {
-    int     signature { 0 };
+    i64     signature { 0 };
     void*   address { nullptr };
 
     FunctionTypeInvoker() noexcept = default;
 
-    FunctionTypeInvoker(const int generated_signature, void* callable_address) noexcept
+    FunctionTypeInvoker(const i64 generated_signature, void* callable_address) noexcept
         : signature(generated_signature),
           address(callable_address)
     {}
@@ -910,7 +917,7 @@ struct FunctionTypeInvoker
     }
 
     template <typename ReturnType, typename... Args>
-    static int get_signature()
+    static i64 get_signature()
     {
         static int value = next_signature();
         return value;
@@ -923,9 +930,9 @@ struct FunctionTypeInvoker
     }
 
 private:
-    static int next_signature() noexcept
+    static i64 next_signature() noexcept
     {
-        static int next = 0;
+        static i64 next = 0;
         return next++;
     }
 };
@@ -935,6 +942,7 @@ struct FunctionTypeInfo final : public TypeSpec<TypeKind::function>
 {
     StorageClass        storage_class { StorageClass::none };
     bool                is_constexpr { false };
+    BEE_PAD(3);
     Field               return_value;
     Span<Field>         parameters;
     Span<Attribute>     attributes;

@@ -886,6 +886,7 @@ struct DeviceCreateInfo
     bool    enable_depth_clamp { false };
     bool    enable_sampler_anisotropy { false };
     bool    enable_sample_rate_shading { false };
+    BEE_PAD(1);
 };
 
 
@@ -896,6 +897,7 @@ struct SwapchainCreateInfo
     TextureUsage    texture_usage { TextureUsage::color_attachment };
     u32             texture_array_layers { 1 };
     bool            vsync { false };
+    BEE_PAD(3);
     WindowHandle    window;
     const char*     debug_name { nullptr };
 };
@@ -906,6 +908,7 @@ struct BufferCreateInfo
     u32                 size { 0 };
     BufferType          type { BufferType::unknown };
     DeviceMemoryUsage   memory_usage { DeviceMemoryUsage::unknown };
+    BEE_PAD(4);
     const char*         debug_name { nullptr };
 };
 
@@ -981,12 +984,13 @@ struct BEE_REFLECT(serializable) SamplerCreateInfo
     float           lod_bias { 0.0f };
     float           lod_min { 0.0f };
     float           lod_max { limits::max<float>() };
-    bool            anisotropy_enabled { false };
     float           anisotropy_max { 1.0f };
+    bool            anisotropy_enabled { false };
     bool            compare_enabled { false };
+    bool            normalized_coordinates { true };
+    BEE_PAD(1);
     CompareFunc     compare_func { CompareFunc::never };
     BorderColor     border_color { BorderColor::transparent_black };
-    bool            normalized_coordinates { true };
 };
 
 inline bool operator==(const SamplerCreateInfo& lhs, const SamplerCreateInfo& rhs)
@@ -1031,6 +1035,7 @@ struct BEE_REFLECT(serializable) RenderPassCreateInfo
     AttachmentDescriptorArray   attachments;
     const SubPassDescriptor*    subpasses { nullptr };
     u32                         subpass_count { 0 };
+    BEE_PAD(4);
 };
 
 
@@ -1086,7 +1091,6 @@ struct BEE_REFLECT(serializable) StencilOpDescriptor
 
 struct BEE_REFLECT(serializable) BlendStateDescriptor
 {
-    bool            blend_enabled { false };
     PixelFormat     format { PixelFormat::invalid };
     ColorWriteMask  color_write_mask { ColorWriteMask::all };
     BlendOperation  alpha_blend_op { BlendOperation::add };
@@ -1095,6 +1099,8 @@ struct BEE_REFLECT(serializable) BlendStateDescriptor
     BlendFactor     src_blend_color { BlendFactor::one };
     BlendFactor     dst_blend_alpha { BlendFactor::zero };
     BlendFactor     dst_blend_color { BlendFactor::zero };
+    bool            blend_enabled { false };
+    BEE_PAD(3);
 };
 
 using BlendStateDescriptorArray = StaticArray<BlendStateDescriptor, BEE_GPU_MAX_ATTACHMENTS, u32>;
@@ -1149,13 +1155,14 @@ struct BEE_REFLECT(serializable) RasterStateDescriptor
     FillMode                fill_mode { FillMode::solid };
     CullMode                cull_mode { CullMode::back };
     float                   line_width { 1.0f }; // this is more of a hint and isn't supported by all backends
-    bool                    front_face_ccw { false };
-    // ignored if depth-clipping/clamping isn't supported by the backend or !defined(SKY_CONFIG_ALLOW_DEPTH_CLAMP)
-    bool                    depth_clamp_enabled { false };
-    bool                    depth_bias_enabled { false };
     float                   depth_bias { 0.0f };
     float                   depth_slope_factor { 0.0f };
     float                   depth_bias_clamp { 0.0f };
+    // ignored if depth-clipping/clamping isn't supported by the backend or !defined(BEE_CONFIG_ALLOW_DEPTH_CLAMP)
+    bool                    depth_clamp_enabled { false };
+    bool                    depth_bias_enabled { false };
+    bool                    front_face_ccw { false };
+    BEE_PAD(1);
 };
 
 
@@ -1175,11 +1182,12 @@ struct BEE_REFLECT(serializable) DepthStencilStateDescriptor
 struct BEE_REFLECT(serializable) MultiSampleStateDescriptor
 {
     u32     sample_count { 1 };
-    bool    sample_shading_enabled { false }; // enables sample shading only if the platform supports it
-    float   sample_shading { 0.0f };
     u32     sample_mask { 0 };
+    float   sample_shading { 0.0f };
+    bool    sample_shading_enabled { false }; // enables sample shading only if the platform supports it
     bool    alpha_to_coverage_enabled { false };
     bool    alpha_to_one_enabled { false };
+    BEE_PAD(1);
 };
 
 struct BEE_REFLECT(serializable) ResourceDescriptor
@@ -1218,8 +1226,9 @@ using ResourceLayoutDescriptorArray = StaticArray<ResourceLayoutDescriptor, BEE_
 
 struct ResourceBindingCreateInfo
 {
-    ResourceBindingUpdateFrequency  update_frequency { ResourceBindingUpdateFrequency::persistent };
     const ResourceLayoutDescriptor* layout { nullptr };
+    ResourceBindingUpdateFrequency  update_frequency { ResourceBindingUpdateFrequency::persistent };
+    BEE_PAD(4);
 };
 
 struct TextureBindingUpdate
@@ -1268,6 +1277,7 @@ struct ResourceBindingUpdate
     u32                         binding { 0 };
     u32                         first_element { 0 };
     u32                         element_count { 0 };
+    BEE_PAD(4);
 
     union
     {
@@ -1318,6 +1328,8 @@ struct BEE_REFLECT(serializable, version = 1) PipelineStateDescriptor
     BEE_REFLECT(id = 0, added = 1)
     PrimitiveType                   primitive_type { PrimitiveType::triangle };
 
+    BEE_PAD(4);
+
     // Describes the vertex layouts and input attributes used by vertex buffers
     BEE_REFLECT(id = 1, added = 1)
     VertexDescriptor                vertex_description;
@@ -1349,6 +1361,8 @@ struct BEE_REFLECT(serializable, version = 1) PipelineStateDescriptor
     // Ranges of push constants the pipeline can use
     BEE_REFLECT(id = 7, added = 1)
     PushConstantRangeArray          push_constant_ranges; // vulkan etc. can only have one push constant range per shader stage
+
+    BEE_PAD(4);
 };
 
 template <>
@@ -1382,8 +1396,9 @@ struct CommandPoolCreateInfo
 
 struct SubmitInfo
 {
-    u32                     command_buffer_count { 0 };
     CommandBuffer* const*   command_buffers {nullptr };
+    u32                     command_buffer_count { 0 };
+    BEE_PAD(4);
 };
 
 
@@ -1402,10 +1417,11 @@ union GpuBarrier
 
 struct GpuTransition
 {
-    GpuBarrierType      barrier_type { GpuBarrierType::unknown };
     GpuBarrier          barrier;
+    GpuBarrierType      barrier_type { GpuBarrierType::unknown };
     GpuResourceState    old_state { GpuResourceState::unknown };
     GpuResourceState    new_state { GpuResourceState::unknown };
+    BEE_PAD(4);
 };
 
 

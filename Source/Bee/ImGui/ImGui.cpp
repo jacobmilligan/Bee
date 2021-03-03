@@ -18,8 +18,10 @@
 #include "Bee/Input/Mouse.hpp"
 #include "Bee/Input/Keyboard.hpp"
 
-#include <imgui/imgui.h>
-
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <imgui/imgui.h>
+BEE_POP_WARNING
 
 namespace bee {
 
@@ -30,6 +32,7 @@ struct ImGuiBackend
     Path                    assets_path;
     ImGuiContext*           ctx { nullptr };
     DeviceHandle            device;
+    BEE_PAD(4);
     Asset<Shader>           shader;
     AssetPipeline*          asset_pipeline { nullptr };
     GpuBackend*             gpu { nullptr };

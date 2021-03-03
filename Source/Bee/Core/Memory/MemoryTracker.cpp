@@ -5,6 +5,7 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
+#include "Bee/Core/Reflection.hpp"
 #include "Bee/Core/Concurrency.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
 #include "Bee/Core/Memory/Allocator.hpp"
@@ -22,6 +23,7 @@ struct Proxy
     static constexpr i32 stack_frame_count = 16;
 
     TrackingMode                            tracking_mode { TrackingMode::cannot_track };
+    BEE_PAD(4);
     RecursiveSpinLock                       mutex;
     DynamicHashMap<void*, AllocationEvent>  allocations;
     size_t                                  total_allocations { 0 };

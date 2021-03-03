@@ -16,8 +16,8 @@ namespace bee {
 struct BscTokenDef
 {
     BscTokenKind    kind { BscTokenKind::invalid };
-    const char*     text { nullptr };
     i32             text_length { 0 };
+    const char*     text { nullptr };
 
     BscTokenDef(const BscTokenKind def_kind, const char* def_text) noexcept
         : kind(def_kind),

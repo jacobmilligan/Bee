@@ -84,10 +84,10 @@ struct AssetId
 struct LoadedAsset
 {
     atomic_i32      refcount { 0 };
-    GUID            guid;
-    AssetLocation   location;
-    TypeInstance    data;
     LoaderId        loader;
+    AssetLocation   location;
+    GUID            guid;
+    TypeInstance    data;
 };
 
 struct Loader
@@ -137,6 +137,7 @@ struct AssetPipeline
     };
 
     AssetPipelineFlags      flags { AssetPipelineFlags::none };
+    BEE_PAD(4);
     ImportPipeline          import;
     LoadPipeline            load;
     FixedArray<ThreadData>  thread_data;

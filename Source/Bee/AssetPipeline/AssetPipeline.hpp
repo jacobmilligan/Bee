@@ -122,6 +122,7 @@ struct AssetImportContext
 {
     Allocator*              temp_allocator { nullptr };
     AssetPlatform           target_platforms { AssetPlatform::unknown };
+    u32                     importer_hash { 0 };
     StringView              target_platform_string;
     GUID                    guid;
     AssetDatabaseModule*    db { nullptr };
@@ -129,7 +130,6 @@ struct AssetImportContext
     DynamicArray<u8>*       artifact_buffer { nullptr };
     PathView                path;
     PathView                cache_root;
-    u32                     importer_hash { 0 };
     TypeInstance*           settings;
 
     inline Result<u128, AssetDatabaseError> add_artifact(const Type type, const void* buffer, const size_t buffer_size, const u32 key = 0)
@@ -283,9 +283,9 @@ struct AssetStreamInfo
     };
 
     Kind    kind { Kind::none };
+    u32     key { 0 };
     Path    path;
     u128    hash;
-    u32     key { 0 };
     void*   buffer;
     size_t  offset { 0 };
     size_t  size { 0 };
@@ -307,6 +307,7 @@ struct AssetKey
     };
 
     Kind kind { Kind::none };
+    BEE_PAD(4);
 
     union
     {
@@ -379,7 +380,7 @@ struct AssetLoader
  */
 #define BEE_ASSET_PIPELINE_MODULE_NAME "BEE_ASSET_PIPELINE"
 
-BEE_FLAGS(AssetPipelineFlags, u8)
+BEE_FLAGS(AssetPipelineFlags, u32)
 {
     none    = 0,
     import  = 1u << 0u,
@@ -392,11 +393,13 @@ struct AssetPipelineImportInfo
     PathView    cache_root;
     PathView*   source_roots { nullptr };
     i32         source_root_count { 0 };
+    BEE_PAD(4);
 };
 
 struct AssetPipelineInfo
 {
     AssetPipelineFlags              flags { AssetPipelineFlags::none };
+    BEE_PAD(4);
     const AssetPipelineImportInfo*  import { nullptr };
 };
 

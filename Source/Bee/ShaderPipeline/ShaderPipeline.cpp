@@ -21,6 +21,7 @@ namespace bee {
 struct CachedSampler
 {
     atomic_i32    refcount { 0 };
+    BEE_PAD(4);
     SamplerHandle handle;
 
     CachedSampler() = default;
@@ -72,6 +73,7 @@ struct ShaderPipeline
     AssetPipeline*                                      asset_pipeline { nullptr };
     GpuBackend*                                         gpu { nullptr };
     DeviceHandle                                        device;
+    BEE_PAD(4);
 
     AssetImporter                                       importer;
     FixedArray<ImporterThreadData>                      importer_threads;

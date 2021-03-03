@@ -31,12 +31,15 @@ AssetDatabaseModule g_assetdb{};
  */
 static constexpr auto g_invalid_dbi = limits::max<u32>();
 
+BEE_PUSH_WARNING
+BEE_DISABLE_PADDING_WARNINGS
 struct DbMapInfo
 {
     const char*     name { nullptr };
     unsigned int    flags { 0 };
     MDB_cmp_func*   dupsort_func { nullptr };
 };
+BEE_POP_WARNING
 
 int lmdb_compare_guid(const MDB_val* a, const MDB_val* b)
 {

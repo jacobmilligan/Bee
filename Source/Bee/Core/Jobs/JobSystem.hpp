@@ -29,6 +29,7 @@ struct JobSystemInitInfo
     i32     num_workers { auto_worker_count };
     i32     max_job_size { 512 };
     i32     max_jobs_per_worker_per_chunk { 1024 }; // max number of pooled jobs to create in a single thread-local allocation chunk
+    BEE_PAD(4);
     size_t  per_worker_temp_allocator_capacity { 1024 * 16 }; // capacity of the per-worker thread-local temp allocator used for jobs
 };
 

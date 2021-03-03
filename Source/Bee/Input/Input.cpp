@@ -14,8 +14,9 @@ namespace bee {
 
 struct Input // NOLINT
 {
-    i32                 device_count { 0 };
     const InputDevice*  devices[BEE_MAX_INPUT_DEVICES];
+    i32                 device_count { 0 };
+    BEE_PAD(4);
 };
 
 static Input* g_input = nullptr;

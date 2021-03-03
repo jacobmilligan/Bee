@@ -82,6 +82,7 @@ public:
     }
 protected:
     Mode stream_mode { Mode::invalid };
+    BEE_PAD(4);
 
     i32 get_seek_position(SeekOrigin origin, i32 stream_size, i32 current_offset, i32 new_offset);
 };
@@ -165,6 +166,7 @@ private:
     i32                 current_offset_ { 0 };
     i32                 capacity_ { 0 };
     i32                 current_stream_size_ { 0 };
+    BEE_PAD(4);
     u8*                 buffer_ { nullptr };
     DynamicArray<u8>*   container_ { nullptr };
 };
@@ -287,6 +289,7 @@ private:
     } string;
 
     i32     current_offset_ { 0 };
+    BEE_PAD(4);
 
     char* data();
 };

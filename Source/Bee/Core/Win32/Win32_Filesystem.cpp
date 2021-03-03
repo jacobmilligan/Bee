@@ -26,8 +26,8 @@ struct DirectoryEntry
 {
     WIN32_FIND_DATAW    find_data;
     HANDLE              handle { nullptr };
-    char                u8s_filename[MAX_PATH];
     StaticString<4096>  buffer;
+    char                u8s_filename[MAX_PATH + 4]; // + 4 for struct padding
     PathView            root;
 };
 
@@ -128,13 +128,13 @@ void DirectoryIterator::next()
  */
 struct WatchedDirectory
 {
-    static constexpr auto notify_buffer_capacity = 4096;
+    static constexpr auto notify_buffer_capacity = 4015;
 
-    bool        scheduled_for_removal { false };
-    i32         index { -1 };
     HANDLE      directory { nullptr };
-    u8          notify_buffer[notify_buffer_capacity];
+    i32         index { -1 };
     DWORD       buffer_size { 0 };
+    bool        scheduled_for_removal { false };
+    u8          notify_buffer[notify_buffer_capacity];
     OVERLAPPED  overlapped;
 
     ~WatchedDirectory()

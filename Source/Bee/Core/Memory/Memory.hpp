@@ -12,7 +12,10 @@
 #include "Bee/Core/Enum.hpp"
 
 #if BEE_OS_WINDOWS == 1
-    #include <malloc.h>
+    BEE_PUSH_WARNING
+        BEE_DISABLE_PADDING_WARNINGS
+        #include <malloc.h>
+    BEE_POP_WARNING
 #endif // BEE_OS_WINDOWS == 1
 
 

@@ -5,6 +5,7 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
+#include "Bee/Core/Reflection.hpp"
 #include "Bee/Core/Jobs/JobDependencyCache.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
 

@@ -20,7 +20,7 @@ enum class AllocationMode {
 };
 
 
-enum class ValueType : u8 {
+enum class ValueType : u64 {
     object,
     array,
     string,
@@ -33,6 +33,7 @@ enum class ValueType : u8 {
 
 struct ValueHandle {
     i32 id { -1 };
+    BEE_PAD(4);
 
     inline constexpr bool is_valid() const
     {
@@ -41,12 +42,12 @@ struct ValueHandle {
 };
 
 struct ValueData {
-    ValueType   type { ValueType::unknown }; // 1 byte
+    ValueType   type { ValueType::unknown };
 
     union Contents {
         i64         integer_value;
         double      double_value{ limits::max<double>() };
-    } contents; // 8 bytes
+    } contents;
 
     inline constexpr bool is_valid() const
     {
@@ -357,6 +358,7 @@ public:
 
 private:
     const i32     array_base_ { 0 };
+    BEE_PAD(4);
     const i32*    current_offset_ { nullptr };
 };
 

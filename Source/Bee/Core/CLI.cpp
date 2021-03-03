@@ -5,6 +5,7 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
+#include "Bee/Core/Reflection.hpp"
 #include "Bee/Core/CLI.hpp"
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Debug.hpp"

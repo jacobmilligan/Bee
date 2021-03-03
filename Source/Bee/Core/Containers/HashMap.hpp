@@ -42,8 +42,32 @@ struct KeyValuePair
     using key_t     = KeyType;
     using value_t   = ValueType;
 
+    KeyValuePair() = default;
+
+    KeyValuePair(const KeyType& new_key, const ValueType& new_value)
+        : key(new_key),
+          value(new_value)
+    {}
+
+    KeyValuePair(KeyType&& new_key, const ValueType& new_value)
+        : key(BEE_FORWARD(new_key)),
+          value(new_value)
+    {}
+
+    KeyValuePair(const KeyType& new_key, ValueType&& new_value)
+        : key(new_key),
+          value(BEE_FORWARD(new_value))
+    {}
+
+    KeyValuePair(KeyType&& new_key, ValueType&& new_value)
+        : key(BEE_FORWARD(new_key)),
+          value(BEE_FORWARD(new_value))
+    {}
+
     KeyType     key;
+    BEE_PAD(8 - (sizeof(KeyType) % 8));
     ValueType   value;
+    BEE_PAD(8 - (sizeof(ValueType) % 8));
 };
 
 template <
@@ -147,6 +171,7 @@ public:
     private:
         const map_t*    map_ { nullptr };
         i32             node_idx_ { 0 };
+        BEE_PAD(4);
     };
 
     explicit HashMap(Allocator* allocator = system_allocator()) noexcept
@@ -233,18 +258,20 @@ private:
     struct Node
     {
         bool                active { false };
+        BEE_PAD(7);
         key_value_pair_t    kv;
     };
 
     using storage_t                     = Array<Node, mode>;
     static constexpr u32 min_capacity_  = 4;
 
-    hash_t          hasher_ { hash_t() };
-    key_equal_t     key_comparer_ { key_equal_t() };
     storage_t       node_storage_;
     u32             hash_shift_ { 32 };
     u32             load_factor_ { 0 };
     u32             active_node_count_ { 0 };
+    hash_t          hasher_ { hash_t() };
+    key_equal_t     key_comparer_ { key_equal_t() };
+    BEE_PAD(2);
 
     key_value_pair_t* insert_no_construct(const key_t& key);
 

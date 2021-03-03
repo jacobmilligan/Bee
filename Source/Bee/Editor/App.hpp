@@ -13,12 +13,6 @@
 namespace bee {
 
 
-struct BEE_REFLECT(serializable) Project
-{
-
-};
-
-
 #define BEE_EDITOR_APP_MODULE_NAME "BEE_EDITOR_APP"
 
 struct EditorAppModule

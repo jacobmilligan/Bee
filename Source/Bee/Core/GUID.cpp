@@ -9,7 +9,10 @@
 #include "Bee/Core/TypeTraits.hpp"
 #include "Bee/Core/IO.hpp"
 
-#include <stdio.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <stdio.h>
+BEE_POP_WARNING
 
 namespace bee {
 

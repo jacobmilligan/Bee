@@ -6,8 +6,7 @@
  */
 
 #include "Bee/Core/Random.hpp"
-
-#include <time.h>
+#include "Bee/Core/Time.hpp"
 
 namespace bee {
 
@@ -15,9 +14,10 @@ namespace bee {
 Xorshift::Xorshift(const u32 seed)
     : state(seed)
 {
-    if (seed == 0) {
+    if (seed == 0)
+    {
         // unsigned conversion: over/underflow doesn't matter here as this is just a seed value
-        state = static_cast<u32>(time(nullptr));
+        state = static_cast<u32>(time::now());
     }
 }
 

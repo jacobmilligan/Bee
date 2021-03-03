@@ -22,7 +22,7 @@ class SerializationBuilder;
 class BEE_CORE_API PathView
 {
 public:
-    constexpr PathView() noexcept = default;
+    PathView() noexcept = default;
 
     explicit PathView(const Path& path);
 

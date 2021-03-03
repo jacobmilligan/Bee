@@ -32,8 +32,8 @@ class BEE_CORE_API ThreadSafeLinearAllocator final : public Allocator
 private:
     struct Header
     {
-        size_t  size { 0 };
-        bool    is_overflow { false };
+        size_t      size { 0 };
+        Allocator*  overflow_allocator { nullptr };
     };
 public:
     static constexpr size_t min_allocation = sizeof(Header);

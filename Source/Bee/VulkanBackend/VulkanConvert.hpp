@@ -9,8 +9,11 @@
 
 #include "Bee/Gpu/Gpu.hpp"
 
-#include <volk.h>
-#include <vk_mem_alloc.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <volk.h>
+    #include <vk_mem_alloc.h>
+BEE_POP_WARNING
 
 
 namespace bee {

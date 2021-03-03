@@ -117,12 +117,25 @@ add_compile_definitions(
         $<$<CONFIG:Release>:BEE_RELEASE=1>
 )
 
-function(__bee_set_compile_options target)
+function(__bee_set_compile_options target disable_padding_warnings)
     get_target_property(old_options ${target} COMPILE_OPTIONS)
     if(old_options MATCHES "/W[0-4]")
         string(REGEX REPLACE "/W[0-4]" "" new_options "${old_options}")
     endif()
-    set_target_properties(${target} PROPERTIES COMPILE_OPTIONS "${new_options}")
-    target_compile_options(${target} PRIVATE ${bee_compile_flags})
 
+    if (WIN32)
+        set(padding_warnings
+            /we4820         # warn about padding at end of structure
+            /we4121         # warn about padding inserted between structure members for alignment purposes
+        )
+    endif ()
+
+    if (disable_padding_warnings)
+        set(per_target_options ${bee_compile_flags})
+    else()
+        set(per_target_options ${bee_compile_flags} ${padding_warnings})
+    endif ()
+
+    set_target_properties(${target} PROPERTIES COMPILE_OPTIONS "${new_options}")
+    target_compile_options(${target} PRIVATE ${per_target_options})
 endfunction()

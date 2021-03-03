@@ -27,17 +27,20 @@ static constexpr i32 editor_connection_port = 8888;
 
 struct EditorApp
 {
-    bool                quit_requested { false };
-    bool                reloaded { false };
     ImGuiBackend*       imgui_backend { nullptr };
 
     // Platform resources
     WindowHandle        main_window;
 
     // GPU resources
+    SwapchainHandle     swapchain;
     GpuBackend*         gpu { nullptr };
     DeviceHandle        device;
-    SwapchainHandle     swapchain;
+
+    bool                quit_requested { false };
+    bool                reloaded { false };
+
+    BEE_PAD(2);
 
     // Rendering resources
     RenderGraph*        render_graph { nullptr };

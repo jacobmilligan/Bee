@@ -51,6 +51,7 @@ struct ModuleHeader
 struct StaticData
 {
     u32                         hash { 0 };
+    BEE_PAD(4);
     void*                       data { nullptr };
     PluginStaticDataCallbacks   callbacks;
 };
@@ -63,6 +64,7 @@ struct Plugin
     Path                        hot_reload_path;
     DynamicLibrary              library;
     PluginState                 state { PluginState::unloaded };
+    BEE_PAD(4);
     load_plugin_t               load_function { nullptr };
     ReflectionModule*           reflection_module { nullptr };
     DynamicArray<StaticData>    static_data;

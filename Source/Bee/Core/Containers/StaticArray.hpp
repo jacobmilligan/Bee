@@ -19,8 +19,9 @@ struct BEE_REFLECT(serializable) StaticArray
 {
     static constexpr SizeType capacity = Capacity;
 
-    SizeType    size { 0 };
     T           data[Capacity];
+    SizeType    size { 0 };
+    BEE_PAD(8 - sizeof(SizeType));
 
     T& operator[](const SizeType index)
     {

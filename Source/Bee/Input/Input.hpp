@@ -51,12 +51,14 @@ struct InputButton
 {
     const char* name { nullptr };
     i32         id { -1 };
+    BEE_PAD(4);
 };
 
 struct InputDevice
 {
     const char*     name { nullptr };
     InputDeviceType type { InputDeviceType::none };
+    BEE_PAD(4);
 
     i32 (*enumerate_buttons)(InputButton const** dst) { nullptr };
 

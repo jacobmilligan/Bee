@@ -49,17 +49,19 @@ struct Option
         }
     }
 
-
-    char                   short_name { '\0' };    // for example: '-h'
-    String                 long_name;              // for example: '--help'
-    bool                   required { false };     // determines whether the option MUST be supplied
-    String                 help;                   // help string to print for the option
-
     /*
      * number of arguments the option takes, a value of -1 indicates zero or more command_line and a value
      * of 0 indicates the option is just a flag with zero command_line
      */
     i32                    nargs { 0 };
+
+    bool                   required { false };     // determines whether the option MUST be supplied
+    char                   short_name { '\0' };    // for example: '-h'
+
+    BEE_PAD(2);
+    String                 long_name;              // for example: '--help'
+    String                 help;                   // help string to print for the option
+
     // an array of the names of options this option is mutually exclusive with
     DynamicArray<String>   excludes;
 };
@@ -80,18 +82,19 @@ struct BEE_CORE_API Results : public Noncopyable
 
     Results& operator=(Results&& other) noexcept;
 
+    i32                                 argv_parsed_count { 0 };
     i32                                 argc { 0 };
     const char* const*                  argv { nullptr };
-    bool                                success { true };
-    bool                                help_requested { false };
     const char*                         requested_help_string { nullptr };
-    i32                                 argv_parsed_count { 0 };
-    DynamicArray<Token>                 positionals;
-    DynamicHashMap<String, Token>       options;
-    DynamicHashMap<String, Results>     subparsers;
     String                              program_name;
     String                              help_string;
     String                              error_message;
+    DynamicArray<Token>                 positionals;
+    DynamicHashMap<String, Token>       options;
+    DynamicHashMap<String, Results>     subparsers;
+    bool                                success { true };
+    bool                                help_requested { false };
+    BEE_PAD(6);
 
 private:
     String                              dynamic_argv_;
@@ -103,12 +106,13 @@ private:
 
 struct BEE_CORE_API ParserDescriptor
 {
-    const char*             command_name { nullptr }; // string used to invoke the command. Only used for subparsers
     i32                     positional_count { 0 };
-    const Positional*       positionals { nullptr };
     i32                     option_count { 0 };
-    const Option*           options { nullptr };
     i32                     subparser_count { 0 };
+    BEE_PAD(4);
+    const char*             command_name { nullptr }; // string used to invoke the command. Only used for subparsers
+    const Positional*       positionals { nullptr };
+    const Option*           options { nullptr };
     const ParserDescriptor* subparsers { nullptr };
 
     ParserDescriptor() = default;
@@ -145,7 +149,7 @@ struct BEE_CORE_API ParserDescriptor
         const Positional(&positionals_buffer)[PositionalsSize]
     ) : command_name(name),
         positional_count(PositionalsSize),
-        positionals(positionals_buffer),
+        positionals(positionals_buffer)
     {}
 
     template <i32 PositionalsSize, i32 SubparserCount>

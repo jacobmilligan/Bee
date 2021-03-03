@@ -15,8 +15,11 @@
 #if BEE_OS_WINDOWS == 1
     #include "Bee/Core/Win32/MinWindows.h"
 
-    #include <WinSock2.h>
-    #include <WS2tcpip.h>
+    BEE_PUSH_WARNING
+        BEE_DISABLE_PADDING_WARNINGS
+        #include <WinSock2.h>
+        #include <WS2tcpip.h>
+    BEE_POP_WARNING
 #else
     #error Unsupported platform
 #endif // BEE_OS_WINDOWS == 1

@@ -44,11 +44,11 @@ public:
     void deallocate(void* ptr) override;
 
 private:
-    static constexpr u32 header_signature_ = 0x73465829;
+    static constexpr u64 header_signature_ = 0x73465829;
 
     struct Chunk
     {
-        u32             signature { header_signature_ };
+        u64             signature { header_signature_ };
         Chunk*          next { nullptr };
         Chunk*          prev { nullptr };
         void*           data { nullptr };
@@ -69,6 +69,7 @@ private:
     Chunk*  last_ { nullptr };
     Chunk*  free_ { nullptr };
     bool    validate_on_destruct_ { false };
+    BEE_PAD(7);
 
     const Allocation* validate_allocation(const void* ptr) const;
 

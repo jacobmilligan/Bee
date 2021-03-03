@@ -213,9 +213,11 @@ function(bee_add_include_dirs)
 endfunction()
 
 
-function(__bee_finalize_target name output_directory)
+function(__bee_finalize_target name output_directory disable_padding_warnings)
     target_include_directories(${name} PUBLIC ${__bee_include_dirs})
-    __bee_set_compile_options(${name})
+
+    __bee_set_compile_options(${name} ${disable_padding_warnings})
+
     set_target_properties(${name}
         PROPERTIES
         ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${BEE_DEBUG_BINARY_DIR}/${output_directory}"
@@ -273,10 +275,12 @@ endfunction()
 #   * `GUI` - adds the executable as a GUI app (WIN32 or MACOSX_BUNDLE)
 #   * `LINK_LIBRARIES` - a series of library names to link via
 #     `target_link_libraries`
+#   * `DISABLE_PADDING_WARNINGS` - disable warnings relating to structure
+#     padding added by the compiler
 #
 ################################################################################
 function(bee_exe name)
-    cmake_parse_arguments(ARGS "GUI" "" "LINK_LIBRARIES" ${ARGN})
+    cmake_parse_arguments(ARGS "GUI;DISABLE_PADDING_WARNINGS" "" "LINK_LIBRARIES" ${ARGN})
     if (ARGS_GUI)
         if (APPLE)
             add_executable(${name} MACOSX_BUNDLE ${__bee_sources})
@@ -295,7 +299,7 @@ function(bee_exe name)
         target_link_libraries(${name} PUBLIC ${ARGS_LINK_LIBRARIES})
     endif ()
 
-    __bee_finalize_target(${name} "")
+    __bee_finalize_target(${name} "" ${ARGS_DISABLE_PADDING_WARNINGS})
     bee_new_source_root()
 endfunction()
 
@@ -311,10 +315,12 @@ endfunction()
 #   * `KEEP_SOURCE_ROOT` - does not create a new source root implicitly
 #   * `LINK_LIBRARIES` - a series of library names to link via
 #     `target_link_libraries`
+#   * `DISABLE_PADDING_WARNINGS` - disable warnings relating to structure
+#     padding added by the compiler
 #
 ################################################################################
 function(bee_library name)
-    cmake_parse_arguments(ARGS "STATIC;KEEP_SOURCE_ROOT" "OVERRIDE_API_MACRO" "LINK_LIBRARIES" ${ARGN})
+    cmake_parse_arguments(ARGS "STATIC;KEEP_SOURCE_ROOT;DISABLE_PADDING_WARNINGS" "OVERRIDE_API_MACRO" "LINK_LIBRARIES" ${ARGN})
 
     __bee_get_api_macro(${name} api_macro)
 
@@ -333,7 +339,7 @@ function(bee_library name)
 
     set(__bee_libraries ${__bee_libraries} ${name} CACHE INTERNAL "")
 
-    __bee_finalize_target(${name} "")
+    __bee_finalize_target(${name} "" ${ARGS_DISABLE_PADDING_WARNINGS})
 
     if (NOT ARGS_KEEP_SOURCE_ROOT)
         bee_new_source_root()
@@ -353,10 +359,12 @@ endfunction()
 #     `target_link_libraries`
 #   * `DEPENDENCIES` - a list of other plugins that the runtime ensures are
 #     loaded before this plugin
+#   * `DISABLE_PADDING_WARNINGS` - disable warnings relating to structure
+#     padding added by the compiler
 #
 ################################################################################
 function(bee_plugin name)
-    cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES" ${ARGN})
+    cmake_parse_arguments(ARGS "DISABLE_PADDING_WARNINGS" "" "LINK_LIBRARIES" ${ARGN})
 
     __bee_get_api_macro(${name} api_macro)
 
@@ -385,7 +393,7 @@ function(bee_plugin name)
     endif ()
 
     target_include_directories(${name} PRIVATE ${BEE_GENERATED_ROOT}/${name})
-    __bee_finalize_target(${name} "Plugins")
+    __bee_finalize_target(${name} "Plugins" ${ARGS_DISABLE_PADDING_WARNINGS})
     bee_new_source_root()
     set_property(TARGET ${name} PROPERTY PLUGIN TRUE)
 endfunction()
@@ -396,11 +404,13 @@ endfunction()
 #
 #   * `LINK_LIBRARIES` - a series of library names to link via
 #     `target_link_libraries`
+#   * `DISABLE_PADDING_WARNINGS` - disable warnings relating to structure
+#     padding added by the compiler
 #
 ################################################################################
 function(bee_test name)
     if (BUILD_TESTS)
-        cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES;SOURCES" ${ARGN})
+        cmake_parse_arguments(ARGS "DISABLE_PADDING_WARNINGS" "" "LINK_LIBRARIES;SOURCES" ${ARGN})
 
         set(cached_sources ${__bee_sources})
 
@@ -409,7 +419,7 @@ function(bee_test name)
         bee_exe(${name} LINK_LIBRARIES ${ARGS_LINK_LIBRARIES} gtest)
         target_compile_definitions(${name} PRIVATE GTEST_BREAK_ON_FAILURE)
 
-        __bee_set_compile_options(${name})
+        __bee_set_compile_options(${name} ${ARGS_DISABLE_PADDING_WARNINGS})
 
         gtest_add_tests(TARGET ${name} ${ARGS_SOURCES})
 
@@ -420,7 +430,7 @@ endfunction()
 
 function(bee_relacy_test name)
     if (BUILD_TESTS)
-        cmake_parse_arguments(ARGS "" "" "LINK_LIBRARIES;SOURCES" ${ARGN})
+        cmake_parse_arguments(ARGS "DISABLE_PADDING_WARNINGS" "" "LINK_LIBRARIES;SOURCES" ${ARGN})
 
         set(cached_sources ${__bee_sources})
 
@@ -441,7 +451,7 @@ function(bee_relacy_test name)
         endif ()
 #        target_compile_definitions(${name} PRIVATE)
 
-        __bee_set_compile_options(${name})
+        __bee_set_compile_options(${name} ${ARGS_DISABLE_PADDING_WARNINGS})
 
         add_test(${name} ${name})
 

@@ -21,7 +21,7 @@ namespace bee {
     #define BEE_ASSET_TXN_MAX_ASSETS 128
 #endif // BEE_ASSET_TXN_MAX_ASSETS
 
-enum class BEE_REFLECT(serializable) AssetFileKind : u8
+enum class BEE_REFLECT(serializable) AssetFileKind
 {
     unknown,
     file,

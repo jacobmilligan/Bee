@@ -59,6 +59,7 @@
 
 BEE_PUSH_WARNING
 
+    BEE_DISABLE_PADDING_WARNINGS
     BEE_DISABLE_WARNING_MSVC(4127)
     #include <rapidjson/fwd.h>
 

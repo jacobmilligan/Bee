@@ -28,6 +28,7 @@ private:
         id_t            index { 0 };
         id_t            size { 0 };
         id_t            capacity { 0 };
+        BEE_PAD(8 - sizeof(id_t));
         u8*             ptr { nullptr };
         id_t*           free_list { nullptr };
         id_t*           versions { nullptr };
@@ -45,7 +46,15 @@ public:
 
     struct ResourcePair
     {
+        ResourcePair() = default;
+
+        ResourcePair(const HandleType& new_handle, ResourceType& new_resource)
+            : handle(new_handle),
+              resource(new_resource)
+        {}
+
         HandleType      handle;
+        BEE_PAD(8 - (sizeof(HandleType) % 8));
         ResourceType&   resource;
     };
 

@@ -9,11 +9,14 @@
 
 #include "Bee/Core/NumericTypes.hpp"
 
-#include <type_traits>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <type_traits>
 
-#if BEE_COMPILER_MSVC == 1
-    #include <intrin.h>
-#endif // BEE_COMPILER_MSVC == 1
+    #if BEE_COMPILER_MSVC == 1
+        #include <intrin.h>
+    #endif // BEE_COMPILER_MSVC == 1
+BEE_POP_WARNING
 
 namespace bee {
 

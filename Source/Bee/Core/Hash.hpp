@@ -11,8 +11,11 @@
 #include "Bee/Core/Noncopyable.hpp"
 #include "Bee/Core/String.hpp"
 
-#define XXH_STATIC_LINKING_ONLY
-#include <xxhash.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #define XXH_STATIC_LINKING_ONLY
+    #include <xxhash.h>
+BEE_POP_WARNING
 
 
 namespace bee {
@@ -25,6 +28,8 @@ namespace bee {
  ******************************************************************************
  */
 BEE_CORE_API u32 get_hash(const void* input, size_t length, u32 seed);
+
+BEE_CORE_API u64 get_hash64(const void* input, size_t length, u64 seed);
 
 BEE_CORE_API u128 get_hash128(const void* input, size_t length, u64 seed);
 

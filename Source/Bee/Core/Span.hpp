@@ -54,6 +54,7 @@ public:
 private:
     T*          data_ { nullptr };
     i32         size_ { 0 };
+    BEE_PAD(4);
 };
 
 template <typename T>

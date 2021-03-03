@@ -15,6 +15,11 @@ u32 get_hash(const void* input, const size_t length, const u32 seed)
     return XXH32(input, length, seed);
 }
 
+u64 get_hash64(const void* input, const size_t length, const u64 seed)
+{
+    return XXH64(input, length, seed);
+}
+
 u128 get_hash128(const void* input, const size_t length, const u64 seed)
 {
     const auto hash = XXH128(input, length, seed);

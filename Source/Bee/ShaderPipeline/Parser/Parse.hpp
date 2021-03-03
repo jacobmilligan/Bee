@@ -49,6 +49,7 @@ struct ShaderFile
         i32     resource_index { -1 };
         u32     binding { 0 };
         u32     layout { 0 };
+        BEE_PAD(4);
 
         SamplerRef(Allocator* allocator)
             : shader_resource_name(allocator)
@@ -70,6 +71,7 @@ struct ShaderFile
     {
         String          semantic;
         VertexFormat    format { VertexFormat::invalid };
+        BEE_PAD(4);
 
         VertexFormatOverride(Allocator* allocator)
             : semantic(allocator)
@@ -197,6 +199,7 @@ struct BscNode
 {
     StringView  identifier;
     T           data;
+    BEE_PAD(8 - (sizeof(T) % 8));
 
     BscNode() = default;
 
@@ -228,6 +231,7 @@ struct BscShaderNode
 struct BscPipelineStateNode
 {
     PrimitiveType               primitive_type { PrimitiveType::unknown };
+    BEE_PAD(4);
     StringView                  raster_state;
     StringView                  multisample_state;
     StringView                  depth_stencil_state;
@@ -276,6 +280,7 @@ enum class BscResolveErrorCode
 struct BscResolveError
 {
     BscResolveErrorCode code { BscResolveErrorCode::none };
+    BEE_PAD(4);
     StringView          param;
     StringView          param2;
 

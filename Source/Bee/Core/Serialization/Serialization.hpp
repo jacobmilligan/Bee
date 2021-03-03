@@ -57,6 +57,7 @@ struct BEE_CORE_API Serializer
     SerializerMode          mode { SerializerMode::reading };
     const SerializerFormat  format {SerializerFormat::unknown };
     SerializerSourceFlags   source_flags { SerializerSourceFlags::none };
+    BEE_PAD(4);
 
     explicit Serializer(const SerializerFormat serialized_format);
 
@@ -100,6 +101,7 @@ struct SerializeTypeParams final : public Noncopyable
     Field::serialization_function_t serialization_function { nullptr };
     Span<const Type>                template_type_arguments;
     SerializationFlags              field_flags { SerializationFlags::none };
+    BEE_PAD(4);
 
     SerializeTypeParams(
         const Type&                     new_type,
@@ -328,6 +330,7 @@ private:
     SerializationFlags          field_flags_ { SerializationFlags::none };
     SerializedContainerKind     container_kind_ { SerializedContainerKind::none };
     i32                         version_ { -1 };
+    BEE_PAD(4);
 };
 
 

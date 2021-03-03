@@ -38,8 +38,9 @@ struct StackTrace
 {
     static constexpr i32 max_frame_count = 64;
 
-    i32 frame_count { 0 };
-    void* frames[max_frame_count];
+    void*   frames[max_frame_count];
+    i32     frame_count { 0 };
+    BEE_PAD(4);
 };
 
 struct DebugSymbol
@@ -51,6 +52,7 @@ struct DebugSymbol
     char    module_name[name_size];
     char    filename[name_size];
     char    function_name[name_size];
+    BEE_PAD(4);
 };
 
 BEE_CORE_API bool refresh_debug_symbols();

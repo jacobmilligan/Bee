@@ -10,7 +10,10 @@
 #include "Bee/Core/NumericTypes.hpp"
 #include "Bee/Core/Serialization/Serialization.hpp"
 
-#include <string.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <string.h>
+BEE_POP_WARNING
 
 namespace bee {
 

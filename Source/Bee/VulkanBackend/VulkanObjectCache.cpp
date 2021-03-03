@@ -5,6 +5,7 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
+#include "Bee/Core/Reflection.hpp"
 #include "Bee/VulkanBackend/VulkanObjectCache.hpp"
 #include "Bee/VulkanBackend/VulkanDevice.hpp"
 #include "Bee/VulkanBackend/VulkanConvert.hpp"
@@ -98,6 +99,7 @@ void create_pipeline(VulkanDevice* device, const VulkanPipelineKey& key, VulkanP
     {
         ShaderHandle handle;
         VkShaderStageFlagBits flags { VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM };
+        BEE_PAD(4);
     };
 
     StageInfo shaders[] = {

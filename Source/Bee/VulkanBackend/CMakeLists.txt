@@ -18,7 +18,7 @@ if (Vulkan_FOUND)
             VulkanWsi.cpp
 
             # volk
-            ${BEE_THIRD_PARTY}/volk/volk.h  ${BEE_THIRD_PARTY}/volk/volk.c
+            ${BEE_THIRD_PARTY}/volk/volk.h
     )
 
     if (WIN32)

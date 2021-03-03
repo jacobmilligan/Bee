@@ -26,8 +26,10 @@ struct LogSystem
 {
     RecursiveSpinLock                   system_mutex;
     RecursiveSpinLock                   stdio_mutex;
-    LogVerbosity                        verbosity { LogVerbosity::debug };
     DynamicArray<logger_callback_t*>    registered_loggers;
+    LogVerbosity                        verbosity { LogVerbosity::debug };
+
+    BEE_PAD(5);
 
 #if BEE_OS_WINDOWS == 1
 

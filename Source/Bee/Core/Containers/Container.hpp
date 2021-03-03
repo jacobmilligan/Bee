@@ -182,14 +182,15 @@ inline constexpr const T* end(const T(&array)[Size])
 template <typename ElementType>
 struct EnumeratorRef
 {
-    i32             index { 0 };
     ElementType&    value;
+    i32             index { 0 };
+    BEE_PAD(4);
 };
 
 template <typename T>
 EnumeratorRef<T> make_enumerator_ref(const i32 index, T& value)
 {
-    return EnumeratorRef<T> { index, value };
+    return EnumeratorRef<T> { value, index };
 }
 
 template <typename IterableType>
@@ -239,6 +240,7 @@ public:
 private:
     iterator_t  iterator_;
     i32         index_ { 0 };
+    BEE_PAD(4);
 };
 
 template <typename IterableType>

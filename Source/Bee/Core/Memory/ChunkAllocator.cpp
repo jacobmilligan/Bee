@@ -36,17 +36,17 @@ ChunkAllocator::ChunkAllocator(ChunkAllocator&& other) noexcept
 
 ChunkAllocator::~ChunkAllocator()
 {
-//    BEE_ASSERT_F(!validate_on_destruct_ || last_ == nullptr, "Chunk allocator still has active allocations - this indicates a possible memory leak");
-//
-//    // free all the nodes from the free stack
-//    while (free_ != nullptr)
-//    {
-//        auto* next = free_->next;
-//        BEE_FREE(system_allocator(), free_);
-//        free_ = next;
-//    }
-//
-//    free_ = nullptr;
+    BEE_ASSERT_F(!validate_on_destruct_ || last_ == nullptr, "Chunk allocator still has active allocations - this indicates a possible memory leak");
+
+    // free all the nodes from the free stack
+    while (free_ != nullptr)
+    {
+        auto* next = free_->next;
+        BEE_FREE(system_allocator(), free_);
+        free_ = next;
+    }
+
+    free_ = nullptr;
 }
 
 ChunkAllocator& ChunkAllocator::operator=(ChunkAllocator&& other) noexcept

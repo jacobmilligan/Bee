@@ -5,6 +5,7 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
+#include "Bee/Core/Reflection.hpp"
 #include "Bee/Core/String.hpp"
 #include "Bee/Core/Math/Math.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"

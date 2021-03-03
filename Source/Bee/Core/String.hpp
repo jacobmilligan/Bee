@@ -76,7 +76,7 @@ BEE_CORE_API i32 copy(char* dst, i32 dst_size, const StringView& src);
 class BEE_REFLECT() BEE_CORE_API StringView
 {
 public:
-    constexpr StringView() noexcept = default;
+    StringView() noexcept = default;
 
     StringView(const char* src, i32 size);
 
@@ -129,6 +129,7 @@ public:
 private:
     const char* data_ { nullptr };
     i32         size_ { 0 };
+    BEE_PAD(4);
 };
 
 #define BEE_TIMESTAMP_FMT "%Y-%m-%d %H:%M:%S"
@@ -669,6 +670,7 @@ public:
 private:
     i32     size_ { 0 };
     char    buffer_[Capacity];
+    BEE_PAD(8 - ((Capacity + sizeof(i32)) % 8));
 
     void set_size(const i32 new_size)
     {
