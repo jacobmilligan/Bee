@@ -315,7 +315,11 @@ namespace bee {
 
 #define BEE_EXPLICIT_SCOPE(x) do { x } while (false)
 
-#define BEE_PAD(N) BEE_REFLECT(ignored) char BEE_CONCAT(padding, __LINE__)[N]
+#ifdef __cplusplus
+    #define BEE_PAD(N) BEE_REFLECT(ignored) char BEE_CONCAT(padding, __LINE__)[N] { 0 }
+#else
+    #define BEE_PAD(N) BEE_REFLECT(ignored) char BEE_CONCAT(padding, __LINE__)[N]
+#endif // __cplusplus
 
 #define BEE_DISABLE_PADDING_WARNINGS BEE_DISABLE_WARNING_MSVC(4121 4820)
 
