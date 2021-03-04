@@ -150,10 +150,6 @@ void ChunkAllocator::push_free(Chunk* chunk)
         free_->prev = chunk;
         free_ = chunk;
     }
-
-    BEE_ASSERT(free_->next == nullptr || free_->next != free_);
-    BEE_ASSERT(free_->prev == nullptr || free_->prev != free_);
-    BEE_ASSERT(free_->prev == nullptr || free_->next == nullptr || free_->next != free_->prev);
 }
 
 ChunkAllocator::Chunk* ChunkAllocator::pop_free()
@@ -203,10 +199,6 @@ void* ChunkAllocator::allocate(const size_t size, const size_t alignment)
         }
 
         offset = round_up(new_chunk->offset + sizeof(Allocation), alignment);
-
-        BEE_ASSERT(new_chunk->next == nullptr || new_chunk->next != new_chunk);
-        BEE_ASSERT(new_chunk->prev == nullptr || new_chunk->prev != new_chunk);
-        BEE_ASSERT(new_chunk->prev == nullptr || new_chunk->next == nullptr || new_chunk->next != new_chunk->prev);
     }
 
     BEE_ASSERT(last_ != free_ && first_ != free_);
