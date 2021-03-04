@@ -47,7 +47,7 @@ bool is_main()
 
 void Thread::init(const ThreadCreateInfo& create_info, ExecuteParams* params)
 {
-    const auto name_length = str::length(create_info.name);
+    const auto name_length = create_info.name == nullptr ? 0 : str::length(create_info.name);
 
     if (name_length <= 0)
     {

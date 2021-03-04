@@ -416,6 +416,7 @@ function(bee_test name)
 
         bee_new_source_root()
         bee_add_sources(${BEE_TESTS_ROOT}/TestMain.cpp ${ARGS_SOURCES})
+        bee_add_include_dirs(${BEE_TESTS_ROOT})
         bee_exe(${name} LINK_LIBRARIES ${ARGS_LINK_LIBRARIES} gtest)
         target_compile_definitions(${name} PRIVATE GTEST_BREAK_ON_FAILURE)
 

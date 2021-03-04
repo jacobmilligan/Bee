@@ -12,6 +12,7 @@
 BEE_PUSH_WARNING
     BEE_DISABLE_PADDING_WARNINGS
     #include <stdio.h>
+    #include <charconv>
 BEE_POP_WARNING
 
 namespace bee {
@@ -215,35 +216,45 @@ GUID guid_from_string(const StringView& string)
     }
 
     const auto has_dashes = string.size() > 32;
-    const auto guid_begin = has_brackets ? string.begin() + 1 : string.begin();
 
-    u32* scan_data[] = {
+    static constexpr i32 src_part_char_count[] = { 8, 4, 4, 4, 12 };
+    u32* dst_parts[] = {
         reinterpret_cast<u32*>(result.data),
         reinterpret_cast<u32*>(result.data + 4),
         reinterpret_cast<u32*>(result.data + 6),
         reinterpret_cast<u32*>(result.data + 8)
     };
+
+    const char* part_begin = has_brackets ? string.begin() + 1 : string.begin();
+    const char* part_end = part_begin + src_part_char_count[0];
+
+    for (int i = 0; i < static_array_length(dst_parts); ++i)
+    {
+        auto from_chars_result = std::from_chars(part_begin, part_end, *dst_parts[i], 16);
+
+        if (BEE_FAIL_F(from_chars_result.ec == std::errc(), "Invalid GUID string format: %" BEE_PRIsv, BEE_FMT_SV(string)))
+        {
+            return GUID{};
+        }
+
+        if (BEE_FAIL_F(from_chars_result.ptr == part_end, "Invalid GUID string format: %" BEE_PRIsv, BEE_FMT_SV(string)))
+        {
+            return GUID{};
+        }
+
+        part_begin = part_end;
+        if (has_dashes && BEE_CHECK(*part_begin == '-'))
+        {
+            ++part_begin;
+        }
+        part_end = part_begin + src_part_char_count[i + 1];
+    }
+
     size_t last_group = 0;
 
-    int scan_result = 0;
-    if (has_dashes)
-    {
-        scan_result = sscanf(
-            guid_begin,
-            "%08x-%04x-%04x-%04x-%012zx",
-            scan_data[0], scan_data[1], scan_data[2], scan_data[3], &last_group
-        );
-    }
-    else
-    {
-        scan_result = sscanf(
-            guid_begin,
-            "%08x%04x%04x%04x%012zx",
-            scan_data[0], scan_data[1], scan_data[2], scan_data[3], &last_group
-        );
-    }
+    auto from_chars_result = std::from_chars(part_begin, part_end, last_group, 16);
 
-    if (BEE_FAIL_F(scan_result == 5, "Invalid GUID string format: %s", string.c_str()))
+    if (BEE_FAIL_F(from_chars_result.ec == std::errc() && from_chars_result.ptr == part_end, "Invalid GUID string format: %" BEE_PRIsv, BEE_FMT_SV(string)))
     {
         return GUID{};
     }

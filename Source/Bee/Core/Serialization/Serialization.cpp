@@ -466,7 +466,12 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
                     if (constant_index < 0)
                     {
                         i64 value = 0;
-                        sscanf(enum_constant_buffer, "%" SCNd64, &value);
+                        if (!str::to_i64(enum_constant_buffer, &value))
+                        {
+                            log_error("Skipping serialization for `%s`: failed to convert enum constant to i64", params.type->name);
+                            return;
+                        }
+
                         memcpy(params.data, &value, as_enum->underlying_type->size);
                     }
                     else
@@ -534,7 +539,11 @@ void serialize_type(const SerializeTypeMode serialize_type_mode, Serializer* ser
 
                         if (flag_index < 0)
                         {
-                            sscanf(enum_constant_buffer, "%" SCNd64, &flag_as_int);
+                            if (!str::to_i64(enum_constant_buffer, &flag_as_int))
+                            {
+                                log_error("Skipping serialization for `%s`: failed to convert enum constant to i64", params.type->name);
+                                return;
+                            }
                         }
                         else
                         {

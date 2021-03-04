@@ -9,7 +9,7 @@
 #include <Bee/Core/Memory/MallocAllocator.hpp>
 #include <Bee/Core/Memory/LinearAllocator.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 TEST(StringTests, construct_copy_move)
 {
@@ -313,4 +313,64 @@ TEST(StringTests, format_and_write)
     }
 
     ASSERT_STREQ(byte_string.c_str(), "0x02, 0x05, 0x07, 0x01, 0000");
+}
+
+template <typename T>
+void test_to_xx(const bool test_success, bool (*fn)(const bee::StringView&, T*), const char* string, const T expected)
+{
+    T val = 0;
+
+    if (test_success)
+    {
+        ASSERT_TRUE(fn(string, &val)) << "string: " << string;
+    }
+    else
+    {
+        ASSERT_FALSE(fn(string, &val)) << "string: " << string;
+    }
+
+    ASSERT_EQ(val, expected) << "string: " << string;
+}
+
+void test_to_u128(const bool test_success, const char* string, const bee::u128 expected)
+{
+    bee::u128 val;
+
+    if (test_success)
+    {
+        ASSERT_TRUE(bee::str::to_u128(string, &val)) << "string: " << string;
+    }
+    else
+    {
+        ASSERT_FALSE(bee::str::to_u128(string, &val)) << "string: " << string;
+    }
+
+    ASSERT_EQ(val, expected) << "string: " << string;
+}
+
+TEST(StringTests, to_signed)
+{
+    test_to_xx(true, bee::str::to_i32, "-1234", -1234);
+    test_to_xx(false, bee::str::to_i32, "   -1234", 0);
+    test_to_xx(true, bee::str::to_i32, "000000012", 12);
+    test_to_xx(false, bee::str::to_i32, "99f91235", 99);
+    test_to_xx(true, bee::str::to_i64, "9223372036854775807", bee::limits::max<bee::i64>());
+    test_to_xx(false, bee::str::to_i64, "922337203685477580=", 922337203685477580);
+    test_to_xx(false, bee::str::to_i32, "\0x923", 0);
+}
+
+TEST(StringTests, to_unsigned)
+{
+    test_to_xx(false, bee::str::to_u32, "-1234", 0u);
+    test_to_xx(false, bee::str::to_u32, "   1234", 0u);
+    test_to_xx(true, bee::str::to_u32, "1234", 1234u);
+    test_to_xx(true, bee::str::to_u32, "000000012", 12u);
+    test_to_xx(false, bee::str::to_u32, "99f91235", 99u);
+    test_to_xx(true, bee::str::to_u64, "18446744073709551615", bee::limits::max<bee::u64>());
+    test_to_xx(false, bee::str::to_u64, "1844674407370955161=", 1844674407370955161u);
+    test_to_u128(true, "2938455948349", bee::u128(0x2938455948349, 0));
+    test_to_u128(true, "2938f902a92834682", bee::u128(0x2, 0x2938f902a9283468));
+    test_to_u128(true, "d195040a73834fecbbbd381264c768cc", bee::u128(0xbbbd381264c768cc, 0xd195040a73834fec));
+    test_to_u128(false, "d195040x73834fecbbbd381264c768cc", bee::u128(0, 0));
+    test_to_u128(false, "i\0x923", bee::u128(0, 0));
 }

@@ -9,7 +9,7 @@
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Serialization/BinarySerializer.hpp"
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 TEST(GUIDTests, guids_generate)
 {
@@ -20,6 +20,7 @@ TEST(GUIDTests, guids_generate)
     auto string_braced = bee::guid_to_string(guid, bee::GUIDFormat::braced_digits_with_hyphen);
     auto string_parens = bee::guid_to_string(guid, bee::GUIDFormat::parens_digits_with_hyphen);
 
+    ASSERT_NO_FATAL_FAILURE(bee::guid_from_string("0acb5457d2cb49238402b0e4f257c66a"));
     auto guid2 = bee::guid_from_string(string.view());
     auto guid2_hyphens = bee::guid_from_string(string_hyphens.view());
     auto guid2_braced = bee::guid_from_string(string_braced.view());

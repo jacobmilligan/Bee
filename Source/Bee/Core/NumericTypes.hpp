@@ -61,6 +61,20 @@ struct u128
           high(high_value)
     {}
 
+    constexpr u128& operator=(const u32 value)
+    {
+        low = value;
+        high = 0;
+        return *this;
+    }
+
+    constexpr u128& operator=(const u64 value)
+    {
+        low = value;
+        high = 0;
+        return *this;
+    }
+
     explicit inline operator u32() const
     {
         return static_cast<u32>(low);

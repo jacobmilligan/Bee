@@ -11,12 +11,17 @@
 #include "Bee/Core/Containers/HashMap.hpp"
 #include "Bee/Core/Concurrency.hpp"
 
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
-#include <ctype.h>
-#include <stdlib.h>
-#include <inttypes.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <stdarg.h>
+    #include <stdio.h>
+    #include <string.h>
+    #include <ctype.h>
+    #include <stdlib.h>
+    #include <inttypes.h>
+
+    #include <charconv>
+BEE_POP_WARNING
 
 #if BEE_COMPILER_MSVC == 1 && _MSC_VER < 1900
     #define BEE_MSVC_REQUIRE_REPLACEMENT_SNPRINTF
@@ -1182,54 +1187,76 @@ String to_string(const u128& value, Allocator* allocator)
 
 bool to_i32(const StringView& src, i32* result)
 {
-    char* endptr = nullptr;
-    *result = sign_cast<i32>(strtol(src.c_str(), &endptr, 10));
-    return endptr != src.data() || errno != ERANGE;
-}
-
-bool to_u32(const StringView& src, u32* result)
-{
-    char* endptr = nullptr;
-    *result = sign_cast<u32>(strtoul(src.c_str(), &endptr, 10));
-    return endptr != src.data() || errno != ERANGE;
+    const auto from_chars_result = std::from_chars(src.begin(), src.end(), *result, 10);
+    return from_chars_result.ec == std::errc() && from_chars_result.ptr == src.end();
 }
 
 bool to_i64(const StringView& src, i64* result)
 {
-    char* endptr = nullptr;
-    *result = sign_cast<i64>(strtoimax(src.c_str(), &endptr, 10));
-    return endptr != src.data() || errno != ERANGE;
+    const auto from_chars_result = std::from_chars(src.begin(), src.end(), *result, 10);
+    return from_chars_result.ec == std::errc() && from_chars_result.ptr == src.end();
+}
+
+bool to_u32(const StringView& src, u32* result)
+{
+    const auto from_chars_result = std::from_chars(src.begin(), src.end(), *result, 10);
+    return from_chars_result.ec == std::errc() && from_chars_result.ptr == src.end();
 }
 
 bool to_u64(const StringView& src, u64* result)
 {
-    char* endptr = nullptr;
-    *result = sign_cast<u64>(strtoumax(src.c_str(), &endptr, 10));
-    return endptr != src.data() || errno != ERANGE;
+    const auto from_chars_result = std::from_chars(src.begin(), src.end(), *result, 10);
+    return from_chars_result.ec == std::errc() && from_chars_result.ptr == src.end();
 }
 
 bool to_float(const StringView& src, float* result)
 {
-    char* endptr = nullptr;
-    *result = strtof(src.c_str(), &endptr);
-    return endptr != src.data() || errno != ERANGE;
+    const auto from_chars_result = std::from_chars(src.begin(), src.end(), *result, std::chars_format::general);
+    return from_chars_result.ec == std::errc() && from_chars_result.ptr == src.end();
 }
 
 bool to_double(const StringView& src, double* result)
 {
-    char* endptr = nullptr;
-    *result = strtod(src.c_str(), &endptr);
-    return endptr != src.data() || errno != ERANGE;
+    const auto from_chars_result = std::from_chars(src.begin(), src.end(), *result, std::chars_format::general);
+    return from_chars_result.ec == std::errc() && from_chars_result.ptr == src.end();
 }
 
 bool to_u128(const StringView& src, u128* result)
 {
-    if (src.size() != 32)
+    u64 values[2] { 0 };
+
+    i32 begin = 0;
+    i32 end = math::min(16, src.size());
+
+    for (int i = 0; i < 2; ++i)
     {
-        return false;
+        if (i * 16 >= src.size())
+        {
+            break;
+        }
+
+        auto from_chars_result = std::from_chars(src.data() + begin, src.data() + end, values[i], 16);
+        if (from_chars_result.ec != std::errc() || from_chars_result.ptr != src.data() + end)
+        {
+            return false;
+        }
+
+        begin = end;
+        end = math::min(begin + 16, src.size());
     }
 
-    return 2 == sscanf(src.c_str(), "%16zx%16zx", &result->high, &result->low);
+    if (src.size() <= 16)
+    {
+        result->low = values[0];
+        result->high = 0;
+    }
+    else
+    {
+        result->high = values[0];
+        result->low = values[1];
+    }
+
+    return true;
 }
 
 /*
@@ -1314,7 +1341,13 @@ i32 split(const StringView& src, StringView* dst_array, const i32 dst_array_capa
     while (current < src.size())
     {
         const auto substr = substring(src, current, src.size() - current);
-        const auto next_index = first_index_of(substr, delimiter);
+        auto next_index = first_index_of(substr, delimiter);
+
+        if (next_index < 0)
+        {
+            next_index = substr.size();
+        }
+
         dst_array[count++] = StringView(substr.data(), next_index);
         current += next_index + delim_len;
 
