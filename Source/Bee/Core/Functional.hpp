@@ -136,8 +136,11 @@ class Function; // undefined
  * A function wrapper object with fixed-size, statically allocated storage (i.e. a c-style array) and user-defined
  * memory alignment. By default, the internal buffer size is 32 bytes with alignment equivalent to alignof(u8[32]).
  */
+BEE_PUSH_WARNING
+BEE_DISABLE_PADDING_WARNINGS
 template <typename ReturnType, typename... Args, i32 BufferSize, i32 Alignment>
-class Function<ReturnType(Args...), BufferSize, Alignment> {
+class Function<ReturnType(Args...), BufferSize, Alignment>
+{
 private:
     using storage_t = detail::__function_storage_t<BufferSize>;
     using destructor_t = void(*)(storage_t& storage);
@@ -235,7 +238,9 @@ private:
         invoker_ = BEE_MOVE(other.invoker_);
         destructor_ = BEE_MOVE(other.destructor_);
     }
+
 };
+BEE_POP_WARNING
 
 
 } // namespace bee
