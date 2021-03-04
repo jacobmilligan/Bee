@@ -12,7 +12,10 @@
 #include "Bee/Core/Process.hpp"
 #include "Bee/Core/Filesystem.hpp"
 
-#include <time.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <time.h>
+BEE_POP_WARNING
 
 
 namespace bee {

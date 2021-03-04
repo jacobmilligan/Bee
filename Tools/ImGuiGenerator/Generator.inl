@@ -30,6 +30,8 @@ struct BEE_REFLECT(serializable) Definition
     BEE_REFLECT(optional)
     bool                templated { false };
 
+    BEE_PAD(2);
+
     BEE_REFLECT(nonserialized)
     StaticString<1024>  plugin_name;
 

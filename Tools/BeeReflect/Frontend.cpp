@@ -10,11 +10,14 @@
 #include "Bee/Core/Error.hpp"
 #include "Bee/Core/Hash.hpp"
 
-#include <clang/Frontend/CompilerInstance.h>
-#include <clang/Lex/PreprocessorOptions.h>
-#include <clang/Lex/HeaderSearch.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    BEE_DISABLE_WARNING_MSVC(4996)
+    #include <clang/Frontend/CompilerInstance.h>
+    #include <clang/Lex/PreprocessorOptions.h>
+    #include <clang/Lex/HeaderSearch.h>
+BEE_POP_WARNING
 
-#pragma optimize("", off)
 
 namespace bee {
 namespace reflect {

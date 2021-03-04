@@ -10,7 +10,11 @@
 
 #include "Storage.hpp"
 
-#include <clang/ASTMatchers/ASTMatchFinder.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    BEE_DISABLE_WARNING_MSVC(4996)
+    #include <clang/ASTMatchers/ASTMatchFinder.h>
+BEE_POP_WARNING
 
 
 namespace bee {
@@ -42,6 +46,7 @@ struct Diagnostics
 
     // Warnings
     unsigned int    warn_unknown_field_type { 0 };
+    BEE_PAD(4);
 
     void init(clang::DiagnosticsEngine* diag_engine);
 
@@ -60,6 +65,7 @@ struct SerializationInfo
 {
     bool                serializable { false };
     bool                using_explicit_versioning { false };
+    BEE_PAD(2);
     i32                 serialized_version { 0 };
     i32                 version_added { 0 };
     i32                 version_removed { limits::max<i32>() };
@@ -70,13 +76,14 @@ struct SerializationInfo
 
 struct AttributeParser
 {
+    clang::SourceLocation       location;
     bool                        empty { false };
     bool                        is_field{ false };
+    BEE_PAD(2);
     const char*                 current { nullptr };
     const char*                 end { nullptr };
     ReflectionAllocator*        allocator { nullptr };
     Diagnostics*                diagnostics { nullptr };
-    clang::SourceLocation       location;
 
     bool init(const clang::Decl& decl, Diagnostics* new_diagnostics);
 

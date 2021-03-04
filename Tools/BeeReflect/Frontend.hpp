@@ -9,8 +9,12 @@
 
 #include "ASTMatcher.hpp"
 
-#include <clang/Frontend/FrontendAction.h>
-#include <clang/Tooling/Tooling.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    BEE_DISABLE_WARNING_MSVC(4996)
+    #include <clang/Frontend/FrontendAction.h>
+    #include <clang/Tooling/Tooling.h>
+BEE_POP_WARNING
 
 
 namespace bee {

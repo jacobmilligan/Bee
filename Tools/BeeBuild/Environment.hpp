@@ -31,12 +31,14 @@ struct BuildEnvironment
     struct WindowsEnvironment
     {
         i32     default_ide { -1 };
+        BEE_PAD(4);
         Path    comspec_path;
         Path    vcvarsall_path[static_cast<int>(BuildIDE::unknown)];
         Path    cl_path[static_cast<int>(BuildIDE::unknown)];
     };
 
     BuildPlatform       platform { BuildPlatform::unknown };
+    BEE_PAD(4);
     Path                project_root;
     Path                build_dir;
     Path                install_dir;

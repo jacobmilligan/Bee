@@ -12,8 +12,6 @@
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Containers/HashMap.hpp"
 
-#include <time.h>
-#include <llvm/ADT/ArrayRef.h>
 
 namespace bee {
 
@@ -131,12 +129,13 @@ public:
     }
 private:
     StaticString<4096>  ident_buffer_;
-    CodegenMode         mode_ { CodegenMode::cpp };
     io::StringStream*   stream_ { nullptr };
+    CodegenMode         mode_ { CodegenMode::cpp };
     i32                 indent_size_ { 0 };
     i32                 indent_ { 0 };
     i32                 generated_count_ { 0 };
     bool                include_serialization_header_ { false };
+    BEE_PAD(7);
 };
 
 struct TypeListEntry;

@@ -11,6 +11,11 @@
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/Bit.hpp"
 
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <time.h>
+BEE_POP_WARNING
+
 
 namespace bee {
 namespace reflect {
@@ -938,7 +943,6 @@ void generate_empty_reflection(const PathView& dst_path, const char* location, S
     codegen.write_header_comment(relative_location.view());
     codegen.write_line("// THIS FILE IS INTENTIONALLY EMPTY - NO REFLECTION DATA WAS GENERATED");
 }
-#pragma optimize("", off)
 
 i32 generate_reflection(const PathView& dst_path, const ReflectedFile& file, String* output, CodegenMode mode)
 {

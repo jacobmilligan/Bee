@@ -13,9 +13,13 @@
 #include "Bee/Core/Filesystem.hpp"
 #include "Bee/Core/IO.hpp"
 
-#include <clang/Tooling/CommonOptionsParser.h>
-#include <clang/Tooling/Tooling.h>
-#include <llvm/Support/CommandLine.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    BEE_DISABLE_WARNING_MSVC(4996)
+    #include <clang/Tooling/CommonOptionsParser.h>
+    #include <clang/Tooling/Tooling.h>
+    #include <llvm/Support/CommandLine.h>
+BEE_POP_WARNING
 
 
 int bee_main(int argc, char** argv)

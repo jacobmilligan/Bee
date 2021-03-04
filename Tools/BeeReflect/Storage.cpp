@@ -7,7 +7,12 @@
 
 #include "Storage.hpp"
 
-#include <clang/AST/ASTContext.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    BEE_DISABLE_WARNING_MSVC(4996)
+    #include <clang/AST/ASTContext.h>
+BEE_POP_WARNING
+
 
 namespace bee {
 namespace reflect {

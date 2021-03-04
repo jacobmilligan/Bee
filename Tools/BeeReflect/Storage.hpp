@@ -13,8 +13,12 @@
 #include "Bee/Core/Containers/HashMap.hpp"
 #include "Bee/Core/Memory/SmartPointers.hpp"
 
-#include <llvm/ADT/StringRef.h>
-#include <clang/AST/DeclBase.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    BEE_DISABLE_WARNING_MSVC(4996)
+    #include <llvm/ADT/StringRef.h>
+    #include <clang/AST/DeclBase.h>
+BEE_POP_WARNING
 
 namespace bee {
 namespace reflect {
@@ -71,7 +75,6 @@ struct RecordTypeStorage
 {
     ReflectedFile*                          location { nullptr };
     const clang::CXXRecordDecl*             decl { nullptr };
-    bool                                    has_explicit_version { false };
     RecordTypeInfo                          type;
     DynamicArray<FieldStorage>              fields;
     DynamicArray<Attribute>                 attributes;
@@ -82,6 +85,8 @@ struct RecordTypeStorage
     DynamicArray<ArrayTypeStorage*>         field_array_types;
     DynamicArray<TemplateParameter>         template_parameters;
     const char*                             template_decl_string { nullptr };
+    bool                                    has_explicit_version { false };
+    BEE_PAD(7);
 
     RecordTypeStorage() = default;
 
@@ -157,6 +162,7 @@ struct ArrayTypeStorage
     const char*     element_type_name { nullptr };
     bool            is_generated { false };
     bool            uses_builder {false };
+    BEE_PAD(6);
     ArrayTypeInfo   type;
 };
 
@@ -218,6 +224,7 @@ enum class StorageKind
 struct TypeListEntry
 {
     StorageKind storage_kind { StorageKind::count };
+    BEE_PAD(4);
 
     union StorageUnion
     {
@@ -292,6 +299,7 @@ struct ReflectedFile
     {}
 
     u32                                         hash { 0 };
+    BEE_PAD(4);
     TypeMap*                                    parent_map { nullptr };
     Path                                        location;
     DynamicArray<const RecordTypeStorage*>      records;
@@ -311,6 +319,7 @@ struct TypeMap
     struct MappedType
     {
         u32             owning_file_hash { 0 };
+        BEE_PAD(4);
         const TypeInfo* type { nullptr };
     };
     DynamicHashMap<u32, ReflectedFile>      reflected_files;

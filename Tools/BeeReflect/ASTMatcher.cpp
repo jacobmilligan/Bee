@@ -11,13 +11,17 @@
 #include "Bee/Core/IO.hpp"
 #include "Bee/Core/Bit.hpp"
 
-#include <clang/Lex/PreprocessorOptions.h>
-#include <clang/ASTMatchers/ASTMatchFinder.h>
-#include <clang/Tooling/Tooling.h>
-#include <clang/AST/RecordLayout.h>
-#include <clang/AST/QualTypeNames.h>
-#include <clang/Basic/DiagnosticSema.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    BEE_DISABLE_WARNING_MSVC(4996)
 
+    #include <clang/Lex/PreprocessorOptions.h>
+    #include <clang/ASTMatchers/ASTMatchFinder.h>
+    #include <clang/Tooling/Tooling.h>
+    #include <clang/AST/RecordLayout.h>
+    #include <clang/AST/QualTypeNames.h>
+    #include <clang/Basic/DiagnosticSema.h>
+BEE_POP_WARNING
 
 namespace bee {
 namespace reflect {

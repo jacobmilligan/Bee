@@ -16,7 +16,6 @@
 #include "Bee/Core/Serialization/JSONSerializer.hpp"
 
 #include <algorithm>
-#include <time.h>
 
 namespace bee {
 
@@ -28,6 +27,7 @@ struct ImGuiConfig
     const char* ns { nullptr };
     const char* user_config { nullptr };
     bool        generate_internal { false };
+    BEE_PAD(7);
 };
 
 static int generate_imgui(const ImGuiConfig& config)

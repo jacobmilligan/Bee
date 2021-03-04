@@ -69,6 +69,7 @@ struct ConfigureInfo
     const BuildEnvironment* environment { nullptr };
     const GeneratorInfo*    generator_info { nullptr };
     bool                    reset_cache { false };
+    BEE_PAD(7);
     DynamicArray<String>    cmake_options;
     DynamicArray<BuildType> build_types;
 };
