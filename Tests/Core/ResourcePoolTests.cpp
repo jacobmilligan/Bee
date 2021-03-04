@@ -10,7 +10,7 @@
 #include <Bee/Core/Containers/ResourcePool.hpp>
 #include <Bee/Core/Serialization/BinarySerializer.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 
 

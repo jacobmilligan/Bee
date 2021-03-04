@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Reflection.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 TEST(ReflectionTestsV2, templated_types)
 {

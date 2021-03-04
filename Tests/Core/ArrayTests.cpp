@@ -8,7 +8,7 @@
 #include <Bee/Core/Containers/Array.hpp>
 #include <Bee/Core/Memory/MallocAllocator.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 
 TEST(ArrayTests, array_constructors_work)

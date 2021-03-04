@@ -152,18 +152,19 @@ private:
 
 namespace bee {
 
+using atomic_bool   = std::atomic_bool;
 
-using atomic_i8        = std::atomic_int8_t;
-using atomic_i16       = std::atomic_int16_t;
-using atomic_i32       = std::atomic_int32_t;
-using atomic_i64       = std::atomic_int64_t;
+using atomic_i8     = std::atomic_int8_t;
+using atomic_i16    = std::atomic_int16_t;
+using atomic_i32    = std::atomic_int32_t;
+using atomic_i64    = std::atomic_int64_t;
 
-using atomic_u8        = std::atomic_uint8_t;
-using atomic_u16       = std::atomic_uint16_t;
-using atomic_u32       = std::atomic_uint32_t;
-using atomic_u64       = std::atomic_uint64_t;
+using atomic_u8     = std::atomic_uint8_t;
+using atomic_u16    = std::atomic_uint16_t;
+using atomic_u32    = std::atomic_uint32_t;
+using atomic_u64    = std::atomic_uint64_t;
 
-using atomic_isize     = std::atomic_intptr_t;
+using atomic_isize  = std::atomic_intptr_t;
 
 
 } // namespace bee

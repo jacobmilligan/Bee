@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Path.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 TEST(PathTests, path_returns_correct_executable_path)
 {

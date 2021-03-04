@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Containers/SoA.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 struct TestStruct
 {

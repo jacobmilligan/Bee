@@ -18,6 +18,7 @@ struct BEE_REFLECT(serializable) MockResource
 
     int intval { new_intval };
     char charval { new_charval };
+    BEE_PAD(3);
 
     ~MockResource()
     {

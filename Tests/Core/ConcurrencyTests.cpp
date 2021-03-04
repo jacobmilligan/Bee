@@ -9,9 +9,12 @@
 #include <Bee/Core/Random.hpp>
 #include <Bee/Core/Containers/Array.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
-#include <thread>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <thread>
+BEE_POP_WARNING
 
 TEST(ConcurrencyTests, atomic_ptr_stack_works_as_stack)
 {

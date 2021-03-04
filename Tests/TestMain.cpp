@@ -10,7 +10,7 @@
 //
 
 #include <Bee/Core/Main.hpp>
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 // Bee logging callback to ensure logging is detected by GTest Death tests etc.
 void test_logger_callback(const bee::LogVerbosity verbosity, const char* fmt, va_list args)

@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Containers/ResourcePool.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 struct MockResource {
     static constexpr int new_intval = -1;

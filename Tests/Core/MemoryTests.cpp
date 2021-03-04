@@ -9,9 +9,12 @@
 #include <Bee/Core/Memory/MallocAllocator.hpp>
 #include <Bee/Core/Memory/SmartPointers.hpp>
 
-#include <thread>
+#include <GTest.hpp>
 
-#include <gtest/gtest.h>
+BEE_PUSH_WARNING
+    BEE_DISABLE_PADDING_WARNINGS
+    #include <thread>
+BEE_POP_WARNING
 
 struct TestObjectBase {
     static bool constructed;

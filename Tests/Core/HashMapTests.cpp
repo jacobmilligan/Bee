@@ -5,10 +5,11 @@
  *  Copyright (c) 2019 Jacob Milligan. All rights reserved.
  */
 
+#include <Bee/Core/Reflection.hpp>
 #include <Bee/Core/Containers/HashMap.hpp>
 #include <Bee/Core/Containers/Array.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 #include <random>
 

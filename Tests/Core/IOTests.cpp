@@ -7,7 +7,7 @@
 
 #include <Bee/Core/IO.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 
 // This is a copy-paste of the internal error handling code in Error.cpp - it's a case that the stream seems to break

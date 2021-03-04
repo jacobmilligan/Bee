@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Base64.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 static const char* encode_string(const bee::StringView& string)
 {

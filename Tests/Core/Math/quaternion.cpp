@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Math/quaternion.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 TEST(QuaternionTests, test_quat_multiplication)
 {

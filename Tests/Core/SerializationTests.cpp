@@ -14,7 +14,7 @@
 #include <Bee/Core/IO.hpp>
 #include <Bee/Core/Containers/HashMap.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 #include <rapidjson/filereadstream.h>
 
 

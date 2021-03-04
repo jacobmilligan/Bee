@@ -11,9 +11,9 @@
 #include <Bee/Core/Containers/Array.hpp>
 #include <Bee/Core/Concurrency.hpp>
 #include <Bee/Core/Memory/ChunkAllocator.hpp>
+#include <Bee/Core/Thread.hpp>
 
-#include <gtest/gtest.h>
-#include <thread>
+#include <GTest.hpp>
 
 
 TEST(AllocatorTests, linear_allocator)
@@ -144,19 +144,18 @@ TEST(AllocatorTests, ThreadSafeLinearAllocator)
     constexpr auto thread_count = 8;
     constexpr auto allocations_per_thread = 100;
 
-    std::thread threads[thread_count];
+    bee::Thread threads[thread_count];
     bee::ThreadSafeLinearAllocator allocator(1024 * 32);
 
     int* allocations[thread_count][allocations_per_thread];
 
-    int index = 0;
-    std::atomic_int32_t count(0);
-    std::atomic_bool    flag(false);
+    bee::i64 index = 0;
+    bee::atomic_i32 count(0);
+    bee::atomic_bool flag(false);
     bee::Barrier barrier(bee::static_array_length(threads)); // include the main thread
-
     for (auto& thread : threads)
     {
-        thread = std::thread([&, thread_index = index]()
+        thread = bee::Thread({}, [&, thread_index = index]()
         {
             for (int i = 0; i < allocations_per_thread; ++i)
             {
@@ -176,6 +175,7 @@ TEST(AllocatorTests, ThreadSafeLinearAllocator)
 
             barrier.wait();
         });
+
         ++index;
     }
 
@@ -225,6 +225,6 @@ TEST(AllocatorTests, ChunkAllocator)
 
     while (array.growth_rate() * sizeof(TestData) <= bee::megabytes(4))
     {
-        ASSERT_NO_FATAL_FAILURE(array.push_back(TestData{}));
+        array.push_back(TestData{});
     }
 }

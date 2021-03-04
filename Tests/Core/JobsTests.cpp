@@ -15,7 +15,7 @@
 #include "Bee/Core/Thread.hpp"
 #include "Bee/Core/Jobs/JobSystem.hpp"
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 class JobsTests : public ::testing::Test
 {

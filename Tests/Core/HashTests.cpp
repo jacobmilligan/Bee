@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Hash.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 BEE_PUSH_WARNING
 BEE_DISABLE_WARNING_MSVC(4307)

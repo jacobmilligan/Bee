@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Functional.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 constexpr void test_function_constexpr(int& x)
 {

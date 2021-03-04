@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Math/float4x4.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 void compare_float4x4(const bee::float4x4& a, const bee::float4x4& b)
 {

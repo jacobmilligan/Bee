@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Filesystem.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 TEST(FilesystemTests, appdata)
 {

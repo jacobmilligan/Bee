@@ -7,7 +7,7 @@
 
 #include <Bee/Core/JSON/JSON.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 // TODO(Jacob):
 //  - negatives

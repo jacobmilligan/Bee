@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Math/half.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 TEST(test_half, test_conversion)
 {

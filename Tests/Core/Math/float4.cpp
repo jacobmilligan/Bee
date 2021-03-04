@@ -7,7 +7,7 @@
 
 #include <Bee/Core/Math/float4.hpp>
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 
 TEST(float4Tests, addition_works_correctly)
 {

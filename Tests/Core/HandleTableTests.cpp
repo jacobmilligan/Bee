@@ -7,7 +7,7 @@
 
 #include "Bee/Core/Containers/HandleTable.hpp"
 
-#include <gtest/gtest.h>
+#include <GTest.hpp>
 #include <Bee/Core/Random.hpp>
 
 
@@ -19,6 +19,7 @@ struct MockResource {
 
     int intval { new_intval };
     char charval { new_charval };
+    BEE_PAD(3);
 
     ~MockResource()
     {
