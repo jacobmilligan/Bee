@@ -88,6 +88,7 @@ struct AssetDatabaseError
         not_found,
         failed_to_write_artifact_to_disk,
         lmdb_error,
+        guid_exists,
         unknown
     };
 
@@ -96,13 +97,14 @@ struct AssetDatabaseError
     const char* to_string() const
     {
         BEE_TRANSLATION_TABLE(value, Enum, const char*, Enum::unknown,
-            "Transaction has reached the maximum number asset modifications and creations", // txn_max_asset_ops,
-            "Asset properties handle was invalid", // invalid_properties_handle,
-            "Asset properties handle points to a deleted asset", // deleted_properties_handle,
-            "Attempted to modify an asset in a read-only transaction", // invalid_access,
-            "Asset not found", // not_found,
-            "Failed to write artifact buffer to disk", // failed_to_write_artifact_to_disk,
-            "LMDB error"// lmdb_error
+            "Transaction has reached the maximum number asset modifications and creations", // txn_max_asset_ops
+            "Asset properties handle was invalid",                                          // invalid_properties_handle
+            "Asset properties handle points to a deleted asset",                            // deleted_properties_handle
+            "Attempted to modify an asset in a read-only transaction",                      // invalid_access
+            "Asset not found",                                                              // not_found
+            "Failed to write artifact buffer to disk",                                      // failed_to_write_artifact_to_disk
+            "LMDB error",                                                                   // lmdb_error
+            "An asset already exists with the provided GUID",                               // guid_exists
         );
     }
 };
@@ -182,6 +184,8 @@ struct AssetDatabaseModule
 
 
     Result<AssetInfo*, AssetDatabaseError> (*create_asset)(AssetTxn* txn) { nullptr };
+
+    Result<AssetInfo*, AssetDatabaseError> (*create_asset_with_guid)(AssetTxn* txn, const GUID guid) { nullptr };
 
     Result<void, AssetDatabaseError> (*delete_asset)(AssetTxn* txn, const GUID guid) { nullptr };
 

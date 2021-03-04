@@ -436,7 +436,7 @@ public:
     StaticString& assign(const StaticString& static_string)
     {
         clear();
-        append(StringView(static_string.data(), math::min(static_string.size(), size_)));
+        append(StringView(static_string.data(), (static_string.size() < size_) ? static_string.size() : size_));
         return *this;
     }
 

@@ -109,7 +109,7 @@ ChunkAllocator::Chunk* ChunkAllocator::allocate_chunk() const
     auto* new_chunk = static_cast<Chunk*>(system_allocator()->allocate(chunk_size_));
     new (new_chunk) Chunk{};
     new_chunk->data = static_cast<void*>(new_chunk);
-
+    BEE_ASSERT(free_ != new_chunk);
     return new_chunk;
 }
 
@@ -119,11 +119,13 @@ void ChunkAllocator::push_free(Chunk* chunk)
     if (chunk->prev != nullptr)
     {
         chunk->prev->next = chunk->next;
+        chunk->prev = nullptr;
     }
 
     if (chunk->next != nullptr)
     {
         chunk->next->prev = chunk->prev;
+        chunk->next = nullptr;
     }
 
     // remove from allocated list if first/last
@@ -140,14 +142,18 @@ void ChunkAllocator::push_free(Chunk* chunk)
     if (free_ == nullptr)
     {
         free_ = chunk;
-        free_->next = nullptr;
     }
     else
     {
+        BEE_ASSERT(free_ != chunk);
         chunk->next = free_;
         free_->prev = chunk;
         free_ = chunk;
     }
+
+    BEE_ASSERT(free_->next == nullptr || free_->next != free_);
+    BEE_ASSERT(free_->prev == nullptr || free_->prev != free_);
+    BEE_ASSERT(free_->prev == nullptr || free_->next == nullptr || free_->next != free_->prev);
 }
 
 ChunkAllocator::Chunk* ChunkAllocator::pop_free()
@@ -159,6 +165,8 @@ ChunkAllocator::Chunk* ChunkAllocator::pop_free()
 
     auto* free = free_;
     free_ = free_->next;
+
+    BEE_ASSERT(free_ != free);
 
     new (free) Chunk{};
     free->data = static_cast<void*>(free);
@@ -195,7 +203,13 @@ void* ChunkAllocator::allocate(const size_t size, const size_t alignment)
         }
 
         offset = round_up(new_chunk->offset + sizeof(Allocation), alignment);
+
+        BEE_ASSERT(new_chunk->next == nullptr || new_chunk->next != new_chunk);
+        BEE_ASSERT(new_chunk->prev == nullptr || new_chunk->prev != new_chunk);
+        BEE_ASSERT(new_chunk->prev == nullptr || new_chunk->next == nullptr || new_chunk->next != new_chunk->prev);
     }
+
+    BEE_ASSERT(last_ != free_ && first_ != free_);
 
     auto* ptr = static_cast<u8*>(last_->data) + offset;
     auto* header = get_allocation(ptr);
@@ -240,7 +254,7 @@ void ChunkAllocator::deallocate(void* ptr)
 
     chunk->size -= allocation->size;
 
-    if (chunk->size <= sizeof(Chunk) + sizeof(Allocation))
+    if (chunk->size == 0)
     {
         push_free(chunk);
     }

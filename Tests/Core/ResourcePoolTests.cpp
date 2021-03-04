@@ -147,7 +147,7 @@ TEST_F(ResourcePoolTests, test_all_resources_can_allocate_and_get)
 
 TEST_F(ResourcePoolTests, test_iterator)
 {
-    for (id_t i = 0; i < 32; ++i)
+    for (id_t i = 0; i < 40; ++i)
     {
         const auto handle = resources_.allocate();
         ASSERT_TRUE(handle.is_valid());
@@ -161,7 +161,16 @@ TEST_F(ResourcePoolTests, test_iterator)
         ++count;
     }
 
-    ASSERT_EQ(count, 32);
+    ASSERT_EQ(count, 40);
+
+    resources_.clear();
+
+    count = 0;
+    for (auto pair : resources_)
+    {
+        ++count;
+    }
+    ASSERT_EQ(count, 0);
 }
 
 #ifdef BEE_ENABLE_REFLECTION

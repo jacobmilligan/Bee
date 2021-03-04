@@ -18,6 +18,7 @@
 #include "Bee/ImGui/ImGui.hpp"
 #include "Bee/AssetPipeline/AssetPipeline.hpp"
 #include "Bee/ShaderPipeline/ShaderPipeline.hpp"
+#include "Bee/Project/Project.hpp"
 
 
 namespace bee {
@@ -47,7 +48,7 @@ struct EditorApp
     RenderGraphPass*    imgui_pass { nullptr };
 
     // Data connection
-    AssetPipeline*      asset_pipeline { nullptr };
+    Project*            project { nullptr };
     DataConnection*     connection { nullptr };
 };
 
@@ -62,6 +63,7 @@ static ImGuiModule*             g_imgui { nullptr };
 static ImGuiBackendModule*      g_imgui_backend { nullptr };
 static AssetPipelineModule*     g_asset_pipeline { nullptr };
 static ShaderPipelineModule*    g_shader_pipeline { nullptr };
+static ProjectModule*           g_project { nullptr };
 
 /*
  ******************************************************
@@ -72,7 +74,7 @@ static ShaderPipelineModule*    g_shader_pipeline { nullptr };
  */
 static void init_pass(GpuBackend* gpu, const DeviceHandle device, const void* external_data, void* pass_data)
 {
-    auto res = g_imgui_backend->create_backend(device, gpu, g_app->asset_pipeline, system_allocator());
+    auto res = g_imgui_backend->create_backend(device, gpu, g_project->get_asset_pipeline(g_app->project), system_allocator());
     if (!res)
     {
         log_error("%s", res.unwrap_error().to_string());
@@ -193,16 +195,16 @@ bool startup()
     asset_pipeline_info.import = &import_info;
     asset_pipeline_info.flags = AssetPipelineFlags::import | AssetPipelineFlags::load;
 
-    auto res = g_asset_pipeline->create_pipeline(asset_pipeline_info);
+    auto res = g_project->open(fs::roots().data.join("Editor/Editor.bee").view(), ProjectOpenMode::open_or_create);
     if (!res)
     {
-        log_error("Failed to create asset pipeline: %s", res.unwrap_error().to_string());
+        log_error("Failed to open project: %s", res.unwrap_error().to_string());
         return false;
     }
-    g_app->asset_pipeline = res.unwrap();
+    g_app->project = res.unwrap();
 
     // Init the shader pipeline
-    g_shader_pipeline->init(g_app->asset_pipeline, g_app->gpu, g_app->device);
+    g_shader_pipeline->init(g_project->get_asset_pipeline(g_app->project), g_app->gpu, g_app->device);
 
     // Create a new render graph to process the frame - manages creating GPU resources, automatic barriers etc.
     g_app->render_graph = g_render_graph->create_graph(g_app->gpu, g_app->device);
@@ -236,18 +238,17 @@ bool startup()
 
 void shutdown()
 {
-    // Non-core modules - these *may* have assets associated with them so we need to do this before the final asset
-    // pipeline refresh
+    // Shutdown prior to the final asset pipeline refresh in case assets are needed for unloading
     if (g_app->imgui_pass != nullptr)
     {
         g_render_graph->remove_pass(g_app->imgui_pass);
     }
 
-    // Core modules - these don't have assets associated with them so it's safe to do the final refresh here
-    g_asset_pipeline->refresh(g_app->asset_pipeline);
-
-    // Safe to shut down importers/loaders/locators now
+    // Safe to shut down importers/loaders/locators now there's no resources hanging around
     g_shader_pipeline->shutdown();
+
+    // Safe to close project once everything associated with its asset pipeline is finished shutting down
+    g_project->close(g_app->project);
 
     if (g_app->connection != nullptr)
     {
@@ -344,11 +345,7 @@ void tick()
         );
     }
 
-    auto ap_res = g_asset_pipeline->refresh(g_app->asset_pipeline);
-    if (!ap_res)
-    {
-        log_error("Asset pipeline error: %s", ap_res.unwrap_error().to_string());
-    }
+    g_project->tick(g_app->project);
 
     if (g_app->imgui_backend != nullptr)
     {
@@ -400,6 +397,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
         bee::g_imgui_backend = static_cast<bee::ImGuiBackendModule*>(loader->get_module(BEE_IMGUI_BACKEND_MODULE_NAME));
         bee::g_asset_pipeline = static_cast<bee::AssetPipelineModule*>(loader->get_module(BEE_ASSET_PIPELINE_MODULE_NAME));
         bee::g_shader_pipeline = static_cast<bee::ShaderPipelineModule*>(loader->get_module(BEE_SHADER_PIPELINE_MODULE_NAME));
+        bee::g_project = static_cast<bee::ProjectModule*>(loader->get_module(BEE_PROJECT_MODULE_NAME));
 
         if (bee::g_app->imgui_pass != nullptr)
         {

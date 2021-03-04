@@ -5,7 +5,7 @@
  *  Copyright (c) 2020 Jacob Milligan. All rights reserved.
  */
 
-#include "Bee/Core/PluginDescriptor.inl"
+#include "Bee/Core/PluginDescriptor.hpp"
 #include "Bee/Core/Containers/Array.hpp"
 #include "Bee/Core/DynamicLibrary.hpp"
 #include "Bee/Core/Filesystem.hpp"

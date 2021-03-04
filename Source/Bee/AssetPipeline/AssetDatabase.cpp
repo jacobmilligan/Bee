@@ -525,7 +525,8 @@ void gc(AssetDatabase* db)
         while (txn != nullptr)
         {
             auto* next = txn->next;
-            BEE_DELETE(thread.txn_allocator, txn);
+            auto& alloc_thread = db->thread_data[txn->thread];
+            BEE_DELETE(alloc_thread.txn_allocator, txn);
             txn = next;
         }
         thread.gc_transactions = nullptr;
@@ -545,23 +546,25 @@ AssetTxn write(AssetDatabase* db)
 void abort(AssetTxn* txn)
 {
     auto* txn_data = txn->data();
+    auto& thread = db_get_thread(txn->data()->db);
 
     mdb_txn_abort(txn_data->handle);
     txn_data->handle = nullptr;
 
     db_txn_list_remove(txn_data);
-    db_txn_list_append(&txn_data->db->thread_data[txn_data->thread].gc_transactions, txn_data);
+    db_txn_list_append(&thread.gc_transactions, txn_data);
 }
 
 bool commit(AssetTxn* txn)
 {
     auto* txn_data = txn->data();
+    auto& thread = db_get_thread(txn->data()->db);
 
     BEE_LMDB_ASSERT(mdb_txn_commit(txn_data->handle));
     txn_data->handle = nullptr;
 
     db_txn_list_remove(txn_data);
-    db_txn_list_append(&txn_data->db->thread_data[txn_data->thread].gc_transactions, txn_data);
+    db_txn_list_append(&thread.gc_transactions, txn_data);
 
     return true;
 }
@@ -574,13 +577,17 @@ bool asset_exists(AssetTxn* txn, const GUID guid)
     return basic_txn_get(txn->data()->handle, db_get_dbi(txn->data()->db, DbMapId::guid_to_asset), &mdb_key, &mdb_val);
 }
 
-Result<AssetInfo*, AssetDatabaseError> create_asset(AssetTxn* txn)
+Result<AssetInfo*, AssetDatabaseError> create_asset_with_guid(AssetTxn* txn, const GUID guid)
 {
+    if (asset_exists(txn, guid))
+    {
+        return { AssetDatabaseError::guid_exists };
+    }
+
     auto* txn_data = txn->data();
     auto* txn_handle = txn_data->handle;
     auto* db = txn_data->db;
 
-    const auto guid = generate_guid();
     auto key = make_key(guid);
     MDB_val val{};
     val.mv_data = nullptr;
@@ -594,6 +601,11 @@ Result<AssetInfo*, AssetDatabaseError> create_asset(AssetTxn* txn)
     auto* meta = static_cast<AssetInfo*>(val.mv_data);
     meta->guid = guid;
     return meta;
+}
+
+Result<AssetInfo*, AssetDatabaseError> create_asset(AssetTxn* txn)
+{
+    return create_asset_with_guid(txn, generate_guid());
 }
 
 Result<void, AssetDatabaseError> remove_all_artifacts(AssetTxn* txn, const GUID guid);
@@ -1187,6 +1199,7 @@ void set_asset_database_module(bee::PluginLoader* loader, const bee::PluginState
     g_assetdb.asset_exists = bee::asset_exists;
 
     g_assetdb.create_asset = bee::create_asset;
+    g_assetdb.create_asset_with_guid = bee::create_asset_with_guid;
     g_assetdb.delete_asset = bee::delete_asset;
     g_assetdb.get_asset_info = bee::get_asset_info;
     g_assetdb.set_asset_info = bee::set_asset_info;

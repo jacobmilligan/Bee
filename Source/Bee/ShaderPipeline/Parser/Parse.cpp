@@ -750,7 +750,7 @@ bool BscParser::parse_update_frequencies(BscLexer* lexer, DynamicArray<ShaderFil
 
         // grab the layout index
         int layout = -1;
-        if (!str::to_i32(str::substring(ident, index + sizeof("layout_")), &layout))
+        if (!str::to_i32(str::substring(ident, index + sizeof("layout_") - 1), &layout))
         {
             return report_error(BscErrorCode::invalid_layout_name, lexer);
         }

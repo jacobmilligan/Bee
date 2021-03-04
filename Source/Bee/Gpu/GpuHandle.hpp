@@ -1,5 +1,5 @@
 /*
- *  GpuObject.hpp.h
+ *  GpuObject.hpp
  *  Bee
  *
  *  Copyright (c) 2021 Jacob Milligan. All rights reserved.

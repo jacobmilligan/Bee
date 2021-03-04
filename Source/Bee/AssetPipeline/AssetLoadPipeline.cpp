@@ -95,6 +95,18 @@ Result<void, AssetPipelineError> unregister_loader(AssetPipeline* pipeline, Asse
 
     auto& registered_loader = load_pipeline.loaders[id];
 
+    for (auto asset : registered_loader.assets)
+    {
+        auto res = registered_loader.instance->unload(asset.resource.location.type, asset.resource.data.data(), registered_loader.user_data);
+        if (!res)
+        {
+            return res.unwrap_error();
+        }
+
+        // Remove the cached and stored data from the global cache
+        load_pipeline.cache.erase(get_hash(asset.resource.guid));
+    }
+
     // Do one final tick in case the loaders tick requires destroying cached resources etc.
     if (registered_loader.instance->tick != nullptr)
     {
@@ -371,6 +383,12 @@ Result<void, AssetPipelineError> refresh_load_pipeline(AssetPipeline* pipeline)
         {
             const LoaderId loader_id(handle);
             const AssetId asset_id(handle);
+
+            if (!load_pipeline.loaders.is_active(loader_id))
+            {
+                // the loader was unregistered previously and the asset was unloaded during that process
+                continue;
+            }
 
             auto& loader = load_pipeline.loaders[loader_id];
             if (!loader.assets.is_active(asset_id))

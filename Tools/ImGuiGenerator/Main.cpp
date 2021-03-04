@@ -30,6 +30,7 @@ struct ImGuiConfig
     BEE_PAD(7);
 };
 
+
 static int generate_imgui(const ImGuiConfig& config)
 {
     const auto full_output_path = Path(current_working_directory()).append(config.output_path).normalize();

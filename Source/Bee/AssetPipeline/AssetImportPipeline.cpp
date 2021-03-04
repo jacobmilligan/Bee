@@ -244,6 +244,7 @@ Result<void, AssetPipelineError> import_asset(AssetPipeline* pipeline, const Pat
     else
     {
         const auto settings_type = pipeline->import.importers[importer_index].importer->settings_type();
+        meta.guid = generate_guid();
         meta.kind = AssetFileKind::file;
         meta.importer = pipeline->import.importer_hashes[importer_index];
         meta.settings = settings_type->create_instance(temp_allocator());
@@ -253,9 +254,17 @@ Result<void, AssetPipelineError> import_asset(AssetPipeline* pipeline, const Pat
 
     if (is_new_file)
     {
-        auto res = g_assetdb.create_asset(&txn);
+        auto res = g_assetdb.create_asset_with_guid(&txn, meta.guid);
         if (!res)
         {
+            if (res.unwrap_error() == AssetDatabaseError::guid_exists)
+            {
+                auto existing_asset = g_assetdb.get_asset_path(&txn, meta.guid);
+                char guid_string[32];
+                guid_to_string(meta.guid, GUIDFormat::digits, guid_string, static_array_length(guid_string));
+                log_error("Failed to create asset: GUID %s is already assigned to %" BEE_PRIsv, guid_string, BEE_FMT_SV(existing_asset.unwrap()));
+            }
+
             return { AssetPipelineError::failed_to_create_asset };
         }
 

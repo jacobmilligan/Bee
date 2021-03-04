@@ -3,6 +3,10 @@
     "version": "0.0.0",
     "dependencies": [
         {
+            "name": "Bee.Project",
+            "version": "0.0.0"
+        },
+        {
             "name": "Bee.Platform",
             "version": "0.0.0"
         },

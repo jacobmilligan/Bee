@@ -64,12 +64,6 @@ public:
         using value_type        = ResourcePair;
         using difference_type   = ptrdiff_t;
 
-        explicit iterator(ResourcePool* pool, const id_t index)
-            : pool_(pool),
-              current_index_(index % pool->chunk_capacity_),
-              current_chunk_(index / pool->chunk_capacity_)
-        {}
-
         explicit iterator(ResourcePool* pool, const id_t index_in_chunk, const id_t chunk)
             : pool_(pool),
               current_index_(index_in_chunk),
@@ -288,7 +282,19 @@ public:
 
     inline iterator begin()
     {
-        return iterator(this, 0);
+        // Find the first index/chunk - it may not always be 0/0
+        id_t index = 0;
+        id_t chunk = 0;
+        while (chunk < chunk_count_ && !chunks_[chunk].active_states[index])
+        {
+            ++index;
+            if (index >= chunk_capacity_)
+            {
+                index = 0;
+                ++chunk;
+            }
+        }
+        return iterator(this, index, chunk);
     }
 
     inline iterator end()

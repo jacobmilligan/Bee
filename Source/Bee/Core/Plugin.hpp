@@ -7,10 +7,6 @@
 
 #pragma once
 
-#include "Bee/Core/Config.hpp"
-#include "Bee/Core/NumericTypes.hpp"
-#include "Bee/Core/String.hpp"
-#include "Bee/Core/Hash.hpp"
 #include "Bee/Core/Path.hpp"
 
 
