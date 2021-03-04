@@ -12,12 +12,11 @@ int bee_main(int argc, char** argv)
 {
     struct TestData { int data[512]; };
 
-    bee::ChunkAllocator allocator(bee::megabytes(16), 64, 1);
+    bee::ChunkAllocator allocator(bee::megabytes(4), 64, 1);
 
     bee::DynamicArray<TestData> array(&allocator);
 
-    const int count = bee::megabytes(2) / sizeof(TestData);
-    for (int i = 0; i < count - 1; ++i)
+    while (array.growth_rate() * sizeof(TestData) <= bee::megabytes(4))
     {
         array.push_back(TestData{});
     }

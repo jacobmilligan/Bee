@@ -16,7 +16,6 @@ struct Header
     i32 thread { 0 };
 };
 
-
 ChunkAllocator::ChunkAllocator(const size_t chunk_size, const size_t chunk_alignment, const size_t reserve_chunk_count, const bool validate_leaks_on_destruct)
     : chunk_size_(chunk_size),
       chunk_alignment_(chunk_alignment),
@@ -141,6 +140,7 @@ void ChunkAllocator::push_free(Chunk* chunk)
     if (free_ == nullptr)
     {
         free_ = chunk;
+        free_->next = nullptr;
     }
     else
     {
