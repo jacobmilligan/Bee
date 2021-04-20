@@ -10,6 +10,7 @@
 #include "Bee/Core/Result.hpp"
 #include "Bee/Core/Enum.hpp"
 
+#define BEE_IMGUI_USER_EXTENSIONS "Bee/ImGui/Extensions.inl"
 #ifndef BEE_IMGUI_INTERNAL
     BEE_PUSH_WARNING
         BEE_DISABLE_PADDING_WARNINGS

@@ -1565,7 +1565,7 @@ struct GpuBackend
 
     void (*destroy_swapchain)(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle) { nullptr };
 
-    TextureHandle (*acquire_swapchain_texture)(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle) { nullptr };
+    TextureHandle (*acquire_swapchain_texture)(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle, const u64 timeout) { nullptr };
 
     TextureViewHandle (*get_swapchain_texture_view)(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle) { nullptr };
 
@@ -1605,6 +1605,8 @@ struct GpuBackend
     void (*destroy_buffer)(const DeviceHandle& device, const BufferHandle& buffer) { nullptr };
 
     void (*update_buffer)(const DeviceHandle& device_handle, const BufferHandle& buffer_handle, const void* data, const size_t offset, const size_t size) { nullptr };
+
+    void (*resize_buffer)(const DeviceHandle& device_handle, const BufferHandle& buffer_handle, const size_t size) { nullptr };
 
     TextureHandle (*create_texture)(const DeviceHandle& device_handle, const TextureCreateInfo& create_info) { nullptr };
 

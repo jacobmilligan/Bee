@@ -10,6 +10,7 @@
 BEE_PUSH_WARNING
     BEE_DISABLE_PADDING_WARNINGS
     BEE_DISABLE_WARNING_MSVC(4127)
+    BEE_DISABLE_WARNING_MSVC(4189)
 
     #include <imgui/imgui.cpp>
     #include <imgui/imgui_draw.cpp>

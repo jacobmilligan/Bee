@@ -853,6 +853,8 @@ inline StaticArray<wchar_t, Size> to_wchar(const StringView& src)
     return BEE_MOVE(dst);
 }
 
+BEE_CORE_API u32 utf32_to_utf8_codepoint(const u32 utf32_codepoint);
+
 
 /**
  * String inspection utilities

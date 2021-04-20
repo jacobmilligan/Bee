@@ -40,6 +40,8 @@ struct ImGuiBackend
     TextureViewHandle       font_texture_view;
     BufferHandle            vertex_buffer;
     BufferHandle            index_buffer;
+    size_t                  vertex_buffer_size { 0 };
+    size_t                  index_buffer_size { 0 };
     PipelineStateDescriptor pipeline_desc;
     u64                     time { 0 };
 };
@@ -85,6 +87,29 @@ Result<ImGuiBackend*, ImGuiError> create_backend(const DeviceHandle device, GpuB
     auto& io = ImGui::GetIO();
     io.BackendPlatformName = "Bee.ImGui." BEE_OS_NAME_STRING;
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+
+    io.KeyMap[ImGuiKey_Tab] = Key::tab;
+    io.KeyMap[ImGuiKey_LeftArrow] = Key::left;
+    io.KeyMap[ImGuiKey_RightArrow] = Key::right;
+    io.KeyMap[ImGuiKey_UpArrow] = Key::up;
+    io.KeyMap[ImGuiKey_DownArrow] = Key::down;
+    io.KeyMap[ImGuiKey_PageUp] = Key::page_up;
+    io.KeyMap[ImGuiKey_PageDown] = Key::page_down;
+    io.KeyMap[ImGuiKey_Home] = Key::home;
+    io.KeyMap[ImGuiKey_End] = Key::end;
+    io.KeyMap[ImGuiKey_Insert] = Key::insert;
+    io.KeyMap[ImGuiKey_Delete] = Key::delete_key;
+    io.KeyMap[ImGuiKey_Backspace] = Key::backspace;
+    io.KeyMap[ImGuiKey_Space] = Key::space;
+    io.KeyMap[ImGuiKey_Enter] = Key::enter;
+    io.KeyMap[ImGuiKey_Escape] = Key::escape;
+    io.KeyMap[ImGuiKey_KeyPadEnter] = Key::keypad_enter;
+    io.KeyMap[ImGuiKey_A] = Key::A;
+    io.KeyMap[ImGuiKey_C] = Key::C;
+    io.KeyMap[ImGuiKey_V] = Key::V;
+    io.KeyMap[ImGuiKey_X] = Key::X;
+    io.KeyMap[ImGuiKey_Y] = Key::Y;
+    io.KeyMap[ImGuiKey_Z] = Key::Z;
 
     unsigned char* font_pixels = nullptr;
     int font_width = -1;
@@ -177,27 +202,41 @@ void draw(ImGuiBackend* backend, CommandBuffer* cmd_buf)
     BufferCreateInfo info{};
 
     // Create or resize buffers if needed
-    if (new_vertex_buffer_size > 0 && !backend->vertex_buffer.is_valid())
+    if (new_vertex_buffer_size > backend->vertex_buffer_size)
     {
-        info.size = new_vertex_buffer_size;
-        info.type = BufferType::vertex_buffer | BufferType::dynamic_buffer;
-        info.debug_name = "Bee.ImGui.VertexBuffer";
-        info.memory_usage = DeviceMemoryUsage::cpu_to_gpu;
-        backend->vertex_buffer = backend->gpu->create_buffer(backend->device, info);
+        if (!backend->vertex_buffer.is_valid())
+        {
+            info.size = new_vertex_buffer_size;
+            info.type = BufferType::vertex_buffer | BufferType::dynamic_buffer;
+            info.debug_name = "Bee.ImGui.VertexBuffer";
+            info.memory_usage = DeviceMemoryUsage::cpu_to_gpu;
+            backend->vertex_buffer = backend->gpu->create_buffer(backend->device, info);
+        }
+        else
+        {
+            backend->gpu->resize_buffer(backend->device, backend->vertex_buffer, new_vertex_buffer_size);
+        }
+
+        backend->vertex_buffer_size = new_vertex_buffer_size;
     }
 
-    if (new_index_buffer_size > 0 && !backend->index_buffer.is_valid())
+    if (new_index_buffer_size > backend->index_buffer_size)
     {
-        info.size = new_index_buffer_size;
-        info.type = BufferType::index_buffer | BufferType::dynamic_buffer;
-        info.debug_name = "Bee.ImGui.VertexBuffer";
-        info.memory_usage = DeviceMemoryUsage::cpu_to_gpu;
-        backend->index_buffer = backend->gpu->create_buffer(backend->device, info);
+        if (!backend->index_buffer.is_valid())
+        {
+            info.size = new_index_buffer_size;
+            info.type = BufferType::index_buffer | BufferType::dynamic_buffer;
+            info.debug_name = "Bee.ImGui.IndexBuffer";
+            info.memory_usage = DeviceMemoryUsage::cpu_to_gpu;
+            backend->index_buffer = backend->gpu->create_buffer(backend->device, info);
+        }
+        else
+        {
+            backend->gpu->resize_buffer(backend->device, backend->index_buffer, new_index_buffer_size);
+        }
+
+        backend->index_buffer_size = new_index_buffer_size;
     }
-
-    const auto off = IM_OFFSETOF(ImDrawVert, uv);
-    BEE_UNUSED(off);
-
 
     // Upload buffer draw data
     int vtx_offset = 0;
@@ -303,6 +342,20 @@ void new_frame(ImGuiBackend* backend, const WindowHandle window_handle)
     io.MouseDown[1] = mouse->get_state(MouseButton::right)->values[0].flag;
     io.MouseDown[2] = mouse->get_state(MouseButton::middle)->values[0].flag;
     io.MousePos = g_platform->get_cursor_position(window_handle).to_float2();
+
+    auto* keyboard = g_input->default_device(InputDeviceType::keyboard);
+    for (const auto& event : keyboard->get_events())
+    {
+        if (event.type == InputEventType::text)
+        {
+            io.AddInputCharacter(event.codepoint);
+        }
+        else
+        {
+            io.KeysDown[event.button_id] = event.state.values[0].flag;
+        }
+    }
+    io.KeyCtrl = keyboard->get_state(Key::left_control)->values[0].flag || keyboard->get_state(Key::right_control)->values[0].flag;
 
     ImGui::NewFrame();
 }

@@ -37,7 +37,7 @@ void* vm_reserve(const size_t size)
 
 void vm_commit(void* ptr, const size_t size)
 {
-    const auto* result = VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE);
+    [[maybe_unused]] const auto* result = VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE);
     BEE_ASSERT_F(result != nullptr, "Failed to commit virtual memory: Win32 error code: %s", win32_get_last_error_string());
 }
 

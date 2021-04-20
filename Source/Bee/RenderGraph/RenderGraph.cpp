@@ -697,7 +697,7 @@ static void resolve_resource(RenderGraph* graph, VirtualResource* src)
     // drawables before executing command buffers because the swapchain may be recreated here
     if (src->handle == RenderGraphResourceType::backbuffer)
     {
-        src->backbuffer.drawable = backend->acquire_swapchain_texture(graph->device, src->backbuffer.swapchain);
+        src->backbuffer.drawable = backend->acquire_swapchain_texture(graph->device, src->backbuffer.swapchain, limits::max<u64>());
         src->backbuffer.drawable_view = backend->get_swapchain_texture_view(graph->device, src->backbuffer.swapchain);
         return;
     }
@@ -1066,14 +1066,21 @@ void execute(RenderGraph* graph)
 
     graph->executed_cmd_buffers.clear();
 
-    // kick jobs for each pass
-    for (auto* pass : graph->execute_order)
+    // kick jobs for each pass if multiple, otherwise execute single pass on main thread
+    if (graph->execute_order.size() > 1)
     {
-        auto* job = create_job(execute_pass_job, pass);
-        job_schedule(&graph->wait_handle, job);
-    }
+        for (auto* pass : graph->execute_order)
+        {
+            auto* job = create_job(execute_pass_job, pass);
+            job_schedule(&graph->wait_handle, job);
+        }
 
-    job_wait(&graph->wait_handle);
+        job_wait(&graph->wait_handle);
+    }
+    else
+    {
+        execute_pass_job(graph->execute_order[0]);
+    }
 
     for (auto* pass : graph->execute_order)
     {

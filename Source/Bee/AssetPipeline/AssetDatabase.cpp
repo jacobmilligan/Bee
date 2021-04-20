@@ -342,11 +342,6 @@ TempAllocScope::~TempAllocScope()
  *
  *************************************
  */
-static bool asset_txn_is_valid(AssetTxnData* txn)
-{
-    return txn->handle != nullptr;
-}
-
 void get_artifact_path(AssetTxn* txn, const u128& hash, Path* dst)
 {
     StaticString<32> hash_string;
@@ -571,7 +566,7 @@ bool commit(AssetTxn* txn)
 
 bool asset_exists(AssetTxn* txn, const GUID guid)
 {
-    BEE_ASSERT(asset_txn_is_valid(txn->data()));
+    BEE_ASSERT(txn->data()->handle != nullptr);
     auto mdb_key = make_key(guid);
     MDB_val mdb_val{};
     return basic_txn_get(txn->data()->handle, db_get_dbi(txn->data()->db, DbMapId::guid_to_asset), &mdb_key, &mdb_val);
@@ -688,7 +683,7 @@ Result<void, AssetDatabaseError> delete_asset(AssetTxn* txn, const GUID guid)
         }
     }
 
-    BEE_ASSERT(asset_txn_is_valid(txn->data()));
+    BEE_ASSERT(txn->data()->handle != nullptr);
 
     if (!basic_txn_del(txn->data()->handle, db_get_dbi(txn->data()->db, DbMapId::guid_to_asset), &guid_key, nullptr))
     {
@@ -904,7 +899,7 @@ Result<u128, AssetDatabaseError> add_artifact_with_key(AssetTxn* txn, const GUID
     Path artifact_path(tmp_alloc);
     get_artifact_path(txn, hash, &artifact_path);
 
-    BEE_ASSERT(asset_txn_is_valid(txn_data));
+    BEE_ASSERT(txn->data()->handle != nullptr);
 
     AssetArtifact artifact{};
     artifact.type_hash = artifact_type->hash;

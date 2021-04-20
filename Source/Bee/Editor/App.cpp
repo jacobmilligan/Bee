@@ -20,15 +20,22 @@
 #include "Bee/ShaderPipeline/ShaderPipeline.hpp"
 #include "Bee/Project/Project.hpp"
 
+#include "Bee/Editor/EditorWindow.inl"
+
 
 namespace bee {
 
 
 static constexpr i32 editor_connection_port = 8888;
 
+
 struct EditorApp
 {
     ImGuiBackend*       imgui_backend { nullptr };
+
+    // Projects
+    Project*            editor_project { nullptr };
+    Project*            user_project { nullptr };
 
     // Platform resources
     WindowHandle        main_window;
@@ -48,8 +55,12 @@ struct EditorApp
     RenderGraphPass*    imgui_pass { nullptr };
 
     // Data connection
-    Project*            project { nullptr };
     DataConnection*     connection { nullptr };
+
+    // GUI
+    EditorWindow        editor_window;
+
+    BEE_PAD(4);
 };
 
 static EditorApp* g_app = nullptr;
@@ -72,22 +83,6 @@ static ProjectModule*           g_project { nullptr };
  *
  ******************************************************
  */
-static void init_pass(GpuBackend* gpu, const DeviceHandle device, const void* external_data, void* pass_data)
-{
-    auto res = g_imgui_backend->create_backend(device, gpu, g_project->get_asset_pipeline(g_app->project), system_allocator());
-    if (!res)
-    {
-        log_error("%s", res.unwrap_error().to_string());
-        return;
-    }
-    g_app->imgui_backend = res.unwrap();
-}
-
-static void destroy_pass(GpuBackend* gpu, const DeviceHandle device, const void* external_data, void* pass_data)
-{
-    g_imgui_backend->destroy_backend(g_app->imgui_backend);
-}
-
 static void setup_pass(RenderGraphPass* pass, RenderGraphBuilderModule* builder, const void* external_data, void* pass_data)
 {
     const auto backbuffer = builder->import_backbuffer(pass, "Backbuffer", g_app->swapchain);
@@ -201,10 +196,10 @@ bool startup()
         log_error("Failed to open project: %s", res.unwrap_error().to_string());
         return false;
     }
-    g_app->project = res.unwrap();
+    g_app->editor_project = res.unwrap();
 
     // Init the shader pipeline
-    g_shader_pipeline->init(g_project->get_asset_pipeline(g_app->project), g_app->gpu, g_app->device);
+    g_shader_pipeline->init(g_project->get_asset_pipeline(g_app->editor_project), g_app->gpu, g_app->device);
 
     // Create a new render graph to process the frame - manages creating GPU resources, automatic barriers etc.
     g_app->render_graph = g_render_graph->create_graph(g_app->gpu, g_app->device);
@@ -231,6 +226,16 @@ bool startup()
 
     g_app->connection = dc_res.unwrap();
 
+    // Init imgui
+    auto imgui_res = g_imgui_backend->create_backend(g_app->device, g_app->gpu, g_project->get_asset_pipeline(g_app->editor_project), system_allocator());
+    if (!imgui_res)
+    {
+        log_error("%s", imgui_res.unwrap_error().to_string());
+        return false;
+    }
+    g_app->imgui_backend = imgui_res.unwrap();
+
+    // Finally set quit off
     g_app->quit_requested = false;
 
     return true;
@@ -244,11 +249,16 @@ void shutdown()
         g_render_graph->remove_pass(g_app->imgui_pass);
     }
 
+    if (g_app->imgui_backend != nullptr)
+    {
+        g_imgui_backend->destroy_backend(g_app->imgui_backend);
+    }
+
     // Safe to shut down importers/loaders/locators now there's no resources hanging around
     g_shader_pipeline->shutdown();
 
     // Safe to close project once everything associated with its asset pipeline is finished shutting down
-    g_project->close(g_app->project);
+    g_project->close(g_app->editor_project);
 
     if (g_app->connection != nullptr)
     {
@@ -301,25 +311,6 @@ void shutdown()
     }
 }
 
-static void show_tree(const PathView& root)
-{
-    StaticString<1024> buf(root.string_view());
-    if (!g_imgui->TreeNodeStr(buf.data()))
-    {
-        return;
-    }
-
-    for (const auto& file : fs::read_dir(root))
-    {
-        if (fs::is_dir(file))
-        {
-            show_tree(file);
-        }
-    }
-
-    g_imgui->TreePop();
-}
-
 void tick()
 {
     // Close the app if either the window is closed or the apps quit event fired
@@ -332,6 +323,14 @@ void tick()
     // Poll input before doing any other processing in case we want to close app
     g_platform->poll_input();
 
+    if (g_platform->is_minimized(g_app->main_window))
+    {
+        current_thread::sleep(time::milliseconds(16));
+        return;
+    }
+
+    g_project->tick(g_app->editor_project);
+
     // Add the imgui render graph pass here instead of init() in case the plugin was reloaded
     if (g_app->imgui_pass == nullptr)
     {
@@ -339,25 +338,14 @@ void tick()
             g_app->render_graph,
             "ImGuiPass",
             setup_pass,
-            execute_pass,
-            init_pass,
-            destroy_pass
+            execute_pass
         );
     }
-
-    g_project->tick(g_app->project);
 
     if (g_app->imgui_backend != nullptr)
     {
         g_imgui_backend->new_frame(g_app->imgui_backend, g_app->main_window);
-        g_imgui->Begin("A window frame", nullptr, 0);
-#if 1
-        g_imgui->Button("Button", ImVec2 { 60, 40 });
-        g_imgui->Text("Some text too?");
-        g_imgui->Button("Also another button", ImVec2 { 100, 40 });
-        show_tree(get_plugin_source_path("Bee.ImGui"));
-#endif // 0
-        g_imgui->End();
+        tick_editor_window(g_platform, g_imgui, &g_app->editor_window);
         g_imgui->Render();
     }
 

@@ -254,7 +254,7 @@ bool reflect_vertex_description(CompilationContext* ctx, SpvReflectShaderModule*
     vertex_desc.layouts[0].stride = 0;
 
     // remap the inputs
-    SpvReflectResult reflect_result{};
+    [[maybe_unused]] SpvReflectResult reflect_result{};
     const auto location_count = sign_cast<u32>(vertex_inputs.size());
     for (u32 location = 0; location < location_count; ++location)
     {

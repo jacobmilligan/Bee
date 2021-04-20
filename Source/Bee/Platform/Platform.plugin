@@ -1,5 +1,10 @@
 {
     "name": "Bee.Platform",
     "version": "0.0.0",
-    "dependencies": []
+    "dependencies": [
+        {
+            "name": "Bee.Input",
+            "version": "0.0.0"
+        }
+    ]
 }

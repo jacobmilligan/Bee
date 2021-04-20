@@ -1,7 +1,8 @@
 bee_new_source_root()
 bee_add_sources(
-    Api.hpp     Api.cpp
-    ImGui.hpp   ImGui.cpp
+    Api.hpp         Api.cpp
+    ImGui.hpp       ImGui.cpp
+    Extensions.inl
     Target.cpp
 )
 bee_add_compile_definitions(IMGUI_DISABLE_OBSOLETE_FUNCTIONS=1)

@@ -163,7 +163,7 @@ VkBool32 VKAPI_CALL vk_debug_callback(
  *
  ******************************************
  */
-#ifdef BEE_DEBUG
+#if BEE_DEBUG == 1
 
 void set_vk_object_tag(VulkanDevice* device, VkDebugReportObjectTypeEXT object_type, void* object, size_t tag_size, const void* tag)
 {
@@ -320,12 +320,12 @@ bool init()
 
 void destroy()
 {
+#if BEE_CONFIG_ENABLE_ASSERTIONS == 1
     for (auto& device : g_backend->devices)
     {
         BEE_ASSERT_F(device.handle == nullptr, "All GPU devices must be destroyed before the GPU backend is destroyed");
     }
 
-#if BEE_CONFIG_ENABLE_ASSERTIONS == 1
     vkDestroyDebugReportCallbackEXT(g_backend->instance, g_backend->debug_report_cb, nullptr);
 #endif // BEE_CONFIG_ENABLE_ASSERTIONS == 1
 
@@ -1175,7 +1175,7 @@ void destroy_swapchain(const DeviceHandle& device_handle, const SwapchainHandle&
     swapchain.handle = VK_NULL_HANDLE;
 }
 
-TextureHandle acquire_swapchain_texture(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle)
+TextureHandle acquire_swapchain_texture(const DeviceHandle& device_handle, const SwapchainHandle& swapchain_handle, const u64 timeout)
 {
     auto& device = validate_device(device_handle);
     auto& swapchain = device.swapchains[swapchain_handle.id];
@@ -1191,16 +1191,21 @@ TextureHandle acquire_swapchain_texture(const DeviceHandle& device_handle, const
         const auto result = vkAcquireNextImageKHR(
             device.handle,
             swapchain.handle,
-            limits::max<u64>(),
+            timeout,
             swapchain.acquire_semaphore[swapchain.present_index],
             VK_NULL_HANDLE,
             &swapchain.current_image // get the next image index
         );
 
+        if (result == VK_TIMEOUT)
+        {
+            return TextureHandle{};
+        }
+
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
         {
             recreate_swapchain(&device, &swapchain, swapchain_handle.id, swapchain.create_info);
-            acquire_swapchain_texture(device_handle, swapchain_handle);
+            acquire_swapchain_texture(device_handle, swapchain_handle, limits::max<u64>());
         }
         else
         {
@@ -1218,7 +1223,7 @@ TextureViewHandle get_swapchain_texture_view(const DeviceHandle& device_handle, 
     auto& device = validate_device(device_handle);
     auto& swapchain = device.swapchains[swapchain_handle.id];
 
-    acquire_swapchain_texture(device_handle, swapchain_handle);
+    acquire_swapchain_texture(device_handle, swapchain_handle, limits::max<u64>());
 
     return swapchain.image_views[swapchain.current_image];
 }
@@ -1785,16 +1790,9 @@ void destroy_shader(const DeviceHandle& device_handle, const ShaderHandle& shade
     vkDestroyShaderModule(device.handle, shader.handle, nullptr);
 }
 
-static void ensure_buffer_size(CommandBuffer* cmd_buf, VulkanBuffer* buffer)
+static void recreate_buffer(VulkanDevice* device, VulkanBuffer* buffer, const size_t size)
 {
-    auto* device = cmd_buf->device;
     auto& thread = device->get_thread();
-
-    // no need to resize the buffer if its size hasn't changed
-    if (buffer->size <= buffer->allocation_info.size && buffer->handle != VK_NULL_HANDLE)
-    {
-        return;
-    }
 
     // Destroy the old buffer in this frame if one exists
     if (buffer->handle != VK_NULL_HANDLE)
@@ -1804,8 +1802,8 @@ static void ensure_buffer_size(CommandBuffer* cmd_buf, VulkanBuffer* buffer)
 
     VkBufferCreateInfo vk_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr };
     vk_info.flags = 0;
-    vk_info.size = buffer->size;
-    vk_info.usage = decode_buffer_type(buffer->type);
+    vk_info.size = size;
+    vk_info.usage = decode_buffer_type(buffer->type | BufferType::transfer_src | BufferType::transfer_dst);
     vk_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // TODO(Jacob): look into supporting concurrent queues
     vk_info.queueFamilyIndexCount = 0; // ignored if sharingMode != VK_SHARING_MODE_CONCURRENT
     vk_info.pQueueFamilyIndices = nullptr;
@@ -1836,17 +1834,18 @@ static void ensure_buffer_size(CommandBuffer* cmd_buf, VulkanBuffer* buffer)
 
     buffer->handle = new_buffer.handle;
     buffer->allocation = new_buffer.allocation;
+    buffer->size = size;
 }
 
 BufferHandle create_buffer(const DeviceHandle& device_handle, const BufferCreateInfo& create_info)
 {
     auto& device = validate_device(device_handle);
     auto& thread = device.get_thread();
-    const auto handle = thread.buffers.allocate(create_info.type, create_info.memory_usage, create_info.size);
+    const auto handle = thread.buffers.allocate(create_info.type, create_info.memory_usage);
     auto& buffer = thread.buffers[handle];
     buffer.debug_name = create_info.debug_name;
 
-    ensure_buffer_size(thread.get_device_cmd(device_handle), &buffer);
+    recreate_buffer(&device, &buffer, create_info.size);
 
     return handle;
 }
@@ -1869,10 +1868,9 @@ void update_buffer(const DeviceHandle& device_handle, const BufferHandle& buffer
     auto& thread = device.get_thread();
     auto& buffer = device.buffers_get(buffer_handle);
 
-    if (offset + size > buffer.size && BEE_CHECK_F(buffer.is_dynamic(), "Cannot grow buffer: not created with flag BufferType::dynamic_buffer"))
+    if (BEE_FAIL_F(offset + size <= buffer.size, "Offset + size exceeds buffer size. Buffers of BufferType::dynamic_buffer can be resized by calling gpu->resize_buffer"))
     {
-        buffer.size = offset + size;
-        ensure_buffer_size(thread.get_device_cmd(device_handle), &buffer);
+        return;
     }
 
     if (buffer.usage == DeviceMemoryUsage::gpu_only)
@@ -1910,6 +1908,19 @@ void update_buffer(const DeviceHandle& device_handle, const BufferHandle& buffer
             BEE_VK_CHECK(vkFlushMappedMemoryRanges(device.handle, 1, &memory_range));
         }
     }
+}
+
+void resize_buffer(const DeviceHandle& device_handle, const BufferHandle& buffer_handle, const size_t size)
+{
+    auto& device = validate_device(device_handle);
+    auto& buffer = device.buffers_get(buffer_handle);
+
+    if (BEE_FAIL_F((buffer.type & BufferType::dynamic_buffer) != BufferType::unknown, "Only buffers created with BufferType::dynamic_buffer can be resized"))
+    {
+        return;
+    }
+
+    recreate_buffer(&device, &buffer, size);
 }
 
 
@@ -2537,6 +2548,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     bee::g_backend->api.create_buffer = bee::create_buffer;
     bee::g_backend->api.destroy_buffer = bee::destroy_buffer;
     bee::g_backend->api.update_buffer = bee::update_buffer;
+    bee::g_backend->api.resize_buffer = bee::resize_buffer;
     bee::g_backend->api.create_texture = bee::create_texture;
     bee::g_backend->api.destroy_texture = bee::destroy_texture;
     bee::g_backend->api.update_texture = bee::update_texture;

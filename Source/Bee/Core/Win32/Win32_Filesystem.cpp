@@ -128,14 +128,15 @@ void DirectoryIterator::next()
  */
 struct WatchedDirectory
 {
-    static constexpr auto notify_buffer_capacity = 4015;
+    static constexpr auto notify_buffer_capacity = 4096;
 
     HANDLE      directory { nullptr };
     i32         index { -1 };
     DWORD       buffer_size { 0 };
-    bool        scheduled_for_removal { false };
     u8          notify_buffer[notify_buffer_capacity];
     OVERLAPPED  overlapped;
+    bool        scheduled_for_removal { false };
+    BEE_PAD(7);
 
     ~WatchedDirectory()
     {
@@ -244,9 +245,10 @@ bool DirectoryWatcher::add_directory(const PathView& path)
     memset(&entry->overlapped, 0, sizeof(OVERLAPPED));
 
     Path pathbuf(path);
+    auto u16s = str::to_wchar<1024>(path.string_view());
 
-    entry->directory = ::CreateFile(
-        pathbuf.c_str(),
+    entry->directory = ::CreateFileW(
+        u16s.data,
         FILE_LIST_DIRECTORY,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nullptr,

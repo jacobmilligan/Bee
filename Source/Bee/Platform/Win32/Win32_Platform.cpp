@@ -6,6 +6,8 @@
  */
 
 #include "Bee/Core/Plugin.hpp"
+#include "Bee/Core/Jobs/JobSystem.hpp"
+
 #include "Bee/Platform/Platform.hpp"
 
 // We need the following macros to enable things like window messages etc.
@@ -14,7 +16,10 @@
 #define BEE_MINWINDOWS_ENABLE_GDI
 #define BEE_MINWINDOWS_ENABLE_MSG
 #define BEE_MINWINDOWS_ENABLE_WINOFFSETS
+#define BEE_MINWINDOWS_ENABLE_CONTROL
 #include "Bee/Platform/Win32/Win32_RawInput.hpp"
+
+#include <shlobj.h>
 
 
 namespace bee {
@@ -44,21 +49,35 @@ struct Window // NOLINT
     HWND            hwnd { nullptr };
     RAWINPUTDEVICE  device_ids[2];
     bool            close_requested { false };
-    BEE_PAD(7);
+    bool            has_focus { false };
+    BEE_PAD(6);
+};
+
+struct ThreadData
+{
+    char file_dialog_buffer[4096];
 };
 
 struct Platform // NOLINT
 {
-    bool        is_running { false };
-    bool        quit_requested { false };
-    BEE_PAD(2);
-    i32         monitor_count { 0 };
-    i32         primary_monitor { -1 };
-    i32         window_count { 0 };
-    Monitor     monitors[BEE_MAX_MONITORS];
-    Window      windows[BEE_MAX_WINDOWS];
+    bool                    is_running { false };
+    bool                    quit_requested { false };
+    bool                    co_initialized { false };
+    BEE_PAD(1);
+    i32                     monitor_count { 0 };
+    i32                     primary_monitor { -1 };
+    i32                     window_count { 0 };
+    Monitor                 monitors[BEE_MAX_MONITORS];
+    Window                  windows[BEE_MAX_WINDOWS];
 
-    RawInput    raw_input;
+    RawInput                raw_input;
+
+    FixedArray<ThreadData>  threads;
+
+    inline ThreadData& get_thread()
+    {
+        return threads[job_worker_id()];
+    }
 };
 
 static Platform* g_platform = nullptr;
@@ -145,6 +164,11 @@ static LRESULT CALLBACK g_window_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
     auto& window = g_platform->windows[window_id];
     switch (uMsg)
     {
+        case WM_CHAR:
+        {
+            enqueue_text_event(&g_raw_input->keyboard, str::utf32_to_utf8_codepoint(static_cast<u32>(wParam)));
+            return 0;
+        }
         case WM_INPUT:
         {
             process_raw_input(lParam);
@@ -176,6 +200,12 @@ static LRESULT CALLBACK g_window_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
             return 0;
         }
 
+        case WM_ACTIVATE:
+        {
+            window.has_focus = LOWORD(lParam) != WA_INACTIVE;
+            return 0;
+        }
+
         default: break;
     }
 
@@ -189,6 +219,8 @@ bool start(const char* app_name)
         return false;
     }
 
+    g_platform->threads.resize(job_system_worker_count());
+
     discover_monitors();
 
     WNDCLASSEXW wndclass{};
@@ -199,7 +231,7 @@ bool start(const char* app_name)
     // wndclass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wndclass.lpszClassName = BEE_WNDCLASSNAME;
 
-    auto err = RegisterClassExW(&wndclass);
+    [[maybe_unused]] auto err = RegisterClassExW(&wndclass);
     BEE_ASSERT_F(err != 0, "Failed to register a Win32 window class: %s", win32_get_last_error_string());
 
     register_input_devices();
@@ -213,6 +245,11 @@ bool shutdown()
     if (BEE_FAIL_F(g_platform->is_running, "Platform is already shut down"))
     {
         return false;
+    }
+
+    if (g_platform->co_initialized)
+    {
+        ::CoUninitialize();
     }
 
     g_platform->quit_requested = true;
@@ -233,6 +270,18 @@ bool is_running()
 bool quit_requested()
 {
     return g_platform->quit_requested;
+}
+
+void poll_input()
+{
+    reset_raw_input();
+
+    MSG msg;
+    while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+    {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
 }
 
 i32 enumerate_monitors(MonitorInfo* dst)
@@ -418,26 +467,138 @@ Point get_cursor_position(const WindowHandle handle)
     return Point { pt.x, pt.y };
 }
 
-void poll_input()
+bool is_minimized(const WindowHandle handle)
 {
-    reset_raw_input();
+    return ::IsIconic(g_platform->windows[handle.id].hwnd);
+}
 
-    MSG msg;
-    while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+bool is_maximized(const WindowHandle handle)
+{
+    return ::IsZoomed(g_platform->windows[handle.id].hwnd);
+}
+
+bool has_focus(const WindowHandle handle)
+{
+    return g_platform->windows[handle.id].has_focus;
+}
+
+/*
+ ************
+ *
+ * Dialogs
+ *
+ ************
+ */
+static bool co_initialize()
+{
+    HRESULT hr = ::CoInitialize(nullptr);
+    if (hr == S_OK)
     {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-
-        switch (msg.message)
-        {
-            case WM_INPUT:
-            {
-                process_raw_input(msg.lParam);
-                break;
-            }
-            default: break;
-        }
+        g_platform->co_initialized = true;
     }
+    return hr == S_OK || hr == S_FALSE; // either ok or already intitialized
+}
+
+bool open_file_dialog(Path* dst)
+{
+    if (!co_initialize())
+    {
+        return false;
+    }
+
+    IFileDialog *file_dialog = nullptr;
+    ::HRESULT hr = ::CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&file_dialog));
+    if (!SUCCEEDED(hr))
+    {
+        CoUninitialize();
+        return false;
+    }
+
+    hr = file_dialog->Show(nullptr);
+    if (!SUCCEEDED(hr))
+    {
+        file_dialog->Release();
+        return false;
+    }
+
+    IShellItem* item = nullptr;
+    hr = file_dialog->GetResult(&item);
+    if (!SUCCEEDED(hr))
+    {
+        file_dialog->Release();
+        return false;
+    }
+
+    PWSTR file_path = nullptr;
+    hr = item->GetDisplayName(SIGDN_FILESYSPATH, &file_path);
+    if (!SUCCEEDED(hr))
+    {
+        item->Release();
+        file_dialog->Release();
+        return false;
+    }
+
+    auto& buf = g_platform->get_thread().file_dialog_buffer;
+    str::from_wchar(buf, static_array_length(buf), file_path, ::wcslen(file_path));
+
+    dst->clear();
+    dst->append(buf);
+
+    item->Release();
+    file_dialog->Release();
+
+    return true;
+}
+
+bool open_directory_dialog(Path* dst)
+{
+    if (!co_initialize())
+    {
+        return false;
+    }
+
+    IFileDialog *file_dialog = nullptr;
+    ::HRESULT hr = ::CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&file_dialog));
+    if (!SUCCEEDED(hr))
+    {
+        CoUninitialize();
+        return false;
+    }
+
+    hr = file_dialog->Show(nullptr);
+    if (!SUCCEEDED(hr))
+    {
+        file_dialog->Release();
+        return false;
+    }
+
+    IShellItem* item = nullptr;
+    hr = file_dialog->GetResult(&item);
+    if (!SUCCEEDED(hr))
+    {
+        file_dialog->Release();
+        return false;
+    }
+
+    PWSTR file_path = nullptr;
+    hr = item->GetDisplayName(SIGDN_FILESYSPATH, &file_path);
+    if (!SUCCEEDED(hr))
+    {
+        item->Release();
+        file_dialog->Release();
+        return false;
+    }
+
+    auto& buf = g_platform->get_thread().file_dialog_buffer;
+    str::from_wchar(buf, static_array_length(buf), file_path, ::wcslen(file_path));
+
+    dst->clear();
+    dst->append(buf);
+
+    item->Release();
+    file_dialog->Release();
+
+    return true;
 }
 
 
@@ -455,6 +616,7 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     g_module.shutdown = bee::shutdown;
     g_module.is_running = bee::is_running;
     g_module.quit_requested = bee::quit_requested;
+    g_module.poll_input = bee::poll_input;
     g_module.enumerate_monitors = bee::enumerate_monitors;
     g_module.get_primary_monitor = bee::get_primary_monitor;
     g_module.create_window = bee::create_window;
@@ -465,8 +627,12 @@ BEE_PLUGIN_API void bee_load_plugin(bee::PluginLoader* loader, const bee::Plugin
     g_module.window_close_requested = bee::is_window_close_requested;
     g_module.get_os_window = bee::get_os_window;
     g_module.get_cursor_position = bee::get_cursor_position;
-    g_module.poll_input = bee::poll_input;
+    g_module.is_minimized = bee::is_minimized;
+    g_module.is_maximized = bee::is_maximized;
+    g_module.has_focus = bee::has_focus;
 
-    loader->require_plugin("Bee.Input", { 0, 0, 0 });
+    // dialogs
+    g_module.open_file_dialog = bee::open_file_dialog;
+
     loader->set_module(BEE_PLATFORM_MODULE_NAME, &g_module, state);
 }

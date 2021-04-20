@@ -65,38 +65,38 @@ const InputState* mouse_get_previous_state(const i32 button_id)
     return &g_raw_input->mouse.last_state[button_id];
 }
 
-static void init_mouse_button(RawInputMouse* mouse, const MouseButton& btn, const InputStateType type, const i32 count)
+static void init_mouse_button(RawInputMouse* mouse, const MouseButton& btn, const InputStateType type)
 {
     auto& current = mouse->states[0][btn];
-    current.count = count;
     memset(current.types, static_cast<i32>(type), sizeof(InputStateType) * static_array_length(current.types));
     memset(current.values, 0, sizeof(InputStateValue) * static_array_length(current.values));
 }
 
 static void init_mouse(RawInputMouse* mouse)
 {
-    init_mouse_button(mouse, MouseButton::button_1, InputStateType::flag,       1);
-    init_mouse_button(mouse, MouseButton::button_2, InputStateType::flag,       1);
-    init_mouse_button(mouse, MouseButton::button_3, InputStateType::flag,       1);
-    init_mouse_button(mouse, MouseButton::button_4, InputStateType::flag,       1);
-    init_mouse_button(mouse, MouseButton::button_5, InputStateType::flag,       1);
-    init_mouse_button(mouse, MouseButton::button_6, InputStateType::flag,       1);
-    init_mouse_button(mouse, MouseButton::button_7, InputStateType::flag,       1);
-    init_mouse_button(mouse, MouseButton::button_8, InputStateType::flag,       1);
-    init_mouse_button(mouse, MouseButton::wheel,    InputStateType::float32,    2); // horizontal/vertical wheel
-    init_mouse_button(mouse, MouseButton::delta,    InputStateType::float32,    2); // x/y
-    init_mouse_button(mouse, MouseButton::position, InputStateType::float32,    2); // x/y
+    init_mouse_button(mouse, MouseButton::button_1, InputStateType::flag);
+    init_mouse_button(mouse, MouseButton::button_2, InputStateType::flag);
+    init_mouse_button(mouse, MouseButton::button_3, InputStateType::flag);
+    init_mouse_button(mouse, MouseButton::button_4, InputStateType::flag);
+    init_mouse_button(mouse, MouseButton::button_5, InputStateType::flag);
+    init_mouse_button(mouse, MouseButton::button_6, InputStateType::flag);
+    init_mouse_button(mouse, MouseButton::button_7, InputStateType::flag);
+    init_mouse_button(mouse, MouseButton::button_8, InputStateType::flag);
+    init_mouse_button(mouse, MouseButton::wheel,    InputStateType::float32); // horizontal/vertical wheel
+    init_mouse_button(mouse, MouseButton::delta,    InputStateType::float32); // x/y
+    init_mouse_button(mouse, MouseButton::position, InputStateType::float32); // x/y
 
     memcpy(&mouse->states[1], &mouse->states[0], sizeof(InputState) * static_array_length(mouse->states[0]));
     mouse->current_state = mouse->states[0];
     mouse->last_state = mouse->states[1];
 }
 
-static void update_mouse_flag(InputState* state, const USHORT flags, const USHORT test_flag, const MouseButton& btn, const bool flag)
+static void update_mouse_flag(RawInputMouse* mouse, const USHORT flags, const USHORT test_flag, const MouseButton& btn, const bool flag)
 {
     if ((flags & test_flag) != 0)
     {
-        state[btn].values[0].flag = flag;
+        mouse->current_state[btn].values[0].flag = flag;
+        enqueue_state_event(mouse, btn);
     }
 }
 
@@ -108,32 +108,46 @@ static void process_mouse(const RAWMOUSE& state, RawInputMouse* mouse)
         auto& delta = mouse->current_state[MouseButton::delta].values;
         delta[0].float32 = static_cast<float>(state.lLastX);
         delta[1].float32 = static_cast<float>(-state.lLastY);
+        enqueue_state_event(mouse, MouseButton::delta);
 
         auto& pos = mouse->current_state[MouseButton::position].values;
         const DWORD msg_pos = GetMessagePos();
         pos[0].float32 = static_cast<float>((msg_pos & 0x0000ffff));
         pos[1].float32 = static_cast<float>((msg_pos & 0xffff0000) >> 16);
+        enqueue_state_event(mouse, MouseButton::position);
     }
 
-    update_mouse_flag(mouse->current_state, state.usButtonFlags, RI_MOUSE_BUTTON_1_DOWN, MouseButton::button_1, true);
-    update_mouse_flag(mouse->current_state, state.usButtonFlags, RI_MOUSE_BUTTON_1_UP,   MouseButton::button_1, false);
-    update_mouse_flag(mouse->current_state, state.usButtonFlags, RI_MOUSE_BUTTON_2_DOWN, MouseButton::button_2, true);
-    update_mouse_flag(mouse->current_state, state.usButtonFlags, RI_MOUSE_BUTTON_2_UP,   MouseButton::button_2, false);
-    update_mouse_flag(mouse->current_state, state.usButtonFlags, RI_MOUSE_BUTTON_3_DOWN, MouseButton::button_3, true);
-    update_mouse_flag(mouse->current_state, state.usButtonFlags, RI_MOUSE_BUTTON_3_UP,   MouseButton::button_3, false);
-    update_mouse_flag(mouse->current_state, state.usButtonFlags, RI_MOUSE_BUTTON_4_DOWN, MouseButton::button_4, true);
-    update_mouse_flag(mouse->current_state, state.usButtonFlags, RI_MOUSE_BUTTON_4_UP,   MouseButton::button_4, false);
-    update_mouse_flag(mouse->current_state, state.usButtonFlags, RI_MOUSE_BUTTON_5_DOWN, MouseButton::button_5, true);
-    update_mouse_flag(mouse->current_state, state.usButtonFlags, RI_MOUSE_BUTTON_5_UP,   MouseButton::button_5, false);
+    update_mouse_flag(mouse, state.usButtonFlags, RI_MOUSE_BUTTON_1_DOWN, MouseButton::button_1, true);
+    update_mouse_flag(mouse, state.usButtonFlags, RI_MOUSE_BUTTON_1_UP,   MouseButton::button_1, false);
+    update_mouse_flag(mouse, state.usButtonFlags, RI_MOUSE_BUTTON_2_DOWN, MouseButton::button_2, true);
+    update_mouse_flag(mouse, state.usButtonFlags, RI_MOUSE_BUTTON_2_UP,   MouseButton::button_2, false);
+    update_mouse_flag(mouse, state.usButtonFlags, RI_MOUSE_BUTTON_3_DOWN, MouseButton::button_3, true);
+    update_mouse_flag(mouse, state.usButtonFlags, RI_MOUSE_BUTTON_3_UP,   MouseButton::button_3, false);
+    update_mouse_flag(mouse, state.usButtonFlags, RI_MOUSE_BUTTON_4_DOWN, MouseButton::button_4, true);
+    update_mouse_flag(mouse, state.usButtonFlags, RI_MOUSE_BUTTON_4_UP,   MouseButton::button_4, false);
+    update_mouse_flag(mouse, state.usButtonFlags, RI_MOUSE_BUTTON_5_DOWN, MouseButton::button_5, true);
+    update_mouse_flag(mouse, state.usButtonFlags, RI_MOUSE_BUTTON_5_UP,   MouseButton::button_5, false);
 
-    if ((state.usButtonFlags & RI_MOUSE_WHEEL) != 0)
+    const bool vertical_wheel = (state.usButtonFlags & RI_MOUSE_WHEEL) != 0;
+    const bool horizontal_wheel = (state.usButtonFlags & RI_MOUSE_HWHEEL) != 0;
+
+    if (vertical_wheel)
     {
         mouse->current_state[MouseButton::wheel].values[0].float32 = static_cast<float>(state.usButtonData);
     }
-    if ((state.usButtonFlags & RI_MOUSE_HWHEEL) != 0)
+    if (horizontal_wheel)
     {
         mouse->current_state[MouseButton::wheel].values[1].float32 = static_cast<float>(state.usButtonData);
     }
+    if (vertical_wheel || horizontal_wheel)
+    {
+        enqueue_state_event(mouse, MouseButton::wheel);
+    }
+}
+
+static const Span<const InputEvent> mouse_get_events()
+{
+    return g_raw_input->mouse.events.const_span();
 }
 
 
@@ -186,7 +200,6 @@ static void init_key(RawInputKeyboard* keyboard, const Key& key, const i32 scanc
     keyboard->buttons[key].name = name;
     keyboard->buttons[key].id = key;
 
-    keyboard->states[0][key].count = 1;
     keyboard->states[0][key].types[0] = InputStateType::flag;
     keyboard->states[0][key].values[0].flag = false;
 
@@ -326,10 +339,17 @@ static void init_keyboard(RawInputKeyboard* keyboard)
     keyboard->last_state = keyboard->states[1];
 }
 
-static void process_key(const RAWKEYBOARD& state, RawInputKeyboard* keyboard)
+void process_key(const RAWKEYBOARD& state, RawInputKeyboard* keyboard)
 {
     const i32 index = keyboard->scancode_table[state.MakeCode];
     keyboard->current_state[index].values[0].flag = (state.Flags & RI_KEY_BREAK) == 0;
+    enqueue_state_event(keyboard, index);
+}
+
+const Span<const InputEvent> keyboard_get_events()
+{
+    auto* keyboard = &g_raw_input->keyboard;
+    return keyboard->events.const_span();
 }
 
 
@@ -353,6 +373,7 @@ void register_input_devices()
     mouse.device.get_button = mouse_get_button;
     mouse.device.get_state = mouse_get_state;
     mouse.device.get_previous_state = mouse_get_previous_state;
+    mouse.device.get_events = mouse_get_events;
 
     auto& keyboard = g_raw_input->keyboard;
     keyboard.device.name = "RawInput_Keyboard";
@@ -363,6 +384,7 @@ void register_input_devices()
     keyboard.device.get_button = keyboard_get_button;
     keyboard.device.get_state = keyboard_get_state;
     keyboard.device.get_previous_state = keyboard_get_previous_state;
+    keyboard.device.get_events = keyboard_get_events;
 
     init_keyboard(&keyboard);
     init_mouse(&mouse);
@@ -436,6 +458,10 @@ void reset_raw_input()
 
     // reset the mouse delta for this frame
     memset(g_raw_input->mouse.current_state[MouseButton::delta].values, 0, sizeof(InputStateValue) * 4);
+
+    // clear event queues
+    g_raw_input->keyboard.events.size = 0;
+    g_raw_input->mouse.events.size = 0;
 }
 
 } // namespace bee

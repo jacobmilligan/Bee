@@ -1,6 +1,7 @@
 bee_new_source_root()
 bee_add_sources(
-    App.hpp App.cpp
+    App.hpp             App.cpp
+    EditorWindow.inl    EditorWindow.cpp
 )
 bee_plugin(Bee.Editor LINK_LIBRARIES Bee.Core)
 add_dependencies(Bee.Editor Bee.Project)

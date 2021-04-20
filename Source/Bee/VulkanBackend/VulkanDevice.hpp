@@ -42,16 +42,42 @@ namespace bee {
  *
  ********************************************************************
  */
-#define BEE_VK_CHECK(fn) BEE_BEGIN_MACRO_BLOCK                                                  \
+#if BEE_ENABLE_ASSERTIONS == 1
+#define BEE_VK_CHECK(fn) \
+        BEE_BEGIN_MACRO_BLOCK                                                                   \
             const auto result = fn;                                                             \
             BEE_ASSERT_F(result == VK_SUCCESS, "Vulkan: %s", bee::vk_result_string(result));    \
         BEE_END_MACRO_BLOCK
 
-#define BEE_VMA_CHECK(fn) BEE_BEGIN_MACRO_BLOCK                                                                                     \
+#define BEE_VMA_CHECK(fn) \
+        BEE_BEGIN_MACRO_BLOCK                                                                                                       \
             const auto result = fn;                                                                                                 \
             BEE_ASSERT_F(result != VK_ERROR_VALIDATION_FAILED_EXT, "Vulkan Memory Allocator tried to allocate zero-sized memory");  \
             BEE_ASSERT_F(result == VK_SUCCESS, "Vulkan: %s", bee::vk_result_string(result));                                        \
         BEE_END_MACRO_BLOCK
+#else
+    #define BEE_VK_CHECK(fn) \
+        BEE_BEGIN_MACRO_BLOCK                                                                   \
+            const auto result = fn;                                                             \
+            if (result != VK_SUCCESS)                                                           \
+            {                                                                                   \
+                log_error("Vulkan: %s", bee::vk_result_string(result));                         \
+            }                                                                                   \
+        BEE_END_MACRO_BLOCK
+
+    #define BEE_VMA_CHECK(fn) \
+        BEE_BEGIN_MACRO_BLOCK                                                                   \
+            const auto result = fn;                                                             \
+            if (result == VK_ERROR_VALIDATION_FAILED_EXT)                                       \
+            {                                                                                   \
+                log_error("Vulkan Memory Allocator tried to allocate zero-sized memory");       \
+            }                                                                                   \
+            else if (result != VK_SUCCESS)                                                      \
+            {                                                                                   \
+                log_error("Vulkan: %s", bee::vk_result_string(result));                         \
+            }                                                                                   \
+        BEE_END_MACRO_BLOCK
+#endif // BEE_ENABLE_ASSERTIONS == 1
 
 struct VulkanDevice;
 
@@ -205,10 +231,9 @@ struct VulkanBuffer
 
     VulkanBuffer() = default;
 
-    VulkanBuffer(const BufferType new_type, const DeviceMemoryUsage new_usage, const u32 new_size)
+    VulkanBuffer(const BufferType new_type, const DeviceMemoryUsage new_usage)
         : type(new_type),
-          usage(new_usage),
-          size(new_size)
+          usage(new_usage)
     {}
 
     inline bool is_dynamic() const
@@ -532,7 +557,7 @@ struct VulkanBackend // NOLINT
         VK_KHR_SWAPCHAIN_EXTENSION_NAME // Require swapchain support for all devices
         ,
         VK_KHR_MAINTENANCE1_EXTENSION_NAME // Enables negative viewport height & VK_ERROR_OUT_OF_POOL_MEMORY_KHR for clearer error reporting when doing vkAllocateDescriptorSets
-#ifdef BEE_DEBUG
+#if BEE_DEBUG == 1
         ,
         VK_EXT_DEBUG_MARKER_EXTENSION_NAME
 #endif // BEE_DEBUG
@@ -549,10 +574,12 @@ struct VulkanBackend // NOLINT
 
     ~VulkanBackend()
     {
+#if BEE_CONFIG_ENABLE_ASSERTIONS == 1
         for (auto& device : devices)
         {
             BEE_ASSERT_F(device.handle == VK_NULL_HANDLE, "All GPU devices must be destroyed before the GPU backend is destroyed");
         }
+#endif // BEE_CONFIG_ENABLE_ASSERTIONS == 1
     }
 };
 

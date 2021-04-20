@@ -8,7 +8,7 @@
 #pragma once
 
 
-#include "Bee/Core/NumericTypes.hpp"
+#include "Bee/Core/Span.hpp"
 
 
 namespace bee {
@@ -56,6 +56,48 @@ struct BEE_REFLECT(serializable) StaticArray
     inline bool empty() const
     {
         return size <= 0;
+    }
+
+    inline const Span<const T> const_span() const
+    {
+        return make_const_span(data, size);
+    }
+
+    inline Span<T> span()
+    {
+        return make_span(data, size);
+    }
+
+    inline T& back()
+    {
+        return data[size - 1];
+    }
+
+    inline const T& back() const
+    {
+        return data[size - 1];
+    }
+
+    void push_back(const T& value)
+    {
+        BEE_ASSERT(size <= capacity);
+        new (&data[size]) T(value);
+        ++size;
+    }
+
+    void push_back(T&& value)
+    {
+        BEE_ASSERT(size <= capacity);
+        ::bee::move_range(data + size, &value, 1);
+        ++size;
+    }
+
+    template <class... Args>
+    void emplace_back(Args&&... args)
+    {
+        BEE_ASSERT(size <= capacity);
+        new (&data[size]) T(BEE_FORWARD(args)...);
+        ++size;
     }
 };
 

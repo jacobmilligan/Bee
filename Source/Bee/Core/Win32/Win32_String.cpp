@@ -148,6 +148,36 @@ i32 to_wchar(const StringView& src, wchar_t* buffer, const i32 buffer_size)
     return wstring_size;
 }
 
+u32 utf32_to_utf8_codepoint(const u32 utf32_codepoint)
+{
+    u32 utf8_codepoint = 0;
+
+    if (utf32_codepoint <= 0x7F)
+    {
+        utf8_codepoint = utf32_codepoint;
+    }
+    else if (utf32_codepoint <= 0x7FF)
+    {
+        utf8_codepoint = (0xC0 | ((utf32_codepoint >> 6) & 0x1F)) << 8
+                       | (0x80 | (utf32_codepoint & 0x3F));
+    }
+    else if (utf32_codepoint <= 0xFFFF)
+    {
+        utf8_codepoint = (0xE0 | ((utf32_codepoint >> 12) & 0x0F)) << 16
+                       | (0x80 | ((utf32_codepoint >> 6) & 0x3F)) << 8
+                       | (0x80 | (utf32_codepoint & 0x3F));
+    }
+    else if (utf32_codepoint <= 0x10FFFF)
+    {
+        utf8_codepoint = (0xF0 | ((utf32_codepoint >> 18) & 0x0F)) << 24
+                       | (0x80 | ((utf32_codepoint >> 12) & 0x3F)) << 16
+                       | (0x80 | ((utf32_codepoint >> 6) & 0x3F)) << 8
+                       | (0x80 | (utf32_codepoint & 0x3F));
+    }
+
+    return utf8_codepoint;
+}
+
 
 } // namespace str
 } // namespace bee

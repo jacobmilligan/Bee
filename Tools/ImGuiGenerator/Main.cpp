@@ -207,6 +207,7 @@ static int generate_imgui(const ImGuiConfig& config)
             stream.write_fmt("    %s (*%s)%s { nullptr };\n", overload.ret.c_str(), overload.plugin_name.c_str(), overload.args.c_str());
         }
     }
+    stream.write("#ifdef BEE_IMGUI_USER_EXTENSIONS\n    #include BEE_IMGUI_USER_EXTENSIONS\n#endif // BEE_IMGUI_USER_EXTENSIONS\n");
     stream.write_fmt("}; // struct %s\n\n", config.module_name);
 
     if (config.ns != nullptr)

@@ -33,6 +33,13 @@ enum class InputStateType
     float32,
 };
 
+enum class InputEventType
+{
+    none,
+    state_change,
+    text
+};
+
 union InputStateValue // NOLINT
 {
     bool    flag;
@@ -42,7 +49,6 @@ union InputStateValue // NOLINT
 
 struct InputState // NOLINT
 {
-    i32             count { 0 };
     InputStateType  types[4] { InputStateType::dummy };
     InputStateValue values[4];
 };
@@ -51,6 +57,18 @@ struct InputButton
 {
     const char* name { nullptr };
     i32         id { -1 };
+    BEE_PAD(4);
+};
+
+struct InputDevice;
+struct InputEvent
+{
+    u64                 timestamp { 0 };
+    InputEventType      type { InputEventType::none };
+    i32                 button_id { -1 };
+    const InputDevice*  device { nullptr };
+    InputState          state;
+    u32                 codepoint;
     BEE_PAD(4);
 };
 
@@ -71,6 +89,8 @@ struct InputDevice
     const InputState* (*get_state)(const i32 button_id) { nullptr };
 
     const InputState* (*get_previous_state)(const i32 button_id) { nullptr };
+
+    const Span<const InputEvent> (*get_events)() { nullptr };
 };
 
 #define BEE_INPUT_MODULE_NAME "BEE_INPUT_MODULE"

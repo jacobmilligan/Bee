@@ -12,6 +12,7 @@
 #include "Bee/Core/Reflection.hpp"
 #include "Bee/Core/Math/float2.hpp"
 
+
 namespace bee {
 
 
@@ -25,6 +26,8 @@ namespace bee {
 
 BEE_RAW_HANDLE_I32(MonitorHandle);
 BEE_RAW_HANDLE_I32(WindowHandle);
+
+class Path;
 
 struct Point
 {
@@ -69,6 +72,8 @@ struct PlatformModule
 
     bool (*quit_requested)() { nullptr };
 
+    void (*poll_input)() { nullptr };
+
     i32 (*enumerate_monitors)(MonitorInfo* dst) { nullptr };
 
     const MonitorInfo* (*get_primary_monitor)() { nullptr };
@@ -89,7 +94,20 @@ struct PlatformModule
 
     Point (*get_cursor_position)(const WindowHandle handle) { nullptr };
 
-    void (*poll_input)() { nullptr };
+    bool (*is_minimized)(const WindowHandle handle) { nullptr };
+
+    bool (*is_maximized)(const WindowHandle handle) { nullptr };
+
+    bool (*has_focus)(const WindowHandle handle) { nullptr };
+
+    /*
+     ************
+     *
+     * Dialogs
+     *
+     ************
+     */
+    bool (*open_file_dialog)(Path* dst) { nullptr };
 };
 
 
