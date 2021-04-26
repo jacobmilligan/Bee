@@ -18,7 +18,7 @@
 	url = https://github.com/zeux/volk.git
 [submodule "ThirdParty/VulkanMemoryAllocator"]
 	path = ThirdParty/VulkanMemoryAllocator
-	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
 [submodule ".\\ThirdParty\\lmdb"]
 	path = ThirdParty/lmdb
 	url = https://github.com/LMDB/lmdb.git
